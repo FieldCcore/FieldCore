@@ -34,6 +34,9 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    const chargeId = session.payment_intent;
+
+    // Invoice payment via Checkout
     const invoiceId = session.metadata?.invoice_id;
     if (invoiceId) {
       const { rows } = await pool.query(
@@ -48,6 +51,16 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
           [rows[0].amount, rows[0].client_id]
         );
       }
+    }
+
+    // Booking deposit payment
+    const jobId = session.metadata?.job_id;
+    if (jobId) {
+      await pool.query(
+        `UPDATE deposits SET status = 'collected', collected_at = NOW(), stripe_charge_id = $1
+         WHERE job_id = $2 AND status = 'pending'`,
+        [chargeId, jobId]
+      );
     }
   }
 

@@ -1,5 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui', color: '#333', gap: 12 }}>
+          <div style={{ fontSize: 32, fontWeight: 700 }}>FIELDCORE™</div>
+          <div style={{ fontSize: 16, color: '#666' }}>Something went wrong loading this page.</div>
+          <pre style={{ fontSize: 12, color: '#999', maxWidth: 500, whiteSpace: 'pre-wrap' }}>{this.state.error?.message}</pre>
+          <button onClick={() => window.location.reload()} style={{ marginTop: 8, padding: '8px 20px', background: '#222', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import Dashboard      from './pages/Dashboard';
 import ClientList     from './pages/ClientList';
 import ClientProfile  from './pages/ClientProfile';
@@ -193,8 +216,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

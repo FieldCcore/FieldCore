@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /api/users — list team members (used for tech assignment dropdown)
 router.get('/', requireAuth, async (req, res) => {
@@ -18,8 +18,8 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/users — add team member
-router.post('/', requireAuth, async (req, res) => {
+// POST /api/users — add team member (owner/manager only)
+router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { name, email, phone, role, password } = req.body;
   if (!name || !email || !role || !password)
     return res.status(400).json({ error: 'name, email, role, and password are required.' });
@@ -43,8 +43,8 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id — edit team member
-router.patch('/:id', requireAuth, async (req, res) => {
+// PATCH /api/users/:id — edit team member (owner/manager only)
+router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const allowed = ['name', 'email', 'phone', 'role'];
   const updates = [];
   const values  = [];
@@ -83,8 +83,8 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id — remove team member
-router.delete('/:id', requireAuth, async (req, res) => {
+// DELETE /api/users/:id — remove team member (owner only)
+router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
   if (req.userId === req.params.id)
     return res.status(400).json({ error: 'You cannot remove your own account.' });
 

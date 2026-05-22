@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Kevin\\\\fieldcore\" -Recurse -File -Exclude node_modules | Where-Object { $_.FullName -notmatch \"node_modules|\\\\.git|\\\\.next\" } | Select-Object FullName | Sort-Object FullName)",
+      "PowerShell(railway version *)",
+      "Bash(npm run *)",
+      "Bash(git add *)"
+    ]
+  }
+}

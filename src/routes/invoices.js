@@ -9,20 +9,25 @@ router.post('/', requireAuth, async (req, res) => {
   if (!job_id) return res.status(400).json({ error: 'job_id is required' });
 
   try {
-    const jobResult = await pool.query(
-      `SELECT * FROM jobs WHERE id = $1 AND account_id = $2`,
-      [job_id, req.accountId]
-    );
+    const [jobResult, settingsResult] = await Promise.all([
+      pool.query(`SELECT * FROM jobs WHERE id = $1 AND account_id = $2`, [job_id, req.accountId]),
+      pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
+    ]);
     const job = jobResult.rows[0];
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (job.status !== 'complete') {
       return res.status(400).json({ error: 'Job must be complete before invoicing' });
     }
 
+    const taxRate   = parseFloat(settingsResult.rows[0]?.tax_rate || 0);
+    const subtotal  = parseFloat(job.amount || 0);
+    const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
+    const total     = subtotal + taxAmount;
+
     const { rows } = await pool.query(
-      `INSERT INTO invoices (account_id, job_id, client_id, amount)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.accountId, job_id, job.client_id, job.amount]
+      `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.accountId, job_id, job.client_id, total, taxAmount]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

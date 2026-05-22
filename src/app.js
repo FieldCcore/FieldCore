@@ -16,6 +16,7 @@ const webhooksRouter  = require('./routes/webhooks');
 const usersRouter     = require('./routes/users');
 const mobileRouter    = require('./routes/mobile');
 const bookingRouter   = require('./routes/booking');
+const fleetRouter     = require('./routes/fleet');
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/users',    usersRouter);
 app.use('/api/mobile',          mobileRouter);
 app.use('/api/booking',         bookingRouter);  // public: /api/booking/:accountId
 app.use('/api/booking-settings', bookingRouter); // operator: GET/PUT with auth
+app.use('/api/fleet',           fleetRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -47,9 +49,14 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 const clientDist = path.join(__dirname, '../client/dist');
 const fs = require('fs');
 if (fs.existsSync(path.join(clientDist, 'index.html'))) {
-  app.use(express.static(clientDist));
-  // Express 5 broke app.get('*') — use app.use as the SPA catch-all instead
-  app.use((req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+  // Serve hashed assets with long cache; serve index.html with no-cache so
+  // browsers always fetch the latest version (prevents stale hash references
+  // after a new deployment changes asset filenames).
+  app.use(express.static(clientDist, { index: false }));
+  app.use((req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
 }
 
 app.use((err, req, res, next) => {

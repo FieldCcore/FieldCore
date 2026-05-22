@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import api from '../api';
 
@@ -12,6 +12,18 @@ const STATUS_COLORS = {
 
 export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const [updating, setUpdating] = useState(false);
+  const [photos,   setPhotos]   = useState([]);
+  const [showPhotos, setShowPhotos] = useState(false);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+
+  useEffect(() => {
+    if (!showPhotos) return;
+    setLoadingPhotos(true);
+    api.get(`/mobile/jobs/${job.id}/photos`)
+      .then(r => setPhotos(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingPhotos(false));
+  }, [showPhotos, job.id]);
 
   async function updateStatus(status) {
     setUpdating(true);
@@ -49,8 +61,46 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         {job.recurring !== 'none' && (
           <div className="detail-row"><label>Recurring</label><span style={{ textTransform: 'capitalize' }}>{job.recurring}</span></div>
         )}
+        {job.checkin_at && (
+          <div className="detail-row">
+            <label>Check-in</label>
+            <span>{format(new Date(job.checkin_at), 'h:mm a')} {job.checkin_lat ? `· ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}</span>
+          </div>
+        )}
         {job.notes && (
           <div className="detail-row"><label>Notes</label><span>{job.notes}</span></div>
+        )}
+      </div>
+
+      {/* Photos section */}
+      <div style={{ margin: '12px 0' }}>
+        <button
+          className="btn-secondary"
+          style={{ fontSize: 13, padding: '6px 14px' }}
+          onClick={() => setShowPhotos(v => !v)}
+        >
+          {showPhotos ? 'Hide Photos' : '📷 Job Photos'}
+        </button>
+        {showPhotos && (
+          <div style={{ marginTop: 12 }}>
+            {loadingPhotos && <p className="muted">Loading photos…</p>}
+            {!loadingPhotos && photos.length === 0 && (
+              <p className="muted" style={{ fontSize: 13 }}>No photos uploaded for this job.</p>
+            )}
+            {photos.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8 }}>
+                {photos.map(p => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
+                    <img
+                      src={p.url}
+                      alt="Job photo"
+                      style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }}
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

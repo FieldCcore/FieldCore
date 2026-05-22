@@ -81,11 +81,12 @@ router.post('/jobs/:id/complete', requireAuth, async (req, res) => {
 router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
   try {
+    const url = `/uploads/${req.file.filename}`;
     const { rows } = await pool.query(
-      `INSERT INTO job_photos (job_id, account_id, filename) VALUES ($1,$2,$3) RETURNING *`,
-      [req.params.id, req.accountId, req.file.filename]
+      `INSERT INTO job_photos (job_id, account_id, url, filename) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [req.params.id, req.accountId, url, req.file.filename]
     );
-    res.status(201).json({ ...rows[0], url: `/uploads/${req.file.filename}` });
+    res.status(201).json({ ...rows[0], url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -95,7 +96,7 @@ router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req,
 router.get('/jobs/:id/photos', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT *, '/uploads/' || filename AS url FROM job_photos WHERE job_id = $1 AND account_id = $2 ORDER BY created_at`,
+      `SELECT *, COALESCE(url, '/uploads/' || filename) AS url FROM job_photos WHERE job_id = $1 AND account_id = $2 ORDER BY created_at`,
       [req.params.id, req.accountId]
     );
     res.json(rows);

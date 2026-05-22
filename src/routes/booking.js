@@ -77,11 +77,23 @@ router.post('/:accountId/submit', async (req, res) => {
 
     // Check if deposit is required
     const settingsResult = await pool.query(
-      `SELECT deposit_amount, business_name FROM booking_settings WHERE account_id = $1`,
+      `SELECT deposit_amount, deposit_rules, business_name FROM booking_settings WHERE account_id = $1`,
       [accountId]
     );
     const settings = settingsResult.rows[0];
-    const depositAmount = parseFloat(settings?.deposit_amount || 0);
+
+    // Per-service deposit rules take precedence over global deposit_amount
+    let depositAmount = parseFloat(settings?.deposit_amount || 0);
+    const rules = Array.isArray(settings?.deposit_rules) ? settings.deposit_rules : [];
+    const matchedRule = rules.find(r => r.service && service && r.service.toLowerCase() === service.toLowerCase());
+    if (matchedRule) {
+      if (matchedRule.type === 'percent') {
+        const jobAmt = parseFloat(req.body.amount || 0);
+        depositAmount = jobAmt > 0 ? (jobAmt * matchedRule.amount) / 100 : matchedRule.amount;
+      } else {
+        depositAmount = parseFloat(matchedRule.amount || 0);
+      }
+    }
 
     if (depositAmount > 0 && process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.endsWith('_')) {
       const session = await stripe.checkout.sessions.create({
@@ -142,23 +154,27 @@ router.get('/', requireAuth, async (req, res) => {
 
 // PUT /api/booking-settings — update operator's booking config
 router.put('/', requireAuth, async (req, res) => {
-  const { services, deposit_amount, agreement_text, business_name } = req.body;
+  const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate } = req.body;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO booking_settings (account_id, services, deposit_amount, agreement_text, business_name)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO booking_settings (account_id, services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (account_id) DO UPDATE SET
          services       = EXCLUDED.services,
          deposit_amount = EXCLUDED.deposit_amount,
+         deposit_rules  = EXCLUDED.deposit_rules,
          agreement_text = EXCLUDED.agreement_text,
-         business_name  = EXCLUDED.business_name
+         business_name  = EXCLUDED.business_name,
+         tax_rate       = EXCLUDED.tax_rate
        RETURNING *`,
       [
         req.accountId,
         JSON.stringify(services),
         deposit_amount ?? 0,
+        JSON.stringify(deposit_rules ?? []),
         agreement_text,
         business_name,
+        tax_rate ?? 0,
       ]
     );
     res.json(rows[0]);

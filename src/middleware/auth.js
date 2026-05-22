@@ -17,4 +17,13 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.userRole)) {
+      return res.status(403).json({ error: 'Forbidden — insufficient role.' });
+    }
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole };

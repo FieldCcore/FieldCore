@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicles (
   tech_id     UUID REFERENCES users(id),
   make        TEXT,
   model       TEXT,
+  year        INTEGER,
   plate       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -169,5 +170,10 @@ CREATE INDEX IF NOT EXISTS idx_job_photos_job    ON job_photos(job_id);
 CREATE INDEX IF NOT EXISTS idx_job_photos_acct   ON job_photos(account_id);
 
 -- Migrations: safe to run on existing databases
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
+ALTER TABLE fleet_vehicles  ADD COLUMN IF NOT EXISTS year INTEGER;
+ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;
+ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
+ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS deposit_rules JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,4) DEFAULT 0;
+ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE job_photos       ADD COLUMN IF NOT EXISTS filename TEXT;
