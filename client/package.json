@@ -1,0 +1,27 @@
+{
+  "name": "client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@stripe/react-stripe-js": "^6.3.0",
+    "@stripe/stripe-js": "^9.5.0",
+    "axios": "^1.16.1",
+    "date-fns": "^4.1.0",
+    "leaflet": "^1.9.4",
+    "react": "^19.2.6",
+    "react-big-calendar": "^1.19.4",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1"
+  }
+}

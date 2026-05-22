@@ -1,0 +1,133 @@
+const express = require('express');
+const router  = express.Router();
+const path    = require('path');
+const multer  = require('multer');
+const pool    = require('../db/pool');
+const { requireAuth } = require('../middleware/auth');
+const smsService = require('../services/sms');
+
+const storage = multer.diskStorage({
+  destination: path.join(__dirname, '../../uploads'),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+
+// GET /api/mobile/jobs — jobs assigned to a specific tech (today + upcoming)
+router.get('/jobs', requireAuth, async (req, res) => {
+  const { tech_id } = req.query;
+  if (!tech_id) return res.status(400).json({ error: 'tech_id is required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address
+       FROM jobs j
+       JOIN clients c ON c.id = j.client_id
+       WHERE j.account_id = $1
+         AND j.tech_id = $2
+         AND j.status NOT IN ('complete','cancelled')
+         AND j.scheduled_at >= NOW() - INTERVAL '2 hours'
+       ORDER BY j.scheduled_at`,
+      [req.accountId, tech_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/jobs/:id/checkin — GPS check-in
+router.post('/jobs/:id/checkin', requireAuth, async (req, res) => {
+  const { lat, lng } = req.body;
+  if (!lat || !lng) return res.status(400).json({ error: 'lat and lng are required' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET checkin_lat = $1, checkin_lng = $2, checkin_at = NOW(), status = 'in_progress'
+       WHERE id = $3 AND account_id = $4 RETURNING *`,
+      [lat, lng, req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Job not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/jobs/:id/complete — mark complete from mobile
+router.post('/jobs/:id/complete', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'complete', completed_at = NOW()
+       WHERE id = $1 AND account_id = $2 RETURNING *`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Job not found' });
+    const job = rows[0];
+
+    // Auto-invoice if job has an amount
+    if (job.amount) {
+      await pool.query(
+        `INSERT INTO invoices (account_id, job_id, client_id, amount)
+         VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+        [req.accountId, job.id, job.client_id, job.amount]
+      ).catch(() => {});
+    }
+
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/jobs/:id/photos — upload photo
+router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO job_photos (job_id, account_id, filename) VALUES ($1,$2,$3) RETURNING *`,
+      [req.params.id, req.accountId, req.file.filename]
+    );
+    res.status(201).json({ ...rows[0], url: `/uploads/${req.file.filename}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/mobile/jobs/:id/photos — list photos for a job
+router.get('/jobs/:id/photos', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT *, '/uploads/' || filename AS url FROM job_photos WHERE job_id = $1 AND account_id = $2 ORDER BY created_at`,
+      [req.params.id, req.accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/jobs/:id/eta — send ETA SMS to client
+router.post('/jobs/:id/eta', requireAuth, async (req, res) => {
+  const { minutes } = req.body;
+  if (!minutes) return res.status(400).json({ error: 'minutes is required' });
+  try {
+    const result = await pool.query(
+      `SELECT j.*, c.name AS client_name, c.phone AS client_phone
+       FROM jobs j JOIN clients c ON c.id = j.client_id
+       WHERE j.id = $1 AND j.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    const job = result.rows[0];
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (!job.client_phone) return res.status(400).json({ error: 'Client has no phone number' });
+
+    const body = smsService.etaBody(job.client_name, minutes);
+    const message = await smsService.send(req.accountId, job.client_id, job.client_phone, body);
+    if (!message) {
+      return res.status(202).json({ warning: 'Twilio not configured' });
+    }
+    res.json({ sid: message.sid, status: message.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
