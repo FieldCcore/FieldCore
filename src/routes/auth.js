@@ -71,7 +71,7 @@ router.get('/me', async (req, res) => {
       [payload.userId]
     );
     if (!rows.length) return res.status(401).json({ error: 'User not found.' });
-    res.json({ user: { ...rows[0], accountId: rows[0].account_id } });
+    res.json({ user: { ...rows[0], accountId: rows[0].account_id, accountName: rows[0].account_name } });
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
   }

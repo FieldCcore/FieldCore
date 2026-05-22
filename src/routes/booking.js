@@ -129,6 +129,21 @@ router.post('/:accountId/submit', async (req, res) => {
   }
 });
 
+// GET /api/booking/confirm/:jobId — public, returns minimal job info for confirmation page
+router.get('/confirm/:jobId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT j.id, j.service_type, j.scheduled_at, j.status
+       FROM jobs j WHERE j.id = $1`,
+      [req.params.jobId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Job not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Operator routes (auth required) ──────────────────────────────────────────
 
 // GET /api/booking-settings — get operator's booking config

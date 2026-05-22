@@ -47,6 +47,7 @@ import ResetPassword   from './pages/ResetPassword';
 import MobileDemo      from './pages/MobileDemo';
 import ManagerTablet  from './pages/ManagerTablet';
 import Fleet          from './pages/Fleet';
+import BookConfirm    from './pages/BookConfirm';
 import NoShowStrip    from './components/NoShowStrip';
 import CallerID       from './components/CallerID';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -100,7 +101,7 @@ function AppShell() {
     );
   }
 
-  if (['/login', '/forgot-password', '/reset-password', '/demo', '/tablet'].includes(pathname)) {
+  if (['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm')) {
     return (
       <Routes>
         <Route path="/login"            element={<Login />} />
@@ -108,6 +109,7 @@ function AppShell() {
         <Route path="/reset-password"   element={<ResetPassword />} />
         <Route path="/demo"             element={<MobileDemo />} />
         <Route path="/tablet"           element={<ManagerTablet />} />
+        <Route path="/book-confirm"     element={<BookConfirm />} />
       </Routes>
     );
   }
@@ -133,25 +135,7 @@ function AppShell() {
       <aside className="sb">
         <div className="sb-logo">
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-          <div className="sb-entity">KMC Auto Spa & Detailing</div>
-        </div>
-
-        <div className="entity-panel">
-          <div className="entity-opt active">
-            <div className="entity-dot" style={{ background: 'var(--sand)' }} />
-            <div className="entity-name">KMC Auto Spa</div>
-            <div className="entity-rev">$18.4K</div>
-          </div>
-          <div className="entity-opt">
-            <div className="entity-dot" style={{ background: 'var(--blue)' }} />
-            <div className="entity-name">KMC Fleet</div>
-            <div className="entity-rev">$4,950</div>
-          </div>
-          <div className="entity-opt">
-            <div className="entity-dot" style={{ background: 'var(--green)' }} />
-            <div className="entity-name">KMC Mobile</div>
-            <div className="entity-rev">$1,200</div>
-          </div>
+          <div className="sb-entity">{user?.accountName || user?.account_name || 'FieldCore'}</div>
         </div>
 
         <nav className="sb-nav">
@@ -162,12 +146,12 @@ function AppShell() {
 
           <div className="nav-section">Finance</div>
           {ni('/revenue',  false, IcoRevenue,  'Revenue',   null)}
-          {ni('/deposits', false, IcoDeposits, 'Deposits',  '2')}
+          {ni('/deposits', false, IcoDeposits, 'Deposits',  null)}
           {ni('/invoices', false, IcoInvoice,  'Invoices',  null)}
 
           <div className="nav-section">CRM</div>
           {ni('/clients',  false, IcoClients,  'Clients',   null)}
-          {ni('/messages', false, IcoPhone,    'Phone',     '1')}
+          {ni('/messages', false, IcoPhone,    'Phone',     null)}
 
           {user?.role !== 'tech' && (
             <>
@@ -185,7 +169,7 @@ function AppShell() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="su-name">{user?.name || '—'}</div>
-            <div className="su-role">{user ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || 'FieldCore'}` : ''}</div>
+            <div className="su-role">{user ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}` : ''}</div>
           </div>
           <button
             onClick={() => { logout(); nav('/login'); }}

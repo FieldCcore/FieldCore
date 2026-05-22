@@ -4,9 +4,9 @@ const pool    = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
 const sms     = require('../services/sms');
 
-// GET /api/jobs?date=&tech_id=&status=
+// GET /api/jobs?date=&tech_id=&status=&client_id=
 router.get('/', requireAuth, async (req, res) => {
-  const { date, date_from, date_to, tech_id, status } = req.query;
+  const { date, date_from, date_to, tech_id, status, client_id } = req.query;
   const conditions = ['j.account_id = $1'];
   const values = [req.accountId];
   let i = 2;
@@ -30,6 +30,10 @@ router.get('/', requireAuth, async (req, res) => {
   if (status) {
     conditions.push(`j.status = $${i++}`);
     values.push(status);
+  }
+  if (client_id) {
+    conditions.push(`j.client_id = $${i++}`);
+    values.push(client_id);
   }
 
   try {

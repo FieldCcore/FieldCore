@@ -72,9 +72,10 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       // Techs on the team
       pool.query(
         `SELECT u.id, u.name, u.role,
-                COUNT(j.id) FILTER (WHERE j.status = 'in_progress') AS active_jobs
+                COUNT(j.id) FILTER (WHERE j.status = 'in_progress') AS active_jobs,
+                COUNT(j.id) FILTER (WHERE j.scheduled_at >= date_trunc('week', CURRENT_DATE)) AS jobs
          FROM users u
-         LEFT JOIN jobs j ON j.tech_id = u.id AND j.scheduled_at::date = CURRENT_DATE
+         LEFT JOIN jobs j ON j.tech_id = u.id AND j.account_id = $1
          WHERE u.account_id = $1 AND u.role = 'tech'
          GROUP BY u.id`,
         [accountId]

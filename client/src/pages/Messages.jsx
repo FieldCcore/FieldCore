@@ -10,6 +10,7 @@ export default function Messages() {
   const [sending, setSending]   = useState(false);
   const [error, setError]       = useState('');
   const [search, setSearch]     = useState('');
+  const [clientJobs, setClientJobs] = useState([]);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -19,6 +20,9 @@ export default function Messages() {
   useEffect(() => {
     if (!selected) return;
     loadMessages(selected.id);
+    api.get(`/jobs?client_id=${selected.id}&limit=5`)
+      .then(r => setClientJobs((r.data?.jobs || r.data || []).filter(j => ['scheduled', 'in_progress'].includes(j.status))))
+      .catch(() => setClientJobs([]));
   }, [selected]);
 
   useEffect(() => {
@@ -101,10 +105,32 @@ export default function Messages() {
         ) : (
           <>
             <div className="chat-header">
-              <div>
+              <div style={{ flex: 1 }}>
                 <div className="chat-name">{selected.name}</div>
                 <div className="chat-phone">{selected.phone || 'No phone number on file'}</div>
               </div>
+              {clientJobs.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    className="btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    disabled={sending}
+                    onClick={() => sendTemplate('confirmation', clientJobs[0].id)}
+                    title={`Confirm: ${clientJobs[0].service_type}`}
+                  >
+                    ✉ Confirmation
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    disabled={sending}
+                    onClick={() => sendTemplate('reminder', clientJobs[0].id)}
+                    title={`Remind: ${clientJobs[0].service_type}`}
+                  >
+                    🔔 Reminder
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="chat-messages">

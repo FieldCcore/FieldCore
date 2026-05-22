@@ -1118,6 +1118,7 @@ body {
 /* ── Team ────────────────────────────────────────────────── */
 .team-layout { display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
 .team-main   { min-width: 0; }
+.team-side   { min-width: 0; }
 .team-tabs   { display: flex; gap: 4px; margin-bottom: 16px; }
 
 /* ── Fleet ───────────────────────────────────────────────── */
