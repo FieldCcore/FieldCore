@@ -13,7 +13,10 @@ api.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('fc_token');
-      window.location.href = '/login';
+      // Use replaceState so the browser doesn't reload the page —
+      // React Router picks up the path change on next render
+      window.history.replaceState(null, '', '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
     return Promise.reject(err);
   }

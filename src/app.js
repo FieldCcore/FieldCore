@@ -48,7 +48,8 @@ const clientDist = path.join(__dirname, '../client/dist');
 const fs = require('fs');
 if (fs.existsSync(path.join(clientDist, 'index.html'))) {
   app.use(express.static(clientDist));
-  app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+  // Express 5 broke app.get('*') — use app.use as the SPA catch-all instead
+  app.use((req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }
 
 app.use((err, req, res, next) => {
