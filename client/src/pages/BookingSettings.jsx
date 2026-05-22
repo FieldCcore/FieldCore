@@ -14,9 +14,18 @@ export default function BookingSettings() {
   const [newService, setNewService] = useState('');
   const [copied, setCopied]     = useState(false);
   const [loading, setLoading]   = useState(true);
+  const [newRule, setNewRule]   = useState({ service: '', type: 'flat', amount: '' });
 
   useEffect(() => {
-    api.get('/booking-settings').then(r => setSettings(r.data)).finally(() => setLoading(false));
+    api.get('/booking-settings').then(r => {
+      const d = r.data;
+      setSettings({
+        ...d,
+        services:      Array.isArray(d.services)      ? d.services      : [],
+        deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
+        tax_rate:      d.tax_rate != null ? (parseFloat(d.tax_rate) * 100).toFixed(2) : '0',
+      });
+    }).finally(() => setLoading(false));
   }, []);
 
   function set(field) {
@@ -34,13 +43,35 @@ export default function BookingSettings() {
     setSettings(s => ({ ...s, services: s.services.filter(x => x !== svc) }));
   }
 
+  function addRule() {
+    const svc = newRule.service.trim();
+    const amt = parseFloat(newRule.amount);
+    if (!svc || isNaN(amt) || amt <= 0) return;
+    setSettings(s => ({ ...s, deposit_rules: [...(s.deposit_rules || []), { service: svc, type: newRule.type, amount: amt }] }));
+    setNewRule({ service: '', type: 'flat', amount: '' });
+  }
+
+  function removeRule(idx) {
+    setSettings(s => ({ ...s, deposit_rules: s.deposit_rules.filter((_, i) => i !== idx) }));
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
     setSaved(false);
     try {
-      const res = await api.put('/booking-settings', settings);
-      setSettings(res.data);
+      const payload = {
+        ...settings,
+        tax_rate: parseFloat(settings.tax_rate || 0) / 100,
+      };
+      const res = await api.put('/booking-settings', payload);
+      const d = res.data;
+      setSettings({
+        ...d,
+        services:      Array.isArray(d.services)      ? d.services      : [],
+        deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
+        tax_rate:      d.tax_rate != null ? (parseFloat(d.tax_rate) * 100).toFixed(2) : '0',
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } finally {
@@ -93,13 +124,63 @@ export default function BookingSettings() {
           </div>
 
           <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Deposit Amount ($0 = no deposit)</label>
+            <label>Default Deposit Amount ($0 = no deposit)</label>
             <input type="number" step="0.01" min="0" value={settings.deposit_amount || 0} onChange={set('deposit_amount')} placeholder="0.00" />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Tax Rate (%)</label>
+            <input type="number" step="0.01" min="0" max="100" value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Applied automatically when generating invoices (e.g. 8.5 for 8.5%).</p>
           </div>
 
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Agreement / Terms Text</label>
             <textarea rows={3} value={settings.agreement_text || ''} onChange={set('agreement_text')} />
+          </div>
+
+          {/* Per-service deposit rules */}
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Per-Service Deposit Rules</label>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 2, marginBottom: 10 }}>
+              Override the default deposit for specific services. Takes precedence over the default amount above.
+            </p>
+            {(settings.deposit_rules || []).length > 0 && (
+              <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(settings.deposit_rules || []).map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}>
+                    <span style={{ flex: 1 }}><strong>{r.service}</strong></span>
+                    <span style={{ color: '#64748b' }}>{r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{r.type}</span>
+                    <button type="button" onClick={() => removeRule(i)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                value={newRule.service}
+                onChange={e => setNewRule(r => ({ ...r, service: e.target.value }))}
+                placeholder="Service name..."
+                style={{ flex: '2 1 140px', minWidth: 120, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
+              />
+              <select
+                value={newRule.type}
+                onChange={e => setNewRule(r => ({ ...r, type: e.target.value }))}
+                style={{ flex: '0 0 90px', padding: '8px 8px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
+              >
+                <option value="flat">Flat $</option>
+                <option value="percent">Percent %</option>
+              </select>
+              <input
+                type="number" step="0.01" min="0"
+                value={newRule.amount}
+                onChange={e => setNewRule(r => ({ ...r, amount: e.target.value }))}
+                placeholder={newRule.type === 'percent' ? 'e.g. 25' : 'e.g. 150'}
+                style={{ flex: '1 1 90px', minWidth: 80, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
+              />
+              <button type="button" className="btn-secondary" onClick={addRule}>Add Rule</button>
+            </div>
           </div>
 
           {/* Services list */}

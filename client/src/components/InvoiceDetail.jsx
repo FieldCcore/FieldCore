@@ -105,10 +105,27 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         <div className="detail-row"><label>Created</label><span>{format(new Date(invoice.created_at), 'MMM d, yyyy')}</span></div>
       </div>
 
-      <div className="invoice-amount-block">
-        <span className="invoice-amount-label">Amount Due</span>
-        <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
-      </div>
+      {parseFloat(invoice.tax_amount) > 0 ? (
+        <div className="invoice-amount-block">
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+            <span>Subtotal</span>
+            <span>${(parseFloat(invoice.amount) - parseFloat(invoice.tax_amount)).toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+            <span>Tax</span>
+            <span>${parseFloat(invoice.tax_amount).toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+            <span className="invoice-amount-label">Total Due</span>
+            <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="invoice-amount-block">
+          <span className="invoice-amount-label">Amount Due</span>
+          <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
+        </div>
+      )}
 
       {isPending && (
         <div className="invoice-actions">

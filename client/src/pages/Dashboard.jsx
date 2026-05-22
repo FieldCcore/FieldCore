@@ -43,6 +43,7 @@ export default function Dashboard() {
   useEffect(() => {
     api.get('/analytics/dashboard')
       .then(r => setData(r.data))
+      .catch(() => setData({}))
       .finally(() => setLoading(false));
   }, []);
 

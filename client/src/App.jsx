@@ -4,18 +4,24 @@ import { Routes, Route, NavLink, useLocation, useNavigate, useSearchParams } fro
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, componentStack: null };
   }
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
   }
+  componentDidCatch(error, info) {
+    this.setState({ componentStack: info?.componentStack || null });
+  }
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui', color: '#333', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui', color: '#333', gap: 12, padding: 24 }}>
           <div style={{ fontSize: 32, fontWeight: 700 }}>FIELDCORE™</div>
           <div style={{ fontSize: 16, color: '#666' }}>Something went wrong loading this page.</div>
-          <pre style={{ fontSize: 12, color: '#999', maxWidth: 500, whiteSpace: 'pre-wrap' }}>{this.state.error?.message}</pre>
+          <pre style={{ fontSize: 12, color: '#e53e3e', maxWidth: 600, whiteSpace: 'pre-wrap', background: '#fff5f5', padding: 12, borderRadius: 6, border: '1px solid #fed7d7' }}>{this.state.error?.message || String(this.state.error)}</pre>
+          {this.state.componentStack && (
+            <pre style={{ fontSize: 11, color: '#999', maxWidth: 600, whiteSpace: 'pre-wrap', background: '#f7fafc', padding: 12, borderRadius: 6, border: '1px solid #e2e8f0', textAlign: 'left' }}>{this.state.componentStack}</pre>
+          )}
           <button onClick={() => window.location.reload()} style={{ marginTop: 8, padding: '8px 20px', background: '#222', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Reload</button>
         </div>
       );
@@ -40,6 +46,7 @@ import ForgotPassword  from './pages/ForgotPassword';
 import ResetPassword   from './pages/ResetPassword';
 import MobileDemo      from './pages/MobileDemo';
 import ManagerTablet  from './pages/ManagerTablet';
+import Fleet          from './pages/Fleet';
 import NoShowStrip    from './components/NoShowStrip';
 import CallerID       from './components/CallerID';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -55,6 +62,7 @@ const PAGE_TITLES = {
   '/clients':   'Client Database',
   '/messages':  'Business Phone',
   '/team':      'Team Management',
+  '/fleet':     'Fleet',
   '/booking':   'Settings & Rules',
 };
 
@@ -161,9 +169,14 @@ function AppShell() {
           {ni('/clients',  false, IcoClients,  'Clients',   null)}
           {ni('/messages', false, IcoPhone,    'Phone',     '1')}
 
-          <div className="nav-section">Admin</div>
-          {ni('/team',     false, IcoTeam,     'Team',      null)}
-          {ni('/booking',  false, IcoSettings, 'Settings',  null)}
+          {user?.role !== 'tech' && (
+            <>
+              <div className="nav-section">Admin</div>
+              {ni('/team',    false, IcoTeam,     'Team',     null)}
+              {ni('/fleet',   false, IcoDispatch, 'Fleet',    null)}
+              {ni('/booking', false, IcoSettings, 'Settings', null)}
+            </>
+          )}
         </nav>
 
         <div className="sb-user" style={{ cursor: 'default' }}>
@@ -204,6 +217,7 @@ function AppShell() {
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/messages"    element={<ProtectedRoute><Messages /></ProtectedRoute>}       />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
+            <Route path="/fleet"       element={<ProtectedRoute><Fleet /></ProtectedRoute>}          />
             <Route path="/booking"     element={<ProtectedRoute><BookingSettings /></ProtectedRoute>}/>
           </Routes>
         </div>
