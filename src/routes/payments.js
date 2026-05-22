@@ -56,6 +56,11 @@ router.post('/charge', requireAuth, async (req, res) => {
       [paymentIntent.id, invoice_id]
     );
 
+    await pool.query(
+      `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
+      [invoice.amount, invoice.client_id]
+    );
+
     res.json({ status: paymentIntent.status, payment_intent_id: paymentIntent.id });
   } catch (err) {
     res.status(500).json({ error: err.message });

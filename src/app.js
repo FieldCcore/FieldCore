@@ -43,9 +43,10 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Serve built React app in production
-if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(__dirname, '../client/dist');
+// Serve built React app (whenever dist exists — production and local npm start)
+const clientDist = path.join(__dirname, '../client/dist');
+const fs = require('fs');
+if (fs.existsSync(path.join(clientDist, 'index.html'))) {
   app.use(express.static(clientDist));
   app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }

@@ -18,10 +18,37 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
-    await pool.query(
-      `UPDATE invoices SET status = 'paid' WHERE stripe_payment_intent_id = $1`,
+    const { rows } = await pool.query(
+      `UPDATE invoices SET status = 'paid', paid_at = NOW()
+       WHERE stripe_payment_intent_id = $1 AND status != 'paid'
+       RETURNING client_id, amount`,
       [pi.id]
     );
+    if (rows.length) {
+      await pool.query(
+        `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
+        [rows[0].amount, rows[0].client_id]
+      );
+    }
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const invoiceId = session.metadata?.invoice_id;
+    if (invoiceId) {
+      const { rows } = await pool.query(
+        `UPDATE invoices SET status = 'paid', paid_at = NOW()
+         WHERE id = $1 AND status != 'paid'
+         RETURNING client_id, amount`,
+        [invoiceId]
+      );
+      if (rows.length) {
+        await pool.query(
+          `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
+          [rows[0].amount, rows[0].client_id]
+        );
+      }
+    }
   }
 
   res.json({ received: true });

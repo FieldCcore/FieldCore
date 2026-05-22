@@ -32,11 +32,13 @@ CREATE TABLE IF NOT EXISTS clients (
   email        TEXT,
   phone        TEXT,
   address      TEXT,
-  tier         TEXT DEFAULT 'standard',
-  ltv          NUMERIC(10,2) DEFAULT 0,
-  card_on_file BOOLEAN DEFAULT FALSE,
-  notes        TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  tier                     TEXT DEFAULT 'standard',
+  ltv                      NUMERIC(10,2) DEFAULT 0,
+  card_on_file             BOOLEAN DEFAULT FALSE,
+  stripe_customer_id       TEXT,
+  stripe_payment_method_id TEXT,
+  notes                    TEXT,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- All jobs
@@ -132,6 +134,24 @@ CREATE TABLE IF NOT EXISTS booking_settings (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Job photos uploaded via mobile app
+CREATE TABLE IF NOT EXISTS job_photos (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id     UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  url        TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Password reset tokens (expire after 1 hour, deleted on use)
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_clients_account   ON clients(account_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_account      ON jobs(account_id);
@@ -145,3 +165,9 @@ CREATE INDEX IF NOT EXISTS idx_deposits_account  ON deposits(account_id);
 CREATE INDEX IF NOT EXISTS idx_deposits_job      ON deposits(job_id);
 CREATE INDEX IF NOT EXISTS idx_messages_account  ON messages(account_id);
 CREATE INDEX IF NOT EXISTS idx_messages_client   ON messages(client_id);
+CREATE INDEX IF NOT EXISTS idx_job_photos_job    ON job_photos(job_id);
+CREATE INDEX IF NOT EXISTS idx_job_photos_acct   ON job_photos(account_id);
+
+-- Migrations: safe to run on existing databases
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;

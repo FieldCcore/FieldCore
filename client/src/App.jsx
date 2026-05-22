@@ -12,8 +12,10 @@ import Dispatch       from './pages/Dispatch';
 import Revenue        from './pages/Revenue';
 import Deposits       from './pages/Deposits';
 import Team           from './pages/Team';
-import Login          from './pages/Login';
-import MobileDemo     from './pages/MobileDemo';
+import Login           from './pages/Login';
+import ForgotPassword  from './pages/ForgotPassword';
+import ResetPassword   from './pages/ResetPassword';
+import MobileDemo      from './pages/MobileDemo';
 import ManagerTablet  from './pages/ManagerTablet';
 import NoShowStrip    from './components/NoShowStrip';
 import CallerID       from './components/CallerID';
@@ -67,12 +69,14 @@ function AppShell() {
     );
   }
 
-  if (pathname === '/login' || pathname === '/demo' || pathname === '/tablet') {
+  if (['/login', '/forgot-password', '/reset-password', '/demo', '/tablet'].includes(pathname)) {
     return (
       <Routes>
-        <Route path="/login"  element={<Login />} />
-        <Route path="/demo"   element={<MobileDemo />} />
-        <Route path="/tablet" element={<ManagerTablet />} />
+        <Route path="/login"            element={<Login />} />
+        <Route path="/forgot-password"  element={<ForgotPassword />} />
+        <Route path="/reset-password"   element={<ResetPassword />} />
+        <Route path="/demo"             element={<MobileDemo />} />
+        <Route path="/tablet"           element={<ManagerTablet />} />
       </Routes>
     );
   }

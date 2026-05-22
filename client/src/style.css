@@ -1262,3 +1262,12 @@ body {
 .login-footer { text-align: center; margin-top: 22px; font-size: 13px; color: rgba(255,255,255,.25); }
 .login-link { color: var(--sand); text-decoration: none; }
 .login-link:hover { text-decoration: underline; }
+.login-success {
+  background: rgba(46,125,50,.15);
+  border: 1px solid rgba(46,125,50,.3);
+  color: #a5d6a7;
+  border-radius: 7px;
+  padding: 10px 13px;
+  font-size: 13px;
+  margin-bottom: 18px;
+}

@@ -72,40 +72,13 @@ export default function Dispatch() {
       maxZoom: 19,
     }).addTo(map);
 
-    // Tech markers — use check-in coords if available, else spread around Tampa
-    techs.forEach((t, i) => {
-      const pos = (t.checkin_lat && t.checkin_lng)
-        ? [parseFloat(t.checkin_lat), parseFloat(t.checkin_lng)]
-        : TAMPA_SPREAD[i % TAMPA_SPREAD.length];
-      const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:36px;height:36px;border-radius:50%;
-          background:${color};border:3px solid white;
-          box-shadow:0 2px 8px rgba(0,0,0,.35);
-          display:flex;align-items:center;justify-content:center;
-          font-size:11px;font-weight:800;color:white;
-          font-family:'Bricolage Grotesque',sans-serif;
-        ">${initials(t.name)}</div>`,
-        iconSize: [36, 36], iconAnchor: [18, 18],
-      });
-
-      const jobCount = jobs.filter(j => j.tech_id === t.id).length;
-      L.marker(pos, { icon })
-        .addTo(map)
-        .bindPopup(`
-          <strong style="font-family:sans-serif;font-size:13px">${t.name}</strong><br>
-          <span style="font-size:12px;color:#5F667A">${jobCount} job${jobCount !== 1 ? 's' : ''} today</span>
-        `);
-    });
-
-    // Job markers — spread around Tampa since we don't have client addresses geocoded
-    jobs.forEach((j, i) => {
-      const pos = TAMPA_SPREAD[i % TAMPA_SPREAD.length];
+    // Job markers — use real checkin_lat/lng when available, else skip (no fake placement)
+    const plottedJobs = new Set();
+    jobs.forEach((j) => {
+      if (!j.checkin_lat || !j.checkin_lng) return;
+      const pos   = [parseFloat(j.checkin_lat), parseFloat(j.checkin_lng)];
       const color = JOB_COLORS[j.status] || '#8A90A2';
-      const icon = L.divIcon({
+      const icon  = L.divIcon({
         className: '',
         html: `<div style="
           width:12px;height:12px;border-radius:50%;
@@ -120,6 +93,39 @@ export default function Dispatch() {
           <strong style="font-family:sans-serif;font-size:12px">${j.client_name} — ${j.service_type}</strong><br>
           <span style="font-size:11px;color:#5F667A">Tech: ${j.tech_name || 'Unassigned'} · ${j.amount ? '$' + j.amount : 'No amount'}</span><br>
           <span style="font-size:11px;color:#8A90A2;text-transform:capitalize">Status: ${j.status.replace('_', ' ')}</span>
+        `);
+      plottedJobs.add(j.id);
+    });
+
+    // Tech markers — use checkin coords from their active job, else use Tampa spread
+    techs.forEach((t, i) => {
+      const activeJob = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
+      const hasGps    = !!activeJob;
+      const pos       = hasGps
+        ? [parseFloat(activeJob.checkin_lat), parseFloat(activeJob.checkin_lng)]
+        : TAMPA_SPREAD[i % TAMPA_SPREAD.length];
+      const color     = AVATAR_COLORS[i % AVATAR_COLORS.length];
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:36px;height:36px;border-radius:50%;
+          background:${color};border:3px solid ${hasGps ? '#2E7D32' : 'white'};
+          box-shadow:0 2px 8px rgba(0,0,0,.35);
+          display:flex;align-items:center;justify-content:center;
+          font-size:11px;font-weight:800;color:white;
+          font-family:'Bricolage Grotesque',sans-serif;
+        ">${initials(t.name)}</div>`,
+        iconSize: [36, 36], iconAnchor: [18, 18],
+      });
+
+      const jobCount = jobs.filter(j => j.tech_id === t.id).length;
+      L.marker(pos, { icon })
+        .addTo(map)
+        .bindPopup(`
+          <strong style="font-family:sans-serif;font-size:13px">${t.name}</strong><br>
+          <span style="font-size:12px;color:#5F667A">${jobCount} job${jobCount !== 1 ? 's' : ''} today</span>
+          ${hasGps ? '<br><span style="font-size:11px;color:#2E7D32">● Live GPS</span>' : '<br><span style="font-size:11px;color:#8A90A2">No GPS yet</span>'}
         `);
     });
 
@@ -192,12 +198,12 @@ export default function Dispatch() {
         <div ref={mapRef} className="dispatch-map" />
         <div className="dispatch-legend">
           {[
-            { color: '#2E7D32', label: 'Tech (active)'   },
-            { color: '#8A90A2', label: 'Tech (available)' },
-            { color: '#1565C0', label: 'Job — active'    },
-            { color: '#2E7D32', label: 'Job — complete'  },
-            { color: '#C62828', label: 'Job — cancelled' },
-            { color: '#8A90A2', label: 'Job — scheduled' },
+            { color: '#2E7D32', label: 'Tech — live GPS'  },
+            { color: '#8A90A2', label: 'Tech — no GPS yet'},
+            { color: '#1565C0', label: 'Job — active'     },
+            { color: '#2E7D32', label: 'Job — complete'   },
+            { color: '#C62828', label: 'Job — cancelled'  },
+            { color: '#8A90A2', label: 'Job — scheduled'  },
           ].map((l, i) => (
             <div key={i} className="dispatch-legend-item">
               <div className="dispatch-legend-dot" style={{ background: l.color }} />

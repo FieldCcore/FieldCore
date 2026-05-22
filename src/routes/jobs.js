@@ -6,7 +6,7 @@ const sms     = require('../services/sms');
 
 // GET /api/jobs?date=&tech_id=&status=
 router.get('/', requireAuth, async (req, res) => {
-  const { date, tech_id, status } = req.query;
+  const { date, date_from, date_to, tech_id, status } = req.query;
   const conditions = ['j.account_id = $1'];
   const values = [req.accountId];
   let i = 2;
@@ -14,6 +14,14 @@ router.get('/', requireAuth, async (req, res) => {
   if (date) {
     conditions.push(`j.scheduled_at::date = $${i++}`);
     values.push(date);
+  }
+  if (date_from) {
+    conditions.push(`j.scheduled_at >= $${i++}`);
+    values.push(date_from);
+  }
+  if (date_to) {
+    conditions.push(`j.scheduled_at <= $${i++}`);
+    values.push(date_to);
   }
   if (tech_id) {
     conditions.push(`j.tech_id = $${i++}`);
@@ -138,6 +146,30 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
         [req.accountId, job.id, job.client_id, job.amount]
       ).catch(() => {}); // non-fatal if invoice already exists
     }
+
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/jobs/:id/noshow — declare no-show, auto-retain deposit
+router.patch('/:id/noshow', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'cancelled', noshow_declared_at = NOW()
+       WHERE id = $1 AND account_id = $2 RETURNING *`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const job = rows[0];
+
+    // Auto-retain any pending deposit for this job
+    await pool.query(
+      `UPDATE deposits SET status = 'collected'
+       WHERE job_id = $1 AND status = 'pending'`,
+      [job.id]
+    );
 
     res.json(job);
   } catch (err) {
