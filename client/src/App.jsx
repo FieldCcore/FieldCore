@@ -135,7 +135,7 @@ function AppShell() {
       <aside className="sb">
         <div className="sb-logo">
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-          <div className="sb-entity">{user?.accountName || user?.account_name || 'FieldCore'}</div>
+          <div className="sb-entity">{(typeof user?.accountName === 'string' ? user.accountName : null) || (typeof user?.account_name === 'string' ? user.account_name : null) || 'FieldCore'}</div>
         </div>
 
         <nav className="sb-nav">
@@ -165,11 +165,11 @@ function AppShell() {
 
         <div className="sb-user" style={{ cursor: 'default' }}>
           <div className="su-avatar">
-            {user ? user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
+            {user ? String(user.name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?' : '?'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="su-name">{user?.name || '—'}</div>
-            <div className="su-role">{user ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}` : ''}</div>
+            <div className="su-name">{(typeof user?.name === 'string' ? user.name : null) || '—'}</div>
+            <div className="su-role">{user && typeof user.role === 'string' ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}` : ''}</div>
           </div>
           <button
             onClick={() => { logout(); nav('/login'); }}
