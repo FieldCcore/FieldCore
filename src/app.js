@@ -49,7 +49,20 @@ const bookingSubmitLimiter = rateLimit({
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? (process.env.APP_URL || false)
+  : true;
+app.use(cors({ origin: corsOrigin }));
+
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  res.on('finish', () => console.log(JSON.stringify({
+    ts: new Date().toISOString(), method: req.method, path: req.path,
+    status: res.statusCode, ms: Date.now() - t0,
+  })));
+  next();
+});
 
 // Webhook routes must come before express.json() to get raw body
 app.use('/api/webhooks', webhooksRouter);

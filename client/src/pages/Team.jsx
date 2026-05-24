@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 
 const AVATAR_COLORS = ['var(--green)', 'var(--blue)', 'var(--amber)', 'var(--sand-dark)', 'var(--slate)'];
 const DAY_LABELS    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -29,6 +30,7 @@ function toLocalDateStr(d) {
 // ── Add / Edit Member Modal ─────────────────────────────────
 function MemberModal({ user, onClose, onSaved }) {
   const isEdit = !!user;
+  const { accounts } = useAuth();
   const [form,    setForm]    = useState({
     name:     user?.name     || '',
     email:    user?.email    || '',
@@ -36,8 +38,15 @@ function MemberModal({ user, onClose, onSaved }) {
     role:     user?.role     || 'tech',
     password: '',
   });
+  const [memberships,    setMemberships]    = useState([]);
+  const [membershipBusy, setMembershipBusy] = useState(false);
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isEdit) return;
+    api.get(`/users/${user.id}/memberships`).then(r => setMemberships(r.data)).catch(() => {});
+  }, [user?.id]);
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -63,6 +72,33 @@ function MemberModal({ user, onClose, onSaved }) {
       setLoading(false);
     }
   }
+
+  async function grantAccess(accountId) {
+    setMembershipBusy(true);
+    try {
+      await api.post(`/users/${user.id}/memberships`, { account_id: accountId, role: 'manager' });
+      const r = await api.get(`/users/${user.id}/memberships`);
+      setMemberships(r.data);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not grant access.');
+    } finally {
+      setMembershipBusy(false);
+    }
+  }
+
+  async function revokeAccess(accountId) {
+    setMembershipBusy(true);
+    try {
+      await api.delete(`/users/${user.id}/memberships/${accountId}`);
+      setMemberships(m => m.filter(x => x.account_id !== accountId));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not revoke access.');
+    } finally {
+      setMembershipBusy(false);
+    }
+  }
+
+  const otherAccounts = accounts.filter(a => a.id !== user?.account_id);
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -108,6 +144,38 @@ function MemberModal({ user, onClose, onSaved }) {
             </button>
           </div>
         </form>
+
+        {isEdit && otherAccounts.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--lightgray)', padding: '16px 24px 20px' }}>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 10 }}>
+              Cross-Account Access
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {otherAccounts.map(acct => {
+                const m = memberships.find(x => x.account_id === acct.id);
+                return (
+                  <div key={acct.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--lightgray)' }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{acct.name}</span>
+                      {m && <span style={{ marginLeft: 8, fontSize: 10, fontFamily: 'DM Mono, monospace', color: 'var(--steel)', textTransform: 'capitalize' }}>{m.role}</span>}
+                    </div>
+                    {m ? (
+                      <button disabled={membershipBusy} onClick={() => revokeAccess(acct.id)}
+                        style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(198,40,40,.3)', background: 'none', color: 'var(--red)', cursor: 'pointer' }}>
+                        Revoke
+                      </button>
+                    ) : (
+                      <button disabled={membershipBusy} onClick={() => grantAccess(acct.id)}
+                        style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--slate)', cursor: 'pointer' }}>
+                        Grant Access
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

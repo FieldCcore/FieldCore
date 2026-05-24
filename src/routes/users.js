@@ -83,6 +83,58 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
   }
 });
 
+// GET /api/users/:id/memberships — cross-account memberships for a user (owner only)
+router.get('/:id/memberships', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT am.account_id, a.name AS account_name, am.role
+       FROM account_memberships am
+       JOIN accounts a ON a.id = am.account_id
+       WHERE am.user_id = $1
+       ORDER BY a.name`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/users/:id/memberships — grant access to another account (owner only)
+router.post('/:id/memberships', requireAuth, requireRole('owner'), async (req, res) => {
+  const { account_id, role = 'manager' } = req.body;
+  if (!account_id) return res.status(400).json({ error: 'account_id is required.' });
+  if (!['owner', 'manager', 'tech'].includes(role))
+    return res.status(400).json({ error: 'role must be owner, manager, or tech.' });
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO account_memberships (user_id, account_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, account_id) DO UPDATE SET role = $3
+       RETURNING account_id, role`,
+      [req.params.id, account_id, role]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/users/:id/memberships/:accountId — revoke access (owner only)
+router.delete('/:id/memberships/:accountId', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM account_memberships WHERE user_id = $1 AND account_id = $2`,
+      [req.params.id, req.params.accountId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Membership not found.' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/users/:id — remove team member (owner only)
 router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
   if (req.userId === req.params.id)
