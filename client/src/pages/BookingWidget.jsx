@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Check, CheckCircle } from 'lucide-react';
 import { format, addDays, setHours, setMinutes } from 'date-fns';
 import axios from 'axios';
 
@@ -91,7 +92,7 @@ export default function BookingWidget() {
     return (
       <div className="booking-wrap">
         <div className="booking-card booking-success">
-          <div className="success-icon">✓</div>
+          <div className="success-icon"><CheckCircle size={28} strokeWidth={2} /></div>
           <h2>You're booked!</h2>
           <p>{form.name}, your <strong>{form.service}</strong> appointment is confirmed for <strong>{format(new Date(`${form.date}T${form.time}`), 'EEEE, MMMM d')} at {format(new Date(`${form.date}T${form.time}`), 'h:mm a')}</strong>.</p>
           {form.phone && <p style={{ color: '#64748b', marginTop: 8, fontSize: 13 }}>A confirmation text was sent to {form.phone}.</p>}
@@ -106,7 +107,7 @@ export default function BookingWidget() {
         <div className="booking-logo">{biz || 'FIELDCORE'}<span>™</span></div>
         <div className="booking-steps">
           {[1,2,3].map(s => (
-            <div key={s} className={`booking-step ${step === s ? 'active' : ''} ${step > s ? 'done' : ''}`}>{s > step ? s : step > s ? '✓' : s}</div>
+            <div key={s} className={`booking-step ${step === s ? 'active' : ''} ${step > s ? 'done' : ''}`}>{s > step ? s : step > s ? <Check size={14} strokeWidth={2.5} /> : s}</div>
           ))}
         </div>
 

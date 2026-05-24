@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Phone } from 'lucide-react';
 import { Routes, Route, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 class ErrorBoundary extends React.Component {
@@ -185,7 +186,7 @@ function AppShell() {
         <div className="topbar">
           <div className="tb-title">{pageTitle}</div>
           <div className="tb-date">{dateStr}</div>
-          <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}>📞 Simulate Call</button>
+          <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
           <button className="tb-btn tb-primary" onClick={() => nav('/jobs?new=1')}>+ New Job</button>
         </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Check } from 'lucide-react';
 
 export default function NoShowStrip() {
   const [secs, setSecs] = useState(24 * 60 + 12);
@@ -19,8 +20,8 @@ export default function NoShowStrip() {
 
   if (state === 'arrived') {
     return (
-      <div className="ns-strip ns-resolved">
-        ✓ Sarah Chen arrived — No-show clock cancelled. Job proceeding. GPS record created.
+      <div className="ns-strip ns-resolved" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Check size={14} strokeWidth={2.5} /> Sarah Chen arrived — No-show clock cancelled. Job proceeding. GPS record created.
       </div>
     );
   }

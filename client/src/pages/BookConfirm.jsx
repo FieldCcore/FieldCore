@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { CheckCircle } from 'lucide-react';
 import axios from 'axios';
 
 export default function BookConfirm() {
@@ -24,7 +25,7 @@ export default function BookConfirm() {
       padding: 24,
     }}>
       <div style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+        <div style={{ marginBottom: 16, color: '#1E6B3C', display: 'flex', justifyContent: 'center' }}><CheckCircle size={52} strokeWidth={1.5} /></div>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: '#1C2333', marginBottom: 8 }}>
           Booking Confirmed
         </h1>

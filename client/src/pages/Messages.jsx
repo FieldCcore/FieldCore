@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Mail, Bell } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
 
@@ -118,7 +119,7 @@ export default function Messages() {
                     onClick={() => sendTemplate('confirmation', clientJobs[0].id)}
                     title={`Confirm: ${clientJobs[0].service_type}`}
                   >
-                    ✉ Confirmation
+                    <Mail size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Confirmation
                   </button>
                   <button
                     className="btn-secondary"
@@ -127,7 +128,7 @@ export default function Messages() {
                     onClick={() => sendTemplate('reminder', clientJobs[0].id)}
                     title={`Remind: ${clientJobs[0].service_type}`}
                   >
-                    🔔 Reminder
+                    <Bell size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Reminder
                   </button>
                 </div>
               )}

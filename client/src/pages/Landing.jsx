@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  PhoneOff, CreditCard, Phone, Receipt, FolderOpen, Building2,
+  Timer, Bell, Map, MapPin, RefreshCw, Car, Droplets, Leaf,
+  Snowflake, Wrench, Zap, Bug, Waves, Cog, Trash2, PaintBucket,
+  Home, DoorOpen, Hammer, Truck, Check, StickyNote, Star,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../landing.css';
 
@@ -14,23 +20,23 @@ const Chk = () => (
 );
 
 const problems = [
-  { ico: '📵', t: 'No-show protection', b: "Client doesn't show. You drove 25 minutes. No deposit. No documentation. No recourse. The slot is gone.", cost: 'avg $4,200/yr lost' },
-  { ico: '💳', t: 'Surprise charge calls', b: "Recurring client gets charged. Didn't know it was coming. Disputes filed. You lose the money and the client.", cost: '3–4 chargebacks/quarter' },
-  { ico: '📞', t: 'Personal = business', b: 'Your personal number is your business. Client history lives in iMessage. You answer unknowns blind every time.', cost: 'zero context on every call' },
-  { ico: '🧾', t: 'Manual fleet billing', b: 'Commercial accounts billed manually every month. Hours per account. Invoices sent late. Cash flow delayed.', cost: '$3,840/yr in billing labor' },
-  { ico: '🗂️', t: 'Four disconnected tools', b: 'Square + Google Calendar + spreadsheets + personal phone. You are the integration layer. All day, every day.', cost: 'hours wasted daily' },
-  { ico: '🏢', t: 'Multi-LLC nightmare', b: 'Running two businesses means two of everything. Two calendars, two Square accounts, two sets of problems.', cost: 'no platform solves this' },
+  { ico: PhoneOff,  t: 'No-show protection',     b: "Client doesn't show. You drove 25 minutes. No deposit. No documentation. No recourse. The slot is gone.", cost: 'avg $4,200/yr lost' },
+  { ico: CreditCard,t: 'Surprise charge calls',  b: "Recurring client gets charged. Didn't know it was coming. Disputes filed. You lose the money and the client.", cost: '3–4 chargebacks/quarter' },
+  { ico: Phone,     t: 'Personal = business',    b: 'Your personal number is your business. Client history lives in iMessage. You answer unknowns blind every time.', cost: 'zero context on every call' },
+  { ico: Receipt,   t: 'Manual fleet billing',   b: 'Commercial accounts billed manually every month. Hours per account. Invoices sent late. Cash flow delayed.', cost: '$3,840/yr in billing labor' },
+  { ico: FolderOpen,t: 'Four disconnected tools',b: 'Square + Google Calendar + spreadsheets + personal phone. You are the integration layer. All day, every day.', cost: 'hours wasted daily' },
+  { ico: Building2, t: 'Multi-LLC nightmare',    b: 'Running two businesses means two of everything. Two calendars, two Square accounts, two sets of problems.', cost: 'no platform solves this' },
 ];
 
 const feats = [
-  { badge: 'INDUSTRY 1ST', ico: '⏱️', t: 'No-Show Arrival Clock', b: '25-minute GPS countdown. Two auto-texts to client. Deposit retained at zero automatically. GPS record created.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: '📞', t: 'Smart Caller ID', b: 'Full 9-zone client profile before you answer. LTV, last job, balance, next appointment. Push when app is closed.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: '🔔', t: 'Pre-Charge Notice', b: '12, 24, 48, or 72-hour advance SMS before every recurring charge. Card update links auto-sent on reply.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: '🗺️', t: 'Travel Fee Engine', b: 'Auto-calculates road distance via Google Maps. Appears as a transparent line item on every invoice.', tier: 'Pro+' },
-  { badge: null, ico: '📍', t: 'Minute-Precise ETA', b: '"Arriving at 2:18 PM." Real clock time. One tap. Not "in about 30 minutes." The exact time.', tier: 'All plans' },
-  { badge: null, ico: '💳', t: '3-Layer Deposit System', b: 'Set by service type, client tier, and individual job simultaneously. VIP waivers. At-Risk mandatory deposits.', tier: 'Pro+' },
-  { badge: null, ico: '🏢', t: 'Multi-Entity Dashboard', b: 'Unlimited LLCs from one login. Separate P&L per entity. One tap to switch. No double-entry ever.', tier: 'Scale+' },
-  { badge: null, ico: '🔄', t: 'Fleet Billing Automation', b: 'Set commercial contracts once. Jobs generate. Invoices send. Payments collect. Zero manual steps monthly.', tier: 'Pro+' },
+  { badge: 'INDUSTRY 1ST', ico: Timer,      t: 'No-Show Arrival Clock',    b: '25-minute GPS countdown. Two auto-texts to client. Deposit retained at zero automatically. GPS record created.', tier: 'Pro+' },
+  { badge: 'INDUSTRY 1ST', ico: Phone,      t: 'Smart Caller ID',          b: 'Full 9-zone client profile before you answer. LTV, last job, balance, next appointment. Push when app is closed.', tier: 'Pro+' },
+  { badge: 'INDUSTRY 1ST', ico: Bell,       t: 'Pre-Charge Notice',        b: '12, 24, 48, or 72-hour advance SMS before every recurring charge. Card update links auto-sent on reply.', tier: 'Pro+' },
+  { badge: 'INDUSTRY 1ST', ico: Map,        t: 'Travel Fee Engine',        b: 'Auto-calculates road distance via Google Maps. Appears as a transparent line item on every invoice.', tier: 'Pro+' },
+  { badge: null,            ico: MapPin,    t: 'Minute-Precise ETA',       b: '"Arriving at 2:18 PM." Real clock time. One tap. Not "in about 30 minutes." The exact time.', tier: 'All plans' },
+  { badge: null,            ico: CreditCard,t: '3-Layer Deposit System',   b: 'Set by service type, client tier, and individual job simultaneously. VIP waivers. At-Risk mandatory deposits.', tier: 'Pro+' },
+  { badge: null,            ico: Building2, t: 'Multi-Entity Dashboard',   b: 'Unlimited LLCs from one login. Separate P&L per entity. One tap to switch. No double-entry ever.', tier: 'Scale+' },
+  { badge: null,            ico: RefreshCw, t: 'Fleet Billing Automation', b: 'Set commercial contracts once. Jobs generate. Invoices send. Payments collect. Zero manual steps monthly.', tier: 'Pro+' },
 ];
 
 const plans = [
@@ -84,21 +90,21 @@ const testimonials = [
 ];
 
 const verts = [
-  { ico: '🚗', name: 'Mobile Detailing' },
-  { ico: '💦', name: 'Pressure Washing' },
-  { ico: '🌿', name: 'Landscaping' },
-  { ico: '❄️', name: 'HVAC' },
-  { ico: '🔧', name: 'Plumbing' },
-  { ico: '⚡', name: 'Electrical' },
-  { ico: '🐛', name: 'Pest Control' },
-  { ico: '🏊', name: 'Pool Cleaning' },
-  { ico: '🔩', name: 'Mobile Mechanic' },
-  { ico: '🗑️', name: 'Junk Removal' },
-  { ico: '🎨', name: 'Window Tint / PPF' },
-  { ico: '🏠', name: 'Appliance Repair' },
-  { ico: '🚪', name: 'Garage Door' },
-  { ico: '🏗️', name: 'Flooring / Epoxy' },
-  { ico: '🚛', name: 'Commercial Fleet Wash' },
+  { ico: Car,         name: 'Mobile Detailing' },
+  { ico: Droplets,    name: 'Pressure Washing' },
+  { ico: Leaf,        name: 'Landscaping' },
+  { ico: Snowflake,   name: 'HVAC' },
+  { ico: Wrench,      name: 'Plumbing' },
+  { ico: Zap,         name: 'Electrical' },
+  { ico: Bug,         name: 'Pest Control' },
+  { ico: Waves,       name: 'Pool Cleaning' },
+  { ico: Cog,         name: 'Mobile Mechanic' },
+  { ico: Trash2,      name: 'Junk Removal' },
+  { ico: PaintBucket, name: 'Window Tint / PPF' },
+  { ico: Home,        name: 'Appliance Repair' },
+  { ico: DoorOpen,    name: 'Garage Door' },
+  { ico: Hammer,      name: 'Flooring / Epoxy' },
+  { ico: Truck,       name: 'Commercial Fleet Wash' },
 ];
 
 const nsPts = [
@@ -308,7 +314,7 @@ export default function Landing() {
           {problems.map(p => (
             <div key={p.t} className="prob">
               <div className="prob-accent" />
-              <div className="prob-ico">{p.ico}</div>
+              <div className="prob-ico" style={{ color: 'var(--sd)' }}><p.ico size={26} /></div>
               <div className="prob-t">{p.t}</div>
               <div className="prob-b">{p.b}</div>
               <div className="prob-cost">{p.cost}</div>
@@ -335,7 +341,7 @@ export default function Landing() {
           {feats.map(f => (
             <div key={f.t} className="feat">
               {f.badge && <span className="feat-badge feat-badge-ex">{f.badge}</span>}
-              <div className="feat-ico">{f.ico}</div>
+              <div className="feat-ico" style={{ color: 'var(--sd)' }}><f.ico size={24} /></div>
               <div className="feat-t">{f.t}</div>
               <div className="feat-b">{f.b}</div>
               <span className="feat-tier">{f.tier}</span>
@@ -394,7 +400,7 @@ export default function Landing() {
                 <div className="lp-ns-cell"><div className="lp-ns-cl">Contacts sent</div><div className="lp-ns-cv" style={{ color: '#4EC87A' }}>2 / 2 ✓</div></div>
               </div>
               <div className="lp-ns-btns">
-                <button className="lp-ns-btn" style={{ background: '#1E6B3C', color: 'white' }}>✓ Client Arrived</button>
+                <button className="lp-ns-btn" style={{ background: '#1E6B3C', color: 'white', display: 'flex', alignItems: 'center', gap: 5 }}><Check size={13} strokeWidth={2.5} /> Client Arrived</button>
                 <button className="lp-ns-btn" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.5)' }}>Declare No-Show</button>
               </div>
               <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,.03)', borderRadius: 8, fontSize: 11, color: 'rgba(255,255,255,.3)', textAlign: 'center', fontFamily: "'DM Mono', monospace" }}>
@@ -443,9 +449,9 @@ export default function Landing() {
                 <div className="ci-cell"><div className="ci-cl">Last Job</div><div className="ci-cv">Today · Paint Corr.</div></div>
                 <div className="ci-cell"><div className="ci-cl">Balance</div><div className="ci-cv" style={{ color: '#4EC87A' }}>$0 clear</div></div>
                 <div className="ci-cell"><div className="ci-cl">Lifetime Value</div><div className="ci-cv" style={{ color: '#D6B58A' }}>$8,400</div></div>
-                <div className="ci-cell"><div className="ci-cl">Tier</div><div className="ci-cv">⭐ VIP</div></div>
+                <div className="ci-cell"><div className="ci-cl">Tier</div><div className="ci-cv" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Star size={12} fill="currentColor" strokeWidth={0} />VIP</div></div>
               </div>
-              <div className="ci-note">📝 Has lake house — mentioned wanting quote for second location after this call.</div>
+              <div className="ci-note" style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}><StickyNote size={13} style={{ flexShrink: 0, marginTop: 1 }} /> Has lake house — mentioned wanting quote for second location after this call.</div>
               <div className="ci-btns">
                 <button className="lp-ns-btn" style={{ flex: 1, background: '#1E6B3C', color: 'white' }}>Answer</button>
                 <button className="lp-ns-btn" style={{ flex: 1, background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.4)' }}>Decline</button>
@@ -494,7 +500,7 @@ export default function Landing() {
               </div>
               <div className="cn-card" style={{ marginBottom: 14 }}>
                 <div className="cn-row"><span className="cn-name">XYZ Ford Dealership</span><span className="cn-amt">$1,650</span></div>
-                <div className="cn-detail">Monthly Fleet · 72h notice · AP confirmed ✓</div>
+                <div className="cn-detail">Monthly Fleet · 72h notice · AP confirmed</div>
               </div>
               <div className="cn-sms">
                 "Hi Rita — reminder from KMC Auto Spa. Your weekly Full Detail is Thursday. Your Mastercard ending
@@ -526,7 +532,7 @@ export default function Landing() {
               <div className="plan-feats">
                 {p.feats.map(f => (
                   <div key={f} className="pf">
-                    <span className="pf-check">✓</span>
+                    <span className="pf-check" style={{ display: 'flex' }}><Check size={12} strokeWidth={2.5} /></span>
                     <span className="pf-text">{f}</span>
                   </div>
                 ))}
@@ -555,7 +561,7 @@ export default function Landing() {
         <div className="vert-grid">
           {verts.map(v => (
             <div key={v.name} className="vc">
-              <span className="vc-ico">{v.ico}</span>
+              <span className="vc-ico" style={{ color: 'var(--sl)' }}><v.ico size={20} /></span>
               <span className="vc-name">{v.name}</span>
             </div>
           ))}
@@ -623,7 +629,7 @@ export default function Landing() {
             Join the beta. First 100 operators get 3 months free. No credit card required. Cancel anytime.
           </p>
           {ctaDone ? (
-            <p style={{ fontSize: 16, fontWeight: 600, color: '#1E6B3C' }}>✓ You're on the list! We'll be in touch soon.</p>
+            <p style={{ fontSize: 16, fontWeight: 600, color: '#1E6B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Check size={18} strokeWidth={2.5} /> You're on the list! We'll be in touch soon.</p>
           ) : (
             <form className="cta-form" onSubmit={handleCta}>
               <input

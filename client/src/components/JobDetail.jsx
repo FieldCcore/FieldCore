@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Camera } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
 
@@ -79,7 +80,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
           style={{ fontSize: 13, padding: '6px 14px' }}
           onClick={() => setShowPhotos(v => !v)}
         >
-          {showPhotos ? 'Hide Photos' : '📷 Job Photos'}
+          {showPhotos ? 'Hide Photos' : <><Camera size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} />Job Photos</>}
         </button>
         {showPhotos && (
           <div style={{ marginTop: 12 }}>

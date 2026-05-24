@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MapPin, Camera, Image, X, Check, Lock, ClipboardList, Smartphone, Battery } from 'lucide-react';
 import axios from 'axios';
 
 const C = {
@@ -116,7 +117,7 @@ function JobQueueScreen({ tech, token, onSelectJob, onLogout }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
       <div style={{ background: C.navy2, padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: C.white }}>Hi, {tech.name.split(' ')[0]} 👋</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: C.white }}>Hi, {tech.name.split(' ')[0]}</div>
           <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
             {loading ? 'Loading…' : active > 0 ? `${active} active` : `${scheduled} scheduled`}{!loading && ` · ${jobs.length} jobs`}
           </div>
@@ -158,7 +159,7 @@ function JobQueueScreen({ tech, token, onSelectJob, onLogout }) {
                 </div>
               </div>
               {job.client_address && (
-                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>📍 {job.client_address}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} />{job.client_address}</div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
                 <div style={{ fontSize: 11, color: C.sand }}>{fmtDate(job.scheduled_at)} · {fmtTime(job.scheduled_at)}</div>
@@ -244,12 +245,12 @@ function JobDetailScreen({ job: initJob, token, onBack, onJobUpdate }) {
           <span style={{ fontSize: 15, fontWeight: 700, color: C.white }}>Job Photos</span>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20 }}>
-          <div style={{ fontSize: 40 }}>📸</div>
+          <Camera size={40} color={C.textSub} />
           <div style={{ fontSize: 14, fontWeight: 700, color: C.textSub }}>No photos yet</div>
           <div style={{ fontSize: 12, color: C.textMuted, textAlign: 'center' }}>Camera and gallery upload available on device</div>
           <div style={{ display: 'flex', gap: 10, marginTop: 8, width: '100%' }}>
-            <button style={{ ...btnStyle, flex: 1, padding: '11px 0' }}>📷 Camera</button>
-            <button style={{ ...btnOutlineStyle, flex: 1, padding: '11px 0' }}>🖼 Library</button>
+            <button style={{ ...btnStyle, flex: 1, padding: '11px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Camera size={14} /> Camera</button>
+            <button style={{ ...btnOutlineStyle, flex: 1, padding: '11px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Image size={14} /> Library</button>
           </div>
         </div>
       </div>
@@ -260,7 +261,7 @@ function JobDetailScreen({ job: initJob, token, onBack, onJobUpdate }) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
         <div style={{ background: C.navy2, padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => setScreen('detail')} style={{ background: 'none', border: 'none', color: C.sand, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>✕ Cancel</button>
+          <button onClick={() => setScreen('detail')} style={{ background: 'none', border: 'none', color: C.sand, cursor: 'pointer', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><X size={14} /> Cancel</button>
           <span style={{ fontSize: 15, fontWeight: 700, color: C.white }}>Send ETA</span>
         </div>
         <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column' }}>
@@ -328,13 +329,13 @@ function JobDetailScreen({ job: initJob, token, onBack, onJobUpdate }) {
           <div style={{ background: 'rgba(181,42,42,.15)', border: '1px solid rgba(181,42,42,.4)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#fc8181' }}>{msg}</div>
         )}
         {checkedIn && (
-          <div style={{ background: 'rgba(46,125,50,.12)', border: '1px solid rgba(46,125,50,.3)', borderRadius: 10, padding: '10px 14px', textAlign: 'center', fontSize: 13, color: C.green, fontWeight: 600 }}>
-            ✓ Checked in — job in progress
+          <div style={{ background: 'rgba(46,125,50,.12)', border: '1px solid rgba(46,125,50,.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: C.green, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Check size={14} strokeWidth={2.5} /> Checked in — job in progress
           </div>
         )}
         {etaSent && (
-          <div style={{ background: C.blueLt, border: '1px solid rgba(21,101,192,.3)', borderRadius: 10, padding: '10px 14px', textAlign: 'center', fontSize: 13, color: C.blue, fontWeight: 600 }}>
-            ✓ ETA sent to {job.client_name}
+          <div style={{ background: C.blueLt, border: '1px solid rgba(21,101,192,.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: C.blue, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Check size={14} strokeWidth={2.5} /> ETA sent to {job.client_name}
           </div>
         )}
 
@@ -346,16 +347,16 @@ function JobDetailScreen({ job: initJob, token, onBack, onJobUpdate }) {
               </button>
             )}
             {(isScheduled || isInProgress) && (
-              <button style={{ ...btnOutlineStyle, opacity: loading ? 0.65 : 1 }} onClick={handleCheckin} disabled={loading}>
-                📍 {isScheduled ? 'GPS Check-In' : 'Update Location'}
+              <button style={{ ...btnOutlineStyle, opacity: loading ? 0.65 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={handleCheckin} disabled={loading}>
+                <MapPin size={14} /> {isScheduled ? 'GPS Check-In' : 'Update Location'}
               </button>
             )}
-            <button style={btnOutlineStyle} onClick={() => setScreen('photos')}>
-              📷 View / Upload Photos
+            <button style={{ ...btnOutlineStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={() => setScreen('photos')}>
+              <Camera size={14} /> View / Upload Photos
             </button>
             {(isScheduled || isInProgress) && (
-              <button style={{ ...btnStyle, background: C.green, opacity: loading ? 0.65 : 1 }} onClick={handleComplete} disabled={loading}>
-                ✓ Mark Job Complete
+              <button style={{ ...btnStyle, background: C.green, opacity: loading ? 0.65 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} onClick={handleComplete} disabled={loading}>
+                <Check size={14} strokeWidth={2.5} /> Mark Job Complete
               </button>
             )}
           </div>
@@ -363,7 +364,7 @@ function JobDetailScreen({ job: initJob, token, onBack, onJobUpdate }) {
 
         {isComplete && (
           <div style={{ background: 'rgba(46,125,50,.12)', border: '1px solid rgba(46,125,50,.3)', borderRadius: 12, padding: 20, textAlign: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.green, marginBottom: 4 }}>Job Complete ✓</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.green, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Job Complete <Check size={16} strokeWidth={2.5} /></div>
             <div style={{ fontSize: 12, color: C.textSub, marginBottom: 12 }}>Invoice auto-generated</div>
             <button style={{ ...btnOutlineStyle, fontSize: 13 }} onClick={() => setScreen('photos')}>View / Add Photos →</button>
           </div>
@@ -419,7 +420,7 @@ function PhoneShell({ children }) {
           <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: C.white }}>●●●</span>
             <span style={{ fontSize: 11, color: C.white }}>WiFi</span>
-            <span style={{ fontSize: 11, color: C.white }}>🔋</span>
+            <Battery size={11} color={C.white} />
           </div>
         </div>
         <div style={{ height: 'calc(100% - 44px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -503,15 +504,15 @@ export default function MobileDemo() {
               What techs can do
             </div>
             {[
-              { icon: '🔐', title: 'Secure login',        desc: 'JWT auth — each tech has their own account and only sees their own jobs' },
-              { icon: '📋', title: 'Job queue',           desc: 'Today\'s jobs sorted by time, with live status badges and client info' },
-              { icon: '📍', title: 'GPS check-in',        desc: 'One tap records tech\'s location — logged to the operator dashboard' },
-              { icon: '📱', title: 'ETA SMS',             desc: 'Text clients an ETA in 2 taps — powered by Twilio' },
-              { icon: '📷', title: 'Job photos',          desc: 'Before/after photos uploaded directly from camera or library' },
-              { icon: '✓',  title: 'Complete & invoice',  desc: 'Mark job done — invoice auto-generates in the operator dashboard' },
+              { icon: Lock,         title: 'Secure login',        desc: 'JWT auth — each tech has their own account and only sees their own jobs' },
+              { icon: ClipboardList, title: 'Job queue',           desc: 'Today\'s jobs sorted by time, with live status badges and client info' },
+              { icon: MapPin,       title: 'GPS check-in',        desc: 'One tap records tech\'s location — logged to the operator dashboard' },
+              { icon: Smartphone,   title: 'ETA SMS',             desc: 'Text clients an ETA in 2 taps — powered by Twilio' },
+              { icon: Camera,       title: 'Job photos',          desc: 'Before/after photos uploaded directly from camera or library' },
+              { icon: Check,        title: 'Complete & invoice',  desc: 'Mark job done — invoice auto-generates in the operator dashboard' },
             ].map((f, i) => (
               <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
-                <div style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{f.icon}</div>
+                <div style={{ flexShrink: 0, marginTop: 1, color: 'rgba(255,255,255,.6)' }}><f.icon size={20} /></div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', lineHeight: 1.5 }}>{f.desc}</div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Map, Video, ClipboardList, Users, CreditCard, Bell, Plus, AlertTriangle, Lock, CheckCircle, Check, X, Search } from 'lucide-react';
 import axios from 'axios';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
@@ -80,7 +81,7 @@ function DispatchMap({ jobs, techs, onTechClick, onGoToCam }) {
     <div style={{position:'relative',flex:1,overflow:'hidden'}}>
       <div ref={mapRef} style={{width:'100%',height:'100%'}}/>
       <div style={{position:'absolute',top:14,left:14,zIndex:500,pointerEvents:'none'}}>
-        <div style={{background:C.n,border:`1px solid ${C.sd}`,borderRadius:8,padding:'7px 12px',fontSize:11,fontWeight:600,color:C.sd,display:'flex',alignItems:'center',gap:6}}>🔴 Live</div>
+        <div style={{background:C.n,border:`1px solid ${C.sd}`,borderRadius:8,padding:'7px 12px',fontSize:11,fontWeight:600,color:C.sd,display:'flex',alignItems:'center',gap:6}}><div style={{width:7,height:7,borderRadius:'50%',background:C.rd2,animation:'mt-pulse 1.4s infinite',flexShrink:0}}/>Live</div>
       </div>
       <div style={{position:'absolute',bottom:14,left:14,zIndex:500,background:C.n,border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'10px 12px',display:'flex',flexDirection:'column',gap:6,pointerEvents:'none'}}>
         {[[C.gn2,'Active at job'],[C.sd,'Scheduled'],[C.rd2,'No-show active'],[C.st,'Standby']].map(([col,lbl])=>(
@@ -101,8 +102,8 @@ function DispatchMap({ jobs, techs, onTechClick, onGoToCam }) {
             <div style={{fontSize:11.5,color:'rgba(255,255,255,.5)',marginBottom:10}}>{popup.job?`${popup.job.client_name} · ${fmtTime(popup.job.scheduled_at)}`:'Available'}</div>
             <div style={{display:'flex',gap:6}}>
               <button onClick={()=>setPopup(null)} style={{flex:1,padding:7,borderRadius:6,border:'none',fontSize:10.5,fontWeight:700,cursor:'pointer',background:C.sd,color:C.n,fontFamily:'inherit'}}>Dispatch</button>
-              <button onClick={()=>{setPopup(null);onGoToCam();}} style={{flex:1,padding:7,borderRadius:6,border:'none',fontSize:10.5,fontWeight:700,cursor:'pointer',background:'rgba(74,105,164,.2)',color:'#8BAED4',fontFamily:'inherit'}}>📹 Cameras</button>
-              <button onClick={()=>setPopup(null)} style={{padding:'7px 10px',borderRadius:6,border:'none',fontSize:10.5,fontWeight:700,cursor:'pointer',background:'rgba(255,255,255,.06)',color:'rgba(255,255,255,.5)',fontFamily:'inherit'}}>✕</button>
+              <button onClick={()=>{setPopup(null);onGoToCam();}} style={{flex:1,padding:7,borderRadius:6,border:'none',fontSize:10.5,fontWeight:700,cursor:'pointer',background:'rgba(74,105,164,.2)',color:'#8BAED4',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}><Video size={11}/>Cameras</button>
+              <button onClick={()=>setPopup(null)} style={{padding:'7px 10px',borderRadius:6,border:'none',fontSize:10.5,fontWeight:700,cursor:'pointer',background:'rgba(255,255,255,.06)',color:'rgba(255,255,255,.5)',fontFamily:'inherit',display:'flex',alignItems:'center'}}><X size={11}/></button>
             </div>
           </div>
         );
@@ -133,7 +134,7 @@ function JobsPanel() {
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',background:C.of,overflow:'hidden'}}>
       <div style={{padding:'12px 16px',background:C.wh,borderBottom:`1px solid ${C.lg}`,display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search jobs, clients, techs..." style={{flex:1,padding:'9px 14px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:13,fontFamily:'inherit',color:C.n,outline:'none',background:C.of}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search jobs, clients, techs..." style={{flex:1,padding:'9px 14px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:13,fontFamily:'inherit',color:C.n,outline:'none',background:C.of}}/>
         <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{padding:'9px 14px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:12,fontFamily:'inherit',color:C.sl,outline:'none',background:C.of,cursor:'pointer'}}>
           <option value="All">All Status</option>
           <option value="scheduled">Scheduled</option>
@@ -185,7 +186,7 @@ function ClientsPanel() {
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',background:C.of,overflow:'hidden'}}>
       <div style={{padding:'12px 16px',background:C.wh,borderBottom:`1px solid ${C.lg}`,display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search clients..." style={{flex:1,padding:'9px 14px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:13,fontFamily:'inherit',color:C.n,outline:'none',background:C.of}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients..." style={{flex:1,padding:'9px 14px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:13,fontFamily:'inherit',color:C.n,outline:'none',background:C.of}}/>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'14px 16px',display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12,alignContent:'start'}}>
         {loading&&<div style={{gridColumn:'1/-1',padding:32,textAlign:'center',color:C.st}}>Loading…</div>}
@@ -278,12 +279,12 @@ function CamerasPanel() {
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',background:C.n,overflow:'hidden'}}>
       <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',gap:14,flexShrink:0}}>
-        <div><div style={{fontSize:14,fontWeight:700,color:C.wh}}>📹 Live Camera Feeds</div><div style={{fontSize:12,color:'rgba(255,255,255,.35)'}}>Front · Rear · Inner Cab · All vehicles</div></div>
+        <div><div style={{fontSize:14,fontWeight:700,color:C.wh,display:'flex',alignItems:'center',gap:8}}><Video size={14}/>Live Camera Feeds</div><div style={{fontSize:12,color:'rgba(255,255,255,.35)'}}>Front · Rear · Inner Cab · All vehicles</div></div>
         <div style={{marginLeft:'auto',fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:'.1em',textTransform:'uppercase',background:'rgba(214,181,138,.15)',color:C.sd,padding:'4px 12px',borderRadius:99}}>Scale+ Feature</div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
         <div style={{background:'rgba(255,255,255,.03)',border:'1px dashed rgba(255,255,255,.1)',borderRadius:12,padding:48,textAlign:'center'}}>
-          <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+          <div style={{marginBottom:16,color:C.st,display:'flex',justifyContent:'center'}}><Lock size={32}/></div>
           <div style={{fontSize:15,fontWeight:700,color:C.wh,marginBottom:6}}>Unlock Camera Feeds on Scale+</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,.35)',lineHeight:1.65,marginBottom:18}}>Live dashcam feeds require the Scale plan ($199/mo) with Geotab or Samsara hardware installed in your vehicles.</div>
           <button style={{background:C.sd,color:C.n,border:'none',padding:'10px 24px',borderRadius:7,fontSize:13,fontWeight:700,cursor:'pointer'}}>Upgrade to Scale →</button>
@@ -297,7 +298,7 @@ function CamerasPanel() {
 function NoticesPanel() {
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:C.of,padding:48,textAlign:'center'}}>
-      <div style={{fontSize:32,marginBottom:16}}>🔔</div>
+      <div style={{marginBottom:16,color:C.st,display:'flex',justifyContent:'center'}}><Bell size={32}/></div>
       <div style={{fontSize:16,fontWeight:700,color:C.n,marginBottom:8}}>Pre-Charge Notices</div>
       <div style={{fontSize:13,color:C.sl,maxWidth:380,lineHeight:1.65}}>When Twilio SMS is connected, client replies to charge notices will appear here — confirmations, reschedule requests, card change replies, and cancellations.</div>
     </div>
@@ -363,7 +364,7 @@ function BookPanel({ onBooked }) {
 
   if(done)return(
     <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:C.of,padding:48,textAlign:'center'}}>
-      <div style={{fontSize:48,marginBottom:16}}>✅</div>
+      <div style={{marginBottom:16,color:C.gn,display:'flex',justifyContent:'center'}}><CheckCircle size={52} strokeWidth={1.5}/></div>
       <div style={{fontSize:18,fontWeight:700,color:C.n,marginBottom:8}}>Job Booked</div>
       <div style={{fontSize:13,color:C.sl,marginBottom:24}}>Confirmation SMS sent if phone number was provided.</div>
       <button onClick={()=>{setDone(false);setForm({first:'',last:'',phone:'',email:'',service:'',tech_id:'',date:'',time:'',amount:'',notes:''});setSelectedClient(null);}} style={{padding:'10px 28px',background:C.sd,color:C.n,border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Book Another Job</button>
@@ -482,13 +483,13 @@ export default function ManagerTablet() {
   const nsJob=nsJobs[0];
 
   const TABS=[
-    {id:'dispatch',label:'🗺️ Dispatch',badge:nsJobs.length>0?String(nsJobs.length):null},
-    {id:'dashcam',label:'📹 Cameras',badge:'Scale+',badgeAmber:true},
-    {id:'jobs',label:'📋 Jobs'},
-    {id:'clients',label:'👥 Clients'},
-    {id:'deposits',label:'💳 Deposits'},
-    {id:'notices',label:'🔔 Notices'},
-    {id:'book',label:'➕ Book Job'},
+    {id:'dispatch',Icon:Map,         label:'Dispatch', badge:nsJobs.length>0?String(nsJobs.length):null},
+    {id:'dashcam', Icon:Video,       label:'Cameras',  badge:'Scale+',badgeAmber:true},
+    {id:'jobs',    Icon:ClipboardList,label:'Jobs'},
+    {id:'clients', Icon:Users,       label:'Clients'},
+    {id:'deposits',Icon:CreditCard,  label:'Deposits'},
+    {id:'notices', Icon:Bell,        label:'Notices'},
+    {id:'book',    Icon:Plus,        label:'Book Job'},
   ];
 
   if(!token||!user){
@@ -532,7 +533,7 @@ export default function ManagerTablet() {
       <div style={{background:C.n2,display:'flex',alignItems:'center',padding:'0 18px',gap:4,flexShrink:0,borderBottom:'1px solid rgba(255,255,255,.06)',overflowX:'auto'}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{padding:'12px 16px',fontSize:12,fontWeight:600,color:activeTab===t.id?C.sd:'rgba(255,255,255,.35)',cursor:'pointer',background:'none',border:'none',borderBottom:activeTab===t.id?`2px solid ${C.sd}`:'2px solid transparent',display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap',flexShrink:0,fontFamily:'inherit',transition:'all .18s'}}>
-            {t.label}
+            <t.Icon size={13}/>{t.label}
             {t.badge&&<span style={{background:t.badgeAmber?C.am2:C.rd2,color:t.badgeAmber?C.n:C.wh,fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,fontFamily:"'DM Mono',monospace"}}>{t.badge}</span>}
           </button>
         ))}
@@ -583,8 +584,8 @@ export default function ManagerTablet() {
                 </div>
                 {nsJob&&(
                   <div style={{background:C.rl,borderTop:`2px solid ${C.rd}`,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
-                    <div style={{flex:1,fontSize:13,fontWeight:600,color:C.rd}}>🚨 {nsJob.client_name} · {nsJob.service_type}</div>
-                    <button onClick={()=>mtApi.patch(`/jobs/${nsJob.id}/status`,{status:'complete'}).then(()=>setJobs(j=>j.map(x=>x.id===nsJob.id?{...x,status:'complete'}:x)))} style={{padding:'9px 18px',borderRadius:7,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:C.gl,color:C.gn}}>✓ Arrived</button>
+                    <div style={{flex:1,fontSize:13,fontWeight:600,color:C.rd,display:'flex',alignItems:'center',gap:6}}><AlertTriangle size={14}/>{nsJob.client_name} · {nsJob.service_type}</div>
+                    <button onClick={()=>mtApi.patch(`/jobs/${nsJob.id}/status`,{status:'complete'}).then(()=>setJobs(j=>j.map(x=>x.id===nsJob.id?{...x,status:'complete'}:x)))} style={{padding:'9px 18px',borderRadius:7,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:C.gl,color:C.gn,display:'flex',alignItems:'center',gap:5}}><Check size={12} strokeWidth={2.5}/>Arrived</button>
                     <button onClick={()=>mtApi.patch(`/jobs/${nsJob.id}/noshow`).then(()=>setJobs(j=>j.map(x=>x.id===nsJob.id?{...x,status:'noshow'}:x)))} style={{padding:'9px 18px',borderRadius:7,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:C.rl,color:C.rd}}>Declare</button>
                   </div>
                 )}

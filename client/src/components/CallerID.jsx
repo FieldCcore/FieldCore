@@ -1,4 +1,5 @@
 import React from 'react';
+import { X, Star, StickyNote } from 'lucide-react';
 
 export default function CallerID({ onClose }) {
   return (
@@ -6,7 +7,7 @@ export default function CallerID({ onClose }) {
       <div className="caller-head">
         <div className="caller-ring" />
         <span className="caller-lbl">Inbound · Business Line</span>
-        <button className="caller-x" onClick={onClose}>✕</button>
+        <button className="caller-x" onClick={onClose}><X size={17} /></button>
       </div>
       <div className="caller-body">
         <div className="caller-name">Thomas Garfield</div>
@@ -26,11 +27,11 @@ export default function CallerID({ onClose }) {
           </div>
           <div className="caller-cell">
             <div className="ccl">Tier</div>
-            <div className="ccv">⭐ VIP</div>
+            <div className="ccv" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Star size={12} fill="currentColor" strokeWidth={0} />VIP</div>
           </div>
         </div>
-        <div className="caller-note">
-          📝 Has lake house property — mentioned wanting a quote next visit.
+        <div className="caller-note" style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <StickyNote size={13} style={{ flexShrink: 0, marginTop: 1 }} /> Has lake house property — mentioned wanting a quote next visit.
         </div>
         <div className="caller-actions">
           <button className="caller-btn-ans" onClick={onClose}>Answer</button>

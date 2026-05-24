@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Truck } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -90,7 +91,7 @@ export default function Fleet() {
           {vehicles.map(v => (
             <div key={v.id} className="fleet-card">
               <div className="fleet-card-top">
-                <div className="fleet-icon">🚐</div>
+                <div className="fleet-icon" style={{ color: 'var(--sand)' }}><Truck size={26} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="fleet-name">{[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}</div>
                   <div className="fleet-plate">{v.plate || 'No plate'}</div>
