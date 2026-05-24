@@ -65,16 +65,6 @@ router.post('/:accountId/submit', async (req, res) => {
     );
     const job = jobResult.rows[0];
 
-    // Send confirmation SMS if phone provided
-    if (phone) {
-      smsService.send(
-        accountId, client.id, phone,
-        smsService.confirmationBody(name, service, scheduled_at)
-      ).then(() =>
-        pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
-      ).catch(err => console.error('[Booking SMS]', err.message));
-    }
-
     // Check if deposit is required
     const settingsResult = await pool.query(
       `SELECT deposit_amount, deposit_rules, business_name FROM booking_settings WHERE account_id = $1`,
@@ -113,7 +103,7 @@ router.post('/:accountId/submit', async (req, res) => {
         cancel_url:  `${process.env.APP_URL || 'http://localhost:5173'}/book/${accountId}`,
       });
 
-      // Record deposit
+      // Record deposit as pending — SMS confirmation sent by webhook after payment
       await pool.query(
         `INSERT INTO deposits (account_id, job_id, client_id, amount, type, status)
          VALUES ($1,$2,$3,$4,'deposit','pending')`,
@@ -121,6 +111,16 @@ router.post('/:accountId/submit', async (req, res) => {
       );
 
       return res.json({ job_id: job.id, checkout_url: session.url, requires_deposit: true });
+    }
+
+    // No deposit required — confirm immediately via SMS
+    if (phone) {
+      smsService.send(
+        accountId, client.id, phone,
+        smsService.confirmationBody(name, service, scheduled_at)
+      ).then(() =>
+        pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
+      ).catch(err => console.error('[Booking SMS]', err.message));
     }
 
     res.json({ job_id: job.id, requires_deposit: false });

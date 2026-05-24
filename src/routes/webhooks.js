@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db/pool');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const twilio = require('twilio');
+const smsService = require('../services/sms');
 
 // POST /api/webhooks/stripe
 // Raw body required — mount before express.json()
@@ -56,11 +57,34 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     // Booking deposit payment
     const jobId = session.metadata?.job_id;
     if (jobId) {
+      const paymentIntentId = session.payment_intent || null;
+
       await pool.query(
-        `UPDATE deposits SET status = 'collected', collected_at = NOW(), stripe_charge_id = $1
+        `UPDATE deposits
+         SET status = 'collected', collected_at = NOW(), stripe_payment_intent_id = $1
          WHERE job_id = $2 AND status = 'pending'`,
-        [chargeId, jobId]
+        [paymentIntentId, jobId]
       );
+
+      // Send confirmation SMS now that deposit is confirmed
+      const { rows: jobRows } = await pool.query(
+        `SELECT j.id, j.service_type, j.scheduled_at, j.account_id, j.confirmation_sent,
+                c.id AS client_id, c.name AS client_name, c.phone AS client_phone
+         FROM jobs j JOIN clients c ON c.id = j.client_id
+         WHERE j.id = $1`,
+        [jobId]
+      );
+      const job = jobRows[0];
+      if (job?.client_phone && !job.confirmation_sent) {
+        smsService.send(
+          job.account_id,
+          job.client_id,
+          job.client_phone,
+          smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at)
+        ).then(() =>
+          pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
+        ).catch(err => console.error('[Deposit webhook SMS]', err.message));
+      }
     }
   }
 
