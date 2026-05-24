@@ -88,6 +88,44 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     }
   }
 
+  // ── Platform subscription events ──────────────────────────
+  function priceIdToPlan(priceId) {
+    if (priceId === process.env.STRIPE_PRICE_GROWTH) return 'growth';
+    if (priceId === process.env.STRIPE_PRICE_SCALE)  return 'scale';
+    return 'starter';
+  }
+
+  if (event.type === 'customer.subscription.created' ||
+      event.type === 'customer.subscription.updated') {
+    const sub     = event.data.object;
+    const priceId = sub.items.data[0]?.price?.id;
+    const plan    = priceIdToPlan(priceId);
+    await pool.query(
+      `UPDATE accounts
+       SET plan = $1, plan_status = $2, stripe_subscription_id = $3
+       WHERE stripe_customer_id = $4`,
+      [plan, sub.status, sub.id, sub.customer]
+    );
+  }
+
+  if (event.type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    await pool.query(
+      `UPDATE accounts
+       SET plan = 'starter', plan_status = 'active', stripe_subscription_id = NULL
+       WHERE stripe_customer_id = $1`,
+      [sub.customer]
+    );
+  }
+
+  if (event.type === 'invoice.payment_failed') {
+    const inv = event.data.object;
+    await pool.query(
+      `UPDATE accounts SET plan_status = 'past_due' WHERE stripe_customer_id = $1`,
+      [inv.customer]
+    );
+  }
+
   res.json({ received: true });
 });
 

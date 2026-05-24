@@ -182,6 +182,8 @@ CREATE INDEX IF NOT EXISTS idx_memberships_user    ON account_memberships(user_i
 CREATE INDEX IF NOT EXISTS idx_memberships_account ON account_memberships(account_id);
 
 -- Migrations: safe to run on existing databases
+ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS plan_status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE fleet_vehicles  ADD COLUMN IF NOT EXISTS year INTEGER;
 ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;
 ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;

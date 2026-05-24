@@ -18,6 +18,7 @@ const usersRouter     = require('./routes/users');
 const mobileRouter    = require('./routes/mobile');
 const bookingRouter   = require('./routes/booking');
 const fleetRouter     = require('./routes/fleet');
+const billingRouter   = require('./routes/billing');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
 const authLimiter = rateLimit({
@@ -83,6 +84,7 @@ app.post('/api/booking/:accountId/submit', bookingSubmitLimiter); // tight limit
 app.use('/api/booking',          bookingReadLimiter, bookingRouter);  // public: /api/booking/:accountId
 app.use('/api/booking-settings', bookingRouter);                      // operator: GET/PUT with auth
 app.use('/api/fleet',    fleetRouter);
+app.use('/api/billing',  billingRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
