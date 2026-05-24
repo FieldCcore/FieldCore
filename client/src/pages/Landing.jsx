@@ -289,11 +289,13 @@ export default function Landing() {
         <div className="logos-inner">
           <span className="logos-lbl">Built for</span>
           <div className="logos-track">
-            {['Auto Detailing','HVAC','Plumbing','Landscaping','Pressure Washing','Pest Control','Electrical','Pool Service','Mobile Mechanic','Fleet Washing'].map(v => (
-              <span key={v} className="logo-vert">
-                <span className="logo-dot" />{v}
-              </span>
-            ))}
+            <div className="logos-track-inner">
+              {['Auto Detailing','HVAC','Plumbing','Landscaping','Pressure Washing','Pest Control','Electrical','Pool Service','Mobile Mechanic','Fleet Washing','Auto Detailing','HVAC','Plumbing','Landscaping','Pressure Washing','Pest Control','Electrical','Pool Service','Mobile Mechanic','Fleet Washing'].map((v, i) => (
+                <span key={i} className="logo-vert">
+                  <span className="logo-dot" />{v}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>
