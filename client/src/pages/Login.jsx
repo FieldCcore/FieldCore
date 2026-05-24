@@ -19,7 +19,7 @@ export default function Login() {
     setError('');
     try {
       await login(email, password);
-      nav('/', { replace: true });
+      nav('/dashboard', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Sign in failed. Check your credentials.');
     } finally {

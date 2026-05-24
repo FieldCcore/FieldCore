@@ -48,13 +48,14 @@ import MobileDemo      from './pages/MobileDemo';
 import ManagerTablet  from './pages/ManagerTablet';
 import Fleet          from './pages/Fleet';
 import BookConfirm    from './pages/BookConfirm';
+import Landing        from './pages/Landing';
 import NoShowStrip    from './components/NoShowStrip';
 import CallerID       from './components/CallerID';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const PAGE_TITLES = {
-  '/':          'Dashboard',
+  '/dashboard': 'Dashboard',
   '/dispatch':  'Dispatch',
   '/jobs':      'Calendar',
   '/revenue':   'Revenue Analytics',
@@ -101,9 +102,10 @@ function AppShell() {
     );
   }
 
-  if (['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm')) {
+  if (pathname === '/' || ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm')) {
     return (
       <Routes>
+        <Route path="/"                 element={<Landing />} />
         <Route path="/login"            element={<Login />} />
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/reset-password"   element={<ResetPassword />} />
@@ -140,7 +142,7 @@ function AppShell() {
 
         <nav className="sb-nav">
           <div className="nav-section">Operations</div>
-          {ni('/',         true,  IcoDash,     'Dashboard', null)}
+          {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
           {ni('/dispatch', false, IcoDispatch, 'Dispatch',  null)}
           {ni('/jobs',     false, IcoCalendar, 'Calendar',  null)}
 
@@ -191,7 +193,7 @@ function AppShell() {
 
         <div className="content">
           <Routes>
-            <Route path="/"            element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
+            <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
             <Route path="/dispatch"    element={<ProtectedRoute><Dispatch /></ProtectedRoute>}       />
             <Route path="/jobs"        element={<ProtectedRoute><Jobs /></ProtectedRoute>}           />
             <Route path="/revenue"     element={<ProtectedRoute><Revenue /></ProtectedRoute>}        />

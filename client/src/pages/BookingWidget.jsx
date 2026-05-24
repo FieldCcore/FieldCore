@@ -6,6 +6,16 @@ import axios from 'axios';
 // Standalone public page — no auth, no sidebar
 const publicApi = axios.create({ baseURL: '/api' });
 
+// Normalize non-string error fields so {error} renders safely
+publicApi.interceptors.response.use(res => res, err => {
+  if (err.response?.data) {
+    const d = err.response.data;
+    if (d.error && typeof d.error !== 'string') d.error = d.error?.message || JSON.stringify(d.error);
+    if (d.warning && typeof d.warning !== 'string') d.warning = d.warning?.message || JSON.stringify(d.warning);
+  }
+  return Promise.reject(err);
+});
+
 const TIMES = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00'];
 
 export default function BookingWidget() {
