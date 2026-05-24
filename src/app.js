@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 
 const authRouter      = require('./routes/auth');
@@ -18,6 +19,33 @@ const mobileRouter    = require('./routes/mobile');
 const bookingRouter   = require('./routes/booking');
 const fleetRouter     = require('./routes/fleet');
 
+// Auth: 10 attempts per 15 min — brute-force protection on login/reset
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+});
+
+// Public booking reads: 60 per minute — widget config fetches
+const bookingReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+});
+
+// Booking submit: 5 per 10 min per IP — prevent form spam
+const bookingSubmitLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many booking attempts. Please wait before trying again.' },
+});
+
 const app = express();
 
 app.use(helmet());
@@ -28,19 +56,20 @@ app.use('/api/webhooks', webhooksRouter);
 
 app.use(express.json());
 
-app.use('/api/auth',       authRouter);
+app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/deposits',  depositsRouter);
 app.use('/api/clients',   clientsRouter);
-app.use('/api/jobs',     jobsRouter);
-app.use('/api/invoices', invoicesRouter);
-app.use('/api/payments', paymentsRouter);
-app.use('/api/sms',      smsRouter);
-app.use('/api/users',    usersRouter);
-app.use('/api/mobile',          mobileRouter);
-app.use('/api/booking',         bookingRouter);  // public: /api/booking/:accountId
-app.use('/api/booking-settings', bookingRouter); // operator: GET/PUT with auth
-app.use('/api/fleet',           fleetRouter);
+app.use('/api/jobs',      jobsRouter);
+app.use('/api/invoices',  invoicesRouter);
+app.use('/api/payments',  paymentsRouter);
+app.use('/api/sms',       smsRouter);
+app.use('/api/users',     usersRouter);
+app.use('/api/mobile',    mobileRouter);
+app.post('/api/booking/:accountId/submit', bookingSubmitLimiter); // tight limit before router
+app.use('/api/booking',          bookingReadLimiter, bookingRouter);  // public: /api/booking/:accountId
+app.use('/api/booking-settings', bookingRouter);                      // operator: GET/PUT with auth
+app.use('/api/fleet',    fleetRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
