@@ -169,6 +169,18 @@ CREATE INDEX IF NOT EXISTS idx_messages_client   ON messages(client_id);
 CREATE INDEX IF NOT EXISTS idx_job_photos_job    ON job_photos(job_id);
 CREATE INDEX IF NOT EXISTS idx_job_photos_acct   ON job_photos(account_id);
 
+-- Multi-entity account membership (Scale+ feature)
+CREATE TABLE IF NOT EXISTS account_memberships (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL DEFAULT 'manager' CHECK (role IN ('owner', 'manager', 'tech')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_memberships_user    ON account_memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_account ON account_memberships(account_id);
+
 -- Migrations: safe to run on existing databases
 ALTER TABLE fleet_vehicles  ADD COLUMN IF NOT EXISTS year INTEGER;
 ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;

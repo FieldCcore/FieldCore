@@ -5,6 +5,7 @@ const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
 const pool       = require('../db/pool');
+const { requireAuth } = require('../middleware/auth');
 
 const JWT_SECRET  = process.env.JWT_SECRET;
 const JWT_EXPIRES = '7d';
@@ -163,6 +164,58 @@ router.post('/reset-password', async (req, res) => {
     await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
 
     res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/auth/accounts — list all accounts the user can access (home + memberships)
+router.get('/accounts', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.name,
+              CASE WHEN u.account_id = a.id THEN u.role ELSE am.role END AS role,
+              (u.account_id = a.id) AS is_home
+       FROM accounts a
+       JOIN users u ON u.id = $1
+       LEFT JOIN account_memberships am ON am.account_id = a.id AND am.user_id = $1
+       WHERE a.id = u.account_id OR am.user_id = $1
+       ORDER BY is_home DESC, a.name`,
+      [req.userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/switch — issue a new JWT scoped to a different account
+router.post('/switch', requireAuth, async (req, res) => {
+  const { account_id } = req.body;
+  if (!account_id) return res.status(400).json({ error: 'account_id is required.' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.name,
+              CASE WHEN u.account_id = a.id THEN u.role ELSE am.role END AS role
+       FROM accounts a
+       JOIN users u ON u.id = $1
+       LEFT JOIN account_memberships am ON am.account_id = a.id AND am.user_id = $1
+       WHERE a.id = $2 AND (u.account_id = a.id OR am.user_id = $1)`,
+      [req.userId, account_id]
+    );
+    if (!rows.length) return res.status(403).json({ error: 'Access denied to this account.' });
+
+    const account = rows[0];
+    const token = jwt.sign(
+      { userId: req.userId, accountId: account.id, role: account.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
+    );
+    res.json({
+      token,
+      user: { accountId: account.id, accountName: account.name, role: account.role },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
