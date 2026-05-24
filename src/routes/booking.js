@@ -72,8 +72,10 @@ router.post('/:accountId/submit', async (req, res) => {
     );
     const settings = settingsResult.rows[0];
 
-    // Per-service deposit rules take precedence over global deposit_amount
+    // Start with global default
     let depositAmount = parseFloat(settings?.deposit_amount || 0);
+
+    // Per-service rule overrides global
     const rules = Array.isArray(settings?.deposit_rules) ? settings.deposit_rules : [];
     const matchedRule = rules.find(r => r.service && service && r.service.toLowerCase() === service.toLowerCase());
     if (matchedRule) {
@@ -83,6 +85,16 @@ router.post('/:accountId/submit', async (req, res) => {
       } else {
         depositAmount = parseFloat(matchedRule.amount || 0);
       }
+    }
+
+    // Client tier overrides
+    if (client.tier === 'vip') {
+      // VIP clients: waive deposit entirely, even if a service rule applies
+      depositAmount = 0;
+    } else if (client.tier === 'at_risk') {
+      // At-risk clients: enforce at least the global deposit minimum
+      const globalMinimum = parseFloat(settings?.deposit_amount || 0);
+      if (depositAmount < globalMinimum) depositAmount = globalMinimum;
     }
 
     if (depositAmount > 0 && process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.endsWith('_')) {

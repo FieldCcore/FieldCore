@@ -20,25 +20,21 @@ const STATUS_LABEL = {
   pending: 'Pending', collected: '✓ Collected', refunded: 'Refunded',
 };
 
-const RULE_ROWS = [
-  { service: 'Ceramic Coating',  rule: '30% · Non-refundable',   trigger: 'At booking',   active: true },
-  { service: 'Paint Correction', rule: '25% · Refundable 48h',   trigger: 'At booking',   active: true },
-  { service: 'Full Detail',      rule: '$75 flat · Refundable',   trigger: 'At booking',   active: true },
-  { service: 'Express Wash',     rule: '$50 flat · New clients',  trigger: 'First booking', active: true },
-  { service: 'Fleet Contracts',  rule: '15% · Non-refundable',   trigger: 'At contract',  active: true },
-  { service: 'VIP Tier',         rule: 'Deposit waived',          trigger: 'All services', active: true },
-];
-
 export default function Deposits() {
   const [deposits, setDeposits] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [tick,     setTick]     = useState(0);
 
   useEffect(() => {
-    api.get('/deposits')
-      .then(r => setDeposits(r.data))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get('/deposits'),
+      api.get('/booking-settings'),
+    ]).then(([dep, cfg]) => {
+      setDeposits(dep.data);
+      setSettings(cfg.data);
+    }).finally(() => setLoading(false));
   }, []);
 
   // Re-render timers every second
@@ -49,6 +45,10 @@ export default function Deposits() {
 
   const collected = deposits.filter(d => d.status === 'collected').reduce((s, d) => s + parseFloat(d.amount), 0);
   const pending   = deposits.filter(d => d.status === 'pending').reduce((s, d) => s + parseFloat(d.amount), 0);
+  const serviceRules = Array.isArray(settings?.deposit_rules) ? settings.deposit_rules : [];
+  const globalDeposit = parseFloat(settings?.deposit_amount || 0);
+  // 2 system rules (VIP waiver + at-risk enforcement) always active; plus each configured service rule
+  const rulesCount = serviceRules.length + 2 + (globalDeposit > 0 ? 1 : 0);
 
   return (
     <div>
@@ -72,7 +72,7 @@ export default function Deposits() {
         </div>
         <div className="dash-sc">
           <div className="dash-sc-l">Rules Active</div>
-          <div className="dash-sc-v">{RULE_ROWS.filter(r => r.active).length}</div>
+          <div className="dash-sc-v">{rulesCount}</div>
           <div className="dash-sc-s">Deposit policies</div>
         </div>
       </div>
@@ -153,18 +153,64 @@ export default function Deposits() {
 
         <div className="dep-side">
           <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Deposit Rules</span></div>
-            {RULE_ROWS.map((r, i) => (
+            <div className="dash-ch">
+              <span className="dash-cht">Deposit Rules</span>
+              <a href="/booking" className="dash-cha">Configure →</a>
+            </div>
+
+            {/* Global default */}
+            {globalDeposit > 0 && (
+              <div className="dep-rule-row">
+                <div>
+                  <div className="dep-rule-service">All Services (default)</div>
+                  <div className="dep-rule-detail">${globalDeposit.toFixed(2)} flat · At booking</div>
+                </div>
+                <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
+                  <div className="dep-toggle-knob" style={{ right: 3 }} />
+                </div>
+              </div>
+            )}
+
+            {/* Per-service rules from settings */}
+            {serviceRules.map((r, i) => (
               <div key={i} className="dep-rule-row">
                 <div>
                   <div className="dep-rule-service">{r.service}</div>
-                  <div className="dep-rule-detail">{r.rule} · {r.trigger}</div>
+                  <div className="dep-rule-detail">
+                    {r.type === 'percent' ? `${r.amount}%` : `$${parseFloat(r.amount).toFixed(2)}`} · At booking
+                  </div>
                 </div>
-                <div className="dep-toggle" style={{ background: r.active ? 'var(--navy)' : 'var(--lightgray)' }}>
-                  <div className="dep-toggle-knob" style={{ [r.active ? 'right' : 'left']: 3 }} />
+                <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
+                  <div className="dep-toggle-knob" style={{ right: 3 }} />
                 </div>
               </div>
             ))}
+
+            {/* System tier rules — always enforced */}
+            <div className="dep-rule-row">
+              <div>
+                <div className="dep-rule-service">VIP Clients</div>
+                <div className="dep-rule-detail">Deposit waived · All services</div>
+              </div>
+              <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
+                <div className="dep-toggle-knob" style={{ right: 3 }} />
+              </div>
+            </div>
+            <div className="dep-rule-row">
+              <div>
+                <div className="dep-rule-service">At-Risk Clients</div>
+                <div className="dep-rule-detail">Global minimum enforced · Always</div>
+              </div>
+              <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
+                <div className="dep-toggle-knob" style={{ right: 3 }} />
+              </div>
+            </div>
+
+            {globalDeposit === 0 && serviceRules.length === 0 && (
+              <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--steel)' }}>
+                No deposit rules configured. Set a default amount or per-service rules in Settings.
+              </div>
+            )}
           </div>
 
           <div className="dash-card">
