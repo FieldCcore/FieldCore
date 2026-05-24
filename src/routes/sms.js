@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { checkSmsAccess } = require('../middleware/planLimits');
 const smsService = require('../services/sms');
 
 // GET /api/sms/messages — list all SMS history for account
@@ -30,7 +31,7 @@ router.get('/messages', requireAuth, requireRole('owner', 'manager'), async (req
 });
 
 // POST /api/sms/send — send custom SMS
-router.post('/send', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+router.post('/send', requireAuth, requireRole('owner', 'manager'), checkSmsAccess, async (req, res) => {
   const { client_id, body } = req.body;
   if (!client_id || !body) {
     return res.status(400).json({ error: 'client_id and body are required' });

@@ -52,6 +52,7 @@ import Billing        from './pages/Billing';
 import BookConfirm    from './pages/BookConfirm';
 import Landing        from './pages/Landing';
 import NoShowStrip    from './components/NoShowStrip';
+import PlanGate       from './components/PlanGate';
 import CallerID       from './components/CallerID';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -149,32 +150,39 @@ function AppShell() {
       <aside className="sb">
         <div className="sb-logo" style={{ position: 'relative' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-          <div
-            className="sb-entity"
-            onClick={() => accounts.length > 1 && setEntityOpen(o => !o)}
-            style={{ cursor: accounts.length > 1 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {(typeof user?.accountName === 'string' ? user.accountName : null) || (typeof user?.account_name === 'string' ? user.account_name : null) || 'FieldCore'}
-            </span>
-            {accounts.length > 1 && (
-              <svg viewBox="0 0 10 6" style={{ width: 9, height: 9, flexShrink: 0, opacity: 0.5, transform: entityOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4"/></svg>
-            )}
-          </div>
-          {entityOpen && accounts.length > 1 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#2D3748', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, overflow: 'hidden', zIndex: 100, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
-              {accounts.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => { setEntityOpen(false); if (a.id !== user?.accountId) switchAccount(a.id); }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: a.id === user?.accountId ? 'rgba(214,181,138,.12)' : 'none', border: 'none', color: a.id === user?.accountId ? '#D6B58A' : 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: a.id === user?.accountId ? 600 : 400, cursor: 'pointer', textAlign: 'left', gap: 8 }}
+          {(() => {
+            const canSwitch = accounts.length > 1 && user?.plan === 'scale';
+            return (
+              <>
+                <div
+                  className="sb-entity"
+                  onClick={() => canSwitch && setEntityOpen(o => !o)}
+                  style={{ cursor: canSwitch ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
                 >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                  <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.06em' }}>{a.role}</span>
-                </button>
-              ))}
-            </div>
-          )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(typeof user?.accountName === 'string' ? user.accountName : null) || (typeof user?.account_name === 'string' ? user.account_name : null) || 'FieldCore'}
+                  </span>
+                  {canSwitch && (
+                    <svg viewBox="0 0 10 6" style={{ width: 9, height: 9, flexShrink: 0, opacity: 0.5, transform: entityOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4"/></svg>
+                  )}
+                </div>
+                {entityOpen && canSwitch && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#2D3748', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, overflow: 'hidden', zIndex: 100, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+                    {accounts.map(a => (
+                      <button
+                        key={a.id}
+                        onClick={() => { setEntityOpen(false); if (a.id !== user?.accountId) switchAccount(a.id); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: a.id === user?.accountId ? 'rgba(214,181,138,.12)' : 'none', border: 'none', color: a.id === user?.accountId ? '#D6B58A' : 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: a.id === user?.accountId ? 600 : 400, cursor: 'pointer', textAlign: 'left', gap: 8 }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                        <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.06em' }}>{a.role}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         <nav className="sb-nav">
@@ -234,8 +242,8 @@ function AppShell() {
             <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
             <Route path="/dispatch"    element={<ProtectedRoute><Dispatch /></ProtectedRoute>}       />
             <Route path="/jobs"        element={<ProtectedRoute><Jobs /></ProtectedRoute>}           />
-            <Route path="/revenue"     element={<ProtectedRoute><Revenue /></ProtectedRoute>}        />
-            <Route path="/deposits"    element={<ProtectedRoute><Deposits /></ProtectedRoute>}       />
+            <Route path="/revenue"     element={<ProtectedRoute><PlanGate requires="growth"><Revenue /></PlanGate></ProtectedRoute>}   />
+            <Route path="/deposits"    element={<ProtectedRoute><PlanGate requires="growth"><Deposits /></PlanGate></ProtectedRoute>}  />
             <Route path="/invoices"    element={<ProtectedRoute><Invoices /></ProtectedRoute>}       />
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />

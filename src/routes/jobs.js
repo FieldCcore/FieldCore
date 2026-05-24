@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { checkJobLimit } = require('../middleware/planLimits');
 const sms     = require('../services/sms');
 
 // GET /api/jobs?date=&tech_id=&status=&client_id=
@@ -53,7 +54,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // POST /api/jobs
-router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, async (req, res) => {
   const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring } = req.body;
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });

@@ -3,6 +3,7 @@ const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { checkUserLimit } = require('../middleware/planLimits');
 
 // GET /api/users — list team members (used for tech assignment dropdown)
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -19,7 +20,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 });
 
 // POST /api/users — add team member (owner/manager only)
-router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+router.post('/', requireAuth, requireRole('owner', 'manager'), checkUserLimit, async (req, res) => {
   const { name, email, phone, role, password } = req.body;
   if (!name || !email || !role || !password)
     return res.status(400).json({ error: 'name, email, role, and password are required.' });
