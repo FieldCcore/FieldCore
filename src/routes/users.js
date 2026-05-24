@@ -5,7 +5,7 @@ const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /api/users — list team members (used for tech assignment dropdown)
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, name, role, phone, email, created_at

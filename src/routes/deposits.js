@@ -1,10 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /api/deposits
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT d.*, c.name AS client_name, j.service_type
@@ -22,7 +22,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/deposits/:id/retain — manually retain a deposit (no-show)
-router.patch('/:id/retain', requireAuth, async (req, res) => {
+router.patch('/:id/retain', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE deposits SET status = 'collected'
@@ -37,7 +37,7 @@ router.patch('/:id/retain', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/deposits/:id/refund
-router.patch('/:id/refund', requireAuth, async (req, res) => {
+router.patch('/:id/refund', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE deposits SET status = 'refunded'

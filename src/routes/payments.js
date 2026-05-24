@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // POST /api/payments/setup-intent — card on file setup
-router.post('/setup-intent', requireAuth, async (req, res) => {
+router.post('/setup-intent', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id } = req.body;
   if (!client_id) return res.status(400).json({ error: 'client_id is required' });
 
@@ -28,7 +28,7 @@ router.post('/setup-intent', requireAuth, async (req, res) => {
 });
 
 // POST /api/payments/charge — charge card on file
-router.post('/charge', requireAuth, async (req, res) => {
+router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { invoice_id, payment_method_id } = req.body;
   if (!invoice_id || !payment_method_id) {
     return res.status(400).json({ error: 'invoice_id and payment_method_id are required' });
@@ -68,7 +68,7 @@ router.post('/charge', requireAuth, async (req, res) => {
 });
 
 // POST /api/payments/save-card — save PaymentMethod to client after SetupIntent confirms
-router.post('/save-card', requireAuth, async (req, res) => {
+router.post('/save-card', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id, payment_method_id } = req.body;
   if (!client_id || !payment_method_id) {
     return res.status(400).json({ error: 'client_id and payment_method_id are required' });
@@ -111,7 +111,7 @@ router.post('/save-card', requireAuth, async (req, res) => {
 });
 
 // POST /api/payments/payment-link — create Stripe Checkout Session link
-router.post('/payment-link', requireAuth, async (req, res) => {
+router.post('/payment-link', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { invoice_id } = req.body;
   if (!invoice_id) return res.status(400).json({ error: 'invoice_id is required' });
 

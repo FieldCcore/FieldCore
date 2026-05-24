@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // POST /api/invoices — generate invoice from completed job
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { job_id } = req.body;
   if (!job_id) return res.status(400).json({ error: 'job_id is required' });
 
@@ -36,7 +36,7 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 // GET /api/invoices
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT i.*, c.name AS client_name
@@ -53,7 +53,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // GET /api/invoices/:id
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT i.*, c.name AS client_name, c.email AS client_email, c.phone AS client_phone,
@@ -73,7 +73,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/invoices/:id/void
-router.patch('/:id/void', requireAuth, async (req, res) => {
+router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE invoices SET status = 'void' WHERE id = $1 AND account_id = $2 RETURNING *`,

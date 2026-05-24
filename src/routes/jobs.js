@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const sms     = require('../services/sms');
 
 // GET /api/jobs?date=&tech_id=&status=&client_id=
@@ -53,7 +53,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // POST /api/jobs
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring } = req.body;
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
@@ -89,7 +89,7 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/jobs/:id — full edit
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const fields = ['client_id','tech_id','service_type','scheduled_at','amount','notes','recurring'];
   const updates = [];
   const values  = [];
@@ -158,7 +158,7 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/jobs/:id/noshow — declare no-show, auto-retain deposit
-router.patch('/:id/noshow', requireAuth, async (req, res) => {
+router.patch('/:id/noshow', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE jobs SET status = 'cancelled', noshow_declared_at = NOW()

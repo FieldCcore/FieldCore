@@ -1,11 +1,11 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const smsService = require('../services/sms');
 
 // GET /api/sms/messages — list all SMS history for account
-router.get('/messages', requireAuth, async (req, res) => {
+router.get('/messages', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id } = req.query;
   const conditions = ['m.account_id = $1'];
   const values = [req.accountId];
@@ -30,7 +30,7 @@ router.get('/messages', requireAuth, async (req, res) => {
 });
 
 // POST /api/sms/send — send custom SMS
-router.post('/send', requireAuth, async (req, res) => {
+router.post('/send', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id, body } = req.body;
   if (!client_id || !body) {
     return res.status(400).json({ error: 'client_id and body are required' });
@@ -55,7 +55,7 @@ router.post('/send', requireAuth, async (req, res) => {
 });
 
 // POST /api/sms/send-template — send a named template SMS
-router.post('/send-template', requireAuth, async (req, res) => {
+router.post('/send-template', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { client_id, template, job_id } = req.body;
   if (!client_id || !template) {
     return res.status(400).json({ error: 'client_id and template are required' });

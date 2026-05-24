@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const smsService = require('../services/sms');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
@@ -147,7 +147,7 @@ router.get('/confirm/:jobId', async (req, res) => {
 // ── Operator routes (auth required) ──────────────────────────────────────────
 
 // GET /api/booking-settings — get operator's booking config
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM booking_settings WHERE account_id = $1`,
@@ -168,7 +168,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // PUT /api/booking-settings — update operator's booking config
-router.put('/', requireAuth, async (req, res) => {
+router.put('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate } = req.body;
   try {
     const { rows } = await pool.query(

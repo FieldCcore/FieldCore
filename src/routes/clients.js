@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /api/clients
 router.get('/', requireAuth, async (req, res) => {
@@ -17,7 +17,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // POST /api/clients
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { name, email, phone, address, tier, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   try {
@@ -57,7 +57,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/clients/:id
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const fields = ['name','email','phone','address','tier','notes','card_on_file'];
   const updates = [];
   const values = [];

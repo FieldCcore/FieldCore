@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /api/analytics/dashboard — all stats for the main dashboard
 router.get('/dashboard', requireAuth, async (req, res) => {
@@ -118,7 +118,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 });
 
 // GET /api/analytics/revenue — weekly chart + by-service + monthly summary
-router.get('/revenue', requireAuth, async (req, res) => {
+router.get('/revenue', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const accountId = req.accountId;
   try {
     const [weekly, byService, monthly] = await Promise.all([
@@ -189,7 +189,7 @@ router.get('/revenue', requireAuth, async (req, res) => {
 });
 
 // GET /api/analytics/team — per-tech stats for the current week
-router.get('/team', requireAuth, async (req, res) => {
+router.get('/team', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const accountId = req.accountId;
   try {
     const { rows } = await pool.query(
