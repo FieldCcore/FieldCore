@@ -1,9 +1,14 @@
 import axios from 'axios';
 
-// Normalize non-string error/warning fields on ANY axios response — prevents
-// React #31 when proxy errors like { error: { code, message } } bypass the
-// `|| 'fallback'` guards used throughout the app. Applied to the global
-// axios instance so auth pages (Login, ForgotPassword, etc.) are also covered.
+// When frontend is deployed separately from the backend (e.g. Vercel + Railway),
+// set VITE_API_URL to the backend origin (e.g. https://fieldcore-production.up.railway.app).
+// Relative /api paths are used when both are on the same origin.
+const BACKEND = import.meta.env.VITE_API_URL || '';
+
+// Set on the global axios instance so AuthContext's raw axios('/api/...') calls
+// resolve to the correct origin when deployed cross-domain.
+if (BACKEND) axios.defaults.baseURL = BACKEND;
+
 function normalizeErrorFields(err) {
   if (err.response?.data) {
     const d = err.response.data;
@@ -19,7 +24,7 @@ function normalizeErrorFields(err) {
 
 axios.interceptors.response.use(res => res, normalizeErrorFields);
 
-const api = axios.create({ baseURL: '/api' });
+const api = axios.create({ baseURL: `${BACKEND}/api` });
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('fc_token');

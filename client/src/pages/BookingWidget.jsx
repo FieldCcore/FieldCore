@@ -4,7 +4,7 @@ import { format, addDays, setHours, setMinutes } from 'date-fns';
 import axios from 'axios';
 
 // Standalone public page — no auth, no sidebar
-const publicApi = axios.create({ baseURL: '/api' });
+const publicApi = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || ''}/api` });
 
 // Normalize non-string error fields so {error} renders safely
 publicApi.interceptors.response.use(res => res, err => {
