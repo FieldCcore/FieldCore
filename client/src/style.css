@@ -1,10 +1,8 @@
 /* ============================================================
    FIELDCORE — Brand Design System
    Navy #1C2333 | Sand #D6B58A | Slate #5F667A | Steel #8A90A2
-   Fonts: Bricolage Grotesque · DM Mono · DM Serif Display
+   Fonts: Inter · DM Mono · Cormorant Garamond
    ============================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -33,7 +31,7 @@
 }
 
 body {
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   background: var(--off);
   color: var(--slate);
   font-size: 14px;
@@ -192,7 +190,7 @@ body {
   flex-shrink: 0;
 }
 .tb-title {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 19px;
   color: var(--navy);
   flex: 1;
@@ -212,7 +210,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   border: none;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   transition: opacity .15s;
 }
 .tb-btn:hover { opacity: .85; }
@@ -230,7 +228,7 @@ body {
   margin-bottom: 24px;
 }
 .page-header h1 {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 22px;
   font-weight: 400;
   color: var(--navy);
@@ -243,7 +241,7 @@ body {
   border: none;
   padding: 10px 20px;
   border-radius: 6px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;
@@ -259,7 +257,7 @@ body {
   border: 1.5px solid var(--lightgray);
   padding: 10px 20px;
   border-radius: 6px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
@@ -274,7 +272,7 @@ body {
   border: none;
   color: var(--sand-dark);
   cursor: pointer;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13.5px;
   font-weight: 600;
   padding: 0;
@@ -298,7 +296,7 @@ body {
   color: var(--red);
   padding: 10px 20px;
   border-radius: 6px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
@@ -311,7 +309,7 @@ body {
   padding: 10px 14px;
   border: 1.5px solid var(--lightgray);
   border-radius: 6px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   margin-bottom: 20px;
   background: var(--white);
@@ -380,7 +378,7 @@ body {
   border-bottom: 1px solid var(--lightgray);
 }
 .modal-header h2 {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 17px;
   font-weight: 400;
   color: var(--navy);
@@ -405,7 +403,7 @@ body {
   padding: 10px 12px;
   border: 1.5px solid var(--lightgray);
   border-radius: 6px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   color: var(--navy);
   background: var(--white);
@@ -454,7 +452,7 @@ body {
 /* ── Profile ─────────────────────────────────────────────── */
 .profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .profile-header h1 {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 26px;
   font-weight: 400;
   color: var(--navy);
@@ -464,7 +462,7 @@ body {
 .full-width   { grid-column: 1 / -1; }
 .section      { margin-top: 8px; }
 .section h2   {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 16px;
   font-weight: 400;
   color: var(--navy);
@@ -501,7 +499,7 @@ body {
 }
 .stat-value {
   display: block;
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 26px;
   font-weight: 400;
   color: var(--navy);
@@ -518,7 +516,7 @@ body {
   border: 1.5px solid var(--lightgray);
   background: var(--white);
   color: var(--slate);
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -547,7 +545,7 @@ body {
 }
 .invoice-amount        {
   display: block;
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 42px;
   font-weight: 400;
   color: var(--navy);
@@ -573,7 +571,7 @@ body {
 /* ── Job detail ──────────────────────────────────────────── */
 .job-detail-header   { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .job-detail-header h2 {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 17px;
   font-weight: 400;
   color: var(--navy);
@@ -602,7 +600,7 @@ body {
   margin-bottom: 10px;
 }
 .status-buttons      { display: flex; gap: 8px; flex-wrap: wrap; }
-.status-btn          { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Bricolage Grotesque', sans-serif; font-size: 12.5px; font-weight: 700; text-transform: capitalize; transition: opacity 0.15s; }
+.status-btn          { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 700; text-transform: capitalize; transition: opacity 0.15s; }
 .status-btn:disabled { cursor: default; }
 
 /* ── Calendar ────────────────────────────────────────────── */
@@ -611,7 +609,7 @@ body {
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate); text-transform: capitalize; }
 .legend-dot  { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
-.rbc-toolbar button { font-family: 'Bricolage Grotesque', sans-serif; font-size: 13px; }
+.rbc-toolbar button { font-family: 'Inter', sans-serif; font-size: 13px; }
 .rbc-toolbar button.rbc-active { background: var(--navy) !important; color: var(--white) !important; border-color: var(--navy) !important; }
 .rbc-toolbar button:hover      { background: var(--off); }
 .rbc-today { background: #FAF8F4 !important; }
@@ -623,7 +621,7 @@ body {
 .messages-layout    { display: flex; height: calc(100vh - 52px - 44px); gap: 0; margin: -22px -24px; overflow: hidden; }
 .client-list-panel  { width: 280px; background: var(--white); border-right: 1px solid var(--lightgray); display: flex; flex-direction: column; flex-shrink: 0; }
 .panel-header       { padding: 16px; border-bottom: 1px solid var(--lightgray); display: flex; flex-direction: column; gap: 10px; }
-.panel-header h2    { font-family: 'DM Serif Display', serif; font-size: 15px; font-weight: 400; color: var(--navy); }
+.panel-header h2    { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 400; color: var(--navy); }
 .client-list-scroll { overflow-y: auto; flex: 1; }
 .client-list-item   { padding: 13px 16px; cursor: pointer; border-bottom: 1px solid var(--lightgray); }
 .client-list-item:hover  { background: var(--off); }
@@ -644,7 +642,7 @@ body {
 .inbound  .bubble-body   { background: var(--white); color: var(--navy); border: 1px solid var(--lightgray); border-bottom-left-radius: 4px; }
 .bubble-time        { font-size: 11px; color: var(--steel); margin-top: 4px; }
 .chat-input-row     { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--lightgray); background: var(--white); align-items: flex-end; }
-.chat-textarea      { flex: 1; padding: 9px 12px; border: 1.5px solid var(--lightgray); border-radius: 6px; font-family: 'Bricolage Grotesque', sans-serif; font-size: 14px; resize: none; outline: none; color: var(--navy); }
+.chat-textarea      { flex: 1; padding: 9px 12px; border: 1.5px solid var(--lightgray); border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 14px; resize: none; outline: none; color: var(--navy); }
 .chat-textarea:focus { border-color: var(--sand); }
 
 /* ── Profile SMS ─────────────────────────────────────────── */
@@ -658,27 +656,27 @@ body {
 /* ── Booking widget (public) ─────────────────────────────── */
 .booking-wrap  { min-height: 100vh; background: var(--off); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; }
 .booking-card  { background: var(--white); border-radius: 12px; box-shadow: 0 4px 24px rgba(28,35,51,.1); padding: 36px; width: 100%; max-width: 520px; border: 1px solid var(--lightgray); }
-.booking-logo  { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: .12em; color: var(--navy); text-align: center; margin-bottom: 22px; text-transform: uppercase; }
+.booking-logo  { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: .12em; color: var(--navy); text-align: center; margin-bottom: 22px; text-transform: uppercase; }
 .booking-logo span { color: var(--sand); font-size: 10px; vertical-align: super; }
 .booking-steps { display: flex; justify-content: center; gap: 12px; margin-bottom: 28px; }
 .booking-step  { width: 32px; height: 32px; border-radius: 50%; background: var(--lightgray); color: var(--steel); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .booking-step.active { background: var(--sand); color: var(--navy); }
 .booking-step.done   { background: var(--green); color: var(--white); }
-.booking-title    { font-family: 'DM Serif Display', serif; font-size: 19px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
+.booking-title    { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
 .booking-subtitle { color: var(--steel); font-size: 14px; margin-bottom: 20px; }
 .booking-form  { display: flex; flex-direction: column; gap: 14px; }
 .booking-btn   { width: 100%; margin-top: 6px; padding: 14px; font-size: 15px; }
 .booking-nav   { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; }
 
 .date-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 16px 0 20px; }
-.date-btn  { border: 1.5px solid var(--lightgray); border-radius: 8px; padding: 10px 4px; background: var(--white); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: all 0.15s; font-family: 'Bricolage Grotesque', sans-serif; }
+.date-btn  { border: 1.5px solid var(--lightgray); border-radius: 8px; padding: 10px 4px; background: var(--white); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: all 0.15s; font-family: 'Inter', sans-serif; }
 .date-btn:hover    { border-color: var(--sand); background: var(--sand-lt); }
 .date-btn.selected { border-color: var(--sand); background: var(--sand); color: var(--navy); }
 .date-day { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
 .date-num { font-size: 13px; font-weight: 700; }
 
 .time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
-.time-btn  { border: 1.5px solid var(--lightgray); border-radius: 6px; padding: 10px; background: var(--white); cursor: pointer; font-family: 'Bricolage Grotesque', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; color: var(--slate); }
+.time-btn  { border: 1.5px solid var(--lightgray); border-radius: 6px; padding: 10px; background: var(--white); cursor: pointer; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; color: var(--slate); }
 .time-btn:hover    { border-color: var(--sand); background: var(--sand-lt); }
 .time-btn.selected { border-color: var(--sand); background: var(--sand); color: var(--navy); }
 
@@ -702,7 +700,7 @@ body {
 
 .booking-success   { text-align: center; }
 .success-icon      { width: 64px; height: 64px; background: var(--green-lt); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--green); margin: 0 auto 20px; }
-.booking-success h2 { font-family: 'DM Serif Display', serif; font-size: 24px; font-weight: 400; color: var(--navy); margin-bottom: 12px; }
+.booking-success h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 400; color: var(--navy); margin-bottom: 12px; }
 .booking-success p  { color: var(--slate); line-height: 1.6; }
 
 /* ── Booking settings ────────────────────────────────────── */
@@ -743,7 +741,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 .ns-btn-alt { background: rgba(0,0,0,.2); }
 
@@ -789,7 +787,7 @@ body {
   margin-bottom: 6px;
 }
 .dash-sc-v {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 26px;
   color: var(--navy);
   line-height: 1;
@@ -958,7 +956,7 @@ body {
   border-bottom: 1px solid var(--lightgray);
 }
 .dispatch-panel-title {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 16px;
   color: var(--navy);
   margin-bottom: 2px;
@@ -1087,7 +1085,7 @@ body {
 }
 .rev-month-row:last-child { border-bottom: none; }
 .rev-month-lbl    { font-weight: 600; color: var(--navy); }
-.rev-month-rev    { font-family: 'DM Serif Display', serif; font-size: 14px; color: var(--navy); }
+.rev-month-rev    { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--navy); }
 .rev-month-jobs   { font-size: 10px; color: var(--steel); }
 .rev-month-growth { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 700; }
 
@@ -1195,7 +1193,7 @@ body {
 .caller-lbl { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sand); flex: 1; }
 .caller-x   { font-size: 17px; color: rgba(255,255,255,.35); background: none; border: none; cursor: pointer; line-height: 1; }
 .caller-body  { padding: 14px; }
-.caller-name  { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--navy); margin-bottom: 2px; }
+.caller-name  { font-family: 'Cormorant Garamond', serif; font-size: 20px; color: var(--navy); margin-bottom: 2px; }
 .caller-info  { font-size: 11.5px; color: var(--steel); margin-bottom: 12px; }
 .caller-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 10px; }
 .caller-cell  { background: var(--off); border-radius: 6px; padding: 8px 10px; }
@@ -1211,8 +1209,8 @@ body {
   border-left: 3px solid var(--sand);
 }
 .caller-actions   { display: flex; gap: 7px; }
-.caller-btn-ans   { flex: 1; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Bricolage Grotesque', sans-serif; background: var(--green); color: var(--white); }
-.caller-btn-prof  { flex: 1; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Bricolage Grotesque', sans-serif; background: var(--offwhite); color: var(--navy); }
+.caller-btn-ans   { flex: 1; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: var(--green); color: var(--white); }
+.caller-btn-prof  { flex: 1; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: var(--offwhite); color: var(--navy); }
 
 /* ── Login ───────────────────────────────────────────────── */
 .login-shell {
@@ -1232,7 +1230,7 @@ body {
   max-width: 400px;
 }
 .login-logo {
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: .14em;
@@ -1243,7 +1241,7 @@ body {
 .login-logo span { color: var(--sand); }
 .login-tm { font-size: 8px; color: var(--sand); vertical-align: super; }
 .login-title {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 28px;
   font-weight: 400;
   color: var(--white);
@@ -1276,7 +1274,7 @@ body {
   background: rgba(255,255,255,.05);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 8px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   color: var(--white);
   outline: none;
@@ -1293,7 +1291,7 @@ body {
   color: var(--navy);
   border: none;
   border-radius: 8px;
-  font-family: 'Bricolage Grotesque', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
