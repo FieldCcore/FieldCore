@@ -12,11 +12,11 @@ const STATUS_COLORS = { pending: '#f59e0b', paid: '#10b981', void: '#6b7280' };
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
   const [invoice, setInvoice]       = useState(initialInvoice);
-  const [loading, setLoading]       = useState(false);
-  const [paymentLink, setPaymentLink] = useState('');
-  const [copied, setCopied]         = useState(false);
+  const [loading, setLoading]             = useState(false);
+  const [sending, setSending]             = useState(false);
+  const [copied,  setCopied]              = useState(false);
   const [showCardSetup, setShowCardSetup] = useState(false);
-  const [error, setError]           = useState('');
+  const [error,   setError]               = useState('');
 
   // Load full invoice detail (includes card_on_file, payment_method_id)
   useEffect(() => {
@@ -44,16 +44,18 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     }
   }
 
-  async function handlePaymentLink() {
-    setLoading(true);
+  async function handleSend() {
+    setSending(true);
     setError('');
     try {
-      const res = await api.post('/payments/payment-link', { invoice_id: invoice.id });
-      setPaymentLink(res.data.url);
+      const res = await api.post(`/invoices/${invoice.id}/send`);
+      const updated = { ...invoice, payment_link: res.data.payment_link, sent_at: new Date().toISOString() };
+      setInvoice(updated);
+      onUpdate(updated);
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not generate payment link. Check Stripe keys in .env.');
+      setError(err.response?.data?.error || 'Could not send invoice.');
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   }
 
@@ -71,7 +73,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(paymentLink);
+    navigator.clipboard.writeText(invoice.payment_link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -103,6 +105,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         {invoice.client_email && <div className="detail-row"><label>Email</label><span>{invoice.client_email}</span></div>}
         {invoice.service_type && <div className="detail-row"><label>Service</label><span>{invoice.service_type}</span></div>}
         <div className="detail-row"><label>Created</label><span>{format(new Date(invoice.created_at), 'MMM d, yyyy')}</span></div>
+        {invoice.sent_at && <div className="detail-row"><label>Sent</label><span>{format(new Date(invoice.sent_at), 'MMM d, yyyy h:mm a')}</span></div>}
       </div>
 
       {parseFloat(invoice.tax_amount) > 0 ? (
@@ -139,16 +142,19 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
             </button>
           )}
 
-          {!paymentLink ? (
-            <button className="btn-secondary" onClick={handlePaymentLink} disabled={loading}>
-              {loading ? 'Generating...' : 'Generate Payment Link'}
-            </button>
-          ) : (
+          {invoice.payment_link ? (
             <div className="payment-link-box">
-              <input readOnly value={paymentLink} className="link-input" />
+              <input readOnly value={invoice.payment_link} className="link-input" />
               <button className="btn-primary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
-              <a href={paymentLink} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
+              <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
+              <button className="btn-secondary" onClick={handleSend} disabled={sending} title="Resend email to client">
+                {sending ? '…' : 'Resend'}
+              </button>
             </div>
+          ) : (
+            <button className="btn-secondary" onClick={handleSend} disabled={sending}>
+              {sending ? 'Sending…' : invoice.client_email ? 'Send Invoice' : 'Generate Payment Link'}
+            </button>
           )}
 
           <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
