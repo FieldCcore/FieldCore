@@ -18,7 +18,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT u.*, a.name AS account_name, a.plan, a.plan_status
+      `SELECT u.*, a.name AS account_name, a.plan, a.plan_status, a.onboarded
        FROM users u
        JOIN accounts a ON a.id = u.account_id
        WHERE lower(u.email) = lower($1)
@@ -51,6 +51,7 @@ router.post('/login', async (req, res) => {
         accountName:  user.account_name,
         plan:         user.plan,
         planStatus:   user.plan_status,
+        onboarded:    user.onboarded,
       },
     });
   } catch (err) {
@@ -68,14 +69,14 @@ router.get('/me', async (req, res) => {
     const payload = jwt.verify(header.slice(7), JWT_SECRET);
     const { rows } = await pool.query(
       `SELECT u.id, u.name, u.email, u.role, u.account_id,
-              a.name AS account_name, a.plan, a.plan_status
+              a.name AS account_name, a.plan, a.plan_status, a.onboarded
        FROM users u JOIN accounts a ON a.id = u.account_id
        WHERE u.id = $1`,
       [payload.userId]
     );
     if (!rows.length) return res.status(401).json({ error: 'User not found.' });
     const r = rows[0];
-    res.json({ user: { ...r, accountId: r.account_id, accountName: r.account_name, plan: r.plan, planStatus: r.plan_status } });
+    res.json({ user: { ...r, accountId: r.account_id, accountName: r.account_name, plan: r.plan, planStatus: r.plan_status, onboarded: r.onboarded } });
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
   }
@@ -199,7 +200,7 @@ router.post('/switch', requireAuth, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT a.id, a.name, a.plan, a.plan_status,
+      `SELECT a.id, a.name, a.plan, a.plan_status, a.onboarded,
               CASE WHEN u.account_id = a.id THEN u.role ELSE am.role END AS role
        FROM accounts a
        JOIN users u ON u.id = $1
@@ -217,7 +218,7 @@ router.post('/switch', requireAuth, async (req, res) => {
     );
     res.json({
       token,
-      user: { accountId: account.id, accountName: account.name, role: account.role, plan: account.plan, planStatus: account.plan_status },
+      user: { accountId: account.id, accountName: account.name, role: account.role, plan: account.plan, planStatus: account.plan_status, onboarded: account.onboarded },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

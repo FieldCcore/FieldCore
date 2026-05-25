@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone } from 'lucide-react';
-import { Routes, Route, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -52,6 +52,7 @@ import Billing        from './pages/Billing';
 import BookConfirm    from './pages/BookConfirm';
 import Landing          from './pages/Landing';
 import PayInvoice       from './pages/PayInvoice';
+import Onboarding      from './pages/Onboarding';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -108,6 +109,14 @@ function AppShell() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [entityOpen]);
+
+  // Onboarding gate — owners who haven't completed setup
+  if (pathname === '/onboarding') {
+    return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;
+  }
+  if (user && user.role === 'owner' && user.onboarded === false) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   if (isPublicBook) {
     return (

@@ -20,6 +20,7 @@ const bookingRouter   = require('./routes/booking');
 const fleetRouter     = require('./routes/fleet');
 const billingRouter        = require('./routes/billing');
 const notificationsRouter  = require('./routes/notifications');
+const onboardingRouter     = require('./routes/onboarding');
 const payRouter            = require('./routes/pay');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
@@ -88,6 +89,7 @@ app.use('/api/booking-settings', bookingRouter);                      // operato
 app.use('/api/fleet',    fleetRouter);
 app.use('/api/billing',        billingRouter);
 app.use('/api/notifications',  notificationsRouter);
+app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/pay',            payRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
