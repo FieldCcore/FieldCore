@@ -1,7 +1,9 @@
 const express = require('express');
-const router = express.Router();
-const pool = require('../db/pool');
+const router  = express.Router();
+const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const email  = require('../services/email');
+const notify = require('../services/notify');
 
 // POST /api/invoices — generate invoice from completed job
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -67,6 +69,51 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/invoices/:id/send — email payment link to client + mark sent
+router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT i.*, c.name AS client_name, c.email AS client_email,
+              j.service_type, a.name AS business_name
+       FROM invoices i
+       JOIN clients  c ON c.id = i.client_id
+       JOIN jobs     j ON j.id = i.job_id
+       JOIN accounts a ON a.id = i.account_id
+       WHERE i.id = $1 AND i.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    const inv = rows[0];
+    if (!inv) return res.status(404).json({ error: 'Not found' });
+    if (inv.status !== 'pending') return res.status(400).json({ error: 'Invoice is not pending.' });
+
+    const appUrl  = process.env.APP_URL || 'http://localhost:5173';
+    const payLink = `${appUrl}/pay/${inv.id}`;
+
+    await pool.query(
+      `UPDATE invoices SET payment_link = $1, sent_at = NOW() WHERE id = $2`,
+      [payLink, inv.id]
+    );
+
+    if (inv.client_email) {
+      email.send({
+        to:      inv.client_email,
+        subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
+        html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name),
+      }).catch(err => console.error('[Invoice email]', err.message));
+    }
+
+    notify.create(req.accountId, 'invoice_sent',
+      `Invoice sent to ${inv.client_name}`,
+      `$${parseFloat(inv.amount).toFixed(2)} for ${inv.service_type}`,
+      '/invoices'
+    );
+
+    res.json({ success: true, payment_link: payLink });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

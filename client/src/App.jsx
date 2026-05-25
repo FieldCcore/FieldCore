@@ -50,11 +50,13 @@ import ManagerTablet  from './pages/ManagerTablet';
 import Fleet          from './pages/Fleet';
 import Billing        from './pages/Billing';
 import BookConfirm    from './pages/BookConfirm';
-import Landing        from './pages/Landing';
-import NoShowStrip    from './components/NoShowStrip';
-import PlanGate       from './components/PlanGate';
-import CallerID       from './components/CallerID';
-import ProtectedRoute from './components/ProtectedRoute';
+import Landing          from './pages/Landing';
+import PayInvoice       from './pages/PayInvoice';
+import NoShowStrip      from './components/NoShowStrip';
+import PlanGate         from './components/PlanGate';
+import NotificationBell from './components/NotificationBell';
+import CallerID         from './components/CallerID';
+import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const PAGE_TITLES = {
@@ -115,7 +117,7 @@ function AppShell() {
     );
   }
 
-  if (pathname === '/' || ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm')) {
+  if (pathname === '/' || ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/')) {
     return (
       <Routes>
         <Route path="/"                 element={<Landing />} />
@@ -125,6 +127,7 @@ function AppShell() {
         <Route path="/demo"             element={<MobileDemo />} />
         <Route path="/tablet"           element={<ManagerTablet />} />
         <Route path="/book-confirm"     element={<BookConfirm />} />
+        <Route path="/pay/:invoiceId"   element={<PayInvoice />} />
       </Routes>
     );
   }
@@ -231,6 +234,7 @@ function AppShell() {
         <div className="topbar">
           <div className="tb-title">{pageTitle}</div>
           <div className="tb-date">{dateStr}</div>
+          <NotificationBell />
           <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
           <button className="tb-btn tb-primary" onClick={() => nav('/jobs?new=1')}>+ New Job</button>
         </div>

@@ -1,9 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const pool = require('../db/pool');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const twilio = require('twilio');
-const smsService = require('../services/sms');
+const express      = require('express');
+const router       = require('express').Router();
+const pool         = require('../db/pool');
+const stripe       = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const twilio       = require('twilio');
+const smsService   = require('../services/sms');
+const emailService = require('../services/email');
+const notify       = require('../services/notify');
 
 // POST /api/webhooks/stripe
 // Raw body required — mount before express.json()
@@ -20,15 +22,19 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
     const { rows } = await pool.query(
-      `UPDATE invoices SET status = 'paid', paid_at = NOW()
-       WHERE stripe_payment_intent_id = $1 AND status != 'paid'
-       RETURNING client_id, amount`,
+      `UPDATE invoices i SET status = 'paid', paid_at = NOW()
+       FROM clients c
+       WHERE i.stripe_payment_intent_id = $1 AND i.status != 'paid' AND c.id = i.client_id
+       RETURNING i.account_id, i.client_id, i.amount, c.name AS client_name`,
       [pi.id]
     );
     if (rows.length) {
-      await pool.query(
-        `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
-        [rows[0].amount, rows[0].client_id]
+      const r = rows[0];
+      await pool.query(`UPDATE clients SET ltv = ltv + $1 WHERE id = $2`, [r.amount, r.client_id]);
+      notify.create(r.account_id, 'invoice_paid',
+        `Invoice paid: ${r.client_name}`,
+        `$${parseFloat(r.amount).toFixed(2)} received`,
+        '/invoices'
       );
     }
   }
@@ -41,15 +47,19 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     const invoiceId = session.metadata?.invoice_id;
     if (invoiceId) {
       const { rows } = await pool.query(
-        `UPDATE invoices SET status = 'paid', paid_at = NOW()
-         WHERE id = $1 AND status != 'paid'
-         RETURNING client_id, amount`,
+        `UPDATE invoices i SET status = 'paid', paid_at = NOW()
+         FROM clients c
+         WHERE i.id = $1 AND i.status != 'paid' AND c.id = i.client_id
+         RETURNING i.account_id, i.client_id, i.amount, c.name AS client_name`,
         [invoiceId]
       );
       if (rows.length) {
-        await pool.query(
-          `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
-          [rows[0].amount, rows[0].client_id]
+        const r = rows[0];
+        await pool.query(`UPDATE clients SET ltv = ltv + $1 WHERE id = $2`, [r.amount, r.client_id]);
+        notify.create(r.account_id, 'invoice_paid',
+          `Invoice paid: ${r.client_name}`,
+          `$${parseFloat(r.amount).toFixed(2)} received`,
+          '/invoices'
         );
       }
     }
@@ -69,21 +79,33 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
       // Send confirmation SMS now that deposit is confirmed
       const { rows: jobRows } = await pool.query(
         `SELECT j.id, j.service_type, j.scheduled_at, j.account_id, j.confirmation_sent,
-                c.id AS client_id, c.name AS client_name, c.phone AS client_phone
+                c.id AS client_id, c.name AS client_name, c.phone AS client_phone, c.email AS client_email
          FROM jobs j JOIN clients c ON c.id = j.client_id
          WHERE j.id = $1`,
         [jobId]
       );
       const job = jobRows[0];
-      if (job?.client_phone && !job.confirmation_sent) {
-        smsService.send(
-          job.account_id,
-          job.client_id,
-          job.client_phone,
-          smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at)
-        ).then(() =>
-          pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
-        ).catch(err => console.error('[Deposit webhook SMS]', err.message));
+      if (job && !job.confirmation_sent) {
+        if (job.client_phone) {
+          smsService.send(
+            job.account_id, job.client_id, job.client_phone,
+            smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at)
+          ).then(() =>
+            pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
+          ).catch(err => console.error('[Deposit webhook SMS]', err.message));
+        }
+        if (job.client_email) {
+          emailService.send({
+            to:      job.client_email,
+            subject: `Your ${job.service_type} appointment is confirmed`,
+            html:    emailService.confirmationHtml(job.client_name, job.service_type, job.scheduled_at),
+          }).catch(err => console.error('[Deposit webhook email]', err.message));
+        }
+        notify.create(job.account_id, 'deposit_collected',
+          `Deposit collected: ${job.client_name}`,
+          `${job.service_type} · $${session.amount_total ? (session.amount_total / 100).toFixed(2) : '—'}`,
+          '/deposits'
+        );
       }
     }
   }

@@ -182,6 +182,18 @@ CREATE INDEX IF NOT EXISTS idx_memberships_user    ON account_memberships(user_i
 CREATE INDEX IF NOT EXISTS idx_memberships_account ON account_memberships(account_id);
 
 -- Migrations: safe to run on existing databases
+CREATE TABLE IF NOT EXISTS notifications (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL,
+  title      TEXT NOT NULL,
+  body       TEXT,
+  link       TEXT,
+  read       BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_account ON notifications(account_id);
+
 ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
 ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS plan_status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE fleet_vehicles  ADD COLUMN IF NOT EXISTS year INTEGER;

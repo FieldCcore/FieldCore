@@ -2,7 +2,9 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const smsService = require('../services/sms');
+const smsService   = require('../services/sms');
+const emailService = require('../services/email');
+const notify       = require('../services/notify');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // ── Public routes (no auth — used by the embeddable widget) ──────────────────
@@ -122,10 +124,15 @@ router.post('/:accountId/submit', async (req, res) => {
         [accountId, job.id, client.id, depositAmount]
       );
 
+      notify.create(accountId, 'booking_new',
+        `New booking: ${name}`,
+        `${service} · deposit required`,
+        '/jobs'
+      );
       return res.json({ job_id: job.id, checkout_url: session.url, requires_deposit: true });
     }
 
-    // No deposit required — confirm immediately via SMS
+    // No deposit required — confirm immediately via SMS + email
     if (phone) {
       smsService.send(
         accountId, client.id, phone,
@@ -134,6 +141,19 @@ router.post('/:accountId/submit', async (req, res) => {
         pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
       ).catch(err => console.error('[Booking SMS]', err.message));
     }
+    if (email) {
+      emailService.send({
+        to:      email,
+        subject: `Your ${service} appointment is confirmed`,
+        html:    emailService.confirmationHtml(name, service, scheduled_at),
+      }).catch(err => console.error('[Booking email]', err.message));
+    }
+
+    notify.create(accountId, 'booking_new',
+      `New booking: ${name}`,
+      `${service} · no deposit`,
+      '/jobs'
+    );
 
     res.json({ job_id: job.id, requires_deposit: false });
   } catch (err) {
