@@ -197,10 +197,14 @@ CREATE INDEX IF NOT EXISTS idx_notifications_account ON notifications(account_id
 ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS onboarded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
 ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS plan_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS stripe_connect_account_id TEXT;
+ALTER TABLE accounts        ADD COLUMN IF NOT EXISTS stripe_connect_status TEXT NOT NULL DEFAULT 'not_connected';
 ALTER TABLE fleet_vehicles  ADD COLUMN IF NOT EXISTS year INTEGER;
 ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;
 ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
 ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS deposit_rules JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,4) DEFAULT 0;
-ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount    NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS payment_link  TEXT;
+ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS sent_at       TIMESTAMPTZ;
 ALTER TABLE job_photos       ADD COLUMN IF NOT EXISTS filename TEXT;

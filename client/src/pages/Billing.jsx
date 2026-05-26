@@ -69,15 +69,19 @@ const PLAN_ORDER = ['starter', 'growth', 'scale'];
 
 export default function Billing() {
   const [searchParams] = useSearchParams();
-  const [billing, setBilling] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [busy,    setBusy]    = useState(false);
+  const [billing,      setBilling]      = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [busy,         setBusy]         = useState(false);
+  const [connectBusy,  setConnectBusy]  = useState(false);
+
+  function load() {
+    return api.get('/billing')
+      .then(r => setBilling(r.data))
+      .catch(() => {});
+  }
 
   useEffect(() => {
-    api.get('/billing')
-      .then(r => setBilling(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    load().finally(() => setLoading(false));
   }, []);
 
   async function upgrade(plan) {
@@ -88,6 +92,29 @@ export default function Billing() {
     } catch (err) {
       alert(err.response?.data?.error || 'Could not start checkout.');
       setBusy(false);
+    }
+  }
+
+  async function connectStripe() {
+    setConnectBusy(true);
+    try {
+      const { data } = await api.post('/billing/connect');
+      window.location.href = data.url;
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not start Stripe onboarding.');
+      setConnectBusy(false);
+    }
+  }
+
+  async function openStripeDashboard() {
+    setConnectBusy(true);
+    try {
+      const { data } = await api.post('/billing/connect/login');
+      window.open(data.url, '_blank');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not open Stripe dashboard.');
+    } finally {
+      setConnectBusy(false);
     }
   }
 
@@ -120,13 +147,26 @@ export default function Billing() {
                     : planStatus === 'past_due' ? 'js-pending'
                     : 'js-cancelled';
 
-  const upgraded = searchParams.get('upgraded') === '1';
+  const upgraded       = searchParams.get('upgraded')      === '1';
+  const connectSuccess = searchParams.get('connect')        === 'success';
+  const connectRefresh = searchParams.get('connect')        === 'refresh';
+  const connect        = billing?.connect || { status: 'not_connected', account_id: null, platform_fee: 1 };
 
   return (
     <div>
       {upgraded && (
         <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>
           Plan upgraded successfully. Welcome to {PLANS.find(p => p.key === currentPlan)?.name}!
+        </div>
+      )}
+      {connectSuccess && (
+        <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>
+          Stripe onboarding submitted — verification usually takes a few minutes. Refresh this page to see your updated status.
+        </div>
+      )}
+      {connectRefresh && (
+        <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+          Stripe onboarding link expired. Click "Continue Setup" to get a fresh link.
         </div>
       )}
 
@@ -231,6 +271,66 @@ export default function Billing() {
             </div>
           );
         })}
+      </div>
+
+      {/* Stripe Connect — payments section */}
+      <div className="dash-card" style={{ marginTop: 20 }}>
+        <div style={{ padding: '24px 24px 20px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 8 }}>
+              Payments
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>
+              Stripe Connect
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 480 }}>
+              Connect your bank account so invoice payments and booking deposits go directly to you.
+              FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
+            {connect.status === 'not_connected' && (
+              <button
+                onClick={connectStripe}
+                disabled={connectBusy}
+                style={{ padding: '10px 20px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {connectBusy ? '…' : 'Connect with Stripe →'}
+              </button>
+            )}
+            {connect.status === 'pending' && (
+              <>
+                <span className="dash-jbadge js-pending">Verification Pending</span>
+                <button
+                  onClick={connectStripe}
+                  disabled={connectBusy}
+                  style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}
+                >
+                  {connectBusy ? '…' : 'Continue Setup →'}
+                </button>
+              </>
+            )}
+            {connect.status === 'active' && (
+              <>
+                <span className="dash-jbadge js-active">Active</span>
+                <button
+                  onClick={openStripeDashboard}
+                  disabled={connectBusy}
+                  className="btn-secondary"
+                >
+                  {connectBusy ? '…' : 'Stripe Dashboard →'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {connect.status === 'not_connected' && (
+          <div style={{ margin: '0 24px 20px', padding: '10px 14px', background: '#f9f7f3', borderRadius: 6, fontSize: 12, color: 'var(--steel)', lineHeight: 1.5 }}>
+            Without Connect, payments are collected by FieldCore and require manual transfer. Connect takes ~5 minutes via Stripe's hosted onboarding.
+          </div>
+        )}
       </div>
 
       {/* Footer note */}

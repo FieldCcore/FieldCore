@@ -9,11 +9,13 @@ const PRICE_IDS = {
   scale:  process.env.STRIPE_PRICE_SCALE,
 };
 
-// GET /api/billing — current plan, status, subscription presence
+// GET /api/billing — current plan, status, subscription presence, connect status
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT plan, plan_status, stripe_customer_id, stripe_subscription_id FROM accounts WHERE id = $1`,
+      `SELECT plan, plan_status, stripe_customer_id, stripe_subscription_id,
+              stripe_connect_account_id, stripe_connect_status
+       FROM accounts WHERE id = $1`,
       [req.accountId]
     );
     const acct = rows[0] || {};
@@ -21,6 +23,11 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
       plan:            acct.plan            || 'starter',
       status:          acct.plan_status     || 'active',
       hasSubscription: !!acct.stripe_subscription_id,
+      connect: {
+        account_id:   acct.stripe_connect_account_id || null,
+        status:       acct.stripe_connect_status     || 'not_connected',
+        platform_fee: parseFloat(process.env.PLATFORM_FEE_PERCENT || '1'),
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -91,6 +98,65 @@ router.post('/portal', requireAuth, requireRole('owner'), async (req, res) => {
     });
 
     res.json({ url: session.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/connect — create Express account (or refresh onboarding link)
+router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    let connectId = rows[0]?.stripe_connect_account_id;
+
+    if (!connectId) {
+      const account = await stripe.accounts.create({
+        type:     'express',
+        metadata: { account_id: req.accountId },
+      });
+      connectId = account.id;
+      await pool.query(
+        `UPDATE accounts
+         SET stripe_connect_account_id = $1, stripe_connect_status = 'pending'
+         WHERE id = $2`,
+        [connectId, req.accountId]
+      );
+    }
+
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    const link = await stripe.accountLinks.create({
+      account:     connectId,
+      refresh_url: `${appUrl}/billing?connect=refresh`,
+      return_url:  `${appUrl}/billing?connect=success`,
+      type:        'account_onboarding',
+    });
+
+    res.json({ url: link.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/connect/login — Stripe Express dashboard link
+router.post('/connect/login', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    const connectId = rows[0]?.stripe_connect_account_id;
+    const status    = rows[0]?.stripe_connect_status;
+
+    if (!connectId)
+      return res.status(400).json({ error: 'No connected Stripe account.' });
+    if (status !== 'active')
+      return res.status(400).json({ error: 'Account is not yet verified by Stripe.' });
+
+    const link = await stripe.accounts.createLoginLink(connectId);
+    res.json({ url: link.url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

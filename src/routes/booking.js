@@ -7,6 +7,8 @@ const emailService = require('../services/email');
 const notify       = require('../services/notify');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT || '1') / 100;
+
 // ── Public routes (no auth — used by the embeddable widget) ──────────────────
 
 // GET /api/booking/:accountId — fetch public booking config
@@ -69,7 +71,11 @@ router.post('/:accountId/submit', async (req, res) => {
 
     // Check if deposit is required
     const settingsResult = await pool.query(
-      `SELECT deposit_amount, deposit_rules, business_name FROM booking_settings WHERE account_id = $1`,
+      `SELECT bs.deposit_amount, bs.deposit_rules, bs.business_name,
+              a.stripe_connect_account_id, a.stripe_connect_status
+       FROM booking_settings bs
+       JOIN accounts a ON a.id = bs.account_id
+       WHERE bs.account_id = $1`,
       [accountId]
     );
     const settings = settingsResult.rows[0];
@@ -100,13 +106,14 @@ router.post('/:accountId/submit', async (req, res) => {
     }
 
     if (depositAmount > 0 && process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.endsWith('_')) {
-      const session = await stripe.checkout.sessions.create({
+      const depositCents = Math.round(depositAmount * 100);
+      const sessionParams = {
         mode: 'payment',
         payment_method_types: ['card'],
         line_items: [{
           price_data: {
             currency: 'usd',
-            unit_amount: Math.round(depositAmount * 100),
+            unit_amount: depositCents,
             product_data: { name: `Deposit — ${service}` },
           },
           quantity: 1,
@@ -115,7 +122,17 @@ router.post('/:accountId/submit', async (req, res) => {
         metadata: { job_id: job.id, account_id: accountId, client_id: client.id },
         success_url: `${process.env.APP_URL || 'http://localhost:5173'}/book-confirm?job=${job.id}`,
         cancel_url:  `${process.env.APP_URL || 'http://localhost:5173'}/book/${accountId}`,
-      });
+      };
+
+      // Route to operator's connected account when verified
+      if (settings?.stripe_connect_account_id && settings?.stripe_connect_status === 'active') {
+        sessionParams.payment_intent_data = {
+          application_fee_amount: Math.round(depositCents * PLATFORM_FEE),
+          transfer_data:          { destination: settings.stripe_connect_account_id },
+        };
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
 
       // Record deposit as pending — SMS confirmation sent by webhook after payment
       await pool.query(

@@ -22,6 +22,7 @@ const billingRouter        = require('./routes/billing');
 const notificationsRouter  = require('./routes/notifications');
 const onboardingRouter     = require('./routes/onboarding');
 const payRouter            = require('./routes/pay');
+const contactRouter        = require('./routes/contact');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
 const authLimiter = rateLimit({
@@ -91,6 +92,7 @@ app.use('/api/billing',        billingRouter);
 app.use('/api/notifications',  notificationsRouter);
 app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/pay',            payRouter);
+app.use('/api/contact',        contactRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

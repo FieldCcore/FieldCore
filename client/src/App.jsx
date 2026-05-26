@@ -53,6 +53,17 @@ import BookConfirm    from './pages/BookConfirm';
 import Landing          from './pages/Landing';
 import PayInvoice       from './pages/PayInvoice';
 import Onboarding      from './pages/Onboarding';
+import About           from './pages/About';
+import Blog            from './pages/Blog';
+import Careers         from './pages/Careers';
+import Contact         from './pages/Contact';
+import Press           from './pages/Press';
+import Faq             from './pages/Faq';
+import Updates         from './pages/Updates';
+import Partners        from './pages/Partners';
+import Terms           from './pages/Terms';
+import Privacy         from './pages/Privacy';
+import SmsTerms        from './pages/SmsTerms';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -126,7 +137,8 @@ function AppShell() {
     );
   }
 
-  if (pathname === '/' || ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm'].includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/')) {
+  const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms'];
+  if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/')) {
     return (
       <Routes>
         <Route path="/"                 element={<Landing />} />
@@ -137,6 +149,17 @@ function AppShell() {
         <Route path="/tablet"           element={<ManagerTablet />} />
         <Route path="/book-confirm"     element={<BookConfirm />} />
         <Route path="/pay/:invoiceId"   element={<PayInvoice />} />
+        <Route path="/about"            element={<About />} />
+        <Route path="/blog"             element={<Blog />} />
+        <Route path="/careers"          element={<Careers />} />
+        <Route path="/contact"          element={<Contact />} />
+        <Route path="/press"            element={<Press />} />
+        <Route path="/faq"              element={<Faq />} />
+        <Route path="/updates"          element={<Updates />} />
+        <Route path="/partners"         element={<Partners />} />
+        <Route path="/terms"            element={<Terms />} />
+        <Route path="/privacy"          element={<Privacy />} />
+        <Route path="/sms-terms"        element={<SmsTerms />} />
       </Routes>
     );
   }
