@@ -38,10 +38,19 @@ export default function ChatWidget() {
     try {
       const res = await axios.post(`${BACKEND}/api/chat`, {
         messages: next.filter(m => m.role === 'user' || m.role === 'assistant'),
-      });
-      setMessages(m => [...m, { role: 'assistant', content: res.data.reply }]);
-    } catch {
-      setMessages(m => [...m, { role: 'assistant', content: 'Sorry, something went wrong. Please email info@getfieldcore.com.' }]);
+      }, { timeout: 20000 });
+      const reply = res.data?.reply;
+      if (reply) {
+        setMessages(m => [...m, { role: 'assistant', content: reply }]);
+      } else {
+        setMessages(m => [...m, { role: 'assistant', content: 'FieldCore is the OS for field service businesses — dispatch, invoicing, no-show protection, and more. Plans from $49/mo. Questions? Email info@getfieldcore.com.' }]);
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+      const fallback = status === 429
+        ? 'You\'ve sent a lot of messages! Please wait a minute and try again.'
+        : 'FieldCore is the OS for field service businesses — dispatch, invoicing, no-show protection, and more. Plans from $49/mo. Email info@getfieldcore.com with any questions.';
+      setMessages(m => [...m, { role: 'assistant', content: fallback }]);
     } finally {
       setLoading(false);
     }

@@ -68,10 +68,22 @@ const app = express();
 
 app.use(helmet());
 
+// Build allowed-origin list from APP_URL (comma-separated for multi-domain setups)
 const corsOrigin = process.env.NODE_ENV === 'production'
-  ? (process.env.APP_URL || false)
+  ? (() => {
+      const allowed = (process.env.APP_URL || '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      if (!allowed.length) return true; // permissive fallback if not configured
+      return (origin, cb) => {
+        if (!origin || allowed.some(a => origin === a || origin.endsWith('.railway.app'))) {
+          cb(null, true);
+        } else {
+          cb(new Error('Not allowed by CORS'));
+        }
+      };
+    })()
   : true;
-app.use(cors({ origin: corsOrigin }));
+app.use(cors({ origin: corsOrigin, credentials: true }));
 
 app.use((req, res, next) => {
   const t0 = Date.now();
