@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import ChatWidget from '../components/ChatWidget';
 import {
   PhoneOff, CreditCard, Phone, Receipt, FolderOpen, Building2,
   Timer, Bell, Map, MapPin, RefreshCw, Car, Droplets, Leaf,
@@ -8,6 +10,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../landing.css';
+
+const BACKEND = import.meta.env.VITE_API_URL || '';
 
 function fmt(t) {
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
@@ -131,8 +135,12 @@ export default function Landing() {
   const nav = useNavigate();
   const [time, setTime] = useState(24 * 60 + 12);
   const [scrolled, setScrolled] = useState(false);
-  const [email, setEmail] = useState('');
+  const [email, setEmail]     = useState('');
+  const [ctaName, setCtaName] = useState('');
   const [ctaDone, setCtaDone] = useState(false);
+  const [ctaBusy, setCtaBusy] = useState(false);
+  const [ctaSpot, setCtaSpot] = useState(null);
+  const [ctaWait, setCtaWait] = useState(false);
 
   useEffect(() => {
     if (!loading && user) nav('/dashboard', { replace: true });
@@ -152,10 +160,20 @@ export default function Landing() {
 
   if (loading) return null;
 
-  function handleCta(e) {
+  async function handleCta(e) {
     e.preventDefault();
-    if (email.trim()) setCtaDone(true);
-    else nav('/login');
+    if (!email.trim()) { nav('/login'); return; }
+    setCtaBusy(true);
+    try {
+      const r = await axios.post(`${BACKEND}/api/beta`, { name: ctaName || email.split('@')[0], email: email.trim() });
+      setCtaSpot(r.data.spot_number);
+      setCtaWait(r.data.status === 'waitlist');
+      setCtaDone(true);
+    } catch {
+      setCtaDone(true); // still show success to avoid info leakage
+    } finally {
+      setCtaBusy(false);
+    }
   }
 
   return (
@@ -631,20 +649,43 @@ export default function Landing() {
             Join the beta. First 100 operators get 3 months free. No credit card required. Cancel anytime.
           </p>
           {ctaDone ? (
-            <p style={{ fontSize: 16, fontWeight: 600, color: '#1E6B3C', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Check size={18} strokeWidth={2.5} /> You're on the list! We'll be in touch soon.</p>
+            <div style={{ textAlign: 'center' }}>
+              {ctaWait ? (
+                <p style={{ fontSize: 16, fontWeight: 600, color: '#D6B58A', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Check size={18} strokeWidth={2.5} /> You're on the waitlist — we'll notify you when a spot opens.
+                </p>
+              ) : (
+                <p style={{ fontSize: 16, fontWeight: 600, color: '#4EC87A', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Check size={18} strokeWidth={2.5} />
+                  {ctaSpot ? `Beta spot #${ctaSpot} secured! Check your email.` : "You're in! Check your email."}
+                </p>
+              )}
+            </div>
           ) : (
-            <form className="cta-form" onSubmit={handleCta}>
-              <input
-                type="email"
-                className="cta-input"
-                placeholder="Your business email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-              />
-              <button type="submit" className="btn btn-sand btn-lg">Start free →</button>
+            <form className="cta-form" onSubmit={handleCta} style={{ flexDirection: 'column', gap: 12, maxWidth: 480, margin: '0 auto' }}>
+              <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                <input
+                  className="cta-input"
+                  placeholder="Your name"
+                  value={ctaName}
+                  onChange={e => setCtaName(e.target.value)}
+                  style={{ flex: '0 0 160px' }}
+                />
+                <input
+                  type="email"
+                  className="cta-input"
+                  placeholder="Business email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button type="submit" className="btn btn-sand btn-lg" disabled={ctaBusy} style={{ whiteSpace: 'nowrap', opacity: ctaBusy ? 0.6 : 1 }}>
+                  {ctaBusy ? '…' : 'Claim spot →'}
+                </button>
+              </div>
             </form>
           )}
-          <p className="cta-note">No credit card required · 3 months free for beta operators · Cancel anytime</p>
+          <p className="cta-note">No credit card required · First 100 get 3 months free · Cancel anytime</p>
         </div>
       </section>
 
@@ -654,6 +695,28 @@ export default function Landing() {
           <div>
             <div className="footer-brand-name">FIELDCORE<sup>™</sup></div>
             <p className="footer-brand-tag">The operating system for service businesses.</p>
+            <div className="footer-social">
+              {/* Instagram */}
+              <a href="https://instagram.com/getfieldcore" target="_blank" rel="noreferrer" aria-label="Instagram">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
+              </a>
+              {/* Facebook */}
+              <a href="https://facebook.com/getfieldcore" target="_blank" rel="noreferrer" aria-label="Facebook">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+              </a>
+              {/* X / Twitter */}
+              <a href="https://x.com/getfieldcore" target="_blank" rel="noreferrer" aria-label="X">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              </a>
+              {/* LinkedIn */}
+              <a href="https://linkedin.com/company/getfieldcore" target="_blank" rel="noreferrer" aria-label="LinkedIn">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/></svg>
+              </a>
+              {/* YouTube */}
+              <a href="https://youtube.com/@getfieldcore" target="_blank" rel="noreferrer" aria-label="YouTube">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="currentColor" stroke="none"/></svg>
+              </a>
+            </div>
           </div>
           <div>
             <div className="footer-col-title">Product</div>
@@ -662,35 +725,41 @@ export default function Landing() {
               <a href="#pricing">Pricing</a>
               <a href="#verticals">Verticals</a>
               <a href="#compare">vs. Competitors</a>
+              <Link to="/updates">Updates</Link>
             </div>
           </div>
           <div>
             <div className="footer-col-title">Company</div>
             <div className="footer-links">
-              <a href="#">About</a>
-              <a href="#">Blog</a>
-              <a href="#">Careers</a>
-              <a href="#">Contact</a>
+              <Link to="/about">About</Link>
+              <Link to="/blog">Blog</Link>
+              <Link to="/careers">Careers</Link>
+              <Link to="/partners">Partners</Link>
+              <Link to="/contact">Contact</Link>
             </div>
           </div>
           <div>
-            <div className="footer-col-title">Legal</div>
+            <div className="footer-col-title">Support</div>
             <div className="footer-links">
-              <a href="#">Terms of Service</a>
-              <a href="#">Privacy Policy</a>
-              <a href="#">SMS Terms</a>
+              <Link to="/faq">FAQ</Link>
+              <Link to="/press">Press</Link>
+              <Link to="/terms">Terms of Service</Link>
+              <Link to="/privacy">Privacy Policy</Link>
+              <Link to="/sms-terms">SMS Terms</Link>
             </div>
           </div>
         </div>
         <div className="footer-bottom">
           <span className="footer-copy">© 2026 FieldCore Inc. · Delaware C-Corp · All rights reserved.</span>
           <div className="footer-legal">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">SMS Terms</a>
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/terms">Terms</Link>
+            <Link to="/sms-terms">SMS Terms</Link>
           </div>
         </div>
       </footer>
+
+      <ChatWidget />
     </div>
   );
 }

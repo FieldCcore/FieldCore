@@ -63,7 +63,9 @@ import Updates         from './pages/Updates';
 import Partners        from './pages/Partners';
 import Terms           from './pages/Terms';
 import Privacy         from './pages/Privacy';
-import SmsTerms        from './pages/SmsTerms';
+import SmsTerms           from './pages/SmsTerms';
+import BusinessSettings   from './pages/BusinessSettings';
+import ClientPortal       from './pages/ClientPortal';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -72,18 +74,19 @@ import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const PAGE_TITLES = {
-  '/dashboard': 'Dashboard',
-  '/dispatch':  'Dispatch',
-  '/jobs':      'Calendar',
-  '/revenue':   'Revenue Analytics',
-  '/deposits':  'Deposits & Payment Protection',
-  '/invoices':  'Invoices',
-  '/clients':   'Client Database',
-  '/messages':  'Business Phone',
-  '/team':      'Team Management',
-  '/fleet':     'Fleet',
-  '/booking':   'Settings & Rules',
-  '/billing':   'Billing & Plan',
+  '/dashboard':          'Dashboard',
+  '/dispatch':           'Dispatch',
+  '/jobs':               'Calendar',
+  '/revenue':            'Revenue Analytics',
+  '/deposits':           'Deposits & Payment Protection',
+  '/invoices':           'Invoices',
+  '/clients':            'Client Database',
+  '/messages':           'Business Phone',
+  '/team':               'Team Management',
+  '/fleet':              'Fleet',
+  '/booking':            'Settings & Rules',
+  '/billing':            'Billing & Plan',
+  '/business-settings':  'Business Settings',
 };
 
 const IcoDash     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
@@ -137,7 +140,7 @@ function AppShell() {
     );
   }
 
-  const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms'];
+  const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
   if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/')) {
     return (
       <Routes>
@@ -160,6 +163,7 @@ function AppShell() {
         <Route path="/terms"            element={<Terms />} />
         <Route path="/privacy"          element={<Privacy />} />
         <Route path="/sms-terms"        element={<SmsTerms />} />
+        <Route path="/client"           element={<ClientPortal />} />
       </Routes>
     );
   }
@@ -239,8 +243,9 @@ function AppShell() {
             <>
               <div className="nav-section">Admin</div>
               {ni('/team',    false, IcoTeam,     'Team',     null)}
-              {ni('/fleet',   false, IcoDispatch, 'Fleet',    null)}
-              {ni('/booking', false, IcoSettings, 'Settings', null)}
+              {ni('/fleet',            false, IcoDispatch, 'Fleet',    null)}
+              {ni('/booking',          false, IcoSettings, 'Settings', null)}
+              {ni('/business-settings',false, IcoSettings, 'Business', null)}
               {user?.role === 'owner' && ni('/billing', false, IcoBilling, 'Billing', null)}
             </>
           )}
@@ -287,7 +292,8 @@ function AppShell() {
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
             <Route path="/fleet"       element={<ProtectedRoute><Fleet /></ProtectedRoute>}          />
             <Route path="/booking"     element={<ProtectedRoute><BookingSettings /></ProtectedRoute>}/>
-            <Route path="/billing"     element={<ProtectedRoute><Billing /></ProtectedRoute>}        />
+            <Route path="/billing"             element={<ProtectedRoute><Billing /></ProtectedRoute>}              />
+            <Route path="/business-settings"  element={<ProtectedRoute><BusinessSettings /></ProtectedRoute>}  />
           </Routes>
         </div>
       </div>

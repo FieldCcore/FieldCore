@@ -23,6 +23,10 @@ const notificationsRouter  = require('./routes/notifications');
 const onboardingRouter     = require('./routes/onboarding');
 const payRouter            = require('./routes/pay');
 const contactRouter        = require('./routes/contact');
+const betaRouter           = require('./routes/beta');
+const businessSettingsRouter = require('./routes/business-settings');
+const chatRouter           = require('./routes/chat');
+const portalRouter         = require('./routes/portal');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
 const authLimiter = rateLimit({
@@ -40,6 +44,15 @@ const bookingReadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please slow down.' },
+});
+
+// Chat: 20 per hour per IP — prevent AI abuse
+const chatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many chat requests. Please try again later.' },
 });
 
 // Booking submit: 5 per 10 min per IP — prevent form spam
@@ -92,7 +105,11 @@ app.use('/api/billing',        billingRouter);
 app.use('/api/notifications',  notificationsRouter);
 app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/pay',            payRouter);
-app.use('/api/contact',        contactRouter);
+app.use('/api/contact',          contactRouter);
+app.use('/api/beta',             betaRouter);
+app.use('/api/business-settings', businessSettingsRouter);
+app.use('/api/chat',             chatLimiter, chatRouter);
+app.use('/api/portal',           portalRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

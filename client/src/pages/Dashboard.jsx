@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import axios from 'axios';
+
+const BACKEND = import.meta.env.VITE_API_URL || '';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -37,14 +40,21 @@ function fmtTime(iso) {
 
 export default function Dashboard() {
   const nav = useNavigate();
-  const [data, setData]     = useState(null);
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [beta, setBeta]       = useState(null);
 
   useEffect(() => {
     api.get('/analytics/dashboard')
       .then(r => setData(r.data))
       .catch(() => setData({}))
       .finally(() => setLoading(false));
+    // Load beta stats (best-effort, non-blocking)
+    const token = localStorage.getItem('fc_token');
+    if (token) {
+      axios.get(`${BACKEND}/api/beta/stats`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => setBeta(r.data)).catch(() => {});
+    }
   }, []);
 
   if (loading) {
@@ -90,6 +100,30 @@ export default function Dashboard() {
           {pendingDeposits.length > 0 && <span className="dash-sc-b ba">Action needed</span>}
         </div>
       </div>
+
+      {beta && (
+        <div style={{ background: '#1C2333', borderRadius: 12, padding: '18px 22px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Beta Spots</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#D6B58A', lineHeight: 1 }}>{beta.active_count}<span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', fontWeight: 400 }}>/{beta.cap}</span></div>
+            </div>
+            <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,.08)' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Spots Left</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: beta.spots_left > 0 ? '#4EC87A' : '#E05555', lineHeight: 1 }}>{beta.spots_left}</div>
+            </div>
+            <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,.08)' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Waitlist</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,.7)', lineHeight: 1 }}>{beta.waitlist_count}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', maxWidth: 200, lineHeight: 1.5 }}>
+            Beta signups — first {beta.cap} operators get 3 months free.
+          </div>
+        </div>
+      )}
 
       <div className="dash-3col">
         {/* Col 1 — Today's Jobs */}

@@ -208,3 +208,83 @@ ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount    NUMERIC(10,2
 ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS payment_link  TEXT;
 ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS sent_at       TIMESTAMPTZ;
 ALTER TABLE job_photos       ADD COLUMN IF NOT EXISTS filename TEXT;
+
+-- Beta signup tracking (100-slot cap, then waitlist)
+CREATE TABLE IF NOT EXISTS beta_signups (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        TEXT NOT NULL,
+  email       TEXT NOT NULL UNIQUE,
+  company     TEXT,
+  spot_number INTEGER,
+  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','waitlist')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_beta_email ON beta_signups(email);
+
+-- Business profile (one row per account)
+CREATE TABLE IF NOT EXISTS business_profiles (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE UNIQUE,
+  business_name TEXT,
+  phone        TEXT,
+  address      TEXT,
+  city         TEXT,
+  state        TEXT,
+  zip          TEXT,
+  website      TEXT,
+  description  TEXT,
+  timezone     TEXT NOT NULL DEFAULT 'America/New_York',
+  vertical     TEXT,
+  logo_url     TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Weekly hours (one row per day per account, day 0=Sun … 6=Sat)
+CREATE TABLE IF NOT EXISTS business_hours (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  open_time   TIME,
+  close_time  TIME,
+  is_closed   BOOLEAN NOT NULL DEFAULT FALSE,
+  UNIQUE (account_id, day_of_week)
+);
+
+-- Holiday / emergency closures
+CREATE TABLE IF NOT EXISTS holiday_closures (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  closure_date DATE NOT NULL,
+  name         TEXT NOT NULL,
+  is_emergency BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_closures_account ON holiday_closures(account_id);
+
+-- Service duration/price templates
+CREATE TABLE IF NOT EXISTS service_templates (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name             TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL DEFAULT 60,
+  buffer_minutes   INTEGER NOT NULL DEFAULT 15,
+  price            NUMERIC(10,2),
+  description      TEXT,
+  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_svc_templates_account ON service_templates(account_id);
+
+-- Client portal magic-link tokens
+CREATE TABLE IF NOT EXISTS client_portal_tokens (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  client_id   UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_portal_tokens_hash ON client_portal_tokens(token_hash);
