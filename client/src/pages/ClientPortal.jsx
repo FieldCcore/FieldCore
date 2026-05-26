@@ -58,7 +58,7 @@ function RequestAccess({ accountId }) {
             <div style={{ fontSize: 28, marginBottom: 12 }}>✉️</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#1C2333', marginBottom: 8 }}>Check your email</div>
             <div style={{ fontSize: 14, color: '#5F667A', lineHeight: 1.65 }}>
-              If your email is on file, we sent a magic link. It expires in 30 minutes.
+              If your email is on file, we sent a magic link. It expires in 48 hours.
             </div>
           </div>
         ) : (
@@ -95,6 +95,7 @@ function Portal({ token }) {
   const [editContact, setEditContact] = useState(false);
   const [contact, setContact]     = useState({ phone:'', address:'' });
   const [savingContact, setSavingContact] = useState(false);
+  const [payingId, setPayingId]   = useState(null);
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -119,6 +120,21 @@ function Portal({ token }) {
       setEditContact(false);
     } catch {}
     finally { setSavingContact(false); }
+  }
+
+  async function payInvoice(invId) {
+    setPayingId(invId);
+    try {
+      const r = await axios.post(`${BACKEND}/api/portal/invoices/${invId}/pay`, {}, { headers });
+      window.location.href = r.data.url;
+    } catch {
+      alert('Could not initiate payment. Please try again.');
+      setPayingId(null);
+    }
+  }
+
+  function openReceipt(invId) {
+    window.open(`${BACKEND}/api/portal/invoices/${invId}/receipt?token=${encodeURIComponent(token)}`, '_blank');
   }
 
   if (loading) return (
@@ -160,8 +176,17 @@ function Portal({ token }) {
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: '#1C2333', minWidth: 70, textAlign: 'right' }}>{fmtAmt(inv.amount)}</div>
                   <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>{inv.status}</span>
-                  {inv.status === 'pending' && inv.payment_link && (
-                    <a href={inv.payment_link} target="_blank" rel="noreferrer" style={{ padding: '8px 16px', background: '#1C2333', color: '#D6B58A', borderRadius: 7, fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Pay →</a>
+                  {inv.status === 'pending' && (
+                    <button onClick={() => payInvoice(inv.id)} disabled={payingId === inv.id}
+                      style={{ padding: '8px 16px', background: '#1C2333', color: '#D6B58A', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: payingId === inv.id ? 'wait' : 'pointer', whiteSpace: 'nowrap', opacity: payingId === inv.id ? 0.6 : 1 }}>
+                      {payingId === inv.id ? '…' : 'Pay →'}
+                    </button>
+                  )}
+                  {inv.status === 'paid' && (
+                    <button onClick={() => openReceipt(inv.id)}
+                      style={{ padding: '8px 16px', background: 'none', color: '#5F667A', border: '1.5px solid #E6E6E6', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Receipt
+                    </button>
                   )}
                 </div>
               );

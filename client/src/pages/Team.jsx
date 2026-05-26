@@ -32,11 +32,14 @@ function MemberModal({ user, onClose, onSaved }) {
   const isEdit = !!user;
   const { accounts } = useAuth();
   const [form,    setForm]    = useState({
-    name:     user?.name     || '',
-    email:    user?.email    || '',
-    phone:    user?.phone    || '',
-    role:     user?.role     || 'tech',
-    password: '',
+    name:              user?.name              || '',
+    email:             user?.email             || '',
+    phone:             user?.phone             || '',
+    role:              user?.role              || 'tech',
+    password:          '',
+    is_contractor:     user?.is_contractor     || false,
+    tax_classification: user?.tax_classification || 'employee',
+    contractor_tax_id: user?.contractor_tax_id || '',
   });
   const [memberships,    setMemberships]    = useState([]);
   const [membershipBusy, setMembershipBusy] = useState(false);
@@ -58,7 +61,12 @@ function MemberModal({ user, onClose, onSaved }) {
     if (!isEdit && !form.password) return setError('Password is required for new members.');
     setLoading(true);
     try {
-      const payload = { name: form.name, email: form.email, phone: form.phone, role: form.role };
+      const payload = {
+        name: form.name, email: form.email, phone: form.phone, role: form.role,
+        is_contractor: form.is_contractor,
+        tax_classification: form.tax_classification,
+        contractor_tax_id: form.is_contractor ? form.contractor_tax_id : null,
+      };
       if (form.password) payload.password = form.password;
       if (isEdit) {
         await api.patch(`/users/${user.id}`, payload);
@@ -137,6 +145,31 @@ function MemberModal({ user, onClose, onSaved }) {
             <label>{isEdit ? 'New Password (leave blank to keep current)' : 'Temporary Password'}</label>
             <input type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min. 8 characters" autoComplete="new-password" />
           </div>
+
+          <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, marginTop: 4 }}>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 12 }}>Tax &amp; Classification</div>
+            <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <input type="checkbox" id="is_contractor" checked={form.is_contractor} onChange={e => set('is_contractor', e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--navy)' }} />
+              <label htmlFor="is_contractor" style={{ margin: 0, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', fontWeight: 500 }}>1099 Independent Contractor</label>
+            </div>
+            {form.is_contractor && (
+              <div className="form-row" style={{ marginTop: 12 }}>
+                <div className="form-group">
+                  <label>Tax Classification</label>
+                  <select value={form.tax_classification} onChange={e => set('tax_classification', e.target.value)}>
+                    <option value="employee">Employee (W-2)</option>
+                    <option value="1099-NEC">1099-NEC (Non-Employee Compensation)</option>
+                    <option value="1099-MISC">1099-MISC (Miscellaneous)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Contractor Tax ID (SSN / EIN)</label>
+                  <input value={form.contractor_tax_id} onChange={e => set('contractor_tax_id', e.target.value)} placeholder="XXX-XX-XXXX" autoComplete="off" />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="form-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit"  className="btn-primary"   disabled={loading}>

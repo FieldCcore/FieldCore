@@ -41,10 +41,11 @@ router.get('/', auth, async (req, res) => {
 router.put('/profile', auth, async (req, res) => {
   const accountId = req.user.accountId;
   const { business_name, phone, address, city, state, zip, website, description, timezone, vertical } = req.body;
+  const { ein } = req.body;
   try {
     await pool.query(`
-      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
       ON CONFLICT (account_id) DO UPDATE SET
         business_name = EXCLUDED.business_name,
         phone         = EXCLUDED.phone,
@@ -56,8 +57,9 @@ router.put('/profile', auth, async (req, res) => {
         description   = EXCLUDED.description,
         timezone      = EXCLUDED.timezone,
         vertical      = EXCLUDED.vertical,
+        ein           = EXCLUDED.ein,
         updated_at    = NOW()
-    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical]);
+    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical, ein || null]);
 
     // Sync name to accounts table if provided
     if (business_name) {

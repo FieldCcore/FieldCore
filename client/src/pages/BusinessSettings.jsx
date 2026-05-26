@@ -137,6 +137,7 @@ export default function BusinessSettings() {
     { key: 'profile',  label: 'Business Profile' },
     { key: 'hours',    label: 'Hours of Operation' },
     { key: 'services', label: 'Service Templates' },
+    { key: 'tax',      label: 'Tax & Legal' },
   ];
 
   return (
@@ -210,6 +211,10 @@ export default function BusinessSettings() {
               <label style={labelStyle}>Business Description (optional)</label>
               <textarea style={{ ...inputStyle, height: 90, resize: 'vertical' }} value={profile.description || ''} onChange={e => setProfile(p => ({...p, description: e.target.value}))} placeholder="Brief description for your booking page…" />
             </div>
+            <div>
+              <label style={labelStyle}>EIN (Employer ID Number)</label>
+              <input style={inputStyle} value={profile.ein || ''} onChange={e => setProfile(p => ({...p, ein: e.target.value}))} placeholder="XX-XXXXXXX" />
+            </div>
           </div>
           <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} />
         </Section>
@@ -269,6 +274,42 @@ export default function BusinessSettings() {
             </div>
           </Section>
         </>
+      )}
+
+      {/* Tax & Legal tab */}
+      {tab === 'tax' && (
+        <Section title="Tax & Legal Settings">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div>
+              <label style={labelStyle}>EIN / Employer ID Number</label>
+              <input style={inputStyle} value={profile.ein || ''} onChange={e => setProfile(p => ({...p, ein: e.target.value}))} placeholder="XX-XXXXXXX" />
+              <div style={{ fontSize: 11, color: '#8A90A2', marginTop: 4 }}>Used for 1099 reporting and payment processing setup.</div>
+            </div>
+            <div>
+              <label style={labelStyle}>Business Legal Name</label>
+              <input style={inputStyle} value={profile.business_name || ''} onChange={e => setProfile(p => ({...p, business_name: e.target.value}))} placeholder="KMC Auto Spa LLC" />
+            </div>
+            <div>
+              <label style={labelStyle}>State of Incorporation</label>
+              <input style={inputStyle} value={profile.state || ''} onChange={e => setProfile(p => ({...p, state: e.target.value}))} placeholder="DE" maxLength={2} />
+            </div>
+          </div>
+
+          <div style={{ background: '#FFF8ED', border: '1.5px solid rgba(214,181,138,.4)', borderRadius: 10, padding: '16px 20px', marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', marginBottom: 6 }}>1099 Contractor Settings</div>
+            <div style={{ fontSize: 13, color: '#5F667A', lineHeight: 1.65 }}>
+              Contractor tax classification is managed per technician in the <strong>Team</strong> section. Mark each technician as Employee or 1099 Contractor and enter their Tax ID for year-end reporting.
+            </div>
+          </div>
+
+          <div style={{ background: '#F8F7F5', border: '1px solid #E6E6E6', borderRadius: 10, padding: '16px 20px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', marginBottom: 6 }}>Platform Fee</div>
+            <div style={{ fontSize: 13, color: '#5F667A', lineHeight: 1.65 }}>
+              FieldCore charges a <strong>1% platform fee</strong> on all payments processed through the platform. This is deducted before funds are transferred to your Stripe account. Standard Stripe fees (2.9% + 30¢) also apply.
+            </div>
+          </div>
+          <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} label="Save tax settings" />
+        </Section>
       )}
 
       {/* Services tab */}

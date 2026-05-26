@@ -9,7 +9,7 @@ const { checkUserLimit } = require('../middleware/planLimits');
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, role, phone, email, created_at
+      `SELECT id, name, role, phone, email, is_contractor, tax_classification, created_at
        FROM users WHERE account_id = $1 ORDER BY name`,
       [req.accountId]
     );
@@ -46,7 +46,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkUserLimit, a
 
 // PATCH /api/users/:id — edit team member (owner/manager only)
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const allowed = ['name', 'email', 'phone', 'role'];
+  const allowed = ['name', 'email', 'phone', 'role', 'is_contractor', 'tax_classification', 'contractor_tax_id'];
   const updates = [];
   const values  = [];
   let i = 1;
@@ -54,7 +54,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
       updates.push(`${f} = $${i++}`);
-      values.push(req.body[f] || null);
+      values.push(req.body[f] ?? null);
     }
   });
 

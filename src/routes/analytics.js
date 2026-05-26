@@ -216,4 +216,84 @@ router.get('/team', requireAuth, requireRole('owner', 'manager'), async (req, re
   }
 });
 
+// GET /api/analytics/consolidated — multi-entity rollup (Scale+ only)
+router.get('/consolidated', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    // Find all account_ids this user has owner/manager access to
+    const memberRes = await pool.query(
+      `SELECT DISTINCT am.account_id, a.name AS account_name, a.plan
+       FROM account_memberships am
+       JOIN accounts a ON a.id = am.account_id
+       WHERE am.user_id = $1
+       UNION
+       SELECT id AS account_id, name AS account_name, plan
+       FROM accounts WHERE id = $2`,
+      [req.userId, req.accountId]
+    );
+
+    const allAccounts = memberRes.rows;
+
+    // Only run consolidated query if user has Scale plan on at least one account
+    const hasScale = allAccounts.some(a => a.plan === 'scale' || a.plan === 'custom');
+    if (!hasScale) {
+      return res.status(403).json({ error: 'Consolidated reporting requires Scale or Custom plan.' });
+    }
+
+    const accountIds = allAccounts.map(a => a.account_id);
+
+    const [mtd, ytd, byEntity, byService] = await Promise.all([
+      pool.query(
+        `SELECT account_id, COALESCE(SUM(amount), 0) AS revenue, COUNT(*) AS jobs
+         FROM jobs WHERE account_id = ANY($1) AND status='complete'
+           AND scheduled_at >= date_trunc('month', CURRENT_DATE)
+         GROUP BY account_id`,
+        [accountIds]
+      ),
+      pool.query(
+        `SELECT account_id, COALESCE(SUM(amount), 0) AS revenue, COUNT(*) AS jobs
+         FROM jobs WHERE account_id = ANY($1) AND status='complete'
+           AND scheduled_at >= date_trunc('year', CURRENT_DATE)
+         GROUP BY account_id`,
+        [accountIds]
+      ),
+      pool.query(
+        `SELECT j.account_id, a.name AS account_name,
+                COALESCE(SUM(j.amount),0) AS mtd_revenue,
+                COUNT(j.id) AS mtd_jobs
+         FROM jobs j
+         JOIN accounts a ON a.id = j.account_id
+         WHERE j.account_id = ANY($1) AND j.status='complete'
+           AND j.scheduled_at >= date_trunc('month', CURRENT_DATE)
+         GROUP BY j.account_id, a.name
+         ORDER BY mtd_revenue DESC`,
+        [accountIds]
+      ),
+      pool.query(
+        `SELECT service_type, COALESCE(SUM(amount),0) AS revenue, COUNT(*) AS jobs
+         FROM jobs WHERE account_id = ANY($1) AND status='complete'
+           AND scheduled_at >= date_trunc('year', CURRENT_DATE)
+         GROUP BY service_type ORDER BY revenue DESC LIMIT 10`,
+        [accountIds]
+      ),
+    ]);
+
+    const entityMap = {};
+    allAccounts.forEach(a => { entityMap[a.account_id] = a.account_name; });
+
+    const totalMtd = mtd.rows.reduce((s, r) => s + parseFloat(r.revenue), 0);
+    const totalYtd = ytd.rows.reduce((s, r) => s + parseFloat(r.revenue), 0);
+
+    res.json({
+      total_mtd:  totalMtd,
+      total_ytd:  totalYtd,
+      entities:   byEntity.rows,
+      by_service: byService.rows,
+      accounts:   allAccounts,
+    });
+  } catch (err) {
+    console.error('[analytics/consolidated]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

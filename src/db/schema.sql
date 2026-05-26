@@ -288,3 +288,25 @@ CREATE TABLE IF NOT EXISTS client_portal_tokens (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_portal_tokens_hash ON client_portal_tokens(token_hash);
+
+-- Partner applications
+CREATE TABLE IF NOT EXISTS partner_applications (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  company     TEXT,
+  website     TEXT,
+  type        TEXT NOT NULL DEFAULT 'Referral Partner',
+  notes       TEXT,
+  status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','reviewing','approved','rejected')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_partner_apps_email ON partner_applications(email);
+
+-- 1099 / contractor settings on users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_contractor       BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_classification  TEXT DEFAULT 'employee';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS contractor_tax_id   TEXT;
+
+-- EIN on business profiles
+ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS ein TEXT;

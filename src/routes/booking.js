@@ -11,17 +11,38 @@ const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT || '1') / 100;
 
 // ── Public routes (no auth — used by the embeddable widget) ──────────────────
 
-// GET /api/booking/:accountId — fetch public booking config
+// GET /api/booking/:accountId — fetch public booking config including hours + service templates
 router.get('/:accountId', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT bs.services, bs.deposit_amount, bs.agreement_text, bs.business_name
-       FROM booking_settings bs
-       WHERE bs.account_id = $1`,
-      [req.params.accountId]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Booking page not found' });
-    res.json(rows[0]);
+    const [settingsRes, hoursRes, closuresRes, servicesRes] = await Promise.all([
+      pool.query(
+        `SELECT bs.services, bs.deposit_amount, bs.deposit_rules, bs.agreement_text, bs.business_name
+         FROM booking_settings bs WHERE bs.account_id = $1`,
+        [req.params.accountId]
+      ),
+      pool.query(
+        `SELECT day_of_week, open_time, close_time, is_closed
+         FROM business_hours WHERE account_id = $1 ORDER BY day_of_week`,
+        [req.params.accountId]
+      ),
+      pool.query(
+        `SELECT closure_date FROM holiday_closures WHERE account_id = $1 AND closure_date >= CURRENT_DATE`,
+        [req.params.accountId]
+      ),
+      pool.query(
+        `SELECT id, name, duration_minutes, buffer_minutes, price, description
+         FROM service_templates WHERE account_id = $1 AND is_active = true ORDER BY sort_order, name`,
+        [req.params.accountId]
+      ),
+    ]);
+
+    if (!settingsRes.rows.length) return res.status(404).json({ error: 'Booking page not found' });
+    res.json({
+      ...settingsRes.rows[0],
+      hours:            hoursRes.rows,
+      holiday_closures: closuresRes.rows.map(r => r.closure_date),
+      service_templates: servicesRes.rows,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -40,6 +61,37 @@ router.post('/:accountId/submit', async (req, res) => {
   }
 
   try {
+    // Validate against business hours if configured
+    if (scheduled_at) {
+      const apptDate = new Date(scheduled_at);
+      const dayOfWeek = apptDate.getDay(); // 0=Sun
+      const apptTime = `${String(apptDate.getHours()).padStart(2,'0')}:${String(apptDate.getMinutes()).padStart(2,'0')}`;
+
+      const [hoursRes, closureRes] = await Promise.all([
+        pool.query('SELECT * FROM business_hours WHERE account_id=$1 AND day_of_week=$2', [accountId, dayOfWeek]),
+        pool.query(
+          'SELECT 1 FROM holiday_closures WHERE account_id=$1 AND closure_date=$2',
+          [accountId, apptDate.toISOString().slice(0,10)]
+        ),
+      ]);
+
+      if (closureRes.rows.length) {
+        return res.status(400).json({ error: 'This date is not available — the business is closed.' });
+      }
+
+      if (hoursRes.rows.length) {
+        const dayHours = hoursRes.rows[0];
+        if (dayHours.is_closed) {
+          return res.status(400).json({ error: 'The business is closed on this day. Please choose another date.' });
+        }
+        if (dayHours.open_time && dayHours.close_time) {
+          if (apptTime < dayHours.open_time || apptTime > dayHours.close_time) {
+            return res.status(400).json({ error: `Appointments are available ${dayHours.open_time} – ${dayHours.close_time} on this day.` });
+          }
+        }
+      }
+    }
+
     // Upsert client by phone or email
     let client;
     if (phone || email) {
