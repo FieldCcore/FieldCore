@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
-const BACKEND = import.meta.env.VITE_API_URL || '';
-
 const SUGGESTED = [
   'How much does FieldCore cost?',
   'What is the no-show clock?',
-  'How do payments work?',
-  'Does it work for HVAC?',
+  'FieldCore vs Jobber — which is better?',
+  'How do I get 3 months free?',
 ];
 
 export default function ChatWidget() {
@@ -36,20 +34,20 @@ export default function ChatWidget() {
     setMessages(next);
     setLoading(true);
     try {
-      const res = await axios.post(`${BACKEND}/api/chat`, {
+      const res = await axios.post('/api/chat', {
         messages: next.filter(m => m.role === 'user' || m.role === 'assistant'),
       }, { timeout: 20000 });
       const reply = res.data?.reply;
       if (reply) {
         setMessages(m => [...m, { role: 'assistant', content: reply }]);
       } else {
-        setMessages(m => [...m, { role: 'assistant', content: 'FieldCore is the OS for field service businesses — dispatch, invoicing, no-show protection, and more. Plans from $49/mo. Questions? Email info@getfieldcore.com.' }]);
+        setMessages(m => [...m, { role: 'assistant', content: 'FieldCore starts at $49/mo for solo operators — no per-user fees, no setup fees, 14-day free trial. What would you like to know about features or pricing?' }]);
       }
     } catch (err) {
       const status = err?.response?.status;
       const fallback = status === 429
-        ? 'You\'ve sent a lot of messages! Please wait a minute and try again.'
-        : 'FieldCore is the OS for field service businesses — dispatch, invoicing, no-show protection, and more. Plans from $49/mo. Email info@getfieldcore.com with any questions.';
+        ? 'You\'ve sent a lot of messages! Please wait a moment and try again.'
+        : 'FieldCore starts at $49/mo — no per-user fees, 14-day free trial. Ask me anything about features, pricing, or how it compares to Jobber or Housecall Pro.';
       setMessages(m => [...m, { role: 'assistant', content: fallback }]);
     } finally {
       setLoading(false);
