@@ -3,9 +3,7 @@
 
 const RAILWAY = 'https://fieldcore-production-ee0d.up.railway.app';
 
-export const config = { api: { bodyParser: false } };
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const path = req.url; // e.g. /api/auth/login
 
   // Forward raw body
@@ -41,4 +39,6 @@ export default async function handler(req, res) {
   } catch (err) {
     res.status(502).json({ error: 'Proxy error: ' + err.message });
   }
-}
+};
+
+module.exports.config = { api: { bodyParser: false } };
