@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, addMinutes } from 'date-fns';
 import api from '../api';
 
 export default function JobForm({ job, defaultStart, onSave, onCancel }) {
-  const [clients, setClients] = useState([]);
-  const [techs, setTechs] = useState([]);
+  const [clients, setClients]       = useState([]);
+  const [techs, setTechs]           = useState([]);
+  const [templates, setTemplates]   = useState([]);
   const [form, setForm] = useState({
     client_id:    job?.client_id    || '',
     tech_id:      job?.tech_id      || '',
@@ -24,9 +25,32 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
   useEffect(() => {
     api.get('/clients').then(r => setClients(r.data));
     api.get('/users').then(r => setTechs(r.data.filter(u => u.role === 'tech' || u.role === 'owner')));
+    api.get('/business-settings').then(r => {
+      if (r.data?.services) setTemplates(r.data.services.filter(s => s.is_active !== false));
+    }).catch(() => {});
   }, []);
 
   const set = field => e => setForm(prev => ({ ...prev, [field]: e.target.value }));
+
+  function applyTemplate(templateId) {
+    if (!templateId) return;
+    const tpl = templates.find(t => String(t.id) === String(templateId));
+    if (!tpl) return;
+    setForm(prev => {
+      const updates = { service_type: tpl.name };
+      if (tpl.price != null) updates.amount = String(tpl.price);
+      // Auto-set end time if scheduled_at is set (stored as duration hint)
+      if (prev.scheduled_at && tpl.duration_minutes) {
+        const start = new Date(prev.scheduled_at);
+        if (!isNaN(start.getTime())) {
+          const end = addMinutes(start, tpl.duration_minutes);
+          updates._duration_minutes = tpl.duration_minutes;
+          updates._end_at = format(end, "yyyy-MM-dd'T'HH:mm");
+        }
+      }
+      return { ...prev, ...updates };
+    });
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -36,6 +60,8 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
     setError('');
     try {
       const payload = { ...form, amount: form.amount || null, tech_id: form.tech_id || null };
+      delete payload._duration_minutes;
+      delete payload._end_at;
       const res = job
         ? await api.patch(`/jobs/${job.id}`, payload)
         : await api.post('/jobs', payload);
@@ -68,6 +94,20 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
         </div>
       </div>
 
+      {templates.length > 0 && (
+        <div className="form-group">
+          <label>Service Template</label>
+          <select onChange={e => applyTemplate(e.target.value)} defaultValue="">
+            <option value="">— pick a template to auto-fill —</option>
+            {templates.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.name}{t.duration_minutes ? ` (${t.duration_minutes} min)` : ''}{t.price != null ? ` · $${parseFloat(t.price).toFixed(2)}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="form-row">
         <div className="form-group">
           <label>Service Type *</label>
@@ -94,6 +134,12 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
           </select>
         </div>
       </div>
+
+      {form._end_at && (
+        <p style={{ fontSize: 12, color: '#8A90A2', marginTop: -8, marginBottom: 12 }}>
+          Estimated end: {form._end_at.replace('T', ' at ').replace(/:\d\d$/, '')}
+        </p>
+      )}
 
       <div className="form-group">
         <label>Notes</label>

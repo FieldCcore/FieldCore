@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "nodemailer": "^6.9.16",
     "pg": "^8.20.0",
+    "stripe": "^17.7.0",
     "@stripe/react-stripe-js": "^6.3.0",
     "@stripe/stripe-js": "^9.5.0",
     "@vitejs/plugin-react": "^6.0.2",
