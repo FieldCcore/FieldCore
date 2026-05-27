@@ -25,7 +25,7 @@ export function verifyAuth(req) {
     if (parts.length !== 3) return null;
 
     const [headerB64, payloadB64, sigB64] = parts;
-    const secret = process.env.JWT_SECRET;
+    const secret = (process.env.JWT_SECRET || '').trim();
     if (!secret) return null;
 
     const expected = crypto
