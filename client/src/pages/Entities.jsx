@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Users, ArrowRightLeft, Plus, X, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -75,9 +76,13 @@ function TypeBadge({ type }) {
 export default function Entities() {
   const { user, switchAccount } = useAuth();
   const isScale = user?.plan === 'scale';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const connectSuccess = searchParams.get('connect') === 'success';
 
   const [entities,     setEntities]     = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [connecting,   setConnecting]   = useState(null);
+  const [dashLoading,  setDashLoading]  = useState(null);
   const [showForm,     setShowForm]     = useState(false);
   const [editTarget,   setEditTarget]   = useState(null); // entity being edited
   const [form,         setForm]         = useState({ ...EMPTY_FORM });
@@ -170,6 +175,29 @@ export default function Entities() {
     catch { setSwitching(null); }
   }
 
+  async function handleConnect(entityId) {
+    setConnecting(entityId);
+    try {
+      const { data } = await api.post('/connect/onboard', { entity_id: entityId });
+      window.location.href = data.url;
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not start Stripe Connect. Please try again.');
+      setConnecting(null);
+    }
+  }
+
+  async function handleDashboard(entityId) {
+    setDashLoading(entityId);
+    try {
+      const { data } = await api.get(`/connect/dashboard/${entityId}`);
+      window.open(data.url, '_blank', 'noopener');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not open Stripe dashboard.');
+    } finally {
+      setDashLoading(null);
+    }
+  }
+
   async function loadMembers(entityId) {
     if (members[entityId]) return;
     setMembLoading(p => ({ ...p, [entityId]: true }));
@@ -246,6 +274,20 @@ export default function Entities() {
           </button>
         )}
       </div>
+
+      {/* Stripe Connect success banner */}
+      {connectSuccess && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CheckCircle size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d' }}>Stripe Connect submitted</div>
+              <div style={{ fontSize: 12, color: '#166534', marginTop: 1 }}>Stripe is reviewing your account. Payouts will activate automatically once verified — usually within minutes.</div>
+            </div>
+          </div>
+          <button onClick={() => setSearchParams({})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>×</button>
+        </div>
+      )}
 
       {/* Scale plan gate */}
       {!isScale && (
@@ -389,10 +431,37 @@ export default function Entities() {
                       <span style={{ fontSize: 12, color: 'var(--steel)' }}>Connect a bank account to enable payouts for this entity.</span>
                       <button
                         className="btn-secondary"
-                        style={{ fontSize: 11, padding: '5px 12px' }}
-                        onClick={() => alert('Stripe Connect setup coming soon — contact support@getfieldcore.com to get started.')}
+                        style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+                        onClick={() => handleConnect(entity.id)}
+                        disabled={connecting === entity.id}
                       >
-                        Connect Stripe →
+                        {connecting === entity.id ? 'Redirecting…' : 'Connect Stripe →'}
+                      </button>
+                    </div>
+                  )}
+                  {entity.stripe_connect_status === 'pending' && (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#d97706' }}>Stripe is reviewing this account — payouts will activate automatically once verified.</span>
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+                        onClick={() => handleConnect(entity.id)}
+                        disabled={connecting === entity.id}
+                      >
+                        {connecting === entity.id ? 'Redirecting…' : 'Resume Setup →'}
+                      </button>
+                    </div>
+                  )}
+                  {entity.stripe_connect_status === 'active' && (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>Payouts active — deposits and payments route to this entity's bank account.</span>
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+                        onClick={() => handleDashboard(entity.id)}
+                        disabled={dashLoading === entity.id}
+                      >
+                        <ExternalLink size={11} />{dashLoading === entity.id ? 'Opening…' : 'Stripe Dashboard'}
                       </button>
                     </div>
                   )}
