@@ -127,6 +127,13 @@ function AppShell() {
     return () => document.removeEventListener('mousedown', close);
   }, [entityOpen]);
 
+  const [isPhone, setIsPhone] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsPhone(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // Onboarding gate — owners who haven't completed setup
   if (pathname === '/onboarding') {
     return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;
@@ -173,6 +180,25 @@ function AppShell() {
 
   const isClientProfile = pathname.startsWith('/clients/');
   const pageTitle = isClientProfile ? 'Client Profile' : (PAGE_TITLES[pathname] || 'FieldCore');
+
+  if (isPhone) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#1C2333', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px', textAlign: 'center', gap: 20 }}>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, letterSpacing: '.12em', fontSize: 15, color: '#fff' }}>
+          FIELD<span style={{ color: '#D6B58A' }}>CORE</span><sup style={{ fontSize: 8, color: '#D6B58A', verticalAlign: 'super' }}>™</sup>
+        </div>
+        <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 28, color: '#fff', fontWeight: 400, lineHeight: 1.2 }}>
+          Better on a<br />bigger screen
+        </div>
+        <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 14, lineHeight: 1.7, maxWidth: 270 }}>
+          FieldCore is built for tablets and desktops. Open this page on a tablet, laptop, or desktop for the full experience.
+        </p>
+        <a href="/" style={{ marginTop: 4, padding: '12px 30px', background: '#D6B58A', color: '#1C2333', borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: 'none', fontFamily: 'Inter, sans-serif' }}>
+          Back to Homepage
+        </a>
+      </div>
+    );
+  }
 
   const ni = (to, end, Icon, label, badge) => (
     <NavLink
