@@ -111,7 +111,7 @@ export default async function handler(req, res) {
   if (!clean.length || clean[clean.length - 1].role !== 'user')
     return res.status(400).json({ error: 'Last message must be from user' });
 
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key || key.includes('placeholder')) {
     return res.json({ reply: smartFallback(clean) });
   }

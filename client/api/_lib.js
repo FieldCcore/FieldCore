@@ -7,7 +7,7 @@ let pool;
 export function getPool() {
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: (process.env.DATABASE_URL || '').trim(),
       ssl: { rejectUnauthorized: false },
       max: 2,
     });

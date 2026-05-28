@@ -1,12 +1,10 @@
-// Vercel serverless proxy — forwards all /api/* requests to Railway backend
-// This eliminates CORS entirely since the browser only talks to Vercel
-
 const RAILWAY = 'https://fieldcore-production-ee0d.up.railway.app';
 
-module.exports = async function handler(req, res) {
-  const path = req.url; // e.g. /api/auth/login
+export const config = { api: { bodyParser: false } };
 
-  // Forward raw body
+export default async function handler(req, res) {
+  const path = req.url;
+
   const bodyChunks = [];
   await new Promise((resolve, reject) => {
     req.on('data', chunk => bodyChunks.push(chunk));
@@ -15,7 +13,6 @@ module.exports = async function handler(req, res) {
   });
   const body = bodyChunks.length ? Buffer.concat(bodyChunks) : undefined;
 
-  // Strip hop-by-hop headers
   const forwardHeaders = { ...req.headers };
   delete forwardHeaders['host'];
   delete forwardHeaders['connection'];
@@ -28,7 +25,6 @@ module.exports = async function handler(req, res) {
       body: body?.length ? body : undefined,
     });
 
-    // Forward response headers
     upstream.headers.forEach((v, k) => {
       if (k.toLowerCase() !== 'transfer-encoding') res.setHeader(k, v);
     });
@@ -39,6 +35,4 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     res.status(502).json({ error: 'Proxy error: ' + err.message });
   }
-};
-
-module.exports.config = { api: { bodyParser: false } };
+}
