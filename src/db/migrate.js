@@ -77,6 +77,18 @@ const MIGRATIONS = [
      cancelled_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
    )`,
 
+  // Fleet vehicles
+  `CREATE TABLE IF NOT EXISTS fleet_vehicles (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     tech_id    UUID REFERENCES users(id),
+     make       TEXT,
+     model      TEXT,
+     year       INTEGER,
+     plate      TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+
   // Tax columns
   `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS tax_rate   NUMERIC(5,4) DEFAULT 0`,
   `ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) DEFAULT 0`,
