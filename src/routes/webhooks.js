@@ -68,11 +68,23 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     if (jobId) {
       const paymentIntentId = session.payment_intent || null;
 
+      // Fetch the charge ID from the payment intent so refunds can be issued later
+      let chargeId = null;
+      if (paymentIntentId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+          chargeId = pi.latest_charge || null;
+        } catch (e) {
+          console.error('[Deposit webhook] Could not retrieve charge ID:', e.message);
+        }
+      }
+
       await pool.query(
         `UPDATE deposits
-         SET status = 'collected', collected_at = NOW(), stripe_payment_intent_id = $1
-         WHERE job_id = $2 AND status = 'pending'`,
-        [paymentIntentId, jobId]
+         SET status = 'collected', collected_at = NOW(),
+             stripe_payment_intent_id = $1, stripe_charge_id = $2
+         WHERE job_id = $3 AND status = 'pending'`,
+        [paymentIntentId, chargeId, jobId]
       );
 
       // Send confirmation SMS now that deposit is confirmed
