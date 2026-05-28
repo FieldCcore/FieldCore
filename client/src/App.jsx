@@ -109,6 +109,9 @@ function AppShell() {
   const [dateStr,    setDateStr]    = useState('');
   const [callerOpen, setCallerOpen] = useState(false);
   const [entityOpen, setEntityOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   useEffect(() => {
     const d = new Date();
@@ -186,7 +189,7 @@ function AppShell() {
 
   return (
     <div className="app">
-      <aside className="sb">
+      <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
         <div className="sb-logo" style={{ position: 'relative' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
           {(() => {
@@ -269,6 +272,9 @@ function AppShell() {
 
       <div className="main">
         <div className="topbar">
+          <button className="tb-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
           <div className="tb-title">{pageTitle}</div>
           <div className="tb-date">{dateStr}</div>
           <NotificationBell />
@@ -296,8 +302,27 @@ function AppShell() {
             <Route path="/business-settings"  element={<ProtectedRoute><BusinessSettings /></ProtectedRoute>}  />
           </Routes>
         </div>
+
+        <nav className="mobile-bottom-nav">
+          <NavLink to="/dashboard" end className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+            <IcoDash /><span>Home</span>
+          </NavLink>
+          <NavLink to="/dispatch" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+            <IcoDispatch /><span>Dispatch</span>
+          </NavLink>
+          <NavLink to="/jobs" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+            <IcoCalendar /><span>Calendar</span>
+          </NavLink>
+          <NavLink to="/clients" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+            <IcoClients /><span>Clients</span>
+          </NavLink>
+          <button className="mbn-item" onClick={() => setSidebarOpen(o => !o)}>
+            <IcoSettings /><span>More</span>
+          </button>
+        </nav>
       </div>
 
+      {sidebarOpen && <div className="sb-overlay" onClick={() => setSidebarOpen(false)} />}
       {callerOpen && <CallerID onClose={() => setCallerOpen(false)} />}
     </div>
   );

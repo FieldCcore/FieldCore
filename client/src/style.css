@@ -1311,3 +1311,134 @@ body {
   font-size: 13px;
   margin-bottom: 18px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — App Shell & Dashboard (768px / 390px)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Desktop: hide mobile-only chrome */
+@media (min-width: 769px) {
+  .tb-hamburger      { display: none; }
+  .mobile-bottom-nav { display: none; }
+}
+
+@media (max-width: 768px) {
+  /* ── Sidebar: fixed overlay, slides in from left ── */
+  .sb {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 260px;
+    height: 100%;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+  }
+  .sb.sb-open { transform: translateX(0); }
+
+  /* ── Backdrop overlay ── */
+  .sb-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.48);
+    z-index: 299;
+  }
+
+  /* ── Main: full width (sidebar is out of flow) ── */
+  .main { width: 100%; min-width: 0; }
+
+  /* ── Topbar: compact ── */
+  .topbar    { padding: 0 12px; gap: 8px; height: 50px; }
+  .tb-title  { font-size: 15px; }
+  .tb-date   { display: none; }
+  .tb-ghost  { display: none; }
+  .tb-btn.tb-primary { font-size: 11px; padding: 6px 10px; gap: 4px; }
+
+  /* ── Hamburger (mobile-only) ── */
+  .tb-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--offwhite);
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    order: -1;
+  }
+  .tb-hamburger svg { width: 18px; height: 18px; stroke: var(--navy); display: block; }
+
+  /* ── Content ── */
+  .content { padding: 12px; padding-bottom: 76px; }
+
+  /* ── NoShow strip: wrap on narrow screens ── */
+  .ns-strip { padding: 6px 12px; flex-wrap: wrap; gap: 6px; }
+  .ns-txt   { font-size: 11px; }
+  .ns-time  { font-size: 12px; }
+  .ns-btn   { font-size: 11px; padding: 3px 9px; }
+
+  /* ── Dashboard stat grid → 2 columns ── */
+  .dash-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .dash-sc-v { font-size: 20px; }
+
+  /* ── Dashboard 3-col → single column ── */
+  .dash-3col { grid-template-columns: 1fr; gap: 12px; }
+
+  /* ── Page headers ── */
+  .page-header { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .page-header h1 { font-size: 20px; }
+
+  /* ── Deposit table: tighter columns ── */
+  .dash-dep-hdr,
+  .dash-dep-row { grid-template-columns: 1fr 48px 64px 54px; font-size: 11px; }
+
+  /* ── Bottom navigation bar ── */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 62px;
+    background: var(--white);
+    border-top: 1px solid var(--lightgray);
+    z-index: 200;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.06);
+  }
+  .mbn-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--steel);
+    text-decoration: none;
+    font-size: 9.5px;
+    font-weight: 500;
+    transition: color 0.15s;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    padding: 6px 0 4px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mbn-item svg        { width: 20px; height: 20px; opacity: 0.5; }
+  .mbn-item span       { line-height: 1; }
+  .mbn-item.active     { color: var(--navy); }
+  .mbn-item.active svg { opacity: 1; }
+}
+
+/* ── 390px (iPhone 15) fine-tuning ── */
+@media (max-width: 390px) {
+  .topbar           { padding: 0 10px; gap: 6px; }
+  .tb-btn.tb-primary { font-size: 10.5px; padding: 5px 8px; }
+  .content          { padding: 10px; padding-bottom: 76px; }
+  .dash-sc-v        { font-size: 18px; }
+}
