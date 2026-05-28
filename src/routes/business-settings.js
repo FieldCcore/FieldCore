@@ -1,11 +1,11 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const auth    = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 
 // GET /api/business-settings — full settings bundle
-router.get('/', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.get('/', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   try {
     const [profileRes, hoursRes, closuresRes, servicesRes] = await Promise.all([
       pool.query('SELECT * FROM business_profiles WHERE account_id = $1', [accountId]),
@@ -38,8 +38,8 @@ router.get('/', auth, async (req, res) => {
 });
 
 // PUT /api/business-settings/profile
-router.put('/profile', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.put('/profile', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   const { business_name, phone, address, city, state, zip, website, description, timezone, vertical } = req.body;
   const { ein } = req.body;
   try {
@@ -74,8 +74,8 @@ router.put('/profile', auth, async (req, res) => {
 });
 
 // PUT /api/business-settings/hours — expects array of { day_of_week, open_time, close_time, is_closed }
-router.put('/hours', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.put('/hours', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   const { hours } = req.body;
   if (!Array.isArray(hours)) return res.status(400).json({ error: 'hours must be an array.' });
 
@@ -98,8 +98,8 @@ router.put('/hours', auth, async (req, res) => {
 });
 
 // POST /api/business-settings/closures
-router.post('/closures', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.post('/closures', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   const { closure_date, name, is_emergency } = req.body;
   if (!closure_date || !name) return res.status(400).json({ error: 'date and name required.' });
   try {
@@ -115,8 +115,8 @@ router.post('/closures', auth, async (req, res) => {
 });
 
 // DELETE /api/business-settings/closures/:id
-router.delete('/closures/:id', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.delete('/closures/:id', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   try {
     await pool.query('DELETE FROM holiday_closures WHERE id = $1 AND account_id = $2', [req.params.id, accountId]);
     res.json({ ok: true });
@@ -126,8 +126,8 @@ router.delete('/closures/:id', auth, async (req, res) => {
 });
 
 // POST /api/business-settings/services
-router.post('/services', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.post('/services', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   const { name, duration_minutes, buffer_minutes, price, description } = req.body;
   if (!name) return res.status(400).json({ error: 'name required.' });
   try {
@@ -143,8 +143,8 @@ router.post('/services', auth, async (req, res) => {
 });
 
 // PUT /api/business-settings/services/:id
-router.put('/services/:id', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.put('/services/:id', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   const { name, duration_minutes, buffer_minutes, price, description, is_active } = req.body;
   try {
     const r = await pool.query(`
@@ -161,8 +161,8 @@ router.put('/services/:id', auth, async (req, res) => {
 });
 
 // DELETE /api/business-settings/services/:id
-router.delete('/services/:id', auth, async (req, res) => {
-  const accountId = req.user.accountId;
+router.delete('/services/:id', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
   try {
     await pool.query('DELETE FROM service_templates WHERE id=$1 AND account_id=$2', [req.params.id, accountId]);
     res.json({ ok: true });
