@@ -66,6 +66,8 @@ const bookingSubmitLimiter = rateLimit({
 
 const app = express();
 
+app.set('trust proxy', 1); // Railway / Vercel sit behind a reverse proxy
+
 app.use(helmet());
 
 app.use(cors({ origin: true, credentials: true }));
