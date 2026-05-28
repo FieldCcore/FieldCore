@@ -45,4 +45,13 @@ function etaBody(clientName, minutes) {
   return `Hi ${clientName}, your technician is on the way and will arrive in approximately ${minutes} minutes. – FieldCore`;
 }
 
-module.exports = { send, confirmationBody, reminderBody, etaBody, getClient };
+function noShowClientBody(clientName, gracePeriod, depositAmount) {
+  return `Hi ${clientName}, your technician has waited ${gracePeriod} minutes past your scheduled appointment time. Per our no-show policy, your deposit of $${parseFloat(depositAmount).toFixed(2)} has been retained. Please contact us to reschedule.`;
+}
+
+function noShowTechBody(clientName, address, depositAmount) {
+  const addr = address ? ` at ${address}` : '';
+  return `No-show confirmed for ${clientName}${addr}. Deposit of $${parseFloat(depositAmount).toFixed(2)} has been retained. You are now released. Please proceed to your next job or stand by.`;
+}
+
+module.exports = { send, confirmationBody, reminderBody, etaBody, noShowClientBody, noShowTechBody, getClient };

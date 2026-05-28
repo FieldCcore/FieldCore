@@ -59,6 +59,42 @@ export default function BusinessSettings() {
   const [newSvc, setNewSvc] = useState({ name:'', duration_minutes:60, buffer_minutes:15, price:'', description:'' });
   const [editingSvc, setEditingSvc] = useState(null);
 
+  // No-show settings
+  const [nsSettings, setNsSettings] = useState({
+    grace_period_minutes: 15,
+    require_arrival_photo: false,
+    auto_declare: true,
+    client_sms_template: '',
+    tech_sms_template: '',
+  });
+
+  useEffect(() => {
+    api.get('/api/no-show/settings').then(r => {
+      const s = r.data;
+      setNsSettings({
+        grace_period_minutes:  s.grace_period_minutes ?? 15,
+        require_arrival_photo: !!s.require_arrival_photo,
+        auto_declare:          s.auto_declare !== false,
+        client_sms_template:   s.client_sms_template || '',
+        tech_sms_template:     s.tech_sms_template || '',
+      });
+    }).catch(() => {});
+  }, []);
+
+  async function saveNsSettings() {
+    setSaving(true);
+    try {
+      await api.put('/api/no-show/settings', {
+        ...nsSettings,
+        grace_period_minutes: parseInt(nsSettings.grace_period_minutes) || 15,
+        client_sms_template: nsSettings.client_sms_template || null,
+        tech_sms_template:   nsSettings.tech_sms_template || null,
+      });
+      flashSaved('noshow');
+    } catch { setError('Failed to save no-show settings.'); }
+    finally { setSaving(false); }
+  }
+
   useEffect(() => {
     api.get('/api/business-settings').then(r => {
       const d = r.data;
@@ -138,6 +174,7 @@ export default function BusinessSettings() {
     { key: 'hours',    label: 'Hours of Operation' },
     { key: 'services', label: 'Service Templates' },
     { key: 'tax',      label: 'Tax & Legal' },
+    { key: 'noshow',   label: 'No-Show Clock' },
   ];
 
   return (
@@ -383,6 +420,59 @@ export default function BusinessSettings() {
             </div>
             <button onClick={addService} style={{ padding: '9px 20px', background: '#1C2333', color: '#D6B58A', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Add service</button>
           </div>
+        </Section>
+      )}
+
+      {/* No-show settings tab */}
+      {tab === 'noshow' && (
+        <Section title="No-Show Clock Settings">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div>
+              <label style={labelStyle}>Grace Period</label>
+              <select style={inputStyle} value={nsSettings.grace_period_minutes}
+                onChange={e => setNsSettings(s => ({ ...s, grace_period_minutes: parseInt(e.target.value) }))}>
+                {[5, 10, 15, 20, 30].map(m => <option key={m} value={m}>{m} minutes</option>)}
+              </select>
+              <div style={{ fontSize: 12, color: '#8A90A2', marginTop: 5 }}>How long the tech waits before a no-show can be declared.</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 14, color: '#1C2333' }}>
+                <input type="checkbox" checked={nsSettings.auto_declare}
+                  onChange={e => setNsSettings(s => ({ ...s, auto_declare: e.target.checked }))} />
+                Auto-declare no-show when timer expires
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 14, color: '#1C2333' }}>
+                <input type="checkbox" checked={nsSettings.require_arrival_photo}
+                  onChange={e => setNsSettings(s => ({ ...s, require_arrival_photo: e.target.checked }))} />
+                Require photo proof of arrival to start clock
+              </label>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={labelStyle}>Custom Client SMS Template</label>
+            <textarea
+              style={{ ...inputStyle, height: 80, resize: 'vertical' }}
+              value={nsSettings.client_sms_template}
+              onChange={e => setNsSettings(s => ({ ...s, client_sms_template: e.target.value }))}
+              placeholder="Leave blank to use default. Use {minutes} and {amount} as placeholders."
+            />
+            <div style={{ fontSize: 11, color: '#8A90A2', marginTop: 4 }}>Variables: <code>{'{minutes}'}</code> = grace period, <code>{'{amount}'}</code> = deposit amount</div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label style={labelStyle}>Custom Technician SMS Template</label>
+            <textarea
+              style={{ ...inputStyle, height: 80, resize: 'vertical' }}
+              value={nsSettings.tech_sms_template}
+              onChange={e => setNsSettings(s => ({ ...s, tech_sms_template: e.target.value }))}
+              placeholder="Leave blank to use default. Use {client_name}, {address}, {amount} as placeholders."
+            />
+            <div style={{ fontSize: 11, color: '#8A90A2', marginTop: 4 }}>Variables: <code>{'{client_name}'}</code>, <code>{'{address}'}</code>, <code>{'{amount}'}</code></div>
+          </div>
+
+          <SaveBar saving={saving} saved={saved === 'noshow'} onSave={saveNsSettings} label="Save No-Show Settings" />
         </Section>
       )}
     </div>

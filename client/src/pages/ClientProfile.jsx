@@ -21,6 +21,8 @@ export default function ClientProfile() {
   const [smsBody, setSmsBody] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsError, setSmsError] = useState('');
+  const [noShows, setNoShows] = useState([]);
+  const [profileTab, setProfileTab] = useState('overview');
 
   useEffect(() => {
     api.get(`/clients/${id}`)
@@ -28,6 +30,8 @@ export default function ClientProfile() {
       .finally(() => setLoading(false));
     api.get(`/sms/messages?client_id=${id}`)
       .then(r => setMessages(r.data.slice(0, 5)));
+    api.get(`/no-show/records?client_id=${id}`)
+      .then(r => setNoShows(r.data)).catch(() => {});
   }, [id]);
 
   async function handleSms(e) {
@@ -170,6 +174,40 @@ export default function ClientProfile() {
         )}
         {!client?.phone && <p className="muted">Add a phone number to this client to enable SMS.</p>}
       </div>
+
+      {/* No-Show History */}
+      {noShows.length > 0 && (
+        <div className="section" style={{ marginTop: 32 }}>
+          <h2 style={{ color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            No-Show History
+            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: 'rgba(198,40,40,.08)', color: 'var(--red)', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+              {noShows.length} record{noShows.length !== 1 ? 's' : ''}
+            </span>
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {noShows.map(ns => (
+              <div key={ns.id} style={{ background: 'white', border: '1px solid var(--lightgray)', borderLeft: '3px solid var(--red)', borderRadius: 8, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>{ns.service_type}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>Scheduled: {ns.scheduled_at ? new Date(ns.scheduled_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>Declared: {new Date(ns.declared_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>Tech: {ns.tech_name || 'Unassigned'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--red)' }}>${parseFloat(ns.deposit_retained || 0).toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Deposit Retained</div>
+                    <a href={`/api/no-show/jobs/${ns.job_id}/pdf`} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12, color: 'var(--navy)', textDecoration: 'underline', display: 'inline-block', marginTop: 6 }}>
+                      Download PDF
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ const betaRouter           = require('./routes/beta');
 const businessSettingsRouter = require('./routes/business-settings');
 const chatRouter           = require('./routes/chat');
 const portalRouter         = require('./routes/portal');
+const noShowRouter         = require('./routes/noshow');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
 const authLimiter = rateLimit({
@@ -109,6 +110,7 @@ app.use('/api/beta',             betaRouter);
 app.use('/api/business-settings', businessSettingsRouter);
 app.use('/api/chat',             chatLimiter, chatRouter);
 app.use('/api/portal',           portalRouter);
+app.use('/api/no-show',          noShowRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

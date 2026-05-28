@@ -20,15 +20,31 @@ function monthLabel(iso) {
 }
 
 export default function Revenue() {
-  const [data,    setData]    = useState(null);
-  const [hovered, setHovered] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data,       setData]       = useState(null);
+  const [hovered,    setHovered]    = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [tab,        setTab]        = useState('revenue');
+  const [nsData,     setNsData]     = useState([]);
+  const [nsLoading,  setNsLoading]  = useState(false);
+  const [nsRecords,  setNsRecords]  = useState([]);
 
   useEffect(() => {
     api.get('/analytics/revenue')
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'noshows') return;
+    setNsLoading(true);
+    Promise.all([
+      api.get('/no-show/report'),
+      api.get('/no-show/records'),
+    ]).then(([rep, rec]) => {
+      setNsData(rep.data);
+      setNsRecords(rec.data);
+    }).catch(() => {}).finally(() => setNsLoading(false));
+  }, [tab]);
 
   if (loading) {
     return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading revenue data…</div>;
@@ -42,8 +58,96 @@ export default function Revenue() {
   const mtdRevenue = parseFloat(monthly[monthly.length - 1]?.revenue || 0);
   const totalJobs  = monthly.reduce((s, m) => s + parseInt(m.jobs || 0), 0);
 
+  const totalNsRetained = nsData.reduce((s, r) => s + parseFloat(r.total_retained || 0), 0);
+  const totalNsCount    = nsData.reduce((s, r) => s + parseInt(r.total_no_shows || 0), 0);
+
   return (
     <div>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--lightgray)' }}>
+        {[{ key: 'revenue', label: 'Revenue' }, { key: 'noshows', label: 'No-Show Report' }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent', marginBottom: -2, fontSize: 13, fontWeight: tab === t.key ? 700 : 500, color: tab === t.key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'noshows' && (
+        nsLoading ? <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading no-show data…</div> : (
+          <div>
+            <div className="dash-stat-grid" style={{ marginBottom: 20 }}>
+              <div className="dash-sc">
+                <div className="dash-sc-l">Total No-Shows</div>
+                <div className="dash-sc-v">{totalNsCount}</div>
+              </div>
+              <div className="dash-sc">
+                <div className="dash-sc-l">Deposits Retained</div>
+                <div className="dash-sc-v">{fmt$(totalNsRetained)}</div>
+              </div>
+              <div className="dash-sc">
+                <div className="dash-sc-l">Avg Retained</div>
+                <div className="dash-sc-v">{totalNsCount > 0 ? fmt$(totalNsRetained / totalNsCount) : '$0'}</div>
+              </div>
+            </div>
+
+            <div className="dash-card" style={{ padding: 24, marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 16, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 10 }}>Monthly Breakdown</div>
+              {nsData.length === 0 ? (
+                <div style={{ color: 'var(--steel)', fontSize: 13, padding: '12px 0' }}>No no-show records yet.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--lightgray)' }}>
+                      {['Month', 'No-Shows', 'Deposits Retained', 'Avg'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nsData.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                        <td style={{ padding: '12px', color: 'var(--slate)' }}>{new Date(r.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                        <td style={{ padding: '12px', color: 'var(--navy)', fontWeight: 600 }}>{r.total_no_shows}</td>
+                        <td style={{ padding: '12px', color: 'var(--red)', fontWeight: 700 }}>{fmt$(r.total_retained)}</td>
+                        <td style={{ padding: '12px', color: 'var(--slate)' }}>{fmt$(r.avg_retained)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {nsRecords.length > 0 && (
+              <div className="dash-card" style={{ padding: 24 }}>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 16 }}>All Records</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {nsRecords.map(ns => (
+                    <div key={ns.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', border: '1px solid var(--lightgray)', borderLeft: '3px solid var(--red)', borderRadius: 8, gap: 16, flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{ns.client_name} — {ns.service_type}</div>
+                        <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                          {new Date(ns.declared_at).toLocaleDateString('en-US', { dateStyle: 'medium' })} · Tech: {ns.tech_name || 'Unassigned'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--red)' }}>${parseFloat(ns.deposit_retained || 0).toFixed(2)}</div>
+                          <div style={{ fontSize: 10, color: 'var(--steel)' }}>retained</div>
+                        </div>
+                        <a href={`/api/no-show/jobs/${ns.job_id}/pdf`} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 12, color: 'var(--navy)', textDecoration: 'underline' }}>PDF</a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {tab === 'revenue' && <div>
       <div className="dash-stat-grid">
         <div className="dash-sc">
           <div className="dash-sc-l">Month to Date</div>
@@ -192,6 +296,7 @@ export default function Revenue() {
           </div>
         </div>
       </div>
+      </div>} {/* end revenue tab */}
     </div>
   );
 }

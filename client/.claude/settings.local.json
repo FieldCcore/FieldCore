@@ -5,7 +5,30 @@
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Kevin\\\\fieldcore\" -Recurse -File -Exclude node_modules | Where-Object { $_.FullName -notmatch \"node_modules|\\\\.git|\\\\.next\" } | Select-Object FullName | Sort-Object FullName)",
       "PowerShell(railway version *)",
       "Bash(npm run *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git -C /mnt/c/Users/Kevin/fieldcore status --short)",
+      "Read(//mnt/c/Users/Kevin/fieldcore/src/services/**)",
+      "Bash(cat C:\\\\\\\\Users\\\\\\\\Kevin\\\\\\\\fieldcore\\\\\\\\src\\\\\\\\services\\\\\\\\sms.js)",
+      "Bash(node server.js)",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(Invoke-RestMethod -Uri \"http://localhost:3000/health\" -Method GET)",
+      "Bash(ConvertTo-Json)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(curl *)",
+      "Bash(psql *)",
+      "Bash(node *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(git *)",
+      "Bash(grep -v \"\\\\.status\\\\b\\\\|\\\\.data\\\\b\\\\|response\\\\?\\\\.\\\\s*$\")",
+      "Bash(Get-Process -Name node -ErrorAction SilentlyContinue)",
+      "Bash(Stop-Process -Force)",
+      "Bash(Start-Sleep -Milliseconds 500)",
+      "Bash(pkill -f node)",
+      "Bash(netstat -tlnp)",
+      "Read(//proc/673/net/**)",
+      "Bash(npx tsc *)"
     ]
   }
 }

@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const stripe  = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
+const email   = require('../services/email');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const PRICE_IDS = {
@@ -10,20 +11,65 @@ const PRICE_IDS = {
   scale: process.env.STRIPE_PRICE_SCALE,
 };
 
-// GET /api/billing — current plan, status, subscription presence, connect status
+const PLAN_AMOUNTS = { solo: 49, pro: 99, scale: 199 };
+
+// ── GET /api/billing ──────────────────────────────────────────────────────────
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT plan, plan_status, stripe_customer_id, stripe_subscription_id,
-              stripe_connect_account_id, stripe_connect_status
+              stripe_connect_account_id, stripe_connect_status, cancelled_at
        FROM accounts WHERE id = $1`,
       [req.accountId]
     );
     const acct = rows[0] || {};
+
+    let subscription = null;
+    let paymentMethod = null;
+
+    if (acct.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id, {
+          expand: ['default_payment_method', 'latest_invoice'],
+        });
+        const pm = sub.default_payment_method || sub.customer?.invoice_settings?.default_payment_method;
+        subscription = {
+          id:             sub.id,
+          status:         sub.status,
+          current_period_end:   sub.current_period_end,
+          current_period_start: sub.current_period_start,
+          cancel_at_period_end: sub.cancel_at_period_end,
+          cancel_at:      sub.cancel_at,
+          amount:         sub.items.data[0]?.price?.unit_amount / 100 || 0,
+        };
+        if (pm?.card) {
+          paymentMethod = {
+            id:    pm.id,
+            brand: pm.card.brand,
+            last4: pm.card.last4,
+            exp_month: pm.card.exp_month,
+            exp_year:  pm.card.exp_year,
+            type:  'card',
+          };
+        } else if (pm?.us_bank_account) {
+          paymentMethod = {
+            id:        pm.id,
+            bank_name: pm.us_bank_account.bank_name,
+            last4:     pm.us_bank_account.last4,
+            type:      'bank_account',
+          };
+        }
+      } catch (stripeErr) {
+        console.error('[billing GET] Stripe subscription fetch failed:', stripeErr.message);
+      }
+    }
+
     res.json({
       plan:            acct.plan            || 'starter',
       status:          acct.plan_status     || 'active',
       hasSubscription: !!acct.stripe_subscription_id,
+      subscription,
+      paymentMethod,
       connect: {
         account_id:   acct.stripe_connect_account_id || null,
         status:       acct.stripe_connect_status     || 'not_connected',
@@ -35,7 +81,237 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
   }
 });
 
-// POST /api/billing/checkout — Stripe Checkout session (subscription mode)
+// ── GET /api/billing/history ──────────────────────────────────────────────────
+router.get('/history', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_customer_id FROM accounts WHERE id = $1`, [req.accountId]
+    );
+    const customerId = rows[0]?.stripe_customer_id;
+
+    // Return local billing events first (fast)
+    const { rows: local } = await pool.query(
+      `SELECT * FROM billing_events WHERE account_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.accountId]
+    );
+
+    // If connected to Stripe, supplement with Stripe invoices
+    if (customerId && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const invoices = await stripe.invoices.list({ customer: customerId, limit: 50 });
+        const stripeHistory = invoices.data.map(inv => ({
+          id:                   inv.id,
+          stripe_invoice_id:    inv.id,
+          amount:               inv.amount_paid / 100,
+          status:               inv.status === 'paid' ? 'paid' : inv.status,
+          description:          inv.lines?.data[0]?.description || 'Subscription',
+          payment_method_last4: inv.payment_intent?.payment_method?.card?.last4 || null,
+          payment_method_brand: inv.payment_intent?.payment_method?.card?.brand || null,
+          invoice_pdf_url:      inv.invoice_pdf,
+          period_start:         inv.period_start ? new Date(inv.period_start * 1000) : null,
+          period_end:           inv.period_end   ? new Date(inv.period_end   * 1000) : null,
+          created_at:           new Date(inv.created * 1000),
+        }));
+        return res.json(stripeHistory);
+      } catch (stripeErr) {
+        console.error('[billing/history] Stripe fetch failed:', stripeErr.message);
+      }
+    }
+
+    res.json(local);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/billing/payment-methods ─────────────────────────────────────────
+router.get('/payment-methods', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_customer_id FROM accounts WHERE id = $1`, [req.accountId]
+    );
+    const customerId = rows[0]?.stripe_customer_id;
+    if (!customerId) return res.json([]);
+
+    const [cards, banks] = await Promise.all([
+      stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+      stripe.paymentMethods.list({ customer: customerId, type: 'us_bank_account' }),
+    ]);
+    const customer = await stripe.customers.retrieve(customerId);
+    const defaultPmId = customer.invoice_settings?.default_payment_method;
+
+    const methods = [
+      ...cards.data.map(pm => ({
+        id:        pm.id,
+        type:      'card',
+        brand:     pm.card.brand,
+        last4:     pm.card.last4,
+        exp_month: pm.card.exp_month,
+        exp_year:  pm.card.exp_year,
+        is_default: pm.id === defaultPmId,
+      })),
+      ...banks.data.map(pm => ({
+        id:          pm.id,
+        type:        'bank_account',
+        bank_name:   pm.us_bank_account.bank_name,
+        last4:       pm.us_bank_account.last4,
+        status:      pm.us_bank_account.status || 'new',
+        is_default:  pm.id === defaultPmId,
+      })),
+    ];
+
+    res.json(methods);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/payment-methods/setup ───────────────────────────────────
+// Returns a SetupIntent client_secret for Stripe Elements card form
+router.post('/payment-methods/setup', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.stripe_customer_id, a.name AS account_name, u.email
+       FROM accounts a JOIN users u ON u.id = $1
+       WHERE a.id = $2`,
+      [req.userId, req.accountId]
+    );
+    let { stripe_customer_id: customerId, account_name, email: userEmail } = rows[0] || {};
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: userEmail, name: account_name,
+        metadata: { account_id: req.accountId },
+      });
+      customerId = customer.id;
+      await pool.query(`UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`, [customerId, req.accountId]);
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      metadata: { account_id: req.accountId },
+    });
+
+    res.json({ client_secret: setupIntent.client_secret, customer_id: customerId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/payment-methods/attach ──────────────────────────────────
+router.post('/payment-methods/attach', requireAuth, requireRole('owner'), async (req, res) => {
+  const { payment_method_id, set_default } = req.body;
+  if (!payment_method_id) return res.status(400).json({ error: 'payment_method_id required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_customer_id FROM accounts WHERE id = $1`, [req.accountId]
+    );
+    const customerId = rows[0]?.stripe_customer_id;
+    if (!customerId) return res.status(400).json({ error: 'No Stripe customer found.' });
+
+    await stripe.paymentMethods.attach(payment_method_id, { customer: customerId });
+
+    if (set_default !== false) {
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: payment_method_id },
+      });
+      // Also update subscription default payment method if active subscription
+      const { rows: acctRows } = await pool.query(
+        `SELECT stripe_subscription_id FROM accounts WHERE id = $1`, [req.accountId]
+      );
+      if (acctRows[0]?.stripe_subscription_id) {
+        await stripe.subscriptions.update(acctRows[0].stripe_subscription_id, {
+          default_payment_method: payment_method_id,
+        });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/payment-methods/bank ────────────────────────────────────
+// Add bank account via routing + account number (micro-deposit verification)
+router.post('/payment-methods/bank', requireAuth, requireRole('owner'), async (req, res) => {
+  const { routing_number, account_number, account_holder_name, account_type } = req.body;
+  if (!routing_number || !account_number || !account_holder_name) {
+    return res.status(400).json({ error: 'routing_number, account_number, and account_holder_name are required.' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.stripe_customer_id, a.name AS account_name, u.email
+       FROM accounts a JOIN users u ON u.id = $1 WHERE a.id = $2`,
+      [req.userId, req.accountId]
+    );
+    let { stripe_customer_id: customerId, account_name, email: userEmail } = rows[0] || {};
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: userEmail, name: account_name,
+        metadata: { account_id: req.accountId },
+      });
+      customerId = customer.id;
+      await pool.query(`UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`, [customerId, req.accountId]);
+    }
+
+    const token = await stripe.tokens.create({
+      bank_account: {
+        country:              'US',
+        currency:             'usd',
+        account_holder_name,
+        account_holder_type:  account_type || 'individual',
+        routing_number,
+        account_number,
+      },
+    });
+
+    const bankAccount = await stripe.customers.createSource(customerId, { source: token.id });
+    res.json({
+      ok:             true,
+      bank_account_id: bankAccount.id,
+      bank_name:      bankAccount.bank_name,
+      last4:          bankAccount.last4,
+      status:         bankAccount.status,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/payment-methods/:id/default ────────────────────────────
+router.post('/payment-methods/:id/default', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_customer_id, stripe_subscription_id FROM accounts WHERE id = $1`, [req.accountId]
+    );
+    const { stripe_customer_id: customerId, stripe_subscription_id: subId } = rows[0] || {};
+    if (!customerId) return res.status(400).json({ error: 'No Stripe customer found.' });
+
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: req.params.id },
+    });
+    if (subId) {
+      await stripe.subscriptions.update(subId, { default_payment_method: req.params.id });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/billing/payment-methods/:id ───────────────────────────────────
+router.delete('/payment-methods/:id', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    await stripe.paymentMethods.detach(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/checkout — Stripe Checkout session (subscription) ────────
 router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => {
   const { plan } = req.body;
   const priceId  = PRICE_IDS[plan];
@@ -58,10 +334,7 @@ router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => 
         metadata: { account_id: req.accountId },
       });
       customerId = customer.id;
-      await pool.query(
-        `UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`,
-        [customerId, req.accountId]
-      );
+      await pool.query(`UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`, [customerId, req.accountId]);
     }
 
     const appUrl  = process.env.APP_URL || 'http://localhost:5173';
@@ -81,35 +354,93 @@ router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => 
   }
 });
 
-// POST /api/billing/portal — Stripe Customer Portal session
+// ── POST /api/billing/cancel ──────────────────────────────────────────────────
+router.post('/cancel', requireAuth, requireRole('owner'), async (req, res) => {
+  const { reason, additional_feedback } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.stripe_subscription_id, a.stripe_customer_id, a.name,
+              u.email AS owner_email, u.name AS owner_name
+       FROM accounts a JOIN users u ON u.account_id = a.id AND u.role = 'owner'
+       WHERE a.id = $1`,
+      [req.accountId]
+    );
+    const acct = rows[0];
+    if (!acct?.stripe_subscription_id) {
+      return res.status(400).json({ error: 'No active subscription to cancel.' });
+    }
+
+    // Cancel at period end (not immediate)
+    const sub = await stripe.subscriptions.update(acct.stripe_subscription_id, {
+      cancel_at_period_end: true,
+    });
+
+    const accessEndsAt = new Date(sub.current_period_end * 1000);
+
+    // Record reason
+    await pool.query(
+      `INSERT INTO cancel_reasons (account_id, reason, additional_feedback)
+       VALUES ($1,$2,$3)`,
+      [req.accountId, reason || null, additional_feedback || null]
+    );
+
+    await pool.query(
+      `UPDATE accounts SET cancel_reason = $1, cancelled_at = NOW() WHERE id = $2`,
+      [reason || null, req.accountId]
+    );
+
+    // Email operator confirmation
+    if (acct.owner_email) {
+      email.send({
+        to:      acct.owner_email,
+        subject: 'Your FieldCore subscription has been cancelled',
+        html:    email.billingCancelledHtml(acct.owner_name || acct.name, accessEndsAt),
+      }).catch(err => console.error('[billing cancel email]', err.message));
+    }
+
+    // Notify admin
+    email.send({
+      to:      'admin@getfieldcore.com',
+      subject: `Operator cancelled — ${acct.name}`,
+      html:    email.wrap(`
+        <p><strong>${acct.name}</strong> (${acct.owner_email}) has cancelled their FieldCore subscription.</p>
+        <p><strong>Reason:</strong> ${reason || 'Not provided'}</p>
+        <p><strong>Feedback:</strong> ${additional_feedback || 'None'}</p>
+        <p><strong>Access ends:</strong> ${accessEndsAt.toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
+      `),
+    }).catch(err => console.error('[billing cancel admin email]', err.message));
+
+    res.json({ ok: true, access_ends_at: accessEndsAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/portal — Stripe Customer Portal ────────────────────────
 router.post('/portal', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT stripe_customer_id FROM accounts WHERE id = $1`,
-      [req.accountId]
+      `SELECT stripe_customer_id FROM accounts WHERE id = $1`, [req.accountId]
     );
     const customerId = rows[0]?.stripe_customer_id;
-    if (!customerId)
-      return res.status(400).json({ error: 'No billing account found. Subscribe to a plan first.' });
+    if (!customerId) return res.status(400).json({ error: 'No billing account found. Subscribe to a plan first.' });
 
     const appUrl  = process.env.APP_URL || 'http://localhost:5173';
     const session = await stripe.billingPortal.sessions.create({
       customer:   customerId,
       return_url: `${appUrl}/billing`,
     });
-
     res.json({ url: session.url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/billing/connect — create Express account (or refresh onboarding link)
+// ── POST /api/billing/connect ─────────────────────────────────────────────────
 router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT stripe_connect_account_id FROM accounts WHERE id = $1`,
-      [req.accountId]
+      `SELECT stripe_connect_account_id FROM accounts WHERE id = $1`, [req.accountId]
     );
     let connectId = rows[0]?.stripe_connect_account_id;
 
@@ -120,9 +451,7 @@ router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
       });
       connectId = account.id;
       await pool.query(
-        `UPDATE accounts
-         SET stripe_connect_account_id = $1, stripe_connect_status = 'pending'
-         WHERE id = $2`,
+        `UPDATE accounts SET stripe_connect_account_id = $1, stripe_connect_status = 'pending' WHERE id = $2`,
         [connectId, req.accountId]
       );
     }
@@ -134,30 +463,55 @@ router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
       return_url:  `${appUrl}/billing?connect=success`,
       type:        'account_onboarding',
     });
-
     res.json({ url: link.url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/billing/connect/login — Stripe Express dashboard link
+// ── POST /api/billing/connect/login ──────────────────────────────────────────
 router.post('/connect/login', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
       [req.accountId]
     );
-    const connectId = rows[0]?.stripe_connect_account_id;
-    const status    = rows[0]?.stripe_connect_status;
-
-    if (!connectId)
-      return res.status(400).json({ error: 'No connected Stripe account.' });
-    if (status !== 'active')
-      return res.status(400).json({ error: 'Account is not yet verified by Stripe.' });
+    const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
+    if (!connectId) return res.status(400).json({ error: 'No connected Stripe account.' });
+    if (status !== 'active') return res.status(400).json({ error: 'Account is not yet verified by Stripe.' });
 
     const link = await stripe.accounts.createLoginLink(connectId);
     res.json({ url: link.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/billing/admin-metrics ───────────────────────────────────────────
+router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    // Only the FieldCore admin account can see platform-wide metrics
+    const { rows: [acct] } = await pool.query(
+      `SELECT u.email FROM users u WHERE u.id = $1`, [req.userId]
+    );
+    if (!['admin@getfieldcore.com', 'kevincaines925@gmail.com'].includes(acct?.email)) {
+      return res.status(403).json({ error: 'Admin access only.' });
+    }
+
+    const { rows: metrics } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE plan != 'starter' AND plan_status = 'active')        AS active_subscriptions,
+        COUNT(*) FILTER (WHERE plan_status = 'past_due')                            AS past_due,
+        COUNT(*) FILTER (WHERE cancelled_at IS NOT NULL)                            AS total_cancelled,
+        COUNT(*) FILTER (WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', NOW())) AS new_this_month,
+        SUM(CASE WHEN plan = 'solo'  AND plan_status = 'active' THEN 49
+                 WHEN plan = 'pro'   AND plan_status = 'active' THEN 99
+                 WHEN plan = 'scale' AND plan_status = 'active' THEN 199
+                 ELSE 0 END)                                                         AS mrr
+      FROM accounts
+    `);
+
+    res.json(metrics[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

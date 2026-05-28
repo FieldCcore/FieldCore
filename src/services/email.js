@@ -92,4 +92,73 @@ function invoiceHtml(clientName, serviceType, amount, payLink, businessName) {
   `);
 }
 
-module.exports = { send, confirmationHtml, reminderHtml, invoiceHtml };
+function noShowOperatorHtml(job, record, depositRetained) {
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#B52A2A;font-size:20px;font-weight:700">No-Show Declared</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">A no-show has been automatically documented for the following appointment.</p>
+    ${card(
+      detail('Client', record.client_name) +
+      detail('Service', job.service_type) +
+      detail('Scheduled', new Date(record.scheduled_at).toLocaleString('en-US')) +
+      detail('Declared At', new Date(record.declared_at).toLocaleString('en-US')) +
+      detail('Grace Period', `${record.grace_period_minutes} minutes`) +
+      detail('Deposit Retained', `$${parseFloat(depositRetained).toFixed(2)}`) +
+      detail('Technician', record.tech_name || 'Unassigned')
+    )}
+    <p style="color:#6b7280;font-size:13px;margin:0">Log in to FieldCore to download the full no-show documentation PDF.</p>
+  `);
+}
+
+function billingRenewalHtml(accountName, daysUntil, amount, nextDate) {
+  const label = daysUntil === 0 ? 'today' : `in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`;
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Upcoming Renewal</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${accountName}, your FieldCore subscription renews ${label}.</p>
+    ${card(
+      detail('Renewal Date', new Date(nextDate).toLocaleDateString('en-US', { dateStyle: 'long' })) +
+      detail('Amount', `$${parseFloat(amount).toFixed(2)}`)
+    )}
+    <p style="color:#6b7280;font-size:13px;margin:0">To update your payment method or manage your subscription, visit the Billing page in your FieldCore dashboard.</p>
+  `);
+}
+
+function billingReceiptHtml(accountName, amount, planName, invoicePdfUrl) {
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Payment Receipt</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Thank you, ${accountName}! Your FieldCore subscription has been renewed.</p>
+    ${card(
+      detail('Plan', planName) +
+      detail('Amount Charged', `$${parseFloat(amount).toFixed(2)}`)
+    )}
+    ${invoicePdfUrl ? `<a href="${invoicePdfUrl}" style="display:inline-block;background:#1C2333;color:#D6B58A;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">Download Receipt →</a>` : ''}
+    <p style="color:#9ca3af;font-size:12px;margin-top:14px">Questions? Contact us at info@getfieldcore.com</p>
+  `);
+}
+
+function billingFailedHtml(accountName) {
+  const appUrl = process.env.APP_URL || 'https://getfieldcore.com';
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#B52A2A;font-size:20px;font-weight:700">Payment Failed</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${accountName}, we were unable to charge your payment method for your FieldCore subscription.</p>
+    <p style="color:#6b7280;line-height:1.7;font-size:14px">Please update your payment method to avoid any interruption in service.</p>
+    <a href="${appUrl}/billing" style="display:inline-block;background:#B52A2A;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">Update Payment Method →</a>
+    <p style="color:#9ca3af;font-size:12px;margin-top:14px">If you have questions, contact us at info@getfieldcore.com</p>
+  `);
+}
+
+function billingCancelledHtml(accountName, accessEndsAt) {
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Cancellation Confirmed</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${accountName}, your FieldCore subscription has been cancelled.</p>
+    ${card(
+      detail('Access Ends', new Date(accessEndsAt).toLocaleDateString('en-US', { dateStyle: 'long' }))
+    )}
+    <p style="color:#6b7280;line-height:1.7;font-size:14px">You will retain read-only access until the end of your current billing period. We're sorry to see you go — if there's anything we can improve, please let us know at info@getfieldcore.com.</p>
+  `);
+}
+
+module.exports = {
+  send, wrap, confirmationHtml, reminderHtml, invoiceHtml,
+  noShowOperatorHtml, billingRenewalHtml, billingReceiptHtml,
+  billingFailedHtml, billingCancelledHtml,
+};

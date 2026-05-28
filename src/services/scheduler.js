@@ -1,7 +1,8 @@
-const cron  = require('node-cron');
-const pool  = require('../db/pool');
-const sms   = require('./sms');
-const email = require('./email');
+const cron   = require('node-cron');
+const pool   = require('../db/pool');
+const sms    = require('./sms');
+const email  = require('./email');
+const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 
 // ── 1. Appointment reminders — runs every hour ──────────────
 function startReminderJob() {
@@ -157,10 +158,160 @@ function startDepositExpiryJob() {
   console.log('[Scheduler] Deposit expiry job scheduled (every 15 min)');
 }
 
+// ── 4. No-show auto-declare — runs every 2 minutes ──────────────────────────
+function startNoShowClockJob() {
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      // Find settings for all accounts that have auto_declare enabled
+      const { rows: candidates } = await pool.query(`
+        SELECT j.id AS job_id, j.account_id, j.client_id, j.tech_id,
+               j.service_type, j.scheduled_at, j.no_show_clock_started_at,
+               j.deposit_retained,
+               c.name AS client_name, c.phone AS client_phone,
+               c.email AS client_email, c.address AS client_address,
+               u.name AS tech_name, u.phone AS tech_phone,
+               COALESCE(nss.grace_period_minutes, 15) AS grace_period_minutes,
+               COALESCE(nss.auto_declare, TRUE) AS auto_declare,
+               nss.client_sms_template, nss.tech_sms_template,
+               d.amount AS deposit_amount
+        FROM jobs j
+        JOIN clients c ON c.id = j.client_id
+        LEFT JOIN users u ON u.id = j.tech_id
+        LEFT JOIN no_show_settings nss ON nss.account_id = j.account_id
+        LEFT JOIN deposits d ON d.job_id = j.id AND d.status = 'collected'
+        WHERE j.status = 'scheduled'
+          AND j.no_show_clock_started_at IS NOT NULL
+          AND j.noshow_declared_at IS NULL
+          AND EXTRACT(EPOCH FROM (NOW() - j.no_show_clock_started_at)) / 60
+              >= COALESCE(nss.grace_period_minutes, 15)
+          AND COALESCE(nss.auto_declare, TRUE) = TRUE
+      `);
+
+      for (const job of candidates) {
+        try {
+          const depositRetained = parseFloat(job.deposit_amount || 0);
+
+          await pool.query(
+            `UPDATE jobs SET status = 'no_show', noshow_declared_at = NOW(),
+                deposit_retained = $1
+             WHERE id = $2`,
+            [depositRetained, job.job_id]
+          );
+
+          const { rows: [record] } = await pool.query(
+            `INSERT INTO no_show_records
+               (account_id, job_id, client_id, tech_id, client_name, tech_name,
+                scheduled_at, clock_started_at, declared_at, grace_period_minutes,
+                deposit_retained)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),$9,$10)
+             RETURNING *`,
+            [
+              job.account_id, job.job_id, job.client_id, job.tech_id,
+              job.client_name, job.tech_name,
+              job.scheduled_at, job.no_show_clock_started_at,
+              job.grace_period_minutes, depositRetained,
+            ]
+          );
+
+          const clientSms = job.client_sms_template
+            ? job.client_sms_template.replace('{minutes}', job.grace_period_minutes).replace('{amount}', depositRetained.toFixed(2))
+            : sms.noShowClientBody(job.client_name, job.grace_period_minutes, depositRetained);
+
+          if (job.client_phone) {
+            sms.send(job.account_id, job.client_id, job.client_phone, clientSms)
+              .then(() => pool.query(`UPDATE no_show_records SET client_notified_at = NOW() WHERE id = $1`, [record.id]))
+              .catch(e => console.error('[NoShow clock SMS client]', e.message));
+          }
+
+          if (job.tech_phone) {
+            const techSms = job.tech_sms_template
+              ? job.tech_sms_template.replace('{client_name}', job.client_name).replace('{amount}', depositRetained.toFixed(2))
+              : sms.noShowTechBody(job.client_name, job.client_address, depositRetained);
+            sms.send(job.account_id, null, job.tech_phone, techSms)
+              .then(() => pool.query(`UPDATE no_show_records SET tech_released_at = NOW() WHERE id = $1`, [record.id]))
+              .catch(e => console.error('[NoShow clock SMS tech]', e.message));
+          }
+
+          // Email operator
+          const { rows: [owner] } = await pool.query(
+            `SELECT email, name FROM users WHERE account_id = $1 AND role = 'owner' LIMIT 1`,
+            [job.account_id]
+          );
+          if (owner?.email) {
+            email.send({
+              to: owner.email,
+              subject: `No-Show Auto-Declared — ${job.client_name} · ${job.service_type}`,
+              html: email.noShowOperatorHtml(job, { ...record, declared_at: new Date() }, depositRetained),
+            }).catch(e => console.error('[NoShow clock email]', e.message));
+          }
+
+          console.log(`[Scheduler] No-show auto-declared for job ${job.job_id} (${job.client_name})`);
+        } catch (err) {
+          console.error(`[Scheduler] No-show auto-declare failed for job ${job.job_id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] No-show clock error:', err.message);
+    }
+  });
+  console.log('[Scheduler] No-show clock job scheduled (every 2 min)');
+}
+
+// ── 5. Billing renewal reminders — runs daily at 09:00 ─────────────────────
+function startBillingRenewalReminders() {
+  cron.schedule('0 9 * * *', async () => {
+    if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.endsWith('_')) return;
+    try {
+      const { rows: accounts } = await pool.query(
+        `SELECT a.id, a.name, a.stripe_subscription_id, a.stripe_customer_id,
+                a.plan, a.renewal_7d_sent, a.renewal_3d_sent,
+                u.email AS owner_email
+         FROM accounts a
+         JOIN users u ON u.account_id = a.id AND u.role = 'owner'
+         WHERE a.stripe_subscription_id IS NOT NULL
+           AND a.plan_status = 'active'`
+      );
+
+      for (const acct of accounts) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id);
+          const nextDate = new Date(sub.current_period_end * 1000);
+          const daysUntil = Math.ceil((nextDate - Date.now()) / (1000 * 60 * 60 * 24));
+          const amount = sub.items.data[0]?.price?.unit_amount / 100 || 0;
+          const planName = { solo: 'Solo', pro: 'Pro', scale: 'Scale' }[acct.plan] || acct.plan;
+
+          if (daysUntil === 7 && !acct.renewal_7d_sent) {
+            await email.send({
+              to:      acct.owner_email,
+              subject: `Your FieldCore subscription renews in 7 days — $${amount.toFixed(2)}`,
+              html:    email.billingRenewalHtml(acct.name, 7, amount, nextDate),
+            });
+            await pool.query(`UPDATE accounts SET renewal_7d_sent = TRUE WHERE id = $1`, [acct.id]);
+          } else if (daysUntil === 3 && !acct.renewal_3d_sent) {
+            await email.send({
+              to:      acct.owner_email,
+              subject: `Your FieldCore subscription renews in 3 days — $${amount.toFixed(2)}`,
+              html:    email.billingRenewalHtml(acct.name, 3, amount, nextDate),
+            });
+            await pool.query(`UPDATE accounts SET renewal_3d_sent = TRUE WHERE id = $1`, [acct.id]);
+          }
+        } catch (err) {
+          console.error(`[Scheduler] Renewal reminder failed for account ${acct.id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Billing renewal error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Billing renewal reminders scheduled (daily 09:00)');
+}
+
 function startReminderJobs() {
   startReminderJob();
   startRecurringJobCreation();
   startDepositExpiryJob();
+  startNoShowClockJob();
+  startBillingRenewalReminders();
 }
 
 module.exports = { startReminderJob: startReminderJobs };

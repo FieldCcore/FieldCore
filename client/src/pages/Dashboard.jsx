@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import axios from 'axios';
+import NoShowClock from '../components/NoShowClock';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
 
@@ -69,6 +70,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      <NoShowClock />
       <div className="dash-stat-grid">
         <div className="dash-sc">
           <div className="dash-sc-l">Today Revenue</div>

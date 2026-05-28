@@ -2,7 +2,6 @@ const express      = require('express');
 const router       = require('express').Router();
 const pool         = require('../db/pool');
 const stripe       = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
-const twilio       = require('twilio');
 const smsService   = require('../services/sms');
 const emailService = require('../services/email');
 const notify       = require('../services/notify');
@@ -125,7 +124,8 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     const plan    = priceIdToPlan(priceId);
     await pool.query(
       `UPDATE accounts
-       SET plan = $1, plan_status = $2, stripe_subscription_id = $3
+       SET plan = $1, plan_status = $2, stripe_subscription_id = $3,
+           renewal_7d_sent = FALSE, renewal_3d_sent = FALSE
        WHERE stripe_customer_id = $4`,
       [plan, sub.status, sub.id, sub.customer]
     );
@@ -141,12 +141,66 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     );
   }
 
+  if (event.type === 'invoice.payment_succeeded') {
+    const inv = event.data.object;
+    if (inv.subscription) {
+      // Platform subscription renewal — record billing event + send receipt
+      const { rows: [acct] } = await pool.query(
+        `SELECT a.id, a.name, a.plan, u.email AS owner_email
+         FROM accounts a
+         JOIN users u ON u.account_id = a.id AND u.role = 'owner'
+         WHERE a.stripe_customer_id = $1`,
+        [inv.customer]
+      );
+      if (acct) {
+        await pool.query(
+          `INSERT INTO billing_events
+             (account_id, stripe_invoice_id, amount, status, description,
+              invoice_pdf_url, period_start, period_end)
+           VALUES ($1,$2,$3,'paid',$4,$5,
+             to_timestamp($6), to_timestamp($7))
+           ON CONFLICT DO NOTHING`,
+          [
+            acct.id, inv.id,
+            inv.amount_paid / 100,
+            `${acct.plan?.charAt(0).toUpperCase() + acct.plan?.slice(1)} plan subscription`,
+            inv.invoice_pdf || null,
+            inv.period_start || null,
+            inv.period_end   || null,
+          ]
+        );
+        if (acct.owner_email && inv.amount_paid > 0) {
+          const planName = { solo: 'Solo', pro: 'Pro', scale: 'Scale' }[acct.plan] || acct.plan;
+          emailService.send({
+            to:      acct.owner_email,
+            subject: `Receipt — FieldCore ${planName} · $${(inv.amount_paid / 100).toFixed(2)}`,
+            html:    emailService.billingReceiptHtml(acct.name, inv.amount_paid / 100, planName, inv.invoice_pdf),
+          }).catch(err => console.error('[webhook receipt email]', err.message));
+        }
+      }
+    }
+  }
+
   if (event.type === 'invoice.payment_failed') {
     const inv = event.data.object;
     await pool.query(
       `UPDATE accounts SET plan_status = 'past_due' WHERE stripe_customer_id = $1`,
       [inv.customer]
     );
+    // Email operator about failure
+    const { rows: [acct] } = await pool.query(
+      `SELECT a.name, u.email AS owner_email
+       FROM accounts a JOIN users u ON u.account_id = a.id AND u.role = 'owner'
+       WHERE a.stripe_customer_id = $1`,
+      [inv.customer]
+    );
+    if (acct?.owner_email) {
+      emailService.send({
+        to:      acct.owner_email,
+        subject: 'Action required — FieldCore payment failed',
+        html:    emailService.billingFailedHtml(acct.name),
+      }).catch(err => console.error('[webhook payment failed email]', err.message));
+    }
   }
 
   // ── Connect account verification ──────────────────────────
