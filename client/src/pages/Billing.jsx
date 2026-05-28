@@ -204,10 +204,10 @@ export default function Billing() {
       {/* Plan cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
         {PLANS.map(plan => {
-          const isCurrent  = plan.key === currentPlan;
-          const planIdx    = PLAN_ORDER.indexOf(plan.key);
-          const isUpgrade  = planIdx > currentIdx;
-          const isDowngrade = planIdx < currentIdx;
+          const planIdx     = PLAN_ORDER.indexOf(plan.key);
+          const isCurrent   = plan.key === currentPlan && !!billing?.hasSubscription;
+          const isUpgrade   = !billing?.hasSubscription || planIdx > currentIdx;
+          const isDowngrade = !!billing?.hasSubscription && planIdx < currentIdx;
 
           return (
             <div key={plan.key} className="dash-card" style={{ position: 'relative', border: plan.highlight ? '2px solid var(--sand)' : '1px solid var(--lightgray)' }}>
