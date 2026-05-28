@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Camera } from 'lucide-react';
-import { format } from 'date-fns';
+import { Camera, Timer } from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
 import api from '../api';
 
 const STATUSES = ['scheduled', 'in_progress', 'complete', 'cancelled'];
@@ -12,10 +12,13 @@ const STATUS_COLORS = {
 };
 
 export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
-  const [updating, setUpdating] = useState(false);
-  const [photos,   setPhotos]   = useState([]);
-  const [showPhotos, setShowPhotos] = useState(false);
+  const [updating,      setUpdating]      = useState(false);
+  const [photos,        setPhotos]        = useState([]);
+  const [showPhotos,    setShowPhotos]    = useState(false);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [clockStarted,  setClockStarted]  = useState(!!job.no_show_clock_started_at);
+  const [clockTime,     setClockTime]     = useState(job.no_show_clock_started_at || null);
+  const [startingClock, setStartingClock] = useState(false);
 
   useEffect(() => {
     if (!showPhotos) return;
@@ -33,6 +36,31 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
       onStatusChange(res.data);
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function startNoshowClock() {
+    setStartingClock(true);
+    try {
+      navigator.geolocation?.getCurrentPosition(
+        async pos => {
+          const r = await api.post(`/no-show/jobs/${job.id}/start`, {
+            lat: pos.coords.latitude, lng: pos.coords.longitude,
+          });
+          setClockStarted(true);
+          setClockTime(r.data.clock_started_at);
+          setStartingClock(false);
+        },
+        async () => {
+          const r = await api.post(`/no-show/jobs/${job.id}/start`, {});
+          setClockStarted(true);
+          setClockTime(r.data.clock_started_at);
+          setStartingClock(false);
+        }
+      );
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not start clock.');
+      setStartingClock(false);
     }
   }
 
@@ -72,6 +100,36 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
           <div className="detail-row"><label>Notes</label><span>{job.notes}</span></div>
         )}
       </div>
+
+      {/* No-show clock */}
+      {job.status === 'scheduled' && (
+        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: `1px solid ${clockStarted ? '#fde68a' : '#e5e0d8'}`, background: clockStarted ? '#fffbeb' : '#fafaf8' }}>
+          {clockStarted ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Timer size={14} style={{ color: '#d97706', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>No-show clock running</div>
+                <div style={{ fontSize: 11, color: '#b45309', marginTop: 1 }}>
+                  Started {clockTime ? formatDistanceToNow(new Date(clockTime), { addSuffix: true }) : ''}
+                  {' '}— auto-declares after grace period
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--steel)' }}>Client not present? Start the grace period clock.</div>
+              <button
+                className="btn-secondary"
+                style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={startNoshowClock}
+                disabled={startingClock}
+              >
+                <Timer size={11} />{startingClock ? 'Starting…' : 'Start Clock'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Photos section */}
       <div style={{ margin: '12px 0' }}>

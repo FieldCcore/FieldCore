@@ -296,4 +296,79 @@ router.get('/consolidated', requireAuth, requireRole('owner'), async (req, res) 
   }
 });
 
+// GET /api/analytics/export — download CSV report
+router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { type = 'jobs', from, to } = req.query;
+  const accountId = req.accountId;
+
+  const dateConds = (col) => {
+    const parts = [];
+    if (from) parts.push(`${col} >= '${from}'`);
+    if (to)   parts.push(`${col} <= '${to} 23:59:59'`);
+    return parts.length ? 'AND ' + parts.join(' AND ') : '';
+  };
+
+  try {
+    let rows, filename, header;
+
+    if (type === 'revenue') {
+      const result = await pool.query(
+        `SELECT i.id, c.name AS client, j.service_type AS service,
+                i.amount, i.tax_amount, i.status, i.created_at, i.paid_at
+         FROM invoices i
+         JOIN clients c ON c.id = i.client_id
+         JOIN jobs j ON j.id = i.job_id
+         WHERE i.account_id = $1 ${dateConds('i.created_at')}
+         ORDER BY i.created_at DESC`,
+        [accountId]
+      );
+      rows     = result.rows;
+      filename = 'revenue-report.csv';
+      header   = ['Invoice ID', 'Client', 'Service', 'Amount', 'Tax', 'Status', 'Created', 'Paid At'];
+      rows = rows.map(r => [r.id, r.client, r.service, r.amount, r.tax_amount || 0, r.status,
+        r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+        r.paid_at    ? new Date(r.paid_at).toLocaleDateString()    : '']);
+    } else if (type === 'clients') {
+      const result = await pool.query(
+        `SELECT id, name, email, phone, tier, ltv, created_at
+         FROM clients WHERE account_id = $1 ORDER BY name`,
+        [accountId]
+      );
+      rows     = result.rows;
+      filename = 'clients-export.csv';
+      header   = ['ID', 'Name', 'Email', 'Phone', 'Tier', 'LTV', 'Created'];
+      rows = rows.map(r => [r.id, r.name, r.email || '', r.phone || '', r.tier || 'standard',
+        r.ltv || 0, r.created_at ? new Date(r.created_at).toLocaleDateString() : '']);
+    } else {
+      // Default: jobs
+      const result = await pool.query(
+        `SELECT j.id, c.name AS client, j.service_type AS service,
+                j.status, j.amount, j.scheduled_at,
+                u.name AS tech, j.notes
+         FROM jobs j
+         JOIN clients c ON c.id = j.client_id
+         LEFT JOIN users u ON u.id = j.tech_id
+         WHERE j.account_id = $1 ${dateConds('j.scheduled_at')}
+         ORDER BY j.scheduled_at DESC`,
+        [accountId]
+      );
+      rows     = result.rows;
+      filename = 'jobs-export.csv';
+      header   = ['Job ID', 'Client', 'Service', 'Status', 'Amount', 'Scheduled', 'Tech', 'Notes'];
+      rows = rows.map(r => [r.id, r.client, r.service, r.status, r.amount || 0,
+        r.scheduled_at ? new Date(r.scheduled_at).toLocaleString() : '',
+        r.tech || '', (r.notes || '').replace(/,/g, ';')]);
+    }
+
+    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv    = [header, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

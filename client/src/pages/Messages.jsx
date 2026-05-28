@@ -26,6 +26,13 @@ export default function Messages() {
       .catch(() => setClientJobs([]));
   }, [selected]);
 
+  // Poll for inbound replies every 10 seconds
+  useEffect(() => {
+    if (!selected) return;
+    const iv = setInterval(() => loadMessages(selected.id), 10000);
+    return () => clearInterval(iv);
+  }, [selected?.id]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);

@@ -4,6 +4,102 @@ const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const email  = require('../services/email');
 const notify = require('../services/notify');
+const PDFDoc = require('pdfkit');
+
+function generateInvoicePdfBuffer(inv) {
+  return new Promise((resolve, reject) => {
+    const doc  = new PDFDoc({ margin: 50, size: 'LETTER' });
+    const bufs = [];
+    doc.on('data', d => bufs.push(d));
+    doc.on('end',  () => resolve(Buffer.concat(bufs)));
+    doc.on('error', reject);
+
+    const subtotal   = parseFloat(inv.amount || 0);
+    const tax        = parseFloat(inv.tax_amount || 0);
+    const total      = subtotal;
+    const pretax     = subtotal - tax;
+    const fmtAmt     = n => `$${parseFloat(n || 0).toFixed(2)}`;
+    const fmtDt      = d => d ? new Date(d).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'N/A';
+
+    // Header
+    doc.font('Helvetica-Bold').fontSize(22).fillColor('#1C2333').text('FIELDCORE', { align: 'left' });
+    doc.moveDown(0.2);
+    doc.font('Helvetica').fontSize(11).fillColor('#6b7280').text(inv.business_name || 'FieldCore');
+    doc.moveDown(1.5);
+
+    // Invoice title + meta
+    doc.font('Helvetica-Bold').fontSize(16).fillColor('#1C2333').text('INVOICE');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
+    doc.text(`Invoice #: ${inv.id.slice(0, 8).toUpperCase()}`);
+    doc.text(`Date: ${fmtDt(inv.created_at)}`);
+    if (inv.paid_at) doc.text(`Paid: ${fmtDt(inv.paid_at)}`);
+    doc.moveDown(1);
+
+    // Bill to
+    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#9ca3af').text('BILL TO');
+    doc.moveDown(0.2);
+    doc.font('Helvetica').fontSize(12).fillColor('#1C2333').text(inv.client_name);
+    if (inv.client_email) doc.font('Helvetica').fontSize(10).fillColor('#6b7280').text(inv.client_email);
+    doc.moveDown(1);
+
+    // Line items
+    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#9ca3af');
+    doc.text('DESCRIPTION', 50, doc.y, { width: 360 });
+    doc.text('AMOUNT', 410, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+    doc.moveDown(0.3);
+    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+    doc.moveDown(0.5);
+
+    doc.font('Helvetica').fontSize(11).fillColor('#1C2333');
+    doc.text(inv.service_type || 'Service', 50, doc.y, { width: 360 });
+    doc.text(fmtAmt(tax > 0 ? pretax : total), 410, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+    doc.moveDown(1);
+
+    // Totals
+    doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+    doc.moveDown(0.5);
+    if (tax > 0) {
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
+      doc.text('Subtotal', 360, doc.y, { width: 100 });
+      doc.text(fmtAmt(pretax), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+      doc.moveDown(0.5);
+      doc.text('Tax', 360, doc.y, { width: 100 });
+      doc.text(fmtAmt(tax), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+      doc.moveDown(0.5);
+      doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+      doc.moveDown(0.5);
+    }
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#1C2333');
+    doc.text('Total Due', 360, doc.y, { width: 100 });
+    doc.text(fmtAmt(total), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+    doc.moveDown(2);
+
+    // Status
+    const statusColor = inv.status === 'paid' ? '#15803d' : '#b45309';
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(statusColor)
+       .text(inv.status === 'paid' ? 'PAID' : 'PAYMENT DUE', { align: 'center' });
+
+    if (inv.payment_link && inv.status !== 'paid') {
+      doc.moveDown(0.5);
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280')
+         .text(`Pay online: ${inv.payment_link}`, { align: 'center' });
+    }
+
+    // Footer
+    doc.moveDown(2);
+    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
+    doc.moveDown(0.5);
+    doc.font('Helvetica').fontSize(9).fillColor('#9ca3af')
+       .text('Thank you for your business.', { align: 'center' });
+
+    doc.end();
+  });
+}
 
 // POST /api/invoices — generate invoice from completed job
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -101,11 +197,18 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
     );
 
     if (inv.client_email) {
-      email.send({
-        to:      inv.client_email,
-        subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
-        html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name, inv.tax_amount),
-      }).catch(err => console.error('[Invoice email]', err.message));
+      generateInvoicePdfBuffer({ ...inv, payment_link: payLink }).then(pdfBuf => {
+        email.send({
+          to:      inv.client_email,
+          subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
+          html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name, inv.tax_amount),
+          attachments: [{
+            filename:    `invoice-${inv.id.slice(0, 8)}.pdf`,
+            content:     pdfBuf,
+            contentType: 'application/pdf',
+          }],
+        });
+      }).catch(err => console.error('[Invoice PDF]', err.message));
     }
 
     notify.create(req.accountId, 'invoice_sent',
@@ -115,6 +218,31 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
     );
 
     res.json({ success: true, payment_link: payLink });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/invoices/:id/pdf — download invoice as PDF
+router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT i.*, c.name AS client_name, c.email AS client_email,
+              j.service_type, a.name AS business_name
+       FROM invoices i
+       JOIN clients  c ON c.id = i.client_id
+       JOIN jobs     j ON j.id = i.job_id
+       JOIN accounts a ON a.id = i.account_id
+       WHERE i.id = $1 AND i.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const pdfBuf = await generateInvoicePdfBuffer(rows[0]);
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="invoice-${rows[0].id.slice(0, 8)}.pdf"`,
+    });
+    res.send(pdfBuf);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

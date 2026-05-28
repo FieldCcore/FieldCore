@@ -10,7 +10,7 @@ function getTransporter() {
   });
 }
 
-async function send({ to, subject, html }) {
+async function send({ to, subject, html, attachments }) {
   const transporter = getTransporter();
   if (!transporter) {
     console.log(`[Email skipped — SMTP not configured] To: ${to} | ${subject}`);
@@ -19,6 +19,7 @@ async function send({ to, subject, html }) {
   await transporter.sendMail({
     from: process.env.FROM_EMAIL || 'noreply@fieldcore.app',
     to, subject, html,
+    ...(attachments?.length ? { attachments } : {}),
   });
 }
 

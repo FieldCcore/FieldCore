@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
 import api from '../api';
+
+function triggerCsvDownload(url) {
+  const a = document.createElement('a');
+  a.href = `/api${url}`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -27,6 +37,8 @@ export default function Revenue() {
   const [nsData,     setNsData]     = useState([]);
   const [nsLoading,  setNsLoading]  = useState(false);
   const [nsRecords,  setNsRecords]  = useState([]);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo,   setExportTo]   = useState('');
 
   useEffect(() => {
     api.get('/analytics/revenue')
@@ -61,8 +73,32 @@ export default function Revenue() {
   const totalNsRetained = nsData.reduce((s, r) => s + parseFloat(r.total_retained || 0), 0);
   const totalNsCount    = nsData.reduce((s, r) => s + parseInt(r.total_no_shows || 0), 0);
 
+  const exportParams = `${exportFrom ? `&from=${exportFrom}` : ''}${exportTo ? `&to=${exportTo}` : ''}`;
+
   return (
     <div>
+      {/* Export bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>Export</span>
+        <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
+          style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e0d8', borderRadius: 6, color: 'var(--navy)', background: '#fff' }} />
+        <span style={{ fontSize: 12, color: 'var(--steel)' }}>to</span>
+        <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
+          style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e0d8', borderRadius: 6, color: 'var(--navy)', background: '#fff' }} />
+        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => triggerCsvDownload(`/analytics/export?type=jobs${exportParams}`)}>
+          <Download size={11} />Jobs
+        </button>
+        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => triggerCsvDownload(`/analytics/export?type=revenue${exportParams}`)}>
+          <Download size={11} />Invoices
+        </button>
+        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => triggerCsvDownload(`/analytics/export?type=clients`)}>
+          <Download size={11} />Clients
+        </button>
+      </div>
+
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--lightgray)' }}>
         {[{ key: 'revenue', label: 'Revenue' }, { key: 'noshows', label: 'No-Show Report' }].map(t => (
