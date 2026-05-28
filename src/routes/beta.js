@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const email   = require('../services/email');
-const auth    = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 
 const BETA_CAP = parseInt(process.env.BETA_CAP || '100');
 
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
 });
 
 // GET /api/beta/stats — authenticated (owner only)
-router.get('/stats', auth, async (req, res) => {
+router.get('/stats', requireAuth, async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT
