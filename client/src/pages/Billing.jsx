@@ -4,39 +4,40 @@ import api from '../api';
 
 const PLANS = [
   {
-    key:     'starter',
-    name:    'Starter',
-    price:   0,
-    caption: 'Free forever',
+    key:     'solo',
+    name:    'Solo',
+    price:   49,
+    caption: 'per month',
+    target:  '1 operator · Under $150K',
     features: [
-      '2 team members',
-      '50 jobs / month',
-      'Booking widget',
-      'Client database',
-      'Invoicing',
+      'Client database + job scheduling',
+      'Stripe payments + auto-invoicing',
+      'Online booking widget',
+      'ETA sender — real clock time',
+      'Tech mobile app (iOS + Android)',
     ],
     missing: [
-      'SMS notifications',
-      'Deposit protection',
+      'Business phone',
+      'No-show clock + 3-layer deposits',
       'Revenue analytics',
       'Multi-entity access',
-      'Priority support',
     ],
   },
   {
-    key:       'growth',
-    name:      'Growth',
-    price:     49,
+    key:       'pro',
+    name:      'Pro',
+    price:     99,
     caption:   'per month',
     highlight: true,
+    target:    '1–3 techs · $150K–$600K',
     features: [
-      '10 team members',
-      'Unlimited jobs',
-      'Booking widget',
-      'Client database',
-      'Invoicing',
-      'SMS notifications',
-      'Deposit protection',
+      'Everything in Solo',
+      'Business phone — included',
+      'No-show clock + 3-layer deposits',
+      'Smart Caller ID (push when closed)',
+      'Pre-charge advance notices',
+      'Travel fee engine + route optimization',
+      'Fleet + recurring billing automation',
       'Revenue analytics',
     ],
     missing: [
@@ -47,25 +48,23 @@ const PLANS = [
   {
     key:     'scale',
     name:    'Scale',
-    price:   99,
+    price:   199,
     caption: 'per month',
+    target:  '4–10 techs · $600K–$2M',
     features: [
-      'Unlimited team members',
-      'Unlimited jobs',
-      'Booking widget',
-      'Client database',
-      'Invoicing',
-      'SMS notifications',
-      'Deposit protection',
-      'Revenue analytics',
-      'Multi-entity access',
+      'Everything in Pro',
+      'Multi-entity — unlimited LLCs',
+      '3 phone numbers + call routing',
+      'GPS fleet tracking integration',
+      'Custom reports + API access',
+      'E-signature + white-label booking',
       'Priority support',
     ],
     missing: [],
   },
 ];
 
-const PLAN_ORDER = ['starter', 'growth', 'scale'];
+const PLAN_ORDER = ['starter', 'solo', 'pro', 'scale'];
 
 export default function Billing() {
   const [searchParams] = useSearchParams();
@@ -138,6 +137,7 @@ export default function Billing() {
   const currentPlan = billing?.plan   || 'starter';
   const planStatus  = billing?.status || 'active';
   const currentIdx  = PLAN_ORDER.indexOf(currentPlan);
+  const currentName = { starter: 'Free Trial', solo: 'Solo', pro: 'Pro', scale: 'Scale' }[currentPlan] || currentPlan;
 
   const statusLabel = planStatus === 'trialing'  ? 'Trial'
                     : planStatus === 'past_due'   ? 'Past Due'
@@ -179,7 +179,7 @@ export default function Billing() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1 }}>
-                {PLANS.find(p => p.key === currentPlan)?.name}
+                {currentName}
               </span>
               <span className={`dash-jbadge ${statusClass}`}>{statusLabel}</span>
             </div>
@@ -202,7 +202,7 @@ export default function Billing() {
       </div>
 
       {/* Plan cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
         {PLANS.map(plan => {
           const isCurrent  = plan.key === currentPlan;
           const planIdx    = PLAN_ORDER.indexOf(plan.key);
@@ -229,7 +229,8 @@ export default function Billing() {
                     <span style={{ fontSize: 12, color: 'var(--steel)' }}>/mo</span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--steel)', marginBottom: 20 }}>{plan.caption}</div>
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginBottom: 4 }}>{plan.caption}</div>
+                {plan.target && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'var(--steel)', opacity: .7, marginBottom: 16, letterSpacing: '.04em' }}>{plan.target}</div>}
 
                 <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>
                   {plan.features.map(f => (
@@ -271,6 +272,27 @@ export default function Billing() {
             </div>
           );
         })}
+      </div>
+
+      {/* Custom / Enterprise card */}
+      <div className="dash-card" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', gap: 20, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 6 }}>Custom · Enterprise</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+            <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1 }}>$300+</span>
+            <span style={{ fontSize: 12, color: 'var(--steel)' }}>/mo</span>
+          </div>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'var(--steel)', opacity: .7, letterSpacing: '.04em', marginBottom: 10 }}>10+ techs · $2M+</div>
+          <div style={{ fontSize: 12, color: 'var(--slate)', lineHeight: 1.6 }}>
+            Unlimited phone numbers · Dedicated CSM · 99.9% SLA · Custom feature development · Negotiated processing rate
+          </div>
+        </div>
+        <a
+          href="mailto:hello@getfieldcore.com?subject=Custom Plan Inquiry"
+          style={{ flexShrink: 0, padding: '10px 24px', background: 'var(--navy)', color: 'var(--sand)', borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+        >
+          Contact Sales →
+        </a>
       </div>
 
       {/* Stripe Connect — payments section */}

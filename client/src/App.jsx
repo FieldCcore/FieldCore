@@ -315,8 +315,8 @@ function AppShell() {
             <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
             <Route path="/dispatch"    element={<ProtectedRoute><Dispatch /></ProtectedRoute>}       />
             <Route path="/jobs"        element={<ProtectedRoute><Jobs /></ProtectedRoute>}           />
-            <Route path="/revenue"     element={<ProtectedRoute><PlanGate requires="growth"><Revenue /></PlanGate></ProtectedRoute>}   />
-            <Route path="/deposits"    element={<ProtectedRoute><PlanGate requires="growth"><Deposits /></PlanGate></ProtectedRoute>}  />
+            <Route path="/revenue"     element={<ProtectedRoute><PlanGate requires="pro"><Revenue /></PlanGate></ProtectedRoute>}   />
+            <Route path="/deposits"    element={<ProtectedRoute><PlanGate requires="pro"><Deposits /></PlanGate></ProtectedRoute>}  />
             <Route path="/invoices"    element={<ProtectedRoute><Invoices /></ProtectedRoute>}       />
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />

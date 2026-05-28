@@ -29,7 +29,7 @@ const sections = [
     items: [
       {
         q: 'How much does FieldCore cost?',
-        a: 'Plans start at $49/month for the Core plan (solo operators), $99/month for the Growth plan (teams up to 10), and $199/month for the Scale plan (multi-entity, API access, white-label). All plans include unlimited clients and no per-user fees.',
+        a: 'Plans start at $49/month for the Solo plan (solo operators), $99/month for the Pro plan (teams up to 10), and $199/month for the Scale plan (multi-entity, API access, white-label). All plans include unlimited clients and no per-user fees.',
       },
       {
         q: 'Are there per-user or per-transaction fees?',

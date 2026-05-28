@@ -112,8 +112,9 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 
   // ── Platform subscription events ──────────────────────────
   function priceIdToPlan(priceId) {
-    if (priceId === process.env.STRIPE_PRICE_GROWTH) return 'growth';
-    if (priceId === process.env.STRIPE_PRICE_SCALE)  return 'scale';
+    if (priceId === process.env.STRIPE_PRICE_SOLO)  return 'solo';
+    if (priceId === process.env.STRIPE_PRICE_PRO)   return 'pro';
+    if (priceId === process.env.STRIPE_PRICE_SCALE) return 'scale';
     return 'starter';
   }
 
