@@ -9,24 +9,28 @@ if (missing.length) {
 
 const app       = require('./src/app');
 const scheduler = require('./src/services/scheduler');
+const { runMigrations } = require('./src/db/migrate');
 
-const PORT   = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  console.log(`FieldCore API running on port ${PORT}`);
-  scheduler.startReminderJob();
-});
+const PORT = process.env.PORT || 3000;
 
-function shutdown(signal) {
-  console.log(`[${signal}] Graceful shutdown…`);
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
+runMigrations().then(() => {
+  const server = app.listen(PORT, () => {
+    console.log(`FieldCore API running on port ${PORT}`);
+    scheduler.startReminderJob();
   });
-  setTimeout(() => {
-    console.error('Shutdown timed out — forcing exit.');
-    process.exit(1);
-  }, 10_000).unref();
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
+  function shutdown(signal) {
+    console.log(`[${signal}] Graceful shutdown…`);
+    server.close(() => {
+      console.log('HTTP server closed.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('Shutdown timed out — forcing exit.');
+      process.exit(1);
+    }, 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+});
