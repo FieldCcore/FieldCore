@@ -79,7 +79,8 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
   try {
     const { rows } = await pool.query(
       `SELECT i.*, c.name AS client_name, c.email AS client_email,
-              j.service_type, a.name AS business_name
+              j.service_type, a.name AS business_name,
+              COALESCE(i.tax_amount, 0) AS tax_amount
        FROM invoices i
        JOIN clients  c ON c.id = i.client_id
        JOIN jobs     j ON j.id = i.job_id
@@ -103,7 +104,7 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
       email.send({
         to:      inv.client_email,
         subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
-        html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name),
+        html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name, inv.tax_amount),
       }).catch(err => console.error('[Invoice email]', err.message));
     }
 

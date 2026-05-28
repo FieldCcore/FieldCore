@@ -77,6 +77,10 @@ const MIGRATIONS = [
      cancelled_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
    )`,
 
+  // Tax columns
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS tax_rate   NUMERIC(5,4) DEFAULT 0`,
+  `ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) DEFAULT 0`,
+
   // Account billing/cancellation metadata
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS cancel_reason   TEXT`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS cancelled_at    TIMESTAMPTZ`,

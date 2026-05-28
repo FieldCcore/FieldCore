@@ -76,15 +76,26 @@ function reminderHtml(clientName, serviceType, scheduledAt) {
   `);
 }
 
-function invoiceHtml(clientName, serviceType, amount, payLink, businessName) {
+function invoiceHtml(clientName, serviceType, amount, payLink, businessName, taxAmount = 0) {
+  const tax      = parseFloat(taxAmount || 0);
+  const total    = parseFloat(amount);
+  const subtotal = total - tax;
+  const taxLines = tax > 0 ? `
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#6b7280;margin-bottom:4px">
+      <span>Subtotal</span><span>$${subtotal.toFixed(2)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#6b7280;margin-bottom:10px">
+      <span>Tax</span><span>$${tax.toFixed(2)}</span>
+    </div>` : '';
   return wrap(`
     <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Invoice from ${businessName}</h2>
     <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${clientName}, you have a new invoice ready for payment.</p>
     ${card(
       detail('Service', serviceType) +
-      `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid #e5e0d8;margin-top:4px">
+      taxLines +
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:${tax > 0 ? 10 : 14}px;border-top:1px solid #e5e0d8;margin-top:4px">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af">Amount Due</div>
-        <div style="font-size:28px;font-weight:800;color:#1C2333">$${parseFloat(amount).toFixed(2)}</div>
+        <div style="font-size:28px;font-weight:800;color:#1C2333">$${total.toFixed(2)}</div>
       </div>`
     )}
     <a href="${payLink}" style="display:inline-block;background:#1C2333;color:#D6B58A;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:.02em">Pay Now →</a>
