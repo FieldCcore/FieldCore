@@ -1,6 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
+function renderMessage(text) {
+  const lines = text.split('\n');
+  return lines.map((line, i) => {
+    const trimmed = line.trim();
+    const isBullet = /^[-•*]\s+/.test(trimmed);
+    const content = isBullet ? trimmed.replace(/^[-•*]\s+/, '') : line;
+    const parts = content.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+      part.startsWith('**') && part.endsWith('**')
+        ? <strong key={j}>{part.slice(2, -2)}</strong>
+        : part.replace(/\*/g, '')
+    );
+    return (
+      <span key={i} style={{ display: 'block', marginBottom: isBullet ? 3 : 0 }}>
+        {isBullet && <span style={{ marginRight: 6, opacity: 0.5 }}>·</span>}
+        {parts}
+      </span>
+    );
+  });
+}
+
 const SUGGESTED = [
   'How much does FieldCore cost?',
   'What is the no-show clock?',
@@ -111,7 +131,7 @@ export default function ChatWidget() {
                   color: m.role === 'user' ? 'white' : '#1C2333',
                   fontSize: 13, lineHeight: 1.55,
                 }}>
-                  {m.content}
+                  {renderMessage(m.content)}
                 </div>
               </div>
             ))}

@@ -361,8 +361,9 @@
 @media(max-width:768px) {
   .landing-page .site-nav { padding: 0 5%; }
   .landing-page .nav-links { display: none; }
-  .landing-page .nav-ctas .btn-ghost { display: none; }
-  .landing-page .nav-ctas .btn-sand { padding: 8px 16px; font-size: 12px; }
+  .landing-page .nav-ctas { gap: 8px; }
+  .landing-page .nav-ctas .btn-ghost { padding: 7px 12px; font-size: 12px; }
+  .landing-page .nav-ctas .btn-sand { padding: 7px 12px; font-size: 12px; }
 
   .landing-page .lp-hero {
     height: auto;
