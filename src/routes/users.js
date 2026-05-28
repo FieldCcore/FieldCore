@@ -24,8 +24,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkUserLimit, a
   const { name, email, phone, role, password } = req.body;
   if (!name || !email || !role || !password)
     return res.status(400).json({ error: 'name, email, role, and password are required.' });
-  if (!['owner', 'manager', 'tech'].includes(role))
-    return res.status(400).json({ error: 'role must be owner, manager, or tech.' });
+  if (!['owner', 'manager', 'tech', 'staff'].includes(role))
+    return res.status(400).json({ error: 'role must be owner, manager, tech, or staff.' });
   if (password.length < 8)
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
@@ -105,8 +105,8 @@ router.get('/:id/memberships', requireAuth, requireRole('owner'), async (req, re
 router.post('/:id/memberships', requireAuth, requireRole('owner'), async (req, res) => {
   const { account_id, role = 'manager' } = req.body;
   if (!account_id) return res.status(400).json({ error: 'account_id is required.' });
-  if (!['owner', 'manager', 'tech'].includes(role))
-    return res.status(400).json({ error: 'role must be owner, manager, or tech.' });
+  if (!['owner', 'manager', 'tech', 'staff'].includes(role))
+    return res.status(400).json({ error: 'role must be owner, manager, tech, or staff.' });
 
   try {
     const { rows } = await pool.query(

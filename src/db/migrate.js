@@ -99,6 +99,31 @@ const MIGRATIONS = [
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trial_ends_at   TIMESTAMPTZ`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS renewal_7d_sent BOOLEAN DEFAULT FALSE`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS renewal_3d_sent BOOLEAN DEFAULT FALSE`,
+
+  // Business entity detail columns
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS legal_name            TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS dba                   TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS business_type         TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS ein                   TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address               TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS city                  TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS state                 TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS zip                   TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS phone                 TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS entity_email          TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_active             BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_connect_id     TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_connect_status TEXT NOT NULL DEFAULT 'not_connected'`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS plan_status           TEXT NOT NULL DEFAULT 'active'`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ`,
+
+  // Staff role support in users and memberships
+  `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`,
+  `ALTER TABLE users ADD CONSTRAINT users_role_check
+     CHECK (role IN ('owner', 'manager', 'tech', 'staff'))`,
+  `ALTER TABLE account_memberships DROP CONSTRAINT IF EXISTS account_memberships_role_check`,
+  `ALTER TABLE account_memberships ADD CONSTRAINT account_memberships_role_check
+     CHECK (role IN ('owner', 'manager', 'tech', 'staff'))`,
 ];
 
 async function runMigrations() {

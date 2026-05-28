@@ -1,29 +1,99 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Users, ArrowRightLeft, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, Users, ArrowRightLeft, Plus, X, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
-const ROLES = ['owner', 'manager', 'tech'];
+const BUSINESS_TYPES = ['LLC', 'S-Corp', 'C-Corp', 'Sole Proprietor', 'Partnership', 'Non-Profit', 'Other'];
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+  'VA','WA','WV','WI','WY','DC',
+];
+
+const EMPTY_FORM = {
+  name: '', legal_name: '', dba: '', business_type: '',
+  ein: '', address: '', city: '', state: '', zip: '',
+  phone: '', entity_email: '', is_active: true,
+};
+
+function formatEIN(ein) {
+  if (!ein) return '—';
+  const digits = ein.replace(/\D/g, '');
+  if (digits.length >= 2) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+  return ein;
+}
+
+function ConnectBadge({ status }) {
+  if (status === 'active') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#16a34a' }}>
+        <CheckCircle size={12} />Payouts Connected
+      </div>
+    );
+  }
+  if (status === 'pending') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#d97706' }}>
+        <Clock size={12} />Stripe Pending
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>
+      <AlertCircle size={12} />Not Connected
+    </div>
+  );
+}
+
+function StatusBadge({ active }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+      textTransform: 'uppercase', letterSpacing: '.06em',
+      background: active ? '#dcfce7' : '#f3f4f6',
+      color: active ? '#15803d' : '#6b7280',
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: active ? '#16a34a' : '#9ca3af', display: 'inline-block' }} />
+      {active ? 'Active' : 'Inactive'}
+    </span>
+  );
+}
+
+function TypeBadge({ type }) {
+  if (!type) return null;
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em',
+      background: '#1C233318', color: '#1C2333',
+    }}>{type}</span>
+  );
+}
 
 export default function Entities() {
   const { user, switchAccount } = useAuth();
   const isScale = user?.plan === 'scale';
 
-  const [entities,    setEntities]    = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [expanded,    setExpanded]    = useState({});
-  const [members,     setMembers]     = useState({});
-  const [membLoading, setMembLoading] = useState({});
-  const [createOpen,  setCreateOpen]  = useState(false);
-  const [newName,     setNewName]     = useState('');
-  const [creating,    setCreating]    = useState(false);
-  const [createErr,   setCreateErr]   = useState('');
-  const [inviteModal, setInviteModal] = useState(null); // { entityId, entityName }
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole,  setInviteRole]  = useState('manager');
-  const [inviting,    setInviting]    = useState(false);
-  const [inviteErr,   setInviteErr]   = useState('');
-  const [switching,   setSwitching]   = useState(null);
+  const [entities,     setEntities]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showForm,     setShowForm]     = useState(false);
+  const [editTarget,   setEditTarget]   = useState(null); // entity being edited
+  const [form,         setForm]         = useState({ ...EMPTY_FORM });
+  const [saving,       setSaving]       = useState(false);
+  const [formError,    setFormError]    = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting,     setDeleting]     = useState(false);
+  const [switching,    setSwitching]    = useState(null);
+  const [membersOpen,  setMembersOpen]  = useState({});
+  const [members,      setMembers]      = useState({});
+  const [membLoading,  setMembLoading]  = useState({});
+  const [inviteModal,  setInviteModal]  = useState(null);
+  const [inviteEmail,  setInviteEmail]  = useState('');
+  const [inviteRole,   setInviteRole]   = useState('manager');
+  const [inviting,     setInviting]     = useState(false);
+  const [inviteErr,    setInviteErr]    = useState('');
 
   useEffect(() => {
     api.get('/entities')
@@ -31,6 +101,74 @@ export default function Entities() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  function openAdd() {
+    setEditTarget(null);
+    setForm({ ...EMPTY_FORM });
+    setFormError('');
+    setShowForm(true);
+  }
+
+  function openEdit(entity) {
+    setEditTarget(entity);
+    setForm({
+      name:         entity.name         || '',
+      legal_name:   entity.legal_name   || '',
+      dba:          entity.dba          || '',
+      business_type:entity.business_type|| '',
+      ein:          entity.ein          || '',
+      address:      entity.address      || '',
+      city:         entity.city         || '',
+      state:        entity.state        || '',
+      zip:          entity.zip          || '',
+      phone:        entity.phone        || '',
+      entity_email: entity.entity_email || '',
+      is_active:    entity.is_active    !== false,
+    });
+    setFormError('');
+    setShowForm(true);
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!form.name.trim()) { setFormError('Business name is required.'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      if (editTarget) {
+        const r = await api.patch(`/entities/${editTarget.id}`, form);
+        setEntities(prev => prev.map(en => en.id === editTarget.id ? { ...en, ...r.data } : en));
+      } else {
+        const r = await api.post('/entities', form);
+        setEntities(prev => [...prev, r.data]);
+      }
+      setShowForm(false);
+    } catch (err) {
+      setFormError(err.response?.data?.error || 'Save failed.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/entities/${deleteTarget.id}`);
+      setEntities(prev => prev.map(en => en.id === deleteTarget.id ? { ...en, is_active: false } : en));
+      setDeleteTarget(null);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Delete failed.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleSwitch(entityId) {
+    setSwitching(entityId);
+    try { await switchAccount(entityId); }
+    catch { setSwitching(null); }
+  }
 
   async function loadMembers(entityId) {
     if (members[entityId]) return;
@@ -45,27 +183,10 @@ export default function Entities() {
     }
   }
 
-  function toggleExpand(entityId) {
-    const next = !expanded[entityId];
-    setExpanded(p => ({ ...p, [entityId]: next }));
+  function toggleMembers(entityId) {
+    const next = !membersOpen[entityId];
+    setMembersOpen(p => ({ ...p, [entityId]: next }));
     if (next) loadMembers(entityId);
-  }
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    setCreating(true);
-    setCreateErr('');
-    try {
-      const r = await api.post('/entities', { name: newName.trim() });
-      setEntities(prev => [...prev, { ...r.data, is_home: false, member_count: 0 }]);
-      setCreateOpen(false);
-      setNewName('');
-    } catch (err) {
-      setCreateErr(err.response?.data?.error || 'Failed to create entity.');
-    } finally {
-      setCreating(false);
-    }
   }
 
   async function handleInvite(e) {
@@ -74,10 +195,7 @@ export default function Entities() {
     setInviting(true);
     setInviteErr('');
     try {
-      const r = await api.post(`/entities/${inviteModal.entityId}/members`, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      });
+      const r = await api.post(`/entities/${inviteModal.entityId}/members`, { email: inviteEmail.trim(), role: inviteRole });
       setMembers(prev => ({
         ...prev,
         [inviteModal.entityId]: [...(prev[inviteModal.entityId] || []), { ...r.data, membership_type: 'cross' }],
@@ -92,209 +210,379 @@ export default function Entities() {
     }
   }
 
-  async function handleRemoveMember(entityId, userId) {
-    if (!window.confirm('Remove this user's access to this entity?')) return;
+  async function handleRemoveMember(entityId, memberId) {
+    if (!window.confirm('Remove this user\'s access to this entity?')) return;
     try {
-      await api.delete(`/entities/${entityId}/members/${userId}`);
-      setMembers(prev => ({
-        ...prev,
-        [entityId]: prev[entityId].filter(m => m.id !== userId),
-      }));
+      await api.delete(`/entities/${entityId}/members/${memberId}`);
+      setMembers(prev => ({ ...prev, [entityId]: prev[entityId].filter(m => m.id !== memberId) }));
     } catch (err) {
       alert(err.response?.data?.error || 'Remove failed.');
     }
   }
 
-  async function handleSwitch(entityId) {
-    setSwitching(entityId);
-    try {
-      await switchAccount(entityId);
-    } catch {
-      setSwitching(null);
-    }
-  }
+  const sf = f => e => setForm(p => ({ ...p, [f]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
-  const roleBadgeStyle = (role) => ({
-    display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: 4,
-    fontSize: 10,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: '.06em',
-    background: role === 'owner' ? '#D6B58A22' : role === 'manager' ? '#3B82F622' : '#6B728022',
-    color: role === 'owner' ? '#D6B58A' : role === 'manager' ? '#3B82F6' : '#9CA3AF',
-  });
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', border: '1px solid #e5e0d8',
+    borderRadius: 8, fontSize: 13, color: '#1C2333', background: '#fff',
+    boxSizing: 'border-box',
+  };
+
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 5 };
 
   return (
     <div>
+      {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1>Entities</h1>
-          <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-            Manage multiple business entities under one login.
+          <h1>Business Entities</h1>
+          <p className="muted" style={{ marginTop: 3, fontSize: 13 }}>
+            Manage multiple business entities, locations, or brands under one account.
           </p>
         </div>
         {isScale && (
-          <button className="btn-primary" onClick={() => { setCreateOpen(true); setCreateErr(''); setNewName(''); }}>
-            <Plus size={14} style={{ marginRight: 6 }} />New Entity
+          <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Plus size={14} />Add Entity
           </button>
         )}
       </div>
 
+      {/* Scale plan gate */}
       {!isScale && (
-        <div style={{ background: '#1C233322', border: '1px solid #D6B58A44', borderRadius: 10, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#D6B58A', marginBottom: 4 }}>Scale Plan Required</div>
-            <div style={{ fontSize: 13, color: 'var(--steel)' }}>
-              Multi-entity management lets you run multiple business locations or brands under one account.
+        <div style={{ background: '#fdfaf5', border: '1px solid #D6B58A66', borderRadius: 12, padding: '20px 24px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Building2 size={32} style={{ color: '#D6B58A', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1C2333', marginBottom: 4 }}>Scale Plan Required</div>
+            <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.6 }}>
+              Multi-entity management lets you operate multiple business entities, locations, or brands — each with their own clients, jobs, invoices, and Stripe Connect payouts — all under one FieldCore login.
             </div>
           </div>
-          <a href="/billing" className="btn-secondary" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>Upgrade</a>
+          <a href="/billing" className="btn-primary" style={{ whiteSpace: 'nowrap', flexShrink: 0, textDecoration: 'none' }}>Upgrade to Scale</a>
         </div>
       )}
 
       {loading ? (
         <p className="muted">Loading entities…</p>
-      ) : entities.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--steel)', fontSize: 14 }}>
-          {isScale ? 'No additional entities yet. Click "+ New Entity" to create one.' : 'No entities found.'}
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {entities.map(entity => {
             const isCurrent = entity.id === user?.accountId;
-            const isOpen = expanded[entity.id];
+            const mOpen = membersOpen[entity.id];
             const entityMembers = members[entity.id] || [];
-            const loadingMembs = membLoading[entity.id];
+            const mLoading = membLoading[entity.id];
 
             return (
-              <div key={entity.id} style={{ background: '#fff', border: `1px solid ${isCurrent ? '#D6B58A66' : '#e5e0d8'}`, borderRadius: 12, overflow: 'hidden', boxShadow: isCurrent ? '0 0 0 2px #D6B58A22' : 'none' }}>
-                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: isCurrent ? '#D6B58A22' : '#f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Building2 size={18} style={{ color: isCurrent ? '#D6B58A' : '#9ca3af' }} />
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: 15, color: '#1C2333' }}>{entity.name}</span>
-                      {isCurrent && (
-                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', background: '#D6B58A', color: '#1C2333', padding: '2px 7px', borderRadius: 4 }}>
-                          Active
-                        </span>
-                      )}
-                      {entity.is_home && (
-                        <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', opacity: 0.7 }}>
-                          Home
-                        </span>
-                      )}
+              <div key={entity.id} style={{
+                background: '#fff',
+                border: `1.5px solid ${isCurrent ? '#D6B58A' : '#e5e0d8'}`,
+                borderRadius: 14,
+                overflow: 'hidden',
+                boxShadow: isCurrent ? '0 0 0 3px #D6B58A18' : '0 1px 3px rgba(0,0,0,.04)',
+              }}>
+                {/* Entity card header */}
+                <div style={{ padding: '20px 24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                    {/* Icon */}
+                    <div style={{ width: 48, height: 48, borderRadius: 12, background: isCurrent ? '#D6B58A22' : '#f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Building2 size={22} style={{ color: isCurrent ? '#D6B58A' : '#9ca3af' }} />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, fontSize: 12, color: 'var(--steel)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Users size={11} />{entity.member_count} member{entity.member_count !== 1 ? 's' : ''}
-                      </span>
-                      <span style={{ textTransform: 'capitalize' }}>{entity.plan} plan</span>
-                    </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    {!isCurrent && (
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '6px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
-                        onClick={() => handleSwitch(entity.id)}
-                        disabled={switching === entity.id}
-                      >
-                        <ArrowRightLeft size={12} />
-                        {switching === entity.id ? 'Switching…' : 'Switch'}
-                      </button>
-                    )}
-                    <button
-                      style={{ background: 'none', border: '1px solid #e5e0d8', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', color: 'var(--steel)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
-                      onClick={() => toggleExpand(entity.id)}
-                    >
-                      Members {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </button>
-                  </div>
-                </div>
+                    {/* Entity info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: '#1C2333' }}>
+                          {entity.legal_name || entity.name}
+                        </span>
+                        {isCurrent && (
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', background: '#D6B58A', color: '#1C2333', padding: '2px 8px', borderRadius: 99 }}>
+                            Active
+                          </span>
+                        )}
+                        <StatusBadge active={entity.is_active} />
+                        <TypeBadge type={entity.business_type} />
+                      </div>
 
-                {isOpen && (
-                  <div style={{ borderTop: '1px solid #f4f4f0', padding: '14px 20px', background: '#fafaf8' }}>
-                    {loadingMembs ? (
-                      <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading members…</p>
-                    ) : (
-                      <>
-                        {entityMembers.length === 0 ? (
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)' }}>No members yet.</p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                            {entityMembers.map(m => (
-                              <div key={`${m.id}-${m.membership_type}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: '#fff', borderRadius: 8, border: '1px solid #e5e0d8' }}>
-                                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#9ca3af', flexShrink: 0 }}>
-                                  {m.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--steel)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.email}</div>
-                                </div>
-                                <span style={roleBadgeStyle(m.role)}>{m.role}</span>
-                                {m.membership_type === 'cross' && (
-                                  <button
-                                    onClick={() => handleRemoveMember(entity.id, m.id)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e53e3e', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
-                                    title="Remove access"
-                                  >×</button>
-                                )}
-                              </div>
-                            ))}
+                      {/* DBA */}
+                      {entity.dba && entity.dba !== entity.name && (
+                        <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 3 }}>
+                          DBA: <span style={{ fontWeight: 600, color: '#4b5563' }}>{entity.dba}</span>
+                        </div>
+                      )}
+                      {!entity.dba && entity.legal_name && entity.name !== entity.legal_name && (
+                        <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 3 }}>
+                          DBA: <span style={{ fontWeight: 600, color: '#4b5563' }}>{entity.name}</span>
+                        </div>
+                      )}
+
+                      {/* Details row */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10 }}>
+                        {entity.ein && (
+                          <div>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>EIN</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>{formatEIN(entity.ein)}</div>
                           </div>
                         )}
+                        {(entity.city || entity.state) && (
+                          <div>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Location</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{[entity.city, entity.state].filter(Boolean).join(', ')}</div>
+                          </div>
+                        )}
+                        {entity.phone && (
+                          <div>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Phone</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{entity.phone}</div>
+                          </div>
+                        )}
+                        {entity.entity_email && (
+                          <div>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Email</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{entity.entity_email}</div>
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Payouts</div>
+                          <ConnectBadge status={entity.stripe_connect_status || 'not_connected'} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Members</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Users size={11} />{entity.member_count || 0}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {!isCurrent && (
                         <button
-                          className="btn-secondary"
-                          style={{ fontSize: 12, padding: '6px 14px' }}
-                          onClick={() => { setInviteModal({ entityId: entity.id, entityName: entity.name }); setInviteEmail(''); setInviteRole('manager'); setInviteErr(''); }}
+                          className="btn-primary"
+                          style={{ padding: '7px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
+                          onClick={() => handleSwitch(entity.id)}
+                          disabled={switching === entity.id}
                         >
-                          + Invite Member
+                          <ArrowRightLeft size={12} />{switching === entity.id ? 'Switching…' : 'Switch'}
                         </button>
-                      </>
-                    )}
+                      )}
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '7px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
+                        onClick={() => openEdit(entity)}
+                      >
+                        <Pencil size={12} />Edit
+                      </button>
+                      {!entity.is_home && (
+                        <button
+                          style={{ padding: '7px 10px', fontSize: 12, background: 'none', border: '1px solid #fee2e2', borderRadius: 8, color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => setDeleteTarget(entity)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
+
+                  {/* Stripe Connect status action */}
+                  {(entity.stripe_connect_status === 'not_connected' || !entity.stripe_connect_status) && (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: 'var(--steel)' }}>Connect a bank account to enable payouts for this entity.</span>
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '5px 12px' }}
+                        onClick={() => alert('Stripe Connect setup coming soon — contact support@getfieldcore.com to get started.')}
+                      >
+                        Connect Stripe →
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Members section */}
+                <div style={{ borderTop: '1px solid #f4f4f0' }}>
+                  <button
+                    onClick={() => toggleMembers(entity.id)}
+                    style={{ width: '100%', padding: '10px 24px', background: '#fafaf8', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--steel)', fontWeight: 500 }}
+                  >
+                    <Users size={12} />Team Members
+                    {mOpen ? <ChevronUp size={12} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={12} style={{ marginLeft: 'auto' }} />}
+                  </button>
+
+                  {mOpen && (
+                    <div style={{ padding: '12px 24px 16px', background: '#fafaf8', borderTop: '1px solid #f0ede6' }}>
+                      {mLoading ? (
+                        <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading…</p>
+                      ) : (
+                        <>
+                          {entityMembers.length === 0 ? (
+                            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--steel)' }}>No members yet.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                              {entityMembers.map(m => (
+                                <div key={`${m.id}-${m.membership_type}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #e5e0d8' }}>
+                                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#1C233318', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#1C2333', flexShrink: 0 }}>
+                                    {(m.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--steel)' }}>{m.email}</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 7px', borderRadius: 4, background: '#f4f4f0', color: '#6b7280' }}>{m.role}</span>
+                                  {m.membership_type === 'cross' && (
+                                    <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} title="Remove">×</button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            className="btn-secondary"
+                            style={{ fontSize: 12, padding: '6px 14px' }}
+                            onClick={() => { setInviteModal({ entityId: entity.id, entityName: entity.legal_name || entity.name }); setInviteEmail(''); setInviteRole('manager'); setInviteErr(''); }}
+                          >
+                            + Invite Member
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
+
+          {entities.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '56px 0', color: 'var(--steel)', fontSize: 14 }}>
+              {isScale ? 'No entities yet. Click "+ Add Entity" to create your first.' : 'Upgrade to Scale to manage multiple business entities.'}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Create Entity Modal */}
-      {createOpen && (
-        <div className="modal-overlay" onClick={() => setCreateOpen(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+      {/* Add / Edit Entity Modal */}
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" style={{ maxWidth: 600, width: '94vw' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>New Entity</h2>
-              <button className="btn-close" onClick={() => setCreateOpen(false)}>×</button>
+              <h2>{editTarget ? 'Edit Entity' : 'Add Business Entity'}</h2>
+              <button className="btn-close" onClick={() => setShowForm(false)}>×</button>
             </div>
-            <form onSubmit={handleCreate}>
-              {createErr && <p className="form-error" style={{ marginBottom: 12 }}>{createErr}</p>}
-              <div className="form-group">
-                <label>Entity Name</label>
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  placeholder="e.g. Downtown Location, Brand B"
-                />
+
+            <form onSubmit={handleSave} style={{ maxHeight: '72vh', overflowY: 'auto', paddingRight: 2 }}>
+              {formError && <p className="form-error" style={{ marginBottom: 14 }}>{formError}</p>}
+
+              {/* Business Identity */}
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', marginBottom: 12 }}>Business Identity</div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label style={labelStyle}>Legal Business Name *</label>
+                  <input style={inputStyle} value={form.legal_name} onChange={sf('legal_name')} placeholder="Full legal name on file" />
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>Display / DBA Name *</label>
+                  <input style={inputStyle} value={form.name} onChange={sf('name')} placeholder="Doing Business As" required />
+                </div>
               </div>
-              <p style={{ fontSize: 12, color: 'var(--steel)', margin: '8px 0 16px' }}>
-                A new, separate business entity will be created. You can switch between entities from the sidebar.
-              </p>
-              <div className="form-actions">
-                <button type="submit" className="btn-primary" disabled={creating || !newName.trim()}>
-                  {creating ? 'Creating…' : 'Create Entity'}
+              <div className="form-group">
+                <label style={labelStyle}>DBA (if different from above)</label>
+                <input style={inputStyle} value={form.dba} onChange={sf('dba')} placeholder="Optional trade name" />
+              </div>
+
+              {/* Business Details */}
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', margin: '20px 0 12px' }}>Business Details</div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label style={labelStyle}>Business Type</label>
+                  <select style={inputStyle} value={form.business_type} onChange={sf('business_type')}>
+                    <option value="">Select type…</option>
+                    {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>EIN (Federal Tax ID)</label>
+                  <input style={inputStyle} value={form.ein} onChange={sf('ein')} placeholder="XX-XXXXXXX" maxLength={10} />
+                </div>
+              </div>
+
+              {editTarget && (
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" id="is_active" checked={form.is_active} onChange={sf('is_active')} style={{ width: 16, height: 16 }} />
+                  <label htmlFor="is_active" style={{ fontSize: 13, fontWeight: 500, color: '#1C2333', margin: 0 }}>Entity is active</label>
+                </div>
+              )}
+
+              {/* Contact & Location */}
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', margin: '20px 0 12px' }}>Contact & Location</div>
+              <div className="form-group">
+                <label style={labelStyle}>Street Address</label>
+                <input style={inputStyle} value={form.address} onChange={sf('address')} placeholder="123 Main St" />
+              </div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label style={labelStyle}>City</label>
+                  <input style={inputStyle} value={form.city} onChange={sf('city')} placeholder="Chicago" />
+                </div>
+                <div className="form-group" style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>State</label>
+                    <select style={inputStyle} value={form.state} onChange={sf('state')}>
+                      <option value="">—</option>
+                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ width: 90 }}>
+                    <label style={labelStyle}>ZIP</label>
+                    <input style={inputStyle} value={form.zip} onChange={sf('zip')} placeholder="60601" maxLength={10} />
+                  </div>
+                </div>
+              </div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label style={labelStyle}>Business Phone</label>
+                  <input style={inputStyle} type="tel" value={form.phone} onChange={sf('phone')} placeholder="(312) 555-0100" />
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>Business Email</label>
+                  <input style={inputStyle} type="email" value={form.entity_email} onChange={sf('entity_email')} placeholder="info@yourbusiness.com" />
+                </div>
+              </div>
+
+              <div className="form-actions" style={{ marginTop: 24 }}>
+                <button type="submit" className="btn-primary" disabled={saving || !form.name.trim()}>
+                  {saving ? 'Saving…' : editTarget ? 'Save Changes' : 'Create Entity'}
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setCreateOpen(false)}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Deactivate Entity</h2>
+              <button className="btn-close" onClick={() => setDeleteTarget(null)}>×</button>
+            </div>
+            <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.7, margin: '0 0 8px' }}>
+              Are you sure you want to deactivate <strong>{deleteTarget.legal_name || deleteTarget.name}</strong>?
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.7, margin: '0 0 24px' }}>
+              The entity will be marked inactive. All data (jobs, clients, invoices) is preserved and can be reactivated by editing the entity.
+            </p>
+            <div className="form-actions">
+              <button
+                className="btn-primary"
+                style={{ background: '#dc2626', borderColor: '#dc2626' }}
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deactivating…' : 'Deactivate Entity'}
+              </button>
+              <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
@@ -302,7 +590,7 @@ export default function Entities() {
       {/* Invite Member Modal */}
       {inviteModal && (
         <div className="modal-overlay" onClick={() => setInviteModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Invite to {inviteModal.entityName}</h2>
               <button className="btn-close" onClick={() => setInviteModal(null)}>×</button>
@@ -311,28 +599,23 @@ export default function Entities() {
               {inviteErr && <p className="form-error" style={{ marginBottom: 12 }}>{inviteErr}</p>}
               <div className="form-group">
                 <label>Email Address</label>
-                <input
-                  autoFocus
-                  type="email"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  placeholder="user@example.com"
-                />
+                <input autoFocus type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="user@example.com" />
               </div>
               <div className="form-group" style={{ marginTop: 12 }}>
                 <label>Role</label>
                 <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-                  {ROLES.map(r => (
-                    <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                  ))}
+                  <option value="owner">Owner</option>
+                  <option value="manager">Manager</option>
+                  <option value="staff">Staff</option>
+                  <option value="tech">Technician</option>
                 </select>
               </div>
-              <p style={{ fontSize: 12, color: 'var(--steel)', margin: '8px 0 16px' }}>
+              <p style={{ fontSize: 12, color: 'var(--steel)', margin: '10px 0 16px', lineHeight: 1.6 }}>
                 The user must already have a FieldCore account. They'll see this entity in their sidebar switcher.
               </p>
               <div className="form-actions">
                 <button type="submit" className="btn-primary" disabled={inviting || !inviteEmail.trim()}>
-                  {inviting ? 'Inviting…' : 'Add Member'}
+                  {inviting ? 'Adding…' : 'Add Member'}
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => setInviteModal(null)}>Cancel</button>
               </div>

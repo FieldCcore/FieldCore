@@ -256,31 +256,55 @@ function AppShell() {
         </div>
 
         <nav className="sb-nav">
-          <div className="nav-section">Operations</div>
-          {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
-          {ni('/dispatch', false, IcoDispatch, 'Dispatch',  null)}
-          {ni('/jobs',     false, IcoCalendar, 'Calendar',  null)}
+          {(() => {
+            const role      = user?.role || 'tech';
+            const isOwner   = role === 'owner';
+            const isManager = role === 'manager';
+            const isStaff   = role === 'staff';
+            const isTech    = role === 'tech';
 
-          <div className="nav-section">Finance</div>
-          {ni('/revenue',  false, IcoRevenue,  'Revenue',   null)}
-          {ni('/deposits', false, IcoDeposits, 'Deposits',  null)}
-          {ni('/invoices', false, IcoInvoice,  'Invoices',  null)}
+            return (
+              <>
+                {/* Operations — all roles see Dashboard + Calendar; Dispatch hidden from tech/staff */}
+                <div className="nav-section">Operations</div>
+                {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
+                {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
+                {ni('/jobs',     false, IcoCalendar, 'Calendar',  null)}
 
-          <div className="nav-section">CRM</div>
-          {ni('/clients',  false, IcoClients,  'Clients',   null)}
-          {ni('/messages', false, IcoPhone,    'Phone',     null)}
+                {/* Finance — owner + manager see all; staff sees invoices only */}
+                {(isOwner || isManager || isStaff) && (
+                  <>
+                    <div className="nav-section">Finance</div>
+                    {(isOwner || isManager) && ni('/revenue',  false, IcoRevenue,  'Revenue',  null)}
+                    {(isOwner || isManager) && ni('/deposits', false, IcoDeposits, 'Deposits', null)}
+                    {ni('/invoices', false, IcoInvoice, 'Invoices', null)}
+                  </>
+                )}
 
-          {user?.role !== 'tech' && (
-            <>
-              <div className="nav-section">Admin</div>
-              {ni('/team',    false, IcoTeam,     'Team',     null)}
-              {ni('/fleet',            false, IcoDispatch, 'Fleet',    null)}
-              {ni('/booking',          false, IcoSettings, 'Settings', null)}
-              {ni('/business-settings',false, IcoSettings, 'Business', null)}
-              {user?.role === 'owner' && ni('/entities', false, IcoTeam, 'Entities', null)}
-              {user?.role === 'owner' && ni('/billing', false, IcoBilling, 'Billing', null)}
-            </>
-          )}
+                {/* CRM — owner + manager + staff see clients; phone hidden from staff */}
+                {(isOwner || isManager || isStaff) && (
+                  <>
+                    <div className="nav-section">CRM</div>
+                    {ni('/clients', false, IcoClients, 'Clients', null)}
+                    {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'Phone', null)}
+                  </>
+                )}
+
+                {/* Admin — owner only */}
+                {isOwner && (
+                  <>
+                    <div className="nav-section">Admin</div>
+                    {ni('/team',             false, IcoTeam,     'Team',     null)}
+                    {ni('/fleet',            false, IcoDispatch, 'Fleet',    null)}
+                    {ni('/booking',          false, IcoSettings, 'Settings', null)}
+                    {ni('/business-settings',false, IcoSettings, 'Business', null)}
+                    {ni('/entities',         false, IcoTeam,     'Entities', null)}
+                    {ni('/billing',          false, IcoBilling,  'Billing',  null)}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </nav>
 
         <div className="sb-user" style={{ cursor: 'default' }}>
