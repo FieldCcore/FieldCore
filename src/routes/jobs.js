@@ -145,10 +145,17 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
 
     // Auto-generate invoice when job is marked complete
     if (status === 'complete' && job.amount) {
+      const settingsRes = await pool.query(
+        `SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]
+      );
+      const taxRate   = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+      const subtotal  = parseFloat(job.amount);
+      const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
+      const total     = subtotal + taxAmount;
       await pool.query(
-        `INSERT INTO invoices (account_id, job_id, client_id, amount)
-         VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
-        [req.accountId, job.id, job.client_id, job.amount]
+        `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+        [req.accountId, job.id, job.client_id, total, taxAmount]
       ).catch(() => {}); // non-fatal if invoice already exists
     }
 
