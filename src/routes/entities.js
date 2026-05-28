@@ -7,7 +7,7 @@ const ENTITY_COLS = `
   a.id, a.name, a.legal_name, a.dba, a.business_type, a.ein,
   a.address, a.city, a.state, a.zip, a.phone, a.entity_email,
   a.plan, a.plan_status, a.created_at, a.updated_at,
-  a.is_active, a.stripe_connect_id, a.stripe_connect_status`;
+  a.is_active, a.stripe_connect_account_id, a.stripe_connect_status`;
 
 // Verify the requesting user has owner access to a given entity
 async function verifyOwnerAccess(userId, entityId) {

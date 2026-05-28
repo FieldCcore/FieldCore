@@ -112,7 +112,7 @@ const MIGRATIONS = [
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS phone                 TEXT`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS entity_email          TEXT`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_active             BOOLEAN NOT NULL DEFAULT TRUE`,
-  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_connect_id     TEXT`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_connect_account_id TEXT`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_connect_status TEXT NOT NULL DEFAULT 'not_connected'`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS plan_status           TEXT NOT NULL DEFAULT 'active'`,
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ`,
