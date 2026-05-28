@@ -143,7 +143,7 @@ function startDepositExpiryJob() {
         console.log(`[Scheduler] Deposit ${d.id} expired — marked refunded`);
         // If Stripe charge exists, issue refund via Stripe
         if (d.stripe_charge_id && process.env.STRIPE_SECRET_KEY) {
-          const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+          const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
           stripe.refunds.create({ charge: d.stripe_charge_id })
             .then(() => console.log(`[Scheduler] Stripe refund issued for deposit ${d.id}`))
             .catch(err => console.error(`[Scheduler] Stripe refund failed for deposit ${d.id}:`, err.message));

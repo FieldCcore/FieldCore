@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const stripe  = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe  = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const PRICE_IDS = {

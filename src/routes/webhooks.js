@@ -1,7 +1,7 @@
 const express      = require('express');
 const router       = require('express').Router();
 const pool         = require('../db/pool');
-const stripe       = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe       = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 const twilio       = require('twilio');
 const smsService   = require('../services/sms');
 const emailService = require('../services/email');

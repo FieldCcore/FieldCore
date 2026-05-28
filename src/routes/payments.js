@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 
 // POST /api/payments/setup-intent — card on file setup
 router.post('/setup-intent', requireAuth, requireRole('owner', 'manager'), async (req, res) => {

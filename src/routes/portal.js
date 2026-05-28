@@ -4,7 +4,7 @@ const crypto  = require('crypto');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const emailSvc = require('../services/email');
-const stripe   = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe   = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 
 const PORTAL_JWT_SECRET = process.env.JWT_SECRET + '_portal';
 const TOKEN_TTL_HOURS   = 48;

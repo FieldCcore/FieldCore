@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const stripe  = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe  = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 
 const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT || '1') / 100;
 

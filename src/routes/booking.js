@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const smsService   = require('../services/sms');
 const emailService = require('../services/email');
 const notify       = require('../services/notify');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 
 const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE_PERCENT || '1') / 100;
 
