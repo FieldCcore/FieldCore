@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "nodemailer": "^6.9.16",
     "pg": "^8.20.0",
     "stripe": "^17.7.0",

@@ -15,6 +15,17 @@ export function getPool() {
   return pool;
 }
 
+export function jwtSign(payload) {
+  const secret = (process.env.JWT_SECRET || '').trim();
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const full = { ...payload, iat: now, exp: now + 7 * 24 * 3600 };
+  const h = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const p = Buffer.from(JSON.stringify(full)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url');
+  return `${h}.${p}.${sig}`;
+}
+
 export function verifyAuth(req) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
