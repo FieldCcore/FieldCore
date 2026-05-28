@@ -288,7 +288,7 @@ export default function Billing() {
           </div>
         </div>
         <a
-          href="mailto:hello@getfieldcore.com?subject=Custom Plan Inquiry"
+          href="mailto:info@getfieldcore.com?subject=Custom Plan Inquiry"
           style={{ flexShrink: 0, padding: '10px 24px', background: 'var(--navy)', color: 'var(--sand)', borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
         >
           Contact Sales →
