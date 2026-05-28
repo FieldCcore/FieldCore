@@ -9,7 +9,8 @@ router.get('/', requireAuth, requireRole('owner'), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT a.id, a.name, a.plan, a.plan_status, a.created_at,
               (u.account_id = a.id) AS is_home,
-              (SELECT COUNT(*) FROM users u2 WHERE u2.account_id = a.id) AS member_count
+              ((SELECT COUNT(*) FROM users u2 WHERE u2.account_id = a.id) +
+               (SELECT COUNT(*) FROM account_memberships am2 WHERE am2.account_id = a.id)) AS member_count
        FROM accounts a
        JOIN users u ON u.id = $1
        LEFT JOIN account_memberships am ON am.account_id = a.id AND am.user_id = $1
