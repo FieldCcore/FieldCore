@@ -55,7 +55,12 @@ function RequestAccess({ accountId }) {
         </div>
         {sent ? (
           <div>
-            <div style={{ fontSize: 28, marginBottom: 12 }}>✉️</div>
+            <div style={{ marginBottom: 12 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#5F667A" strokeWidth="1.8" style={{ width: 28, height: 28 }}>
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+            </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#1C2333', marginBottom: 8 }}>Check your email</div>
             <div style={{ fontSize: 14, color: '#5F667A', lineHeight: 1.65 }}>
               If your email is on file, we sent a magic link. It expires in 48 hours.
@@ -283,7 +288,12 @@ export default function ClientPortal() {
   if (state === 'error') return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#EDEBE7', padding: 24 }}>
       <div style={{ background: 'white', borderRadius: 16, padding: '40px 36px', maxWidth: 400, textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
-        <div style={{ fontSize: 28, marginBottom: 12 }}>⚠️</div>
+        <div style={{ marginBottom: 12 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#C2410C" strokeWidth="1.8" style={{ width: 28, height: 28 }}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#1C2333', marginBottom: 8 }}>Link expired or invalid</div>
         <div style={{ fontSize: 14, color: '#5F667A', marginBottom: 20 }}>This link has expired or already been used. Please request a new one.</div>
         <a href="/client" style={{ padding: '11px 22px', background: '#1C2333', color: '#D6B58A', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>Request new link →</a>

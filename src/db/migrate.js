@@ -124,6 +124,72 @@ const MIGRATIONS = [
   `ALTER TABLE account_memberships DROP CONSTRAINT IF EXISTS account_memberships_role_check`,
   `ALTER TABLE account_memberships ADD CONSTRAINT account_memberships_role_check
      CHECK (role IN ('owner', 'manager', 'tech', 'staff'))`,
+
+  // Address lat/lng + city/state/zip on clients
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS city  TEXT`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS state TEXT`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS zip   TEXT`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS lat   NUMERIC(10,6)`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS lng   NUMERIC(10,6)`,
+
+  // Lat/lng on accounts (for BusinessSettings)
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS lat NUMERIC(10,6)`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS lng NUMERIC(10,6)`,
+
+  // Phone numbers table
+  `CREATE TABLE IF NOT EXISTS phone_numbers (
+     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     telnyx_number_id     TEXT,
+     number               TEXT NOT NULL,
+     label                TEXT,
+     forward_to           TEXT,
+     is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+     business_hours_only  BOOLEAN NOT NULL DEFAULT FALSE,
+     after_hours_message  TEXT,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_phone_numbers_account ON phone_numbers(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_phone_numbers_number  ON phone_numbers(number)`,
+
+  // Call logs table
+  `CREATE TABLE IF NOT EXISTS call_logs (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     phone_number_id  UUID REFERENCES phone_numbers(id),
+     telnyx_call_id   TEXT,
+     direction        TEXT NOT NULL DEFAULT 'inbound',
+     from_number      TEXT,
+     to_number        TEXT,
+     client_id        UUID REFERENCES clients(id),
+     client_name      TEXT,
+     status           TEXT NOT NULL DEFAULT 'completed',
+     duration_seconds INT  DEFAULT 0,
+     started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     ended_at         TIMESTAMPTZ,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_call_logs_account ON call_logs(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_call_logs_started ON call_logs(started_at DESC)`,
+
+  // Voicemails table
+  `CREATE TABLE IF NOT EXISTS voicemails (
+     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     call_log_id          UUID REFERENCES call_logs(id),
+     phone_number_id      UUID REFERENCES phone_numbers(id),
+     telnyx_recording_id  TEXT,
+     recording_url        TEXT,
+     transcription        TEXT,
+     duration_seconds     INT DEFAULT 0,
+     from_number          TEXT,
+     client_id            UUID REFERENCES clients(id),
+     client_name          TEXT,
+     is_read              BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_voicemails_account ON voicemails(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_voicemails_read    ON voicemails(account_id, is_read)`,
 ];
 
 async function runMigrations() {

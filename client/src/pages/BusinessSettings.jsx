@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
 const api = axios.create({ baseURL: BACKEND });
@@ -35,7 +36,14 @@ function SaveBar({ saving, saved, onSave, label = 'Save changes' }) {
       <button onClick={onSave} disabled={saving} style={{ padding: '9px 22px', background: '#1C2333', color: '#D6B58A', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.6 : 1 }}>
         {saving ? 'Saving…' : label}
       </button>
-      {saved && <span style={{ fontSize: 13, color: '#1E6B3C', fontWeight: 600 }}>✓ Saved</span>}
+      {saved && (
+        <span style={{ fontSize: 13, color: '#1E6B3C', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <svg viewBox="0 0 16 16" fill="none" style={{ width: 14, height: 14 }}>
+            <path d="M3 8l3.5 3.5 6.5-7" stroke="#1E6B3C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Saved
+        </span>
+      )}
     </div>
   );
 }
@@ -211,7 +219,15 @@ export default function BusinessSettings() {
             </div>
             <div style={{ gridColumn: '1/-1' }}>
               <label style={labelStyle}>Street Address</label>
-              <input style={inputStyle} value={profile.address || ''} onChange={e => setProfile(p => ({...p, address: e.target.value}))} placeholder="123 Main St" />
+              <AddressAutocomplete
+                value={profile.address || ''}
+                onChange={v => setProfile(p => ({ ...p, address: v }))}
+                onPlace={({ street, city, state, zip, lat, lng }) =>
+                  setProfile(p => ({ ...p, address: street, city, state, zip, lat: lat || p.lat, lng: lng || p.lng }))
+                }
+                placeholder="123 Main St"
+                style={inputStyle}
+              />
             </div>
             <div>
               <label style={labelStyle}>City</label>

@@ -250,4 +250,149 @@ router.post('/twilio', express.urlencoded({ extended: false }), async (req, res)
   res.send('<Response></Response>');
 });
 
+// POST /api/webhooks/telnyx/voice — TeXML call control
+router.post('/telnyx/voice', express.urlencoded({ extended: false }), async (req, res) => {
+  const to   = req.body.To   || req.query.To;
+  const from = req.body.From || req.query.From;
+
+  try {
+    // Look up the FieldCore number + account
+    const numRes = await pool.query(
+      `SELECT pn.*, a.id AS account_id, a.name AS account_name
+       FROM phone_numbers pn
+       JOIN accounts a ON a.id = pn.account_id
+       WHERE pn.number = $1 AND pn.is_active = TRUE
+       LIMIT 1`,
+      [to]
+    );
+    const num = numRes.rows[0];
+
+    if (!num) {
+      res.set('Content-Type', 'text/xml');
+      return res.send('<Response><Say>This number is not in service.</Say></Response>');
+    }
+
+    // Look up caller in clients
+    const clientRes = await pool.query(
+      `SELECT id, name, tier, ltv FROM clients WHERE phone = $1 AND account_id = $2 LIMIT 1`,
+      [from, num.account_id]
+    );
+    const caller = clientRes.rows[0];
+
+    // Record call log
+    const callRes = await pool.query(
+      `INSERT INTO call_logs (account_id, phone_number_id, direction, from_number, to_number, client_id, client_name, status)
+       VALUES ($1,$2,'inbound',$3,$4,$5,$6,'in_progress') RETURNING id`,
+      [num.account_id, num.id, from, to, caller?.id || null, caller?.name || null]
+    );
+
+    // Check business hours
+    let inHours = true;
+    if (num.business_hours_only) {
+      const hoursRes = await pool.query(
+        `SELECT open_time, close_time, is_closed FROM business_hours
+         WHERE account_id = $1 AND day_of_week = EXTRACT(DOW FROM NOW())`,
+        [num.account_id]
+      );
+      const h = hoursRes.rows[0];
+      if (h && !h.is_closed) {
+        const now  = new Date();
+        const open = h.open_time?.slice(0, 5);
+        const cls  = h.close_time?.slice(0, 5);
+        const cur  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        inHours = cur >= open && cur < cls;
+      } else if (h?.is_closed) {
+        inHours = false;
+      }
+    }
+
+    // SMS preview to operator about incoming call (if caller is a known client)
+    if (num.forward_to && caller) {
+      const twClient = smsService.getClient();
+      const FROM_NUM = process.env.TWILIO_PHONE_NUMBER;
+      if (twClient && FROM_NUM) {
+        twClient.messages.create({
+          body: `Incoming call from ${caller.name} (${from}) — ${(caller.tier || 'client').toUpperCase()}, LTV $${parseFloat(caller.ltv || 0).toFixed(0)}`,
+          from: FROM_NUM,
+          to:   num.forward_to,
+        }).catch(() => {});
+      }
+    }
+
+    res.set('Content-Type', 'text/xml');
+
+    if (!inHours) {
+      const msg = num.after_hours_message || `Thank you for calling ${num.account_name}. We're currently closed. Please leave a message after the tone.`;
+      return res.send(`<Response>
+  <Say voice="alice">${msg}</Say>
+  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
+</Response>`);
+    }
+
+    if (num.forward_to) {
+      return res.send(`<Response>
+  <Dial callerId="${to}">${num.forward_to}</Dial>
+  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
+</Response>`);
+    }
+
+    // No forward number — just voicemail
+    const fallback = `Thank you for calling ${num.account_name}. Please leave a message after the tone.`;
+    return res.send(`<Response>
+  <Say voice="alice">${fallback}</Say>
+  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
+</Response>`);
+  } catch (err) {
+    console.error('[Telnyx voice webhook]', err.message);
+    res.set('Content-Type', 'text/xml');
+    res.send('<Response><Say>An error occurred. Please try again later.</Say></Response>');
+  }
+});
+
+// POST /api/webhooks/telnyx/recording — voicemail recording callback
+router.post('/telnyx/recording', express.urlencoded({ extended: false }), async (req, res) => {
+  const { call_log_id, phone_number_id, account_id, from, client_id, client_name } = req.query;
+  const { RecordingUrl, RecordingDuration, TranscriptionText, RecordingSid } = req.body;
+
+  if (!account_id) return res.sendStatus(200);
+
+  try {
+    await pool.query(
+      `INSERT INTO voicemails
+         (account_id, call_log_id, phone_number_id, telnyx_recording_id, recording_url,
+          transcription, duration_seconds, from_number, client_id, client_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        account_id,
+        call_log_id || null,
+        phone_number_id || null,
+        RecordingSid || null,
+        RecordingUrl || null,
+        TranscriptionText || null,
+        parseInt(RecordingDuration || 0),
+        from || null,
+        client_id || null,
+        client_name || null,
+      ]
+    );
+
+    if (call_log_id) {
+      await pool.query(
+        `UPDATE call_logs SET status = 'voicemail', ended_at = NOW() WHERE id = $1`,
+        [call_log_id]
+      );
+    }
+
+    notify.create(account_id, 'voicemail',
+      `New voicemail from ${client_name || from || 'Unknown'}`,
+      TranscriptionText ? TranscriptionText.slice(0, 80) : 'Tap to listen',
+      '/phone'
+    );
+  } catch (err) {
+    console.error('[Telnyx recording webhook]', err.message);
+  }
+
+  res.sendStatus(200);
+});
+
 module.exports = router;

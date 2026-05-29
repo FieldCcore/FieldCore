@@ -9,13 +9,6 @@ const IcoBell = () => (
   </svg>
 );
 
-const TYPE_ICONS = {
-  booking_new:       '📋',
-  deposit_collected: '💳',
-  invoice_paid:      '✅',
-  invoice_sent:      '📨',
-  job_assigned:      '🔧',
-};
 
 export default function NotificationBell() {
   const [open,  setOpen]  = useState(false);

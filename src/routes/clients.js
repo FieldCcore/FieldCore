@@ -18,13 +18,13 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/clients
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { name, email, phone, address, tier, notes } = req.body;
+  const { name, email, phone, address, city, state, zip, lat, lng, tier, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   try {
     const { rows } = await pool.query(
-      `INSERT INTO clients (account_id, name, email, phone, address, tier, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [req.accountId, name, email, phone, address, tier || 'standard', notes]
+      `INSERT INTO clients (account_id, name, email, phone, address, city, state, zip, lat, lng, tier, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [req.accountId, name, email, phone, address, city, state, zip, lat || null, lng || null, tier || 'standard', notes]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -58,7 +58,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // PATCH /api/clients/:id
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const fields = ['name','email','phone','address','tier','notes','card_on_file'];
+  const fields = ['name','email','phone','address','city','state','zip','lat','lng','tier','notes','card_on_file'];
   const updates = [];
   const values = [];
   let i = 1;

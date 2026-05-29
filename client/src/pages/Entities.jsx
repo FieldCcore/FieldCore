@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const BUSINESS_TYPES = ['LLC', 'S-Corp', 'C-Corp', 'Sole Proprietor', 'Partnership', 'Non-Profit', 'Other'];
 const US_STATES = [
@@ -584,7 +585,15 @@ export default function Entities() {
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', margin: '20px 0 12px' }}>Contact & Location</div>
               <div className="form-group">
                 <label style={labelStyle}>Street Address</label>
-                <input style={inputStyle} value={form.address} onChange={sf('address')} placeholder="123 Main St" />
+                <AddressAutocomplete
+                  value={form.address}
+                  onChange={v => setForm(p => ({ ...p, address: v }))}
+                  onPlace={({ street, city, state, zip }) =>
+                    setForm(p => ({ ...p, address: street, city, state, zip }))
+                  }
+                  placeholder="123 Main St"
+                  style={inputStyle}
+                />
               </div>
               <div className="form-grid-2">
                 <div className="form-group">

@@ -1,20 +1,30 @@
 import React, { useState } from 'react';
 import api from '../api';
+import AddressAutocomplete from './AddressAutocomplete';
 
 export default function ClientForm({ client, onSave, onCancel }) {
   const [form, setForm] = useState({
-    name: client?.name || '',
-    email: client?.email || '',
-    phone: client?.phone || '',
+    name:    client?.name    || '',
+    email:   client?.email   || '',
+    phone:   client?.phone   || '',
     address: client?.address || '',
-    tier: client?.tier || 'standard',
-    notes: client?.notes || '',
+    city:    client?.city    || '',
+    state:   client?.state   || '',
+    zip:     client?.zip     || '',
+    lat:     client?.lat     || '',
+    lng:     client?.lng     || '',
+    tier:    client?.tier    || 'standard',
+    notes:   client?.notes   || '',
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error,  setError]  = useState('');
 
   function set(field) {
     return e => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  }
+
+  function handlePlace({ street, city, state, zip, lat, lng }) {
+    setForm(prev => ({ ...prev, address: street, city, state, zip, lat: lat || '', lng: lng || '' }));
   }
 
   async function handleSubmit(e) {
@@ -66,7 +76,29 @@ export default function ClientForm({ client, onSave, onCancel }) {
 
       <div className="form-group">
         <label>Address</label>
-        <input value={form.address} onChange={set('address')} placeholder="Street address" />
+        <AddressAutocomplete
+          value={form.address}
+          onChange={v => setForm(prev => ({ ...prev, address: v }))}
+          onPlace={handlePlace}
+          placeholder="Street address"
+        />
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label>City</label>
+          <input value={form.city} onChange={set('city')} placeholder="Tampa" />
+        </div>
+        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label>State</label>
+            <input value={form.state} onChange={set('state')} placeholder="FL" maxLength={2} />
+          </div>
+          <div>
+            <label>ZIP</label>
+            <input value={form.zip} onChange={set('zip')} placeholder="33601" />
+          </div>
+        </div>
       </div>
 
       <div className="form-group">

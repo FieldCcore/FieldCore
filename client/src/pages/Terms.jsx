@@ -27,7 +27,11 @@ export default function Terms() {
 
       <div className="mkt-body" style={{ maxWidth: 760 }}>
         <div style={{ background: '#FFF8ED', border: '1.5px solid rgba(214,181,138,.4)', borderRadius: 12, padding: '24px 28px', display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 40 }}>
-          <div style={{ fontSize: 20, flexShrink: 0 }}>⏳</div>
+          <div style={{ flexShrink: 0 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#D6B58A" strokeWidth="1.8" style={{ width: 22, height: 22 }}>
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: '#1C2333', marginBottom: 6 }}>This page is being finalized.</div>
             <div style={{ fontSize: 14, color: '#5F667A', lineHeight: 1.65 }}>

@@ -66,6 +66,7 @@ import Privacy         from './pages/Privacy';
 import SmsTerms           from './pages/SmsTerms';
 import BusinessSettings   from './pages/BusinessSettings';
 import Entities          from './pages/Entities';
+import PhonePage         from './pages/Phone';
 import ClientPortal       from './pages/ClientPortal';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
@@ -83,6 +84,7 @@ const PAGE_TITLES = {
   '/invoices':           'Invoices',
   '/clients':            'Client Database',
   '/messages':           'Business Phone',
+  '/phone':              'Phone System',
   '/team':               'Team Management',
   '/fleet':              'Fleet',
   '/booking':            'Settings & Rules',
@@ -129,9 +131,9 @@ function AppShell() {
     return () => document.removeEventListener('mousedown', close);
   }, [entityOpen]);
 
-  const [isPhone, setIsPhone] = useState(window.innerWidth < 768);
+  const [isPhone, setIsPhone] = useState(window.innerWidth < 640);
   useEffect(() => {
-    const check = () => setIsPhone(window.innerWidth < 768);
+    const check = () => setIsPhone(window.innerWidth < 640);
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
@@ -287,6 +289,7 @@ function AppShell() {
                     <div className="nav-section">CRM</div>
                     {ni('/clients', false, IcoClients, 'Clients', null)}
                     {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'Phone', null)}
+                {(isOwner || isManager) && ni('/phone',    false, IcoPhone, 'Phone System', null)}
                   </>
                 )}
 
@@ -348,6 +351,7 @@ function AppShell() {
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/messages"    element={<ProtectedRoute><Messages /></ProtectedRoute>}       />
+            <Route path="/phone"       element={<ProtectedRoute><PhonePage /></ProtectedRoute>}      />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
             <Route path="/fleet"       element={<ProtectedRoute><Fleet /></ProtectedRoute>}          />
             <Route path="/booking"     element={<ProtectedRoute><BookingSettings /></ProtectedRoute>}/>

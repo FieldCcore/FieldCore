@@ -1441,4 +1441,84 @@ body {
   .tb-btn.tb-primary { font-size: 10.5px; padding: 5px 8px; }
   .content          { padding: 10px; padding-bottom: 76px; }
   .dash-sc-v        { font-size: 18px; }
+  .dash-stat-grid   { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — Interior layouts (768px)
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── Tables: horizontal scroll ── */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table { min-width: 560px; }
+
+  /* ── Messages layout: stack vertically ── */
+  .messages-layout {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+  .client-list-panel {
+    width: 100% !important;
+    max-height: 38vh;
+    border-right: none !important;
+    border-bottom: 1px solid var(--lightgray);
+    flex-shrink: 0;
+  }
+  .chat-panel {
+    flex: 1;
+    min-height: 320px;
+  }
+
+  /* ── Dispatch layout: stack vertically ── */
+  .dispatch-layout {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+  .dispatch-sidebar {
+    width: 100% !important;
+    max-height: 45vh;
+    overflow-y: auto;
+    border-right: none !important;
+    border-bottom: 1px solid var(--lightgray);
+  }
+  .dispatch-map { min-height: 320px; }
+
+  /* ── Revenue / Deposits / Team grid layouts ── */
+  .rev-layout,
+  .dep-layout,
+  .team-layout { grid-template-columns: 1fr !important; }
+
+  /* ── Modal form rows: single column ── */
+  .modal-content .form-row,
+  .client-form   .form-row { grid-template-columns: 1fr !important; }
+
+  /* ── Invoices / Clients table action bar ── */
+  .page-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── Revenue export bar: wrap ── */
+  .export-bar { flex-wrap: wrap; gap: 8px; }
+
+  /* ── Jobs calendar: shrink cell font ── */
+  .rbc-toolbar { flex-wrap: wrap; gap: 6px; }
+  .rbc-toolbar-label { flex-basis: 100%; text-align: center; }
+  .rbc-event { font-size: 10px; padding: 2px 4px; }
+}
+
+/* ── 600px — modal stacking ── */
+@media (max-width: 600px) {
+  .form-row { grid-template-columns: 1fr !important; }
+}
+
+/* ── Tablet (769px–1024px): sidebar stays, content adjusts ── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .dash-stat-grid   { grid-template-columns: repeat(2, 1fr); }
+  .dash-3col        { grid-template-columns: 1fr 1fr; }
+  .rev-layout       { grid-template-columns: 1fr !important; }
 }

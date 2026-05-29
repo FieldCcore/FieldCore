@@ -49,10 +49,17 @@ function fmtDate(ts) {
   return new Date(typeof ts === 'number' ? ts * 1000 : ts)
     .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function cardIcon(brand) {
-  const icons = { visa: '💳', mastercard: '💳', amex: '💳', discover: '💳' };
-  return icons[brand?.toLowerCase()] || '💳';
-}
+const CardIco = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 22, height: 22, color: '#5F667A' }}>
+    <rect x="2" y="5" width="20" height="14" rx="2"/>
+    <path d="M2 10h20M6 14h.01M10 14h4"/>
+  </svg>
+);
+const BankIco = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 22, height: 22, color: '#5F667A' }}>
+    <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M8 10v11M12 10v11M16 10v11M20 10v11"/>
+  </svg>
+);
 
 // ── Card Setup Form (inside Stripe Elements) ──────────────────────────────────
 function CardSetupForm({ onSuccess, onCancel }) {
@@ -527,7 +534,7 @@ export default function Billing() {
                 {payMethods.map(pm => (
                   <div key={pm.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', border: `1.5px solid ${pm.is_default ? 'var(--navy)' : 'var(--lightgray)'}`, borderRadius: 10, background: pm.is_default ? 'rgba(28,35,51,.02)' : 'white', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <span style={{ fontSize: 24 }}>{pm.type === 'card' ? cardIcon(pm.brand) : '🏦'}</span>
+                      <span>{pm.type === 'card' ? <CardIco /> : <BankIco />}</span>
                       <div>
                         {pm.type === 'card' ? (
                           <>
@@ -577,7 +584,7 @@ export default function Billing() {
             )}
 
             <div style={{ marginTop: 20, padding: '12px 16px', background: '#f9f7f3', borderRadius: 8, fontSize: 12, color: 'var(--steel)' }}>
-              🔒 Card and bank data is never stored in FieldCore's database — all payment information is handled securely through Stripe.
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 13, height: 13, display: 'inline', verticalAlign: 'middle', marginRight: 5 }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Card and bank data is never stored in FieldCore's database — all payment information is handled securely through Stripe.
             </div>
           </div>
         )}
