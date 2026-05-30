@@ -152,10 +152,11 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
       const subtotal  = parseFloat(job.amount);
       const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
       const total     = subtotal + taxAmount;
+      const lineItems = [{ description: job.service_type || 'Service', amount: subtotal }];
       await pool.query(
-        `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount)
-         VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
-        [req.accountId, job.id, job.client_id, total, taxAmount]
+        `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+        [req.accountId, job.id, job.client_id, total, taxAmount, JSON.stringify(lineItems)]
       ).catch(() => {}); // non-fatal if invoice already exists
     }
 

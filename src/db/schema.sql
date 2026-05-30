@@ -207,6 +207,7 @@ ALTER TABLE clients         ADD COLUMN IF NOT EXISTS stripe_payment_method_id TE
 ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS deposit_rules JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,4) DEFAULT 0;
 ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS tax_amount    NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS line_items    JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS payment_link  TEXT;
 ALTER TABLE invoices         ADD COLUMN IF NOT EXISTS sent_at       TIMESTAMPTZ;
 ALTER TABLE job_photos       ADD COLUMN IF NOT EXISTS filename TEXT;

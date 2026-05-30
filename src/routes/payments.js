@@ -35,20 +35,28 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
   }
 
   try {
-    const invoiceResult = await pool.query(
-      `SELECT * FROM invoices WHERE id = $1 AND account_id = $2`,
-      [invoice_id, req.accountId]
-    );
+    const [invoiceResult, clientResult] = await Promise.all([
+      pool.query(`SELECT * FROM invoices WHERE id = $1 AND account_id = $2`, [invoice_id, req.accountId]),
+      pool.query(
+        `SELECT c.stripe_customer_id FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = $1`,
+        [invoice_id]
+      ),
+    ]);
     const invoice = invoiceResult.rows[0];
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (invoice.status === 'paid') return res.status(400).json({ error: 'Already paid' });
 
+    const stripeCustomerId = clientResult.rows[0]?.stripe_customer_id;
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(invoice.amount * 100), // cents
-      currency: 'usd',
-      payment_method: payment_method_id,
-      confirm: true,
-      metadata: { invoice_id, account_id: req.accountId },
+      amount:               Math.round(invoice.amount * 100),
+      currency:             'usd',
+      payment_method:       payment_method_id,
+      customer:             stripeCustomerId || undefined,
+      confirm:              true,
+      off_session:          true,
+      payment_method_types: ['card'],
+      metadata:             { invoice_id, account_id: req.accountId },
     });
 
     await pool.query(

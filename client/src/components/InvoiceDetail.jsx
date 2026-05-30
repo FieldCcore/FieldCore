@@ -11,19 +11,56 @@ const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 const STATUS_COLORS = { pending: '#f59e0b', paid: '#10b981', void: '#6b7280' };
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
-  const [invoice, setInvoice]       = useState(initialInvoice);
+  const [invoice, setInvoice]             = useState(initialInvoice);
   const [loading, setLoading]             = useState(false);
   const [sending, setSending]             = useState(false);
   const [copied,  setCopied]              = useState(false);
   const [showCardSetup, setShowCardSetup] = useState(false);
   const [error,   setError]               = useState('');
+  const [lineItems, setLineItems]         = useState(null); // null = not yet loaded
+  const [newDesc,  setNewDesc]            = useState('');
+  const [newAmt,   setNewAmt]             = useState('');
+  const [savingLines, setSavingLines]     = useState(false);
 
-  // Load full invoice detail (includes card_on_file, payment_method_id)
+  // Load full invoice detail (includes card_on_file, payment_method_id, line_items)
   useEffect(() => {
     api.get(`/invoices/${initialInvoice.id}`).then(r => {
       setInvoice(r.data);
+      const items = Array.isArray(r.data.line_items) && r.data.line_items.length > 0
+        ? r.data.line_items
+        : [{ description: r.data.service_type || 'Service', amount: parseFloat(r.data.amount) - parseFloat(r.data.tax_amount || 0) }];
+      setLineItems(items);
     }).catch(() => {});
   }, [initialInvoice.id]);
+
+  async function saveLineItems(items) {
+    setSavingLines(true);
+    try {
+      const res = await api.patch(`/invoices/${invoice.id}/line-items`, { line_items: items });
+      setInvoice(res.data);
+      onUpdate(res.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save line items.');
+    } finally {
+      setSavingLines(false);
+    }
+  }
+
+  function addLineItem() {
+    if (!newDesc.trim() || !newAmt) return;
+    const updated = [...(lineItems || []), { description: newDesc.trim(), amount: parseFloat(newAmt) }];
+    setLineItems(updated);
+    setNewDesc('');
+    setNewAmt('');
+    saveLineItems(updated);
+  }
+
+  function removeLineItem(idx) {
+    if ((lineItems || []).length <= 1) return; // must keep at least one
+    const updated = lineItems.filter((_, i) => i !== idx);
+    setLineItems(updated);
+    saveLineItems(updated);
+  }
 
   async function handleCharge() {
     if (!invoice.stripe_payment_method_id) return;
@@ -108,27 +145,62 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         {invoice.sent_at && <div className="detail-row"><label>Sent</label><span>{format(new Date(invoice.sent_at), 'MMM d, yyyy h:mm a')}</span></div>}
       </div>
 
-      {parseFloat(invoice.tax_amount) > 0 ? (
-        <div className="invoice-amount-block">
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 4 }}>
-            <span>Subtotal</span>
-            <span>${(parseFloat(invoice.amount) - parseFloat(invoice.tax_amount)).toFixed(2)}</span>
+      {/* Line items */}
+      <div className="invoice-amount-block">
+        {(lineItems || []).map((item, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#1C2333', marginBottom: 6 }}>
+            <span style={{ flex: 1 }}>{item.description}</span>
+            <span style={{ marginLeft: 16, fontVariantNumeric: 'tabular-nums' }}>${parseFloat(item.amount).toFixed(2)}</span>
+            {isPending && (lineItems || []).length > 1 && (
+              <button onClick={() => removeLineItem(i)} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+            )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
-            <span>Tax</span>
-            <span>${parseFloat(invoice.tax_amount).toFixed(2)}</span>
+        ))}
+
+        {/* Add line item — only on pending invoices */}
+        {isPending && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, marginBottom: 10 }}>
+            <input
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="Description"
+              style={{ flex: 1, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+              onKeyDown={e => e.key === 'Enter' && addLineItem()}
+            />
+            <input
+              value={newAmt}
+              onChange={e => setNewAmt(e.target.value)}
+              placeholder="0.00"
+              type="number"
+              min="0"
+              step="0.01"
+              style={{ width: 80, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+              onKeyDown={e => e.key === 'Enter' && addLineItem()}
+            />
+            <button onClick={addLineItem} disabled={!newDesc.trim() || !newAmt || savingLines} className="btn-secondary" style={{ padding: '5px 10px', fontSize: 12 }}>
+              {savingLines ? '…' : '+ Add'}
+            </button>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
-            <span className="invoice-amount-label">Total Due</span>
-            <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="invoice-amount-block">
-          <span className="invoice-amount-label">Amount Due</span>
+        )}
+
+        {/* Totals */}
+        {parseFloat(invoice.tax_amount) > 0 && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: 8, marginBottom: 4 }}>
+              <span>Subtotal</span>
+              <span>${(parseFloat(invoice.amount) - parseFloat(invoice.tax_amount)).toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+              <span>Tax</span>
+              <span>${parseFloat(invoice.tax_amount).toFixed(2)}</span>
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+          <span className="invoice-amount-label">Total Due</span>
           <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
         </div>
-      )}
+      </div>
 
       {isPending && (
         <div className="invoice-actions">

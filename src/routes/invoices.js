@@ -14,10 +14,12 @@ function generateInvoicePdfBuffer(inv) {
     doc.on('end',  () => resolve(Buffer.concat(bufs)));
     doc.on('error', reject);
 
-    const subtotal   = parseFloat(inv.amount || 0);
     const tax        = parseFloat(inv.tax_amount || 0);
-    const total      = subtotal;
-    const pretax     = subtotal - tax;
+    const total      = parseFloat(inv.amount || 0);
+    const pretax     = parseFloat((total - tax).toFixed(2));
+    const lineItems  = Array.isArray(inv.line_items) && inv.line_items.length > 0
+      ? inv.line_items
+      : [{ description: inv.service_type || 'Service', amount: pretax }];
     const fmtAmt     = n => `$${parseFloat(n || 0).toFixed(2)}`;
     const fmtDt      = d => d ? new Date(d).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'N/A';
 
@@ -56,9 +58,13 @@ function generateInvoicePdfBuffer(inv) {
     doc.moveDown(0.5);
 
     doc.font('Helvetica').fontSize(11).fillColor('#1C2333');
-    doc.text(inv.service_type || 'Service', 50, doc.y, { width: 360 });
-    doc.text(fmtAmt(tax > 0 ? pretax : total), 410, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-    doc.moveDown(1);
+    lineItems.forEach(item => {
+      const y = doc.y;
+      doc.text(item.description || 'Service', 50, y, { width: 360 });
+      doc.text(fmtAmt(item.amount), 410, y, { width: 100, align: 'right' });
+      doc.moveDown(0.6);
+    });
+    doc.moveDown(0.4);
 
     // Totals
     doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
@@ -117,15 +123,17 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       return res.status(400).json({ error: 'Job must be complete before invoicing' });
     }
 
-    const taxRate   = parseFloat(settingsResult.rows[0]?.tax_rate || 0);
-    const subtotal  = parseFloat(job.amount || 0);
-    const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
-    const total     = subtotal + taxAmount;
+    const taxRate     = parseFloat(settingsResult.rows[0]?.tax_rate || 0);
+    const reqItems    = Array.isArray(req.body.line_items) ? req.body.line_items : null;
+    const lineItems   = reqItems || [{ description: job.service_type || 'Service', amount: parseFloat(job.amount || 0) }];
+    const subtotal    = lineItems.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const taxAmount   = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
+    const total       = parseFloat((subtotal + taxAmount).toFixed(2));
 
     const { rows } = await pool.query(
-      `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [req.accountId, job_id, job.client_id, total, taxAmount]
+      `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.accountId, job_id, job.client_id, total, taxAmount, JSON.stringify(lineItems)]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -164,6 +172,36 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/invoices/:id/line-items — update line items on a pending invoice
+router.patch('/:id/line-items', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { line_items } = req.body;
+  if (!Array.isArray(line_items) || line_items.length === 0) {
+    return res.status(400).json({ error: 'line_items must be a non-empty array' });
+  }
+  try {
+    const [invoiceRes, settingsRes] = await Promise.all([
+      pool.query(`SELECT * FROM invoices WHERE id = $1 AND account_id = $2`, [req.params.id, req.accountId]),
+      pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
+    ]);
+    const invoice = invoiceRes.rows[0];
+    if (!invoice) return res.status(404).json({ error: 'Not found' });
+    if (invoice.status !== 'pending') return res.status(400).json({ error: 'Can only edit line items on pending invoices' });
+
+    const taxRate   = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+    const subtotal  = line_items.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
+    const total     = parseFloat((subtotal + taxAmount).toFixed(2));
+
+    const { rows } = await pool.query(
+      `UPDATE invoices SET line_items = $1, amount = $2, tax_amount = $3 WHERE id = $4 AND account_id = $5 RETURNING *`,
+      [JSON.stringify(line_items), total, taxAmount, req.params.id, req.accountId]
+    );
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
