@@ -153,6 +153,9 @@ export default function BookingSettings() {
             <p style={{ fontSize: 12, color: '#64748b', marginTop: 2, marginBottom: 10 }}>
               Override the default deposit for specific services. Takes precedence over the default amount above.
             </p>
+            <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: '3px solid #94a3b8', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+              <strong>Automatic overrides:</strong> VIP-tier clients always have their deposit waived. At-risk-tier clients always pay the global default minimum, regardless of service rules. These are enforced by the system and cannot be disabled.
+            </div>
             {(settings.deposit_rules || []).length > 0 && (
               <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {(settings.deposit_rules || []).map((r, i) => (

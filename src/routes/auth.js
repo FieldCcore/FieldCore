@@ -173,6 +173,33 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// PATCH /api/auth/me/password — any authenticated user can change their own password
+router.patch('/me/password', requireAuth, async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password)
+    return res.status(400).json({ error: 'current_password and new_password are required.' });
+  if (new_password.length < 8)
+    return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [req.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found.' });
+
+    const valid = await bcrypt.compare(current_password, rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' });
+
+    const hash = await bcrypt.hash(new_password, 12);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.userId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/auth/accounts — list all accounts the user can access (home + memberships)
 router.get('/accounts', requireAuth, async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Camera, Check, Timer, Clock, ChevronLeft, LogOut } from 'lucide-react';
+import { MapPin, Camera, Check, Timer, Clock, ChevronLeft, LogOut, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -61,7 +61,7 @@ function StatusPill({ status }) {
 }
 
 /* ── Job Queue ────────────────────────────────────────────────── */
-function JobQueue({ user, onSelect, onLogout }) {
+function JobQueue({ user, onSelect, onLogout, onPwChange }) {
   const [jobs,    setJobs]    = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -82,9 +82,14 @@ function JobQueue({ user, onSelect, onLogout }) {
       <Topbar
         title={`Hi, ${user.name.split(' ')[0]}`}
         right={
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
-            <LogOut size={16} />
-          </button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Change password">
+              <Lock size={15} />
+            </button>
+            <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
+              <LogOut size={16} />
+            </button>
+          </div>
         }
       />
 
@@ -473,6 +478,10 @@ export default function TechApp() {
   const { user, logout } = useAuth();
   const navigate         = useNavigate();
   const [selectedJob, setSelectedJob] = useState(null);
+  const [pwModal,  setPwModal]  = useState(false);
+  const [pwForm,   setPwForm]   = useState({ current: '', next: '', confirm: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg,    setPwMsg]    = useState(null);
 
   function handleLogout() {
     logout();
@@ -481,6 +490,22 @@ export default function TechApp() {
 
   function handleUpdate(updated) {
     if (selectedJob?.id === updated.id) setSelectedJob(prev => ({ ...prev, ...updated }));
+  }
+
+  async function handlePwSubmit(e) {
+    e.preventDefault();
+    if (pwForm.next !== pwForm.confirm) return setPwMsg({ ok: false, text: 'Passwords do not match.' });
+    setPwSaving(true);
+    setPwMsg(null);
+    try {
+      await api.patch('/auth/me/password', { current_password: pwForm.current, new_password: pwForm.next });
+      setPwForm({ current: '', next: '', confirm: '' });
+      setPwMsg({ ok: true, text: 'Password updated.' });
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.response?.data?.error || 'Failed to update password.' });
+    } finally {
+      setPwSaving(false);
+    }
   }
 
   return (
@@ -494,9 +519,42 @@ export default function TechApp() {
       {/* Safe-area spacer for iOS notch */}
       <div style={{ height: 'env(safe-area-inset-top)', background: C.navy2, flexShrink: 0 }} />
 
+      {/* Password change modal */}
+      {pwModal && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 50, display: 'flex', alignItems: 'flex-end', padding: 'env(safe-area-inset-top) 0 0' }}
+          onClick={() => { setPwModal(false); setPwMsg(null); }}>
+          <div style={{ background: C.navy2, width: '100%', borderRadius: '20px 20px 0 0', padding: '20px 20px calc(20px + env(safe-area-inset-bottom))', fontFamily: 'inherit' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 18 }}>
+              <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.white }}>Change Password</span>
+              <button onClick={() => { setPwModal(false); setPwMsg(null); }} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
+            </div>
+            <form onSubmit={handlePwSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {(['current', 'next', 'confirm']).map((f, i) => (
+                <input key={f} type="password" required
+                  placeholder={['Current password', 'New password (min 8 chars)', 'Confirm new password'][i]}
+                  value={pwForm[f]}
+                  onChange={e => setPwForm(s => ({ ...s, [f]: e.target.value }))}
+                  style={{ padding: '12px 14px', background: C.navy3, border: `1px solid ${C.border}`, borderRadius: 10, color: C.white, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+                />
+              ))}
+              {pwMsg && (
+                <div style={{ fontSize: 13, fontWeight: 600, color: pwMsg.ok ? C.green : '#fc8181' }}>
+                  {pwMsg.ok ? '✓ ' : ''}{pwMsg.text}
+                </div>
+              )}
+              <button type="submit" disabled={pwSaving}
+                style={btn({ marginTop: 4, opacity: pwSaving ? 0.65 : 1 })}>
+                {pwSaving ? 'Saving…' : 'Update Password'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {!selectedJob ? (
-          <JobQueue user={user} onSelect={setSelectedJob} onLogout={handleLogout} />
+          <JobQueue user={user} onSelect={setSelectedJob} onLogout={handleLogout} onPwChange={() => { setPwModal(true); setPwMsg(null); }} />
         ) : (
           <JobDetail
             job={selectedJob}

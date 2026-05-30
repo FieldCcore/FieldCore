@@ -44,6 +44,22 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkUserLimit, a
   }
 });
 
+// PATCH /api/users/me/availability — tech sets themselves available/unavailable
+router.patch('/me/availability', requireAuth, async (req, res) => {
+  const { available } = req.body;
+  if (typeof available !== 'boolean')
+    return res.status(400).json({ error: 'available (boolean) is required.' });
+  try {
+    await pool.query(
+      'UPDATE users SET is_available = $1 WHERE id = $2',
+      [available, req.userId]
+    );
+    res.json({ ok: true, available });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PATCH /api/users/:id — edit team member (owner/manager only)
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const allowed = ['name', 'email', 'phone', 'role', 'is_contractor', 'tax_classification', 'contractor_tax_id'];

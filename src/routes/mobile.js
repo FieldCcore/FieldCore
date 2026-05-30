@@ -12,22 +12,36 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
 
-// GET /api/mobile/jobs — jobs assigned to a specific tech (today + upcoming)
+// GET /api/mobile/jobs — jobs for this account; if tech_id supplied, filter to that tech
 router.get('/jobs', requireAuth, async (req, res) => {
   const { tech_id } = req.query;
-  if (!tech_id) return res.status(400).json({ error: 'tech_id is required' });
   try {
-    const { rows } = await pool.query(
-      `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address
-       FROM jobs j
-       JOIN clients c ON c.id = j.client_id
-       WHERE j.account_id = $1
-         AND j.tech_id = $2
-         AND j.status NOT IN ('complete','cancelled')
-         AND j.scheduled_at >= NOW() - INTERVAL '2 hours'
-       ORDER BY j.scheduled_at`,
-      [req.accountId, tech_id]
-    );
+    let query, values;
+    if (tech_id) {
+      query = `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address
+               FROM jobs j
+               JOIN clients c ON c.id = j.client_id
+               WHERE j.account_id = $1
+                 AND j.tech_id = $2
+                 AND j.status NOT IN ('cancelled')
+                 AND j.scheduled_at >= NOW() - INTERVAL '2 hours'
+               ORDER BY j.scheduled_at`;
+      values = [req.accountId, tech_id];
+    } else {
+      // owner/manager — all jobs today
+      query = `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address,
+                      u.name AS tech_name
+               FROM jobs j
+               JOIN clients c ON c.id = j.client_id
+               LEFT JOIN users u ON u.id = j.tech_id
+               WHERE j.account_id = $1
+                 AND j.status NOT IN ('cancelled')
+                 AND j.scheduled_at >= CURRENT_DATE
+                 AND j.scheduled_at < CURRENT_DATE + INTERVAL '1 day'
+               ORDER BY j.scheduled_at`;
+      values = [req.accountId];
+    }
+    const { rows } = await pool.query(query, values);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -126,6 +140,37 @@ router.post('/jobs/:id/eta', requireAuth, async (req, res) => {
       return res.status(202).json({ warning: 'Twilio not configured' });
     }
     res.json({ sid: message.sid, status: message.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/mobile/jobs/:id/tip — record tip amount before completing
+router.patch('/jobs/:id/tip', requireAuth, async (req, res) => {
+  const amount = parseFloat(req.body.amount);
+  if (isNaN(amount) || amount < 0) return res.status(400).json({ error: 'Valid amount required.' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET tip_amount = $1 WHERE id = $2 AND account_id = $3 RETURNING id, tip_amount`,
+      [amount, req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Job not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/jobs/:id/signature — save SVG client signature
+router.post('/jobs/:id/signature', requireAuth, async (req, res) => {
+  const { svg } = req.body;
+  if (!svg) return res.status(400).json({ error: 'svg is required.' });
+  try {
+    await pool.query(
+      `UPDATE jobs SET signature_svg = $1, signature_at = NOW() WHERE id = $2 AND account_id = $3`,
+      [svg, req.params.id, req.accountId]
+    );
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -46,7 +46,6 @@ import Team           from './pages/Team';
 import Login           from './pages/Login';
 import ForgotPassword  from './pages/ForgotPassword';
 import ResetPassword   from './pages/ResetPassword';
-import MobileDemo      from './pages/MobileDemo';
 import ManagerTablet  from './pages/ManagerTablet';
 import Fleet          from './pages/Fleet';
 import Billing        from './pages/Billing';
@@ -73,6 +72,7 @@ import EstimatesPage     from './pages/Estimates';
 import SignEstimate      from './pages/SignEstimate';
 import ReviewPage       from './pages/ReviewPage';
 import TechApp         from './pages/TechApp';
+import Account         from './pages/Account';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -97,6 +97,7 @@ const PAGE_TITLES = {
   '/billing':            'Billing & Plan',
   '/business-settings':  'Business Settings',
   '/entities':           'Entities',
+  '/account':            'My Account',
 };
 
 const IcoDash     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
@@ -195,7 +196,7 @@ function AppShell() {
         <Route path="/login"            element={<Login />} />
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/reset-password"   element={<ResetPassword />} />
-        <Route path="/demo"             element={<MobileDemo />} />
+        <Route path="/demo"             element={<Navigate to="/tech" replace />} />
         <Route path="/tablet"           element={<ManagerTablet />} />
         <Route path="/book-confirm"     element={<BookConfirm />} />
         <Route path="/pay/:invoiceId"   element={<PayInvoice />} />
@@ -358,10 +359,10 @@ function AppShell() {
           <div className="su-avatar">
             {user ? String(user.name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?' : '?'}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <a href="/account" style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}>
             <div className="su-name">{(typeof user?.name === 'string' ? user.name : null) || '—'}</div>
             <div className="su-role">{user && typeof user.role === 'string' ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}` : ''}</div>
-          </div>
+          </a>
           <button
             onClick={() => { logout(); nav('/login'); }}
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 13, padding: '2px 4px', flexShrink: 0 }}
@@ -403,6 +404,7 @@ function AppShell() {
             <Route path="/billing"             element={<ProtectedRoute><Billing /></ProtectedRoute>}              />
             <Route path="/business-settings"  element={<ProtectedRoute><BusinessSettings /></ProtectedRoute>}  />
             <Route path="/entities"           element={<ProtectedRoute><Entities /></ProtectedRoute>}           />
+            <Route path="/account"            element={<ProtectedRoute><Account /></ProtectedRoute>}            />
           </Routes>
         </div>
 

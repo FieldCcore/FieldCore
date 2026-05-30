@@ -26,6 +26,7 @@ export default function Deposits() {
   const [expanded, setExpanded] = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [tick,     setTick]     = useState(0);
+  const [acting,   setActing]   = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -37,17 +38,31 @@ export default function Deposits() {
     }).finally(() => setLoading(false));
   }, []);
 
-  // Re-render timers every second
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
+  async function handleAction(depositId, action) {
+    setActing(depositId);
+    try {
+      await api.patch(`/deposits/${depositId}/${action}`);
+      setDeposits(prev => prev.map(d =>
+        d.id === depositId
+          ? { ...d, status: action === 'retain' ? 'collected' : 'refunded' }
+          : d
+      ));
+    } catch (err) {
+      alert(err.response?.data?.error || `Failed to ${action} deposit.`);
+    } finally {
+      setActing(null);
+    }
+  }
+
   const collected = deposits.filter(d => d.status === 'collected').reduce((s, d) => s + parseFloat(d.amount), 0);
   const pending   = deposits.filter(d => d.status === 'pending').reduce((s, d) => s + parseFloat(d.amount), 0);
   const serviceRules = Array.isArray(settings?.deposit_rules) ? settings.deposit_rules : [];
   const globalDeposit = parseFloat(settings?.deposit_amount || 0);
-  // 2 system rules (VIP waiver + at-risk enforcement) always active; plus each configured service rule
   const rulesCount = serviceRules.length + 2 + (globalDeposit > 0 ? 1 : 0);
 
   return (
@@ -82,7 +97,7 @@ export default function Deposits() {
           <div className="dash-card dep-card">
             <div className="dash-ch">
               <span className="dash-cht">All Deposits</span>
-              <span className="dash-cha">Configure Rules →</span>
+              <a href="/booking" className="dash-cha">Configure Rules →</a>
             </div>
 
             {loading ? (
@@ -137,9 +152,39 @@ export default function Deposits() {
                       </tr>
                       {expanded === i && (
                         <tr>
-                          <td colSpan={5} style={{ background: 'var(--sand-lt)', padding: '10px 16px', fontSize: 12, color: 'var(--slate)', borderTop: 'none' }}>
-                            Deposit ID: {d.id} · Created: {new Date(d.created_at).toLocaleDateString()}
-                            {d.expires_at && ` · Expires: ${new Date(d.expires_at).toLocaleString()}`}
+                          <td colSpan={5} style={{ background: 'var(--sand-lt)', padding: '12px 16px', fontSize: 12, color: 'var(--slate)', borderTop: 'none' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                              <div style={{ lineHeight: 1.8 }}>
+                                <span style={{ color: 'var(--steel)' }}>ID:</span> <code style={{ fontSize: 11 }}>{d.id}</code>
+                                <br />
+                                <span style={{ color: 'var(--steel)' }}>Created:</span> {new Date(d.created_at).toLocaleDateString()}
+                                {d.expires_at && (
+                                  <><br /><span style={{ color: 'var(--steel)' }}>Expires:</span> {new Date(d.expires_at).toLocaleString()}</>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                {d.status === 'pending' && (
+                                  <button
+                                    className="btn-primary"
+                                    style={{ fontSize: 12, padding: '5px 14px' }}
+                                    disabled={acting === d.id}
+                                    onClick={e => { e.stopPropagation(); handleAction(d.id, 'retain'); }}
+                                  >
+                                    {acting === d.id ? '…' : 'Retain Deposit'}
+                                  </button>
+                                )}
+                                {d.status === 'collected' && (
+                                  <button
+                                    className="btn-secondary"
+                                    style={{ fontSize: 12, padding: '5px 14px', color: 'var(--red)', borderColor: 'var(--red)' }}
+                                    disabled={acting === d.id}
+                                    onClick={e => { e.stopPropagation(); handleAction(d.id, 'refund'); }}
+                                  >
+                                    {acting === d.id ? '…' : 'Refund'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -158,57 +203,37 @@ export default function Deposits() {
               <a href="/booking" className="dash-cha">Configure →</a>
             </div>
 
-            {/* Global default */}
             {globalDeposit > 0 && (
               <div className="dep-rule-row">
                 <div>
-                  <div className="dep-rule-service">All Services (default)</div>
-                  <div className="dep-rule-detail">${globalDeposit.toFixed(2)} flat · At booking</div>
+                  <div className="dep-rule-service">All Services</div>
+                  <div className="dep-rule-detail">${globalDeposit.toFixed(2)} flat · Default</div>
                 </div>
-                <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
-                  <div className="dep-toggle-knob" style={{ right: 3 }} />
-                </div>
+                <span style={{ fontSize: 11, background: 'var(--blue-lt)', color: 'var(--blue)', padding: '2px 7px', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>default</span>
               </div>
             )}
 
-            {/* Per-service rules from settings */}
             {serviceRules.map((r, i) => (
               <div key={i} className="dep-rule-row">
                 <div>
                   <div className="dep-rule-service">{r.service}</div>
                   <div className="dep-rule-detail">
-                    {r.type === 'percent' ? `${r.amount}%` : `$${parseFloat(r.amount).toFixed(2)}`} · At booking
+                    {r.type === 'percent' ? `${r.amount}%` : `$${parseFloat(r.amount).toFixed(2)}`} · Override
                   </div>
                 </div>
-                <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
-                  <div className="dep-toggle-knob" style={{ right: 3 }} />
-                </div>
+                <span style={{ fontSize: 11, background: 'var(--offwhite)', color: 'var(--slate)', padding: '2px 7px', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>per-service</span>
               </div>
             ))}
 
-            {/* System tier rules — always enforced */}
-            <div className="dep-rule-row">
-              <div>
-                <div className="dep-rule-service">VIP Clients</div>
-                <div className="dep-rule-detail">Deposit waived · All services</div>
-              </div>
-              <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
-                <div className="dep-toggle-knob" style={{ right: 3 }} />
-              </div>
-            </div>
-            <div className="dep-rule-row">
-              <div>
-                <div className="dep-rule-service">At-Risk Clients</div>
-                <div className="dep-rule-detail">Global minimum enforced · Always</div>
-              </div>
-              <div className="dep-toggle" style={{ background: 'var(--navy)' }}>
-                <div className="dep-toggle-knob" style={{ right: 3 }} />
-              </div>
+            <div style={{ margin: '12px 16px 4px', padding: '10px 12px', background: 'var(--sand-lt)', borderRadius: 8, fontSize: 12, color: 'var(--slate)', borderLeft: '3px solid var(--sand)' }}>
+              <div style={{ fontWeight: 700, marginBottom: 5, color: 'var(--navy)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px' }}>Automatic Tier Overrides</div>
+              <div style={{ marginBottom: 3 }}>VIP clients — deposit waived on all services</div>
+              <div>At-risk clients — global minimum always enforced</div>
             </div>
 
             {globalDeposit === 0 && serviceRules.length === 0 && (
               <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--steel)' }}>
-                No deposit rules configured. Set a default amount or per-service rules in Settings.
+                No deposit rules configured. Set a default amount or per-service rules in <a href="/booking" style={{ color: 'var(--navy)' }}>Settings</a>.
               </div>
             )}
           </div>
