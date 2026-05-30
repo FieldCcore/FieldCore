@@ -55,7 +55,8 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/jobs
 router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, async (req, res) => {
-  const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee } = req.body;
+  const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee,
+          service_address, service_city, service_state, service_zip, service_lat, service_lng } = req.body;
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
@@ -70,9 +71,13 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.accountId, client_id, tech_id || null, service_type, scheduled_at, amount || null, notes, recurring || 'none', travelFee]
+      `INSERT INTO jobs
+         (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring,
+          travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [req.accountId, client_id, tech_id || null, service_type, scheduled_at, amount || null, notes, recurring || 'none',
+       travelFee, service_address || null, service_city || null, service_state || null, service_zip || null,
+       service_lat || null, service_lng || null]
     );
     const job = rows[0];
 
@@ -100,7 +105,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
 
 // PATCH /api/jobs/:id — full edit
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const fields = ['client_id','tech_id','service_type','scheduled_at','amount','travel_fee','notes','recurring'];
+  const fields = ['client_id','tech_id','service_type','scheduled_at','amount','travel_fee','notes','recurring',
+                   'service_address','service_city','service_state','service_zip','service_lat','service_lng'];
   const updates = [];
   const values  = [];
   let i = 1;

@@ -1,24 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { format, addMinutes } from 'date-fns';
 import api from '../api';
+import AddressAutocomplete from './AddressAutocomplete';
 
 export default function JobForm({ job, defaultStart, onSave, onCancel }) {
   const [clients, setClients]       = useState([]);
   const [techs, setTechs]           = useState([]);
   const [templates, setTemplates]   = useState([]);
   const [form, setForm] = useState({
-    client_id:    job?.client_id    || '',
-    tech_id:      job?.tech_id      || '',
-    service_type: job?.service_type || '',
-    scheduled_at: job?.scheduled_at
+    client_id:       job?.client_id    || '',
+    tech_id:         job?.tech_id      || '',
+    service_type:    job?.service_type || '',
+    scheduled_at:    job?.scheduled_at
       ? format(new Date(job.scheduled_at), "yyyy-MM-dd'T'HH:mm")
       : defaultStart
         ? format(new Date(defaultStart), "yyyy-MM-dd'T'HH:mm")
         : '',
-    amount:     job?.amount     || '',
-    travel_fee: job?.travel_fee != null ? String(job.travel_fee) : '',
-    notes:      job?.notes      || '',
-    recurring:  job?.recurring  || 'none',
+    amount:          job?.amount     || '',
+    travel_fee:      job?.travel_fee != null ? String(job.travel_fee) : '',
+    notes:           job?.notes      || '',
+    recurring:       job?.recurring  || 'none',
+    service_address: job?.service_address || '',
+    service_city:    job?.service_city    || '',
+    service_state:   job?.service_state   || '',
+    service_zip:     job?.service_zip     || '',
+    service_lat:     job?.service_lat     || '',
+    service_lng:     job?.service_lng     || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -67,7 +74,13 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
     setSaving(true);
     setError('');
     try {
-      const payload = { ...form, amount: form.amount || null, tech_id: form.tech_id || null };
+      const payload = {
+        ...form,
+        amount:      form.amount      || null,
+        tech_id:     form.tech_id     || null,
+        service_lat: form.service_lat || null,
+        service_lng: form.service_lng || null,
+      };
       delete payload._duration_minutes;
       delete payload._end_at;
       const res = job
@@ -153,6 +166,31 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
           Estimated end: {form._end_at.replace('T', ' at ').replace(/:\d\d$/, '')}
         </p>
       )}
+
+      <div className="form-group">
+        <label>Service Location <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— where the work happens (optional)</span></label>
+        <AddressAutocomplete
+          value={form.service_address}
+          onChange={v => setForm(prev => ({ ...prev, service_address: v }))}
+          onPlace={({ street, city, state, zip, lat, lng }) =>
+            setForm(prev => ({
+              ...prev,
+              service_address: street,
+              service_city:    city,
+              service_state:   state,
+              service_zip:     zip,
+              service_lat:     lat  || '',
+              service_lng:     lng  || '',
+            }))
+          }
+          placeholder="Street address"
+        />
+        {(form.service_city || form.service_state) && (
+          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 4 }}>
+            {[form.service_city, form.service_state, form.service_zip].filter(Boolean).join(', ')}
+          </div>
+        )}
+      </div>
 
       <div className="form-group">
         <label>Notes</label>

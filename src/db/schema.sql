@@ -487,3 +487,11 @@ CREATE TABLE IF NOT EXISTS estimates (
 CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token);
+
+-- Job service address (where the work happens, separate from client home address)
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_address TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_city    TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_state   TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_zip     TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_lat     NUMERIC(9,6);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_lng     NUMERIC(9,6);

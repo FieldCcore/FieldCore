@@ -72,27 +72,31 @@ export default function Dispatch() {
       maxZoom: 19,
     }).addTo(map);
 
-    // Job markers — use real checkin_lat/lng when available, else skip (no fake placement)
+    // Job markers — prefer GPS check-in coords, fall back to service address coords
     const plottedJobs = new Set();
     jobs.forEach((j) => {
-      if (!j.checkin_lat || !j.checkin_lng) return;
-      const pos   = [parseFloat(j.checkin_lat), parseFloat(j.checkin_lng)];
-      const color = JOB_COLORS[j.status] || '#8A90A2';
-      const icon  = L.divIcon({
+      const lat = j.checkin_lat || j.service_lat;
+      const lng = j.checkin_lng || j.service_lng;
+      if (!lat || !lng) return;
+      const pos      = [parseFloat(lat), parseFloat(lng)];
+      const isLive   = !!(j.checkin_lat && j.checkin_lng);
+      const color    = JOB_COLORS[j.status] || '#8A90A2';
+      const icon     = L.divIcon({
         className: '',
         html: `<div style="
           width:12px;height:12px;border-radius:50%;
-          background:${color};border:2px solid white;
+          background:${color};border:2px solid ${isLive ? '#2E7D32' : 'white'};
           box-shadow:0 1px 4px rgba(0,0,0,.3);
         "></div>`,
         iconSize: [12, 12], iconAnchor: [6, 6],
       });
+      const addrLine = j.service_address ? `<br><span style="font-size:11px;color:#64748b">${j.service_address}</span>` : '';
       L.marker(pos, { icon })
         .addTo(map)
         .bindPopup(`
           <strong style="font-family:sans-serif;font-size:12px">${j.client_name} — ${j.service_type}</strong><br>
           <span style="font-size:11px;color:#5F667A">Tech: ${j.tech_name || 'Unassigned'} · ${j.amount ? '$' + j.amount : 'No amount'}</span><br>
-          <span style="font-size:11px;color:#8A90A2;text-transform:capitalize">Status: ${j.status.replace('_', ' ')}</span>
+          <span style="font-size:11px;color:#8A90A2;text-transform:capitalize">Status: ${j.status.replace('_', ' ')}</span>${addrLine}
         `);
       plottedJobs.add(j.id);
     });

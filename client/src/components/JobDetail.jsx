@@ -96,6 +96,21 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
             <span>{format(new Date(job.checkin_at), 'h:mm a')} {job.checkin_lat ? `· ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}</span>
           </div>
         )}
+        {job.service_address && (
+          <div className="detail-row">
+            <label>Location</label>
+            <span>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([job.service_address, job.service_city, job.service_state].filter(Boolean).join(', '))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--sand)', textDecoration: 'none' }}
+              >
+                {[job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean).join(', ')}
+              </a>
+            </span>
+          </div>
+        )}
         {job.notes && (
           <div className="detail-row"><label>Notes</label><span>{job.notes}</span></div>
         )}
