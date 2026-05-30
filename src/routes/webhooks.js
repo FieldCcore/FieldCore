@@ -251,12 +251,14 @@ router.post('/twilio', express.urlencoded({ extended: false }), async (req, res)
 });
 
 // POST /api/webhooks/telnyx/voice — TeXML call control
-router.post('/telnyx/voice', express.urlencoded({ extended: false }), async (req, res) => {
-  const to   = req.body.To   || req.query.To;
-  const from = req.body.From || req.query.From;
+// POST /api/webhooks/twilio/voice — TwiML call control (inbound calls to provisioned numbers)
+router.post('/twilio/voice', express.urlencoded({ extended: false }), async (req, res) => {
+  const to   = req.body.To;
+  const from = req.body.From;
+
+  const twiml = (xml) => { res.set('Content-Type', 'text/xml'); res.send(`<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`); };
 
   try {
-    // Look up the FieldCore number + account
     const numRes = await pool.query(
       `SELECT pn.*, a.id AS account_id, a.name AS account_name
        FROM phone_numbers pn
@@ -266,25 +268,35 @@ router.post('/telnyx/voice', express.urlencoded({ extended: false }), async (req
       [to]
     );
     const num = numRes.rows[0];
+    if (!num) return twiml('<Say>This number is not in service.</Say>');
 
-    if (!num) {
-      res.set('Content-Type', 'text/xml');
-      return res.send('<Response><Say>This number is not in service.</Say></Response>');
-    }
-
-    // Look up caller in clients
+    // Lookup caller in clients for smart caller ID
     const clientRes = await pool.query(
       `SELECT id, name, tier, ltv FROM clients WHERE phone = $1 AND account_id = $2 LIMIT 1`,
       [from, num.account_id]
     );
     const caller = clientRes.rows[0];
 
-    // Record call log
+    // Log the call
     const callRes = await pool.query(
       `INSERT INTO call_logs (account_id, phone_number_id, direction, from_number, to_number, client_id, client_name, status)
        VALUES ($1,$2,'inbound',$3,$4,$5,$6,'in_progress') RETURNING id`,
       [num.account_id, num.id, from, to, caller?.id || null, caller?.name || null]
     );
+    const callLogId = callRes.rows[0].id;
+
+    // SMS preview to the operator's forward number if caller is a known client
+    if (num.forward_to && caller) {
+      const twClient = smsService.getClient();
+      const FROM_NUM = process.env.TWILIO_PHONE_NUMBER;
+      if (twClient && FROM_NUM) {
+        twClient.messages.create({
+          body: `Incoming call: ${caller.name} (${from}) — ${(caller.tier || 'client').toUpperCase()}, LTV $${parseFloat(caller.ltv || 0).toFixed(0)}`,
+          from: FROM_NUM,
+          to:   num.forward_to,
+        }).catch(() => {});
+      }
+    }
 
     // Check business hours
     let inHours = true;
@@ -295,62 +307,35 @@ router.post('/telnyx/voice', express.urlencoded({ extended: false }), async (req
         [num.account_id]
       );
       const h = hoursRes.rows[0];
-      if (h && !h.is_closed) {
-        const now  = new Date();
-        const open = h.open_time?.slice(0, 5);
-        const cls  = h.close_time?.slice(0, 5);
-        const cur  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-        inHours = cur >= open && cur < cls;
-      } else if (h?.is_closed) {
+      if (h?.is_closed) {
         inHours = false;
+      } else if (h) {
+        const now = new Date();
+        const cur = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        inHours = cur >= h.open_time?.slice(0,5) && cur < h.close_time?.slice(0,5);
       }
     }
 
-    // SMS preview to operator about incoming call (if caller is a known client)
-    if (num.forward_to && caller) {
-      const twClient = smsService.getClient();
-      const FROM_NUM = process.env.TWILIO_PHONE_NUMBER;
-      if (twClient && FROM_NUM) {
-        twClient.messages.create({
-          body: `Incoming call from ${caller.name} (${from}) — ${(caller.tier || 'client').toUpperCase()}, LTV $${parseFloat(caller.ltv || 0).toFixed(0)}`,
-          from: FROM_NUM,
-          to:   num.forward_to,
-        }).catch(() => {});
-      }
-    }
-
-    res.set('Content-Type', 'text/xml');
+    const appUrl      = process.env.APP_URL || 'https://api.fieldcore.app';
+    const recordCb    = `${appUrl}/api/webhooks/twilio/recording?call_log_id=${callLogId}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}`;
+    const vmMsg       = num.after_hours_message || `Thank you for calling ${num.account_name}. We're currently closed. Please leave a message after the tone.`;
+    const fallbackMsg = `Thank you for calling ${num.account_name}. Please leave a message after the tone.`;
 
     if (!inHours) {
-      const msg = num.after_hours_message || `Thank you for calling ${num.account_name}. We're currently closed. Please leave a message after the tone.`;
-      return res.send(`<Response>
-  <Say voice="alice">${msg}</Say>
-  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
-</Response>`);
+      return twiml(`<Say voice="alice">${vmMsg}</Say><Record maxLength="120" transcribe="true" transcribeCallback="${recordCb}" />`);
     }
-
     if (num.forward_to) {
-      return res.send(`<Response>
-  <Dial callerId="${to}">${num.forward_to}</Dial>
-  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
-</Response>`);
+      return twiml(`<Dial callerId="${to}" action="${recordCb}&amp;dialed=true">${num.forward_to}</Dial><Say voice="alice">${fallbackMsg}</Say><Record maxLength="120" transcribe="true" transcribeCallback="${recordCb}" />`);
     }
-
-    // No forward number — just voicemail
-    const fallback = `Thank you for calling ${num.account_name}. Please leave a message after the tone.`;
-    return res.send(`<Response>
-  <Say voice="alice">${fallback}</Say>
-  <Record maxLength="120" transcribe="true" transcribeCallback="/api/webhooks/telnyx/recording?call_log_id=${callRes.rows[0].id}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}" />
-</Response>`);
+    twiml(`<Say voice="alice">${fallbackMsg}</Say><Record maxLength="120" transcribe="true" transcribeCallback="${recordCb}" />`);
   } catch (err) {
-    console.error('[Telnyx voice webhook]', err.message);
-    res.set('Content-Type', 'text/xml');
-    res.send('<Response><Say>An error occurred. Please try again later.</Say></Response>');
+    console.error('[Twilio voice webhook]', err.message);
+    twiml('<Say>An error occurred. Please try again later.</Say>');
   }
 });
 
-// POST /api/webhooks/telnyx/recording — voicemail recording callback
-router.post('/telnyx/recording', express.urlencoded({ extended: false }), async (req, res) => {
+// POST /api/webhooks/twilio/recording — voicemail recording + transcription callback
+router.post('/twilio/recording', express.urlencoded({ extended: false }), async (req, res) => {
   const { call_log_id, phone_number_id, account_id, from, client_id, client_name } = req.query;
   const { RecordingUrl, RecordingDuration, TranscriptionText, RecordingSid } = req.body;
 
@@ -367,7 +352,7 @@ router.post('/telnyx/recording', express.urlencoded({ extended: false }), async 
         call_log_id || null,
         phone_number_id || null,
         RecordingSid || null,
-        RecordingUrl || null,
+        RecordingUrl ? RecordingUrl + '.mp3' : null,
         TranscriptionText || null,
         parseInt(RecordingDuration || 0),
         from || null,
@@ -375,21 +360,19 @@ router.post('/telnyx/recording', express.urlencoded({ extended: false }), async 
         client_name || null,
       ]
     );
-
     if (call_log_id) {
       await pool.query(
         `UPDATE call_logs SET status = 'voicemail', ended_at = NOW() WHERE id = $1`,
         [call_log_id]
       );
     }
-
     notify.create(account_id, 'voicemail',
       `New voicemail from ${client_name || from || 'Unknown'}`,
       TranscriptionText ? TranscriptionText.slice(0, 80) : 'Tap to listen',
       '/phone'
     );
   } catch (err) {
-    console.error('[Telnyx recording webhook]', err.message);
+    console.error('[Twilio recording webhook]', err.message);
   }
 
   res.sendStatus(200);
