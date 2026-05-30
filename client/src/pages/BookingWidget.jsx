@@ -75,7 +75,11 @@ export default function BookingWidget() {
     return (
       <div className="booking-wrap">
         <div className="booking-card">
-          <div className="booking-logo">{biz || 'FIELDCORE'}<span>™</span></div>
+          {settings?.logo_url ? (
+            <div style={{ textAlign:'center', marginBottom:16 }}><img src={settings.logo_url} alt={biz} style={{ maxHeight:50, maxWidth:180, objectFit:'contain' }} /></div>
+          ) : (
+            <div className="booking-logo">{biz || 'FIELDCORE'}<span>™</span></div>
+          )}
           <h2 style={{ marginBottom: 12 }}>One last step</h2>
           <p style={{ color: '#64748b', marginBottom: 24 }}>
             A deposit of <strong>${parseFloat(settings.deposit_amount).toFixed(2)}</strong> is required to confirm your booking.
@@ -104,7 +108,14 @@ export default function BookingWidget() {
   return (
     <div className="booking-wrap">
       <div className="booking-card">
-        <div className="booking-logo">{biz || 'FIELDCORE'}<span>™</span></div>
+        {settings?.logo_url ? (
+          <div style={{ textAlign:'center', marginBottom:20 }}>
+            <img src={settings.logo_url} alt={biz} style={{ maxHeight:60, maxWidth:200, objectFit:'contain' }} />
+            <div style={{ fontSize:13, color:'#6b7280', marginTop:6 }}>{biz}</div>
+          </div>
+        ) : (
+          <div className="booking-logo">{biz || 'FIELDCORE'}<span>™</span></div>
+        )}
         <div className="booking-steps">
           {[1,2,3].map(s => (
             <div key={s} className={`booking-step ${step === s ? 'active' : ''} ${step > s ? 'done' : ''}`}>{s > step ? s : step > s ? <Check size={14} strokeWidth={2.5} /> : s}</div>

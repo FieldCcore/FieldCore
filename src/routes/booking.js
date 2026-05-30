@@ -16,8 +16,11 @@ router.get('/:accountId', async (req, res) => {
   try {
     const [settingsRes, hoursRes, closuresRes, servicesRes] = await Promise.all([
       pool.query(
-        `SELECT bs.services, bs.deposit_amount, bs.deposit_rules, bs.agreement_text, bs.business_name
-         FROM booking_settings bs WHERE bs.account_id = $1`,
+        `SELECT bs.services, bs.deposit_amount, bs.deposit_rules, bs.agreement_text, bs.business_name,
+                bp.logo_url, bp.description AS business_description
+         FROM booking_settings bs
+         LEFT JOIN business_profiles bp ON bp.account_id = bs.account_id
+         WHERE bs.account_id = $1`,
         [req.params.accountId]
       ),
       pool.query(
