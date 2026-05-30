@@ -72,6 +72,7 @@ import ClientPortal       from './pages/ClientPortal';
 import EstimatesPage     from './pages/Estimates';
 import SignEstimate      from './pages/SignEstimate';
 import ReviewPage       from './pages/ReviewPage';
+import TechApp         from './pages/TechApp';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -167,6 +168,15 @@ function AppShell() {
   }
   if (user && user.role === 'owner' && user.onboarded === false) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // Tech app — full-screen mobile UI, bypasses the desktop-only shell and screen-size gate
+  if (pathname === '/tech') {
+    return (
+      <Routes>
+        <Route path="/tech" element={<ProtectedRoute><TechApp /></ProtectedRoute>} />
+      </Routes>
+    );
   }
 
   if (isPublicBook) {
@@ -316,6 +326,14 @@ function AppShell() {
                     {ni('/clients', false, IcoClients, 'Clients', null)}
                     {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'SMS', null)}
                     {(isOwner || isManager) && ni('/phone',    false, IcoPhone, 'Phone System', null)}
+                  </>
+                )}
+
+                {/* Tech mobile app — techs + owners */}
+                {(isTech) && (
+                  <>
+                    <div className="nav-section">Mobile</div>
+                    {ni('/tech', false, IcoDispatch, 'My Jobs', null)}
                   </>
                 )}
 
