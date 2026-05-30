@@ -3,6 +3,32 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
+// GET /api/fleet/tech-locations — last GPS check-in per tech for today
+router.get('/tech-locations', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (j.tech_id)
+         j.tech_id,
+         u.name  AS tech_name,
+         j.checkin_lat,
+         j.checkin_lng,
+         j.checkin_at,
+         j.service_type,
+         j.id AS job_id
+       FROM jobs j
+       JOIN users u ON u.id = j.tech_id
+       WHERE j.account_id = $1
+         AND j.checkin_lat IS NOT NULL
+         AND j.checkin_at::date = CURRENT_DATE
+       ORDER BY j.tech_id, j.checkin_at DESC`,
+      [req.accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/fleet
 router.get('/', requireAuth, async (req, res) => {
   try {

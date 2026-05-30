@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Truck } from 'lucide-react';
+import { Truck, MapPin, Navigation } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,20 +10,23 @@ export default function Fleet() {
   const { user } = useAuth();
   const canEdit  = user?.role === 'owner' || user?.role === 'manager';
 
-  const [vehicles, setVehicles] = useState([]);
-  const [techs,    setTechs]    = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [form,     setForm]     = useState(null);  // null | EMPTY | vehicle obj
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState('');
+  const [vehicles,  setVehicles]  = useState([]);
+  const [techs,     setTechs]     = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [form,      setForm]      = useState(null);  // null | EMPTY | vehicle obj
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState('');
 
   useEffect(() => {
     Promise.all([
       api.get('/fleet'),
       api.get('/users'),
-    ]).then(([vRes, uRes]) => {
+      api.get('/fleet/tech-locations'),
+    ]).then(([vRes, uRes, locRes]) => {
       setVehicles(vRes.data);
       setTechs((uRes.data || []).filter(u => u.role === 'tech'));
+      setLocations(locRes.data || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -124,6 +128,49 @@ export default function Fleet() {
           ))}
         </div>
       )}
+
+      {/* Live Locations */}
+      <div style={{ marginTop: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <Navigation size={18} style={{ color: 'var(--sand)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Live Locations</h2>
+          <span style={{ fontSize: 12, color: 'var(--steel)', marginLeft: 4 }}>Today's check-ins</span>
+        </div>
+        {locations.length === 0 ? (
+          <p style={{ color: 'var(--steel)', fontSize: 14 }}>No GPS check-ins recorded today. Techs check in when they start a job on mobile.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {locations.map(loc => (
+              <div key={loc.tech_id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, marginTop: 3 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{loc.tech_name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>{loc.service_type || 'On job'}</div>
+                    </div>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${loc.checkin_lat},${loc.checkin_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--sand)', textDecoration: 'none', flexShrink: 0 }}
+                  >
+                    <MapPin size={13} />
+                    View Map
+                  </a>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--steel)', fontFamily: 'monospace' }}>
+                  {parseFloat(loc.checkin_lat).toFixed(5)}, {parseFloat(loc.checkin_lng).toFixed(5)}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
+                  {loc.checkin_at ? `${formatDistanceToNow(new Date(loc.checkin_at))} ago` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {form && (
         <div className="modal-overlay" onClick={() => setForm(null)}>
