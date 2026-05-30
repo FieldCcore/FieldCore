@@ -320,7 +320,57 @@ function startNoShowClockJob() {
   console.log('[Scheduler] No-show clock job scheduled (every 2 min)');
 }
 
-// ── 7. Billing renewal reminders — runs daily at 09:00 ─────────────────────
+// ── 7. Pre-charge advance notices — runs every hour ─────────────────────────
+// Notifies clients 24h before their card on file will be auto-charged
+function startPreChargeNoticeJob() {
+  cron.schedule('15 * * * *', async () => {
+    try {
+      const { rows: jobs } = await pool.query(`
+        SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+               a.name AS business_name
+        FROM jobs j
+        JOIN clients c ON c.id = j.client_id AND c.card_on_file = TRUE
+        JOIN accounts a ON a.id = j.account_id
+        WHERE j.status = 'scheduled'
+          AND j.amount > 0
+          AND j.pre_charge_notice_sent = FALSE
+          AND j.scheduled_at BETWEEN NOW() + INTERVAL '23 hours'
+                                  AND NOW() + INTERVAL '25 hours'
+      `);
+
+      for (const job of jobs) {
+        try {
+          const fmtDate = d => new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+          const msg = `Hi ${job.client_name}, a reminder that $${parseFloat(job.amount).toFixed(2)} will be charged to your card on file for your ${job.service_type} appointment on ${fmtDate(job.scheduled_at)}.`;
+
+          if (job.client_email) {
+            await email.send({
+              to:      job.client_email,
+              subject: `Upcoming charge for your ${job.service_type} appointment`,
+              html:    email.wrap(`
+                <p>Hi ${job.client_name},</p>
+                <p>This is a reminder that <strong>$${parseFloat(job.amount).toFixed(2)}</strong> will be charged to your card on file for your upcoming <strong>${job.service_type}</strong> appointment on <strong>${fmtDate(job.scheduled_at)}</strong>.</p>
+                <p>If you have any questions, please contact ${job.business_name}.</p>
+              `),
+            });
+          }
+          if (job.client_phone) {
+            await sms.send(job.account_id, job.client_id, job.client_phone, msg + ' Reply STOP to opt out.');
+          }
+          await pool.query(`UPDATE jobs SET pre_charge_notice_sent = TRUE WHERE id = $1`, [job.id]);
+          console.log(`[Scheduler] Pre-charge notice sent for job ${job.id}`);
+        } catch (err) {
+          console.error(`[Scheduler] Pre-charge notice failed for job ${job.id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Pre-charge notice error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Pre-charge notice job scheduled (hourly :15)');
+}
+
+// ── 8. Billing renewal reminders — runs daily at 09:00 ─────────────────────
 function startBillingRenewalReminders() {
   cron.schedule('0 9 * * *', async () => {
     if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.endsWith('_')) return;
@@ -375,6 +425,7 @@ function startReminderJobs() {
   startDepositReminderJob();
   startDepositExpiryJob();
   startNoShowClockJob();
+  startPreChargeNoticeJob();
   startBillingRenewalReminders();
 }
 

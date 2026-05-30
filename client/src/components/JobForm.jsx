@@ -15,9 +15,10 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
       : defaultStart
         ? format(new Date(defaultStart), "yyyy-MM-dd'T'HH:mm")
         : '',
-    amount:    job?.amount    || '',
-    notes:     job?.notes     || '',
-    recurring: job?.recurring || 'none',
+    amount:     job?.amount     || '',
+    travel_fee: job?.travel_fee != null ? String(job.travel_fee) : '',
+    notes:      job?.notes      || '',
+    recurring:  job?.recurring  || 'none',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -28,6 +29,13 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
     api.get('/business-settings').then(r => {
       if (r.data?.services) setTemplates(r.data.services.filter(s => s.is_active !== false));
     }).catch(() => {});
+    // Pre-populate travel_fee from account settings if creating a new job
+    if (!job) {
+      api.get('/booking-settings').then(r => {
+        const tf = parseFloat(r.data?.travel_fee || 0);
+        if (tf > 0) setForm(prev => ({ ...prev, travel_fee: String(tf) }));
+      }).catch(() => {});
+    }
   }, []);
 
   const set = field => e => setForm(prev => ({ ...prev, [field]: e.target.value }));
@@ -117,6 +125,11 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
           <label>Amount ($)</label>
           <input type="number" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" />
         </div>
+      </div>
+
+      <div className="form-group">
+        <label>Travel Fee ($) <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— added as line item on invoice</span></label>
+        <input type="number" step="0.01" min="0" value={form.travel_fee} onChange={set('travel_fee')} placeholder="0.00" />
       </div>
 
       <div className="form-row">

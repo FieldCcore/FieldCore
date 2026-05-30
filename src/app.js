@@ -31,6 +31,7 @@ const noShowRouter         = require('./routes/noshow');
 const entitiesRouter       = require('./routes/entities');
 const connectRouter        = require('./routes/connect');
 const phoneRouter          = require('./routes/phone');
+const estimatesRouter      = require('./routes/estimates');
 
 // Auth: 10 attempts per 15 min — brute-force protection on login/reset
 const authLimiter = rateLimit({
@@ -117,6 +118,7 @@ app.use('/api/no-show',          noShowRouter);
 app.use('/api/entities',         entitiesRouter);
 app.use('/api/connect',          connectRouter);
 app.use('/api/phone',            phoneRouter);
+app.use('/api/estimates',        estimatesRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

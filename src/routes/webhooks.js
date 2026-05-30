@@ -334,6 +334,14 @@ router.post('/twilio/voice', express.urlencoded({ extended: false }), async (req
   }
 });
 
+// GET /api/webhooks/twilio/bridge — TwiML to connect operator to client (outbound click-to-call)
+router.get('/twilio/bridge', express.urlencoded({ extended: false }), async (req, res) => {
+  const { client_phone, client_name } = req.query;
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Connecting you to ${client_name ? client_name.replace(/[<>]/g,'') : 'your client'} now.</Say><Dial>${client_phone || ''}</Dial></Response>`;
+  res.set('Content-Type', 'text/xml');
+  res.send(twiml);
+});
+
 // POST /api/webhooks/twilio/recording — voicemail recording + transcription callback
 router.post('/twilio/recording', express.urlencoded({ extended: false }), async (req, res) => {
   const { call_log_id, phone_number_id, account_id, from, client_id, client_name } = req.query;

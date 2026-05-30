@@ -456,3 +456,34 @@ CREATE TABLE IF NOT EXISTS voicemails (
 );
 CREATE INDEX IF NOT EXISTS idx_voicemails_account ON voicemails(account_id);
 CREATE INDEX IF NOT EXISTS idx_voicemails_read    ON voicemails(account_id, is_read);
+
+-- Travel fee engine
+ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS travel_fee NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS travel_fee NUMERIC(10,2) DEFAULT 0;
+
+-- Pre-charge advance notices
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS pre_charge_notice_sent BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Estimates with e-signature (Scale feature)
+CREATE TABLE IF NOT EXISTS estimates (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  client_id      UUID NOT NULL REFERENCES clients(id),
+  job_id         UUID REFERENCES jobs(id),
+  title          TEXT NOT NULL DEFAULT 'Service Estimate',
+  line_items     JSONB NOT NULL DEFAULT '[]',
+  amount         NUMERIC(10,2) NOT NULL DEFAULT 0,
+  tax_amount     NUMERIC(10,2) DEFAULT 0,
+  status         TEXT NOT NULL DEFAULT 'draft'
+                   CHECK (status IN ('draft','sent','signed','declined','expired')),
+  notes          TEXT,
+  valid_until    DATE,
+  signing_token  TEXT UNIQUE,
+  signed_at      TIMESTAMPTZ,
+  signature_data TEXT,
+  sent_at        TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id);
+CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id);
+CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token);

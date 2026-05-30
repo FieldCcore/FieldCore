@@ -23,7 +23,8 @@ export default function BookingSettings() {
         ...d,
         services:      Array.isArray(d.services)      ? d.services      : [],
         deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
-        tax_rate:      d.tax_rate != null ? (parseFloat(d.tax_rate) * 100).toFixed(2) : '0',
+        tax_rate:      d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
+        travel_fee:    d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -70,7 +71,8 @@ export default function BookingSettings() {
         ...d,
         services:      Array.isArray(d.services)      ? d.services      : [],
         deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
-        tax_rate:      d.tax_rate != null ? (parseFloat(d.tax_rate) * 100).toFixed(2) : '0',
+        tax_rate:      d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
+        travel_fee:    d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -132,6 +134,12 @@ export default function BookingSettings() {
             <label>Tax Rate (%)</label>
             <input type="number" step="0.01" min="0" max="100" value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
             <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Applied automatically when generating invoices (e.g. 8.5 for 8.5%).</p>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Travel Fee ($0 = none)</label>
+            <input type="number" step="0.01" min="0" value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Auto-added as a line item on invoices for each job. Can be overridden per job.</p>
           </div>
 
           <div className="form-group" style={{ marginBottom: 16 }}>

@@ -172,4 +172,70 @@ router.patch('/voicemails/:id/read', requireAuth, requireRole('owner', 'manager'
   }
 });
 
+// GET /api/phone/calls/latest-inbound — real-time CallerID polling (last 30 seconds)
+router.get('/calls/latest-inbound', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT cl.*, c.tier, c.ltv, c.notes AS client_notes,
+              (SELECT j.service_type FROM jobs j WHERE j.client_id = cl.client_id AND j.account_id = cl.account_id ORDER BY j.scheduled_at DESC LIMIT 1) AS last_service,
+              (SELECT j.scheduled_at  FROM jobs j WHERE j.client_id = cl.client_id AND j.account_id = cl.account_id ORDER BY j.scheduled_at DESC LIMIT 1) AS last_service_at,
+              (SELECT SUM(i.amount)   FROM invoices i WHERE i.client_id = cl.client_id AND i.account_id = cl.account_id AND i.status = 'pending') AS open_balance
+       FROM call_logs cl
+       LEFT JOIN clients c ON c.id = cl.client_id
+       WHERE cl.account_id = $1
+         AND cl.direction = 'inbound'
+         AND cl.started_at > NOW() - INTERVAL '30 seconds'
+         AND cl.status = 'in_progress'
+       ORDER BY cl.started_at DESC
+       LIMIT 1`,
+      [req.accountId]
+    );
+    res.json(rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/phone/calls/outbound — click-to-call: Twilio calls operator first, then client
+router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { client_id, operator_number } = req.body;
+  if (!client_id || !operator_number) {
+    return res.status(400).json({ error: 'client_id and operator_number are required' });
+  }
+
+  try {
+    const [clientRes, numRes] = await Promise.all([
+      pool.query(`SELECT * FROM clients WHERE id = $1 AND account_id = $2`, [client_id, req.accountId]),
+      pool.query(`SELECT * FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`, [req.accountId]),
+    ]);
+    const client = clientRes.rows[0];
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.phone) return res.status(400).json({ error: 'Client has no phone number' });
+
+    const fromNumber = numRes.rows[0]?.number;
+    if (!fromNumber) return res.status(400).json({ error: 'No active phone number on account' });
+
+    const appUrl = process.env.APP_URL || 'https://fieldcore-production-ee0d.up.railway.app';
+    const twilioClient = getTwilio();
+
+    // Call the operator first; when answered, bridge to client
+    const call = await twilioClient.calls.create({
+      to:   operator_number,
+      from: fromNumber,
+      url:  `${appUrl}/api/webhooks/twilio/bridge?client_phone=${encodeURIComponent(client.phone)}&client_name=${encodeURIComponent(client.name || '')}`,
+    });
+
+    // Log outbound call
+    const { rows } = await pool.query(
+      `INSERT INTO call_logs (account_id, direction, from_number, to_number, client_id, client_name, status)
+       VALUES ($1,'outbound',$2,$3,$4,$5,'in_progress') RETURNING *`,
+      [req.accountId, fromNumber, client.phone, client_id, client.name]
+    );
+
+    res.json({ call_sid: call.sid, log: rows[0] });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

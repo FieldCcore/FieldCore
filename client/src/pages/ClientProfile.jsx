@@ -23,6 +23,9 @@ export default function ClientProfile() {
   const [smsError, setSmsError] = useState('');
   const [noShows, setNoShows] = useState([]);
   const [profileTab, setProfileTab] = useState('overview');
+  const [calling, setCalling] = useState(false);
+  const [callModal, setCallModal] = useState(false);
+  const [operatorNumber, setOperatorNumber] = useState('');
 
   useEffect(() => {
     api.get(`/clients/${id}`)
@@ -56,6 +59,22 @@ export default function ClientProfile() {
     setEditing(false);
   }
 
+  async function handleCall(e) {
+    e.preventDefault();
+    if (!operatorNumber.trim()) return;
+    setCalling(true);
+    try {
+      await api.post('/phone/calls/outbound', { client_id: id, operator_number: operatorNumber.trim() });
+      setCallModal(false);
+      setOperatorNumber('');
+      alert(`Calling ${client.name}. Your phone (${operatorNumber}) will ring first.`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Call failed.');
+    } finally {
+      setCalling(false);
+    }
+  }
+
   if (loading) return <p className="muted">Loading...</p>;
   if (!client) return <p className="muted">Client not found.</p>;
 
@@ -68,8 +87,49 @@ export default function ClientProfile() {
           <h1>{client.name}</h1>
           <span className={`badge badge-${client.tier}`}>{client.tier}</span>
         </div>
-        <button className="btn-secondary" onClick={() => setEditing(true)}>Edit Client</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {client.phone && (
+            <button className="btn-secondary" onClick={() => setCallModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6z"/></svg>
+              Call
+            </button>
+          )}
+          <button className="btn-secondary" onClick={() => setEditing(true)}>Edit Client</button>
+        </div>
       </div>
+
+      {callModal && (
+        <div className="modal-overlay" onClick={() => setCallModal(false)}>
+          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Call {client.name}</h2>
+              <button className="btn-close" onClick={() => setCallModal(false)}>×</button>
+            </div>
+            <div style={{ padding: '4px 0 16px' }}>
+              <p style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 16 }}>
+                Twilio will call your phone first. When you answer, it connects you to {client.name} ({client.phone}).
+              </p>
+              <form onSubmit={handleCall}>
+                <div className="form-group">
+                  <label>Your phone number</label>
+                  <input
+                    value={operatorNumber}
+                    onChange={e => setOperatorNumber(e.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                    required
+                  />
+                </div>
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setCallModal(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary" disabled={calling}>
+                    {calling ? 'Connecting…' : 'Start Call'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="modal-overlay" onClick={() => setEditing(false)}>

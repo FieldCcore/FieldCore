@@ -270,18 +270,19 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 
 // PUT /api/booking-settings — update operator's booking config
 router.put('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate } = req.body;
+  const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee } = req.body;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO booking_settings (account_id, services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO booking_settings (account_id, services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (account_id) DO UPDATE SET
          services       = EXCLUDED.services,
          deposit_amount = EXCLUDED.deposit_amount,
          deposit_rules  = EXCLUDED.deposit_rules,
          agreement_text = EXCLUDED.agreement_text,
          business_name  = EXCLUDED.business_name,
-         tax_rate       = EXCLUDED.tax_rate
+         tax_rate       = EXCLUDED.tax_rate,
+         travel_fee     = EXCLUDED.travel_fee
        RETURNING *`,
       [
         req.accountId,
@@ -291,6 +292,7 @@ router.put('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
         agreement_text,
         business_name,
         tax_rate ?? 0,
+        travel_fee ?? 0,
       ]
     );
     res.json(rows[0]);

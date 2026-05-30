@@ -68,6 +68,8 @@ import BusinessSettings   from './pages/BusinessSettings';
 import Entities          from './pages/Entities';
 import PhonePage         from './pages/Phone';
 import ClientPortal       from './pages/ClientPortal';
+import EstimatesPage     from './pages/Estimates';
+import SignEstimate      from './pages/SignEstimate';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -82,6 +84,7 @@ const PAGE_TITLES = {
   '/revenue':            'Revenue Analytics',
   '/deposits':           'Deposits & Payment Protection',
   '/invoices':           'Invoices',
+  '/estimates':          'Estimates',
   '/clients':            'Client Database',
   '/messages':           'Business Phone',
   '/phone':              'Phone System',
@@ -138,6 +141,24 @@ function AppShell() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  // Auto-show CallerID on live inbound calls
+  const lastCallIdRef = React.useRef(null);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    async function pollInbound() {
+      try {
+        const { data } = await import('./api').then(m => m.default.get('/phone/calls/latest-inbound'));
+        if (!cancelled && data && data.id !== lastCallIdRef.current) {
+          lastCallIdRef.current = data.id;
+          setCallerOpen(true);
+        }
+      } catch {}
+    }
+    const iv = setInterval(pollInbound, 5000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [user]);
+
   // Onboarding gate — owners who haven't completed setup
   if (pathname === '/onboarding') {
     return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;
@@ -155,7 +176,7 @@ function AppShell() {
   }
 
   const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
-  if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/')) {
+  if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/') || pathname.startsWith('/sign/')) {
     return (
       <Routes>
         <Route path="/"                 element={<Landing />} />
@@ -178,6 +199,7 @@ function AppShell() {
         <Route path="/privacy"          element={<Privacy />} />
         <Route path="/sms-terms"        element={<SmsTerms />} />
         <Route path="/client"           element={<ClientPortal />} />
+        <Route path="/sign/:token"      element={<SignEstimate />} />
       </Routes>
     );
   }
@@ -277,9 +299,10 @@ function AppShell() {
                 {(isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">Finance</div>
-                    {(isOwner || isManager) && ni('/revenue',  false, IcoRevenue,  'Revenue',  null)}
-                    {(isOwner || isManager) && ni('/deposits', false, IcoDeposits, 'Deposits', null)}
-                    {ni('/invoices', false, IcoInvoice, 'Invoices', null)}
+                    {(isOwner || isManager) && ni('/revenue',   false, IcoRevenue,  'Revenue',   null)}
+                    {(isOwner || isManager) && ni('/deposits',  false, IcoDeposits, 'Deposits',  null)}
+                    {ni('/invoices',  false, IcoInvoice, 'Invoices',  null)}
+                    {(isOwner || isManager) && ni('/estimates', false, IcoInvoice,  'Estimates', null)}
                   </>
                 )}
 
@@ -288,8 +311,8 @@ function AppShell() {
                   <>
                     <div className="nav-section">CRM</div>
                     {ni('/clients', false, IcoClients, 'Clients', null)}
-                    {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'Phone', null)}
-                {(isOwner || isManager) && ni('/phone',    false, IcoPhone, 'Phone System', null)}
+                    {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'SMS', null)}
+                    {(isOwner || isManager) && ni('/phone',    false, IcoPhone, 'Phone System', null)}
                   </>
                 )}
 
@@ -348,6 +371,7 @@ function AppShell() {
             <Route path="/revenue"     element={<ProtectedRoute><PlanGate requires="pro"><Revenue /></PlanGate></ProtectedRoute>}   />
             <Route path="/deposits"    element={<ProtectedRoute><PlanGate requires="pro"><Deposits /></PlanGate></ProtectedRoute>}  />
             <Route path="/invoices"    element={<ProtectedRoute><Invoices /></ProtectedRoute>}       />
+            <Route path="/estimates"   element={<ProtectedRoute><PlanGate requires="solo"><EstimatesPage /></PlanGate></ProtectedRoute>} />
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/messages"    element={<ProtectedRoute><Messages /></ProtectedRoute>}       />

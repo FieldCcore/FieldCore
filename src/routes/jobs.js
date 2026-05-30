@@ -55,15 +55,24 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/jobs
 router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, async (req, res) => {
-  const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring } = req.body;
+  const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee } = req.body;
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
   try {
+    // Auto-populate travel_fee from account settings if not supplied
+    let travelFee = travel_fee !== undefined ? parseFloat(travel_fee) || 0 : null;
+    if (travelFee === null) {
+      const settingsRes = await pool.query(
+        `SELECT travel_fee FROM booking_settings WHERE account_id = $1`, [req.accountId]
+      );
+      travelFee = parseFloat(settingsRes.rows[0]?.travel_fee || 0);
+    }
+
     const { rows } = await pool.query(
-      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [req.accountId, client_id, tech_id || null, service_type, scheduled_at, amount || null, notes, recurring || 'none']
+      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [req.accountId, client_id, tech_id || null, service_type, scheduled_at, amount || null, notes, recurring || 'none', travelFee]
     );
     const job = rows[0];
 
@@ -148,11 +157,14 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
       const settingsRes = await pool.query(
         `SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]
       );
-      const taxRate   = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-      const subtotal  = parseFloat(job.amount);
-      const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
-      const total     = subtotal + taxAmount;
-      const lineItems = [{ description: job.service_type || 'Service', amount: subtotal }];
+      const taxRate    = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+      const serviceAmt = parseFloat(job.amount);
+      const travelAmt  = parseFloat(job.travel_fee || 0);
+      const lineItems  = [{ description: job.service_type || 'Service', amount: serviceAmt }];
+      if (travelAmt > 0) lineItems.push({ description: 'Travel Fee', amount: travelAmt });
+      const subtotal   = lineItems.reduce((s, i) => s + i.amount, 0);
+      const taxAmount  = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
+      const total      = subtotal + taxAmount;
       await pool.query(
         `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
          VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
