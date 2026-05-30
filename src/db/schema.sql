@@ -488,6 +488,23 @@ CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token);
 
+-- Post-job review requests
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS review_token        TEXT UNIQUE;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS review_request_sent BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  job_id     UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  body       TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_account ON reviews(account_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_client  ON reviews(client_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_job ON reviews(job_id);
+
 -- Job service address (where the work happens, separate from client home address)
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_city    TEXT;

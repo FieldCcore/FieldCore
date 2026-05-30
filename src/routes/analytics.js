@@ -7,7 +7,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -100,6 +100,18 @@ router.get('/dashboard', requireAuth, async (req, res) => {
          ORDER BY generate_series`,
         [accountId]
       ),
+
+      // Recent reviews + average rating
+      pool.query(
+        `SELECT r.rating, r.body, r.created_at, c.name AS client_name, j.service_type
+         FROM reviews r
+         JOIN clients c ON c.id = r.client_id
+         JOIN jobs j ON j.id = r.job_id
+         WHERE r.account_id = $1
+         ORDER BY r.created_at DESC
+         LIMIT 5`,
+        [accountId]
+      ),
     ]);
 
     res.json({
@@ -111,6 +123,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       pendingDeposits: pendingDeposits.rows,
       team:            teamStats.rows,
       weekBars:        weekBars.rows,
+      recentReviews:   recentReviews.rows,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

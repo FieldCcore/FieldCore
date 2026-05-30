@@ -22,6 +22,7 @@ export default function ClientProfile() {
   const [smsSending, setSmsSending] = useState(false);
   const [smsError, setSmsError] = useState('');
   const [noShows, setNoShows] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [profileTab, setProfileTab] = useState('overview');
   const [calling, setCalling] = useState(false);
   const [callModal, setCallModal] = useState(false);
@@ -35,6 +36,8 @@ export default function ClientProfile() {
       .then(r => setMessages(r.data.slice(0, 5)));
     api.get(`/no-show/records?client_id=${id}`)
       .then(r => setNoShows(r.data)).catch(() => {});
+    api.get(`/reviews?client_id=${id}`)
+      .then(r => setReviews(r.data)).catch(() => {});
   }, [id]);
 
   async function handleSms(e) {
@@ -234,6 +237,32 @@ export default function ClientProfile() {
         )}
         {!client?.phone && <p className="muted">Add a phone number to this client to enable SMS.</p>}
       </div>
+
+      {/* Reviews */}
+      {reviews.length > 0 && (
+        <div className="section" style={{ marginTop: 32 }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            Reviews
+            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: 'rgba(214,181,138,.12)', color: 'var(--sand)', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+              {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)} avg
+            </span>
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {reviews.map(r => (
+              <div key={r.id} style={{ background: 'white', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '14px 18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: r.body ? 8 : 0 }}>
+                  <div>
+                    <span style={{ color: '#D6B58A', fontSize: 16, letterSpacing: 3 }}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                    <span style={{ fontSize: 12, color: 'var(--steel)', marginLeft: 10 }}>{r.service_type}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--steel)' }}>{new Date(r.created_at).toLocaleDateString()}</span>
+                </div>
+                {r.body && <p style={{ margin: 0, fontSize: 13, color: '#475569', fontStyle: 'italic' }}>"{r.body}"</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* No-Show History */}
       {noShows.length > 0 && (

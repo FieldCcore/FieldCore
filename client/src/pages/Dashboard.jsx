@@ -63,7 +63,12 @@ export default function Dashboard() {
   }
 
   const { todayJobs = [], weekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
-          pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [] } = data || {};
+          pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [],
+          recentReviews = [] } = data || {};
+
+  const avgRating = recentReviews.length
+    ? (recentReviews.reduce((s, r) => s + r.rating, 0) / recentReviews.length).toFixed(1)
+    : null;
 
   const maxBar = Math.max(...weekBars.map(b => parseFloat(b.revenue)), 1);
   const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
@@ -100,6 +105,12 @@ export default function Dashboard() {
           <div className="dash-sc-v">{pendingDeposits.length}</div>
           <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
           {pendingDeposits.length > 0 && <span className="dash-sc-b ba">Action needed</span>}
+        </div>
+        <div className="dash-sc">
+          <div className="dash-sc-l">Avg Rating</div>
+          <div className="dash-sc-v">{avgRating ? `${avgRating} ★` : '—'}</div>
+          <div className="dash-sc-s">{recentReviews.length > 0 ? `${recentReviews.length} review${recentReviews.length !== 1 ? 's' : ''}` : 'No reviews yet'}</div>
+          {avgRating >= 4.5 && <span className="dash-sc-b bg">Excellent</span>}
         </div>
       </div>
 
@@ -216,6 +227,24 @@ export default function Dashboard() {
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/team')}>Team Report</button>
               <button className="tb-btn tb-primary dash-act-btn">+ Book New Job</button>
             </div>
+          </div>
+
+          <div className="dash-card">
+            <div className="dash-ch"><span className="dash-cht">Recent Reviews</span></div>
+            {recentReviews.length === 0 ? (
+              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No reviews yet — requests are sent 1 hour after job completion.</div>
+            ) : (
+              recentReviews.map((r, i) => (
+                <div key={i} style={{ padding: '12px 16px', borderBottom: i < recentReviews.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{r.client_name}</span>
+                    <span style={{ color: '#D6B58A', fontSize: 14, letterSpacing: 2 }}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginBottom: r.body ? 4 : 0 }}>{r.service_type}</div>
+                  {r.body && <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>"{r.body}"</div>}
+                </div>
+              ))
+            )}
           </div>
 
           <div className="dash-card">

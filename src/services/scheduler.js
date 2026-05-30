@@ -1,4 +1,5 @@
 const cron   = require('node-cron');
+const crypto = require('crypto');
 const pool   = require('../db/pool');
 const sms    = require('./sms');
 const email  = require('./email');
@@ -419,6 +420,58 @@ function startBillingRenewalReminders() {
   console.log('[Scheduler] Billing renewal reminders scheduled (daily 09:00)');
 }
 
+// ── 9. Post-job review requests — runs every hour at :45 ────────────────────
+function startReviewRequestJob() {
+  cron.schedule('45 * * * *', async () => {
+    try {
+      const appUrl = process.env.APP_URL || 'https://www.getfieldcore.com';
+      const { rows: jobs } = await pool.query(`
+        SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+               a.name AS business_name
+        FROM jobs j
+        JOIN clients c ON c.id = j.client_id
+        JOIN accounts a ON a.id = j.account_id
+        WHERE j.status = 'complete'
+          AND j.review_request_sent = FALSE
+          AND j.completed_at IS NOT NULL
+          AND j.completed_at < NOW() - INTERVAL '1 hour'
+          AND j.completed_at > NOW() - INTERVAL '25 hours'
+      `);
+
+      for (const job of jobs) {
+        try {
+          const token = crypto.randomBytes(24).toString('hex');
+          await pool.query(
+            `UPDATE jobs SET review_token = $1, review_request_sent = TRUE WHERE id = $2`,
+            [token, job.id]
+          );
+
+          const reviewUrl = `${appUrl}/review/${token}`;
+          const smsBody   = `Hi ${job.client_name}, thanks for your ${job.service_type} with ${job.business_name}! We'd love your feedback: ${reviewUrl} Reply STOP to opt out.`;
+
+          if (job.client_email) {
+            await email.send({
+              to:      job.client_email,
+              subject: `How did your ${job.service_type} go? Leave a quick review`,
+              html:    email.reviewRequestHtml(job.client_name, job.service_type, job.business_name, reviewUrl),
+            });
+          }
+          if (job.client_phone) {
+            await sms.send(job.account_id, job.client_id, job.client_phone, smsBody);
+          }
+
+          console.log(`[Scheduler] Review request sent for job ${job.id} (${job.client_name})`);
+        } catch (err) {
+          console.error(`[Scheduler] Review request failed for job ${job.id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Review request error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Review request job scheduled (hourly :45)');
+}
+
 function startReminderJobs() {
   startReminderJob();
   startRecurringJobCreation();
@@ -427,6 +480,7 @@ function startReminderJobs() {
   startNoShowClockJob();
   startPreChargeNoticeJob();
   startBillingRenewalReminders();
+  startReviewRequestJob();
 }
 
 module.exports = { startReminderJob: startReminderJobs };

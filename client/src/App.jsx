@@ -71,6 +71,7 @@ import PhonePage         from './pages/Phone';
 import ClientPortal       from './pages/ClientPortal';
 import EstimatesPage     from './pages/Estimates';
 import SignEstimate      from './pages/SignEstimate';
+import ReviewPage       from './pages/ReviewPage';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -177,7 +178,7 @@ function AppShell() {
   }
 
   const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
-  if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/') || pathname.startsWith('/sign/')) {
+  if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/') || pathname.startsWith('/sign/') || pathname.startsWith('/review/')) {
     return (
       <Routes>
         <Route path="/"                 element={<Landing />} />
@@ -201,6 +202,7 @@ function AppShell() {
         <Route path="/sms-terms"        element={<SmsTerms />} />
         <Route path="/client"           element={<ClientPortal />} />
         <Route path="/sign/:token"      element={<SignEstimate />} />
+        <Route path="/review/:token"   element={<ReviewPage />} />
       </Routes>
     );
   }

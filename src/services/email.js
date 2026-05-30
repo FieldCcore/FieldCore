@@ -158,6 +158,15 @@ function billingFailedHtml(accountName) {
   `);
 }
 
+function reviewRequestHtml(clientName, serviceType, businessName, reviewUrl) {
+  return wrap(`
+    <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">How did we do?</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${clientName}, thanks for choosing ${businessName} for your <strong>${serviceType}</strong>. We'd love your feedback — it only takes 30 seconds.</p>
+    <a href="${reviewUrl}" style="display:inline-block;background:#1C2333;color:#D6B58A;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:.02em">Leave a Review →</a>
+    <p style="color:#9ca3af;font-size:11px;margin-top:14px">Or visit: ${reviewUrl}</p>
+  `);
+}
+
 function billingCancelledHtml(accountName, accessEndsAt) {
   return wrap(`
     <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Cancellation Confirmed</h2>
@@ -172,5 +181,5 @@ function billingCancelledHtml(accountName, accessEndsAt) {
 module.exports = {
   send, wrap, confirmationHtml, reminderHtml, invoiceHtml,
   noShowOperatorHtml, billingRenewalHtml, billingReceiptHtml,
-  billingFailedHtml, billingCancelledHtml,
+  billingFailedHtml, billingCancelledHtml, reviewRequestHtml,
 };
