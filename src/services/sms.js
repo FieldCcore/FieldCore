@@ -12,6 +12,11 @@ function getClient() {
 const FROM = process.env.TWILIO_PHONE_NUMBER;
 
 async function send(accountId, clientId, to, body) {
+  // Single switch: set SMS_ENABLED=true in env once A2P 10DLC registration is approved
+  if (process.env.SMS_ENABLED !== 'true') {
+    console.log(`[SMS disabled — A2P 10DLC pending] To: ${to} | ${body}`);
+    return null;
+  }
   const client = getClient();
   if (!client || !FROM || FROM === '+1') {
     console.log(`[SMS skipped — Twilio not configured] To: ${to} | ${body}`);

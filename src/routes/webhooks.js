@@ -286,7 +286,7 @@ router.post('/twilio/voice', express.urlencoded({ extended: false }), async (req
     const callLogId = callRes.rows[0].id;
 
     // SMS preview to the operator's forward number if caller is a known client
-    if (num.forward_to && caller) {
+    if (num.forward_to && caller && process.env.SMS_ENABLED === 'true') {
       const twClient = smsService.getClient();
       const FROM_NUM = process.env.TWILIO_PHONE_NUMBER;
       if (twClient && FROM_NUM) {

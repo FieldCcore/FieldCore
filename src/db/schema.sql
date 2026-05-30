@@ -395,3 +395,61 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS cancelled_at  TIMESTAMPTZ;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS renewal_7d_sent BOOLEAN DEFAULT FALSE;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS renewal_3d_sent BOOLEAN DEFAULT FALSE;
+
+-- ── Twilio Voice / Phone System ─────────────────────────────────────────────────
+
+-- Provisioned Twilio phone numbers per account
+CREATE TABLE IF NOT EXISTS phone_numbers (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  telnyx_number_id     TEXT,                          -- stores Twilio incomingPhoneNumber SID
+  number               TEXT NOT NULL,
+  label                TEXT,
+  is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+  forward_to           TEXT,                          -- E.164 number to forward inbound calls
+  business_hours_only  BOOLEAN NOT NULL DEFAULT FALSE,
+  after_hours_message  TEXT,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_phone_numbers_account ON phone_numbers(account_id);
+CREATE INDEX IF NOT EXISTS idx_phone_numbers_number  ON phone_numbers(number);
+
+-- Inbound/outbound call log
+CREATE TABLE IF NOT EXISTS call_logs (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  phone_number_id  UUID REFERENCES phone_numbers(id) ON DELETE SET NULL,
+  direction        TEXT NOT NULL DEFAULT 'inbound' CHECK (direction IN ('inbound','outbound')),
+  from_number      TEXT,
+  to_number        TEXT,
+  client_id        UUID REFERENCES clients(id) ON DELETE SET NULL,
+  client_name      TEXT,
+  status           TEXT NOT NULL DEFAULT 'in_progress'
+                     CHECK (status IN ('in_progress','completed','voicemail','missed','failed')),
+  started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at         TIMESTAMPTZ,
+  duration_seconds INTEGER,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_call_logs_account    ON call_logs(account_id);
+CREATE INDEX IF NOT EXISTS idx_call_logs_started    ON call_logs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_logs_client     ON call_logs(client_id);
+
+-- Voicemail recordings + transcriptions
+CREATE TABLE IF NOT EXISTS voicemails (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  call_log_id          UUID REFERENCES call_logs(id) ON DELETE SET NULL,
+  phone_number_id      UUID REFERENCES phone_numbers(id) ON DELETE SET NULL,
+  telnyx_recording_id  TEXT,                          -- stores Twilio RecordingSid
+  recording_url        TEXT,
+  transcription        TEXT,
+  duration_seconds     INTEGER,
+  from_number          TEXT,
+  client_id            UUID REFERENCES clients(id) ON DELETE SET NULL,
+  client_name          TEXT,
+  is_read              BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_voicemails_account ON voicemails(account_id);
+CREATE INDEX IF NOT EXISTS idx_voicemails_read    ON voicemails(account_id, is_read);
