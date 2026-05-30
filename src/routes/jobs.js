@@ -100,7 +100,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
 
 // PATCH /api/jobs/:id — full edit
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const fields = ['client_id','tech_id','service_type','scheduled_at','amount','notes','recurring'];
+  const fields = ['client_id','tech_id','service_type','scheduled_at','amount','travel_fee','notes','recurring'];
   const updates = [];
   const values  = [];
   let i = 1;

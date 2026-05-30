@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Phone } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import api from './api';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -148,7 +149,7 @@ function AppShell() {
     let cancelled = false;
     async function pollInbound() {
       try {
-        const { data } = await import('./api').then(m => m.default.get('/phone/calls/latest-inbound'));
+        const { data } = await api.get('/phone/calls/latest-inbound');
         if (!cancelled && data && data.id !== lastCallIdRef.current) {
           lastCallIdRef.current = data.id;
           setCallerOpen(true);
