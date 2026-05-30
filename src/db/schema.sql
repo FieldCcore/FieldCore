@@ -97,6 +97,8 @@ CREATE TABLE IF NOT EXISTS deposits (
   collected_at             TIMESTAMPTZ,
   refunded_at              TIMESTAMPTZ,
   expires_at               TIMESTAMPTZ,
+  reminder_24h_sent        BOOLEAN NOT NULL DEFAULT FALSE,
+  reminder_48h_sent        BOOLEAN NOT NULL DEFAULT FALSE,
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

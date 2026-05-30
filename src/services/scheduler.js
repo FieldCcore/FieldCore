@@ -126,7 +126,67 @@ function startRecurringJobCreation() {
   console.log('[Scheduler] Recurring job creation scheduled (nightly 01:00)');
 }
 
-// ── 3. Deposit expiry — runs every 15 minutes ───────────────
+// ── 3. Deposit payment reminders — runs every hour ──────────
+function startDepositReminderJob() {
+  cron.schedule('30 * * * *', async () => {
+    try {
+      const { rows: deposits } = await pool.query(`
+        SELECT d.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+               j.service_type, j.scheduled_at
+        FROM deposits d
+        JOIN clients c ON c.id = d.client_id
+        JOIN jobs j ON j.id = d.job_id
+        WHERE d.status = 'pending'
+          AND d.expires_at IS NOT NULL
+          AND d.expires_at > NOW()
+      `);
+
+      for (const d of deposits) {
+        const hoursUntilExpiry = (new Date(d.expires_at) - Date.now()) / 3600000;
+        const hoursSinceCreated = (Date.now() - new Date(d.created_at)) / 3600000;
+
+        // 24h reminder: send once between 23-25 hours after creation
+        if (hoursSinceCreated >= 23 && hoursSinceCreated < 25 && !d.reminder_24h_sent) {
+          if (d.client_phone) {
+            sms.send(d.account_id, d.client_id, d.client_phone,
+              `Hi ${d.client_name}, a deposit of $${parseFloat(d.amount).toFixed(2)} is required to confirm your ${d.service_type} appointment. Please complete payment to secure your spot. Reply STOP to opt out.`
+            ).catch(() => {});
+          }
+          if (d.client_email) {
+            email.send({
+              to: d.client_email,
+              subject: `Reminder: deposit required for your ${d.service_type} appointment`,
+              html: `<p>Hi ${d.client_name},</p><p>A deposit of <strong>$${parseFloat(d.amount).toFixed(2)}</strong> is required to confirm your <strong>${d.service_type}</strong> appointment. Please complete payment to secure your spot.</p>`,
+            }).catch(() => {});
+          }
+          await pool.query(`UPDATE deposits SET reminder_24h_sent = TRUE WHERE id = $1`, [d.id]);
+        }
+
+        // 48h reminder: send once between 47-49 hours after creation
+        if (hoursSinceCreated >= 47 && hoursSinceCreated < 49 && !d.reminder_48h_sent) {
+          if (d.client_phone) {
+            sms.send(d.account_id, d.client_id, d.client_phone,
+              `Hi ${d.client_name}, final reminder: your $${parseFloat(d.amount).toFixed(2)} deposit for ${d.service_type} expires in ~24 hours. Pay now to keep your appointment. Reply STOP to opt out.`
+            ).catch(() => {});
+          }
+          if (d.client_email) {
+            email.send({
+              to: d.client_email,
+              subject: `Final reminder: deposit expires soon for your ${d.service_type} appointment`,
+              html: `<p>Hi ${d.client_name},</p><p>Your deposit of <strong>$${parseFloat(d.amount).toFixed(2)}</strong> for <strong>${d.service_type}</strong> expires in approximately 24 hours. Pay now to keep your appointment — after expiry, the slot will be released.</p>`,
+            }).catch(() => {});
+          }
+          await pool.query(`UPDATE deposits SET reminder_48h_sent = TRUE WHERE id = $1`, [d.id]);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Deposit reminder error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Deposit reminder job scheduled (hourly :30)');
+}
+
+// ── 5. Deposit expiry — runs every 15 minutes ───────────────
 function startDepositExpiryJob() {
   cron.schedule('*/15 * * * *', async () => {
     try {
@@ -161,7 +221,7 @@ function startDepositExpiryJob() {
   console.log('[Scheduler] Deposit expiry job scheduled (every 15 min)');
 }
 
-// ── 4. No-show auto-declare — runs every 2 minutes ──────────────────────────
+// ── 6. No-show auto-declare — runs every 2 minutes ──────────────────────────
 function startNoShowClockJob() {
   cron.schedule('*/2 * * * *', async () => {
     try {
@@ -260,7 +320,7 @@ function startNoShowClockJob() {
   console.log('[Scheduler] No-show clock job scheduled (every 2 min)');
 }
 
-// ── 5. Billing renewal reminders — runs daily at 09:00 ─────────────────────
+// ── 7. Billing renewal reminders — runs daily at 09:00 ─────────────────────
 function startBillingRenewalReminders() {
   cron.schedule('0 9 * * *', async () => {
     if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.endsWith('_')) return;
@@ -312,6 +372,7 @@ function startBillingRenewalReminders() {
 function startReminderJobs() {
   startReminderJob();
   startRecurringJobCreation();
+  startDepositReminderJob();
   startDepositExpiryJob();
   startNoShowClockJob();
   startBillingRenewalReminders();

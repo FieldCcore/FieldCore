@@ -186,10 +186,10 @@ router.post('/:accountId/submit', async (req, res) => {
 
       const session = await stripe.checkout.sessions.create(sessionParams);
 
-      // Record deposit as pending — SMS confirmation sent by webhook after payment
+      // Record deposit as pending — expires in 72 hours if unpaid
       await pool.query(
-        `INSERT INTO deposits (account_id, job_id, client_id, amount, type, status)
-         VALUES ($1,$2,$3,$4,'deposit','pending')`,
+        `INSERT INTO deposits (account_id, job_id, client_id, amount, type, status, expires_at)
+         VALUES ($1,$2,$3,$4,'deposit','pending', NOW() + INTERVAL '72 hours')`,
         [accountId, job.id, client.id, depositAmount]
       );
 
