@@ -391,11 +391,15 @@ router.post('/', async (req, res) => {
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Anthropic requires messages to start with a user turn — strip any leading assistant messages
+    const apiMessages = [...clean];
+    while (apiMessages.length > 0 && apiMessages[0].role === 'assistant') apiMessages.shift();
+    if (!apiMessages.length) return res.json({ reply: smartFallback(clean) });
     const response = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 600,
       system:     SYSTEM_PROMPT,
-      messages:   clean,
+      messages:   apiMessages,
     });
     const reply = response.content?.[0]?.text;
     if (!reply) return res.json({ reply: smartFallback(clean) });
