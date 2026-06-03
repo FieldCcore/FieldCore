@@ -3,6 +3,7 @@ const router       = require('express').Router();
 const pool         = require('../db/pool');
 const stripe       = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
 const smsService   = require('../services/sms');
+const sendblue     = require('../services/sendblue');
 const emailService = require('../services/email');
 const notify       = require('../services/notify');
 
@@ -384,6 +385,42 @@ router.post('/twilio/recording', express.urlencoded({ extended: false }), async 
   }
 
   res.sendStatus(200);
+});
+
+// POST /api/webhooks/sendblue — inbound messages and delivery status updates
+router.post('/sendblue', express.json(), async (req, res) => {
+  res.sendStatus(200); // acknowledge immediately
+
+  const payload = req.body;
+  if (!payload) return;
+
+  // Delivery status update for outbound message
+  if (payload.message_handle && !payload.from_number) {
+    const status = payload.status || payload.error_code ? 'failed' : 'delivered';
+    await pool.query(
+      `UPDATE messages SET status = $1 WHERE provider_id = $2`,
+      [status, payload.message_handle]
+    ).catch(() => {});
+    return;
+  }
+
+  // Inbound message from client
+  if (payload.from_number && payload.content) {
+    try {
+      const client = await sendblue.handleInbound(payload);
+      if (client) {
+        notify.create(
+          client.account_id,
+          'sms_inbound',
+          `Message from ${client.name}`,
+          payload.content.slice(0, 80),
+          `/messages?client_id=${client.id}`
+        );
+      }
+    } catch (err) {
+      console.error('[Sendblue inbound webhook]', err.message);
+    }
+  }
 });
 
 module.exports = router;

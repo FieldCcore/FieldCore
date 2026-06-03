@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Phone, PhoneIncoming, PhoneOff, Voicemail, Plus, Trash2, Settings, Search } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Phone, PhoneIncoming, PhoneOff, Voicemail,
+  Plus, Trash2, Settings, Search,
+  MessageCircle, MessageSquare, ChevronLeft, Send,
+} from 'lucide-react';
 import api from '../api';
 
 function fmtNum(n) {
@@ -9,17 +13,22 @@ function fmtNum(n) {
   if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
   return n;
 }
-
 function fmtDur(secs) {
   if (!secs) return '—';
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2,'0')}`;
 }
-
 function fmtDt(ts) {
   if (!ts) return '—';
   return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // ─── Number Settings Modal ────────────────────────────────────────────────────
@@ -38,16 +47,13 @@ function NumberSettings({ num, onSave, onClose }) {
       const r = await api.patch(`/phone/numbers/${num.id}`, form);
       onSave(r.data);
       onClose();
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: 'white', borderRadius: 14, padding: 28, maxWidth: 480, width: '100%' }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 20 }}>Number Settings</div>
-
         <div className="form-group">
           <label>Label</label>
           <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Main Business Line" />
@@ -59,16 +65,15 @@ function NumberSettings({ num, onSave, onClose }) {
         <div className="form-group">
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={form.business_hours_only} onChange={e => setForm(p => ({ ...p, business_hours_only: e.target.checked }))} />
-            Respect business hours (forward only when open)
+            Respect business hours
           </label>
         </div>
         {form.business_hours_only && (
           <div className="form-group">
             <label>After-hours voicemail message</label>
-            <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} placeholder="Thank you for calling. We're currently closed. Please leave a message..." />
+            <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} />
           </div>
         )}
-
         <div className="form-actions">
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
@@ -81,75 +86,52 @@ function NumberSettings({ num, onSave, onClose }) {
 // ─── Provision Number Modal ───────────────────────────────────────────────────
 function ProvisionModal({ onDone, onClose }) {
   const [areaCode, setAreaCode] = useState('');
-  const [results,  setResults]  = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [provisioning, setProvisioning] = useState(null);
-  const [error, setError] = useState('');
+  const [results, setResults]   = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [provisioning, setProv] = useState(null);
+  const [error, setError]       = useState('');
 
   async function search() {
     setLoading(true); setError(''); setResults([]);
     try {
       const r = await api.post('/phone/numbers/search', { area_code: areaCode });
       setResults(r.data);
-      if (!r.data.length) setError('No numbers found for that area code. Try another.');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Search failed.');
-    } finally {
-      setLoading(false);
-    }
+      if (!r.data.length) setError('No numbers found. Try another area code.');
+    } catch (err) { setError(err.response?.data?.error || 'Search failed.'); }
+    finally { setLoading(false); }
   }
 
   async function provision(phoneNumber) {
-    setProvisioning(phoneNumber);
+    setProv(phoneNumber);
     try {
       const r = await api.post('/phone/numbers/provision', { phone_number: phoneNumber });
-      onDone(r.data);
-      onClose();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not provision number.');
-      setProvisioning(null);
-    }
+      onDone(r.data); onClose();
+    } catch (err) { setError(err.response?.data?.error || 'Could not provision.'); setProv(null); }
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: 'white', borderRadius: 14, padding: 28, maxWidth: 480, width: '100%' }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 20 }}>Add Phone Number</div>
-
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <input
-            value={areaCode}
-            onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-            placeholder="Area code (e.g. 813)"
-            style={{ flex: 1 }}
-          />
+          <input value={areaCode} onChange={e => setAreaCode(e.target.value.replace(/\D/g,'').slice(0,3))} placeholder="Area code (e.g. 813)" style={{ flex: 1 }} />
           <button className="btn-primary" onClick={search} disabled={loading || !areaCode}>
             {loading ? 'Searching…' : <><Search size={13} /> Search</>}
           </button>
         </div>
-
         {error && <p style={{ color: '#C62828', fontSize: 13, marginBottom: 12 }}>{error}</p>}
-
         {results.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
             {results.map(n => (
               <div key={n.phone_number} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', border: '1px solid var(--lightgray)', borderRadius: 8 }}>
-                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: 'var(--navy)', fontWeight: 600 }}>
-                  {fmtNum(n.phone_number)}
-                </span>
-                <button
-                  className="btn-primary"
-                  style={{ fontSize: 12, padding: '5px 14px' }}
-                  disabled={!!provisioning}
-                  onClick={() => provision(n.phone_number)}
-                >
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{fmtNum(n.phone_number)}</span>
+                <button className="btn-primary" style={{ fontSize: 12, padding: '5px 14px' }} disabled={!!provisioning} onClick={() => provision(n.phone_number)}>
                   {provisioning === n.phone_number ? 'Adding…' : 'Add'}
                 </button>
               </div>
             ))}
           </div>
         )}
-
         <div className="form-actions" style={{ marginTop: 20 }}>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
         </div>
@@ -158,18 +140,225 @@ function ProvisionModal({ onDone, onClose }) {
   );
 }
 
+// ─── Unified Thread View ──────────────────────────────────────────────────────
+function ConversationThread({ clientId, onBack }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error,   setError]   = useState('');
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    load();
+  }, [clientId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [data?.thread]);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await api.get(`/phone/thread/${clientId}`);
+      setData(r.data);
+    } catch (err) { setError(err.response?.data?.error || 'Failed to load thread.'); }
+    finally { setLoading(false); }
+  }
+
+  async function sendMessage() {
+    if (!message.trim()) return;
+    setSending(true);
+    try {
+      await api.post('/sms/send', { client_id: clientId, body: message.trim() });
+      setMessage('');
+      setTimeout(load, 800); // reload after brief delay for send to register
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not send message.');
+    } finally { setSending(false); }
+  }
+
+  if (loading) return <div style={{ padding: 32, color: 'var(--steel)', fontSize: 14 }}>Loading conversation…</div>;
+  if (error)   return <div style={{ padding: 32, color: '#C62828', fontSize: 13 }}>{error}</div>;
+
+  const { client, thread } = data;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '70vh', background: 'white', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--off-white)' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
+          <ChevronLeft size={16} /> Back
+        </button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 15 }}>{client.name}</div>
+          <div style={{ fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtNum(client.phone)}</div>
+        </div>
+        <span style={{ fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
+          {thread.length} events
+        </span>
+      </div>
+
+      {/* Thread */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {thread.length === 0 && (
+          <p style={{ textAlign: 'center', color: 'var(--steel)', fontSize: 14, marginTop: 40 }}>No messages or calls yet.</p>
+        )}
+        {thread.map(item => (
+          <ThreadItem key={`${item.type}-${item.id}`} item={item} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Compose */}
+      <div style={{ borderTop: '1px solid var(--lightgray)', padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <textarea
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          placeholder="Send a message via iMessage / RCS / SMS…"
+          rows={2}
+          style={{ flex: 1, resize: 'none', borderRadius: 10, border: '1px solid var(--lightgray)', padding: '10px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+        />
+        <button
+          className="btn-primary"
+          style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={sendMessage}
+          disabled={sending || !message.trim()}
+        >
+          <Send size={14} />
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ThreadItem({ item }) {
+  const isOutbound = item.direction === 'outbound';
+  const isCall     = item.type === 'call';
+
+  if (isCall) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '8px 14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid var(--lightgray)' }}>
+        {item.direction === 'inbound'
+          ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
+          : <Phone size={13} style={{ color: 'var(--navy)' }} />
+        }
+        <span style={{ fontSize: 12, color: 'var(--steel)' }}>
+          {item.direction === 'inbound' ? 'Inbound call' : 'Outbound call'} ·{' '}
+          {item.status === 'voicemail' ? 'Voicemail left' : item.status} ·{' '}
+          {fmtDur(item.duration_seconds)} · {fmtTime(item.created_at)}
+        </span>
+      </div>
+    );
+  }
+
+  // Message bubble
+  return (
+    <div style={{ display: 'flex', justifyContent: isOutbound ? 'flex-end' : 'flex-start' }}>
+      <div style={{
+        maxWidth: '72%',
+        padding: '10px 14px',
+        borderRadius: isOutbound ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+        background: isOutbound ? 'var(--navy)' : '#F1F5F9',
+        color: isOutbound ? 'white' : 'var(--navy)',
+        fontSize: 13,
+        lineHeight: 1.5,
+        position: 'relative',
+      }}>
+        <p style={{ margin: 0 }}>{item.content}</p>
+        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4, textAlign: isOutbound ? 'right' : 'left' }}>
+          {fmtTime(item.created_at)}
+          {item.provider === 'sendblue' && <span style={{ marginLeft: 6 }}>iMessage/RCS</span>}
+          {item.status === 'failed' && <span style={{ marginLeft: 6, color: '#FCA5A5' }}>Failed</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Conversations List ───────────────────────────────────────────────────────
+function ConversationsList({ onSelect }) {
+  const [convs,   setConvs]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    api.get('/phone/conversations')
+      .then(r => setConvs(r.data))
+      .catch(err => setError(err.response?.data?.error || 'Failed to load.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p style={{ color: 'var(--steel)', fontSize: 14 }}>Loading…</p>;
+  if (error)   return <p style={{ color: '#C62828', fontSize: 13 }}>{error}</p>;
+
+  if (convs.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
+        <MessageSquare size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+        <div style={{ fontSize: 15, fontWeight: 600 }}>No conversations yet</div>
+        <p style={{ fontSize: 13 }}>Messages sent to clients will appear here alongside calls.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {convs.map(c => (
+        <button
+          key={c.id}
+          onClick={() => onSelect(c)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            background: 'white', border: '1px solid var(--lightgray)',
+            borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
+            textAlign: 'left', width: '100%',
+            transition: 'border-color .15s',
+          }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+            {(c.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{c.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--steel)' }}>{fmtTime(c.last_contact)}</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {c.last_message_body
+                ? <span>{c.last_message_dir === 'outbound' ? 'You: ' : ''}{c.last_message_body}</span>
+                : <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {c.call_count} call{c.call_count !== 1 ? 's' : ''}</span>
+              }
+            </div>
+          </div>
+          {c.unread_messages > 0 && (
+            <span style={{ background: 'var(--navy)', color: 'white', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>
+              {c.unread_messages}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Phone Page ──────────────────────────────────────────────────────────
 export default function PhonePage() {
-  const [tab, setTab] = useState('numbers');
+  const [tab,     setTab]     = useState('conversations');
   const [numbers, setNumbers] = useState([]);
   const [calls,   setCalls]   = useState([]);
   const [vms,     setVms]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
-  const [editingNum, setEditingNum] = useState(null);
+  const [editingNum,    setEditingNum]    = useState(null);
+  const [activeConv,    setActiveConv]    = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    setActiveConv(null);
+    if (tab === 'conversations') { setLoading(false); return; }
     load();
   }, [tab]);
 
@@ -182,25 +371,20 @@ export default function PhonePage() {
       } else if (tab === 'calls') {
         const r = await api.get('/phone/calls');
         setCalls(r.data);
-      } else {
+      } else if (tab === 'vms') {
         const r = await api.get('/phone/voicemails');
         setVms(r.data);
       }
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load.');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err.response?.data?.error || 'Failed to load.'); }
+    finally { setLoading(false); }
   }
 
   async function releaseNumber(id) {
-    if (!confirm('Release this number? It will be returned to Telnyx and you will lose it.')) return;
+    if (!confirm('Release this number? It will be returned and you will lose it.')) return;
     try {
       await api.delete(`/phone/numbers/${id}`);
       setNumbers(prev => prev.filter(n => n.id !== id));
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not release number.');
-    }
+    } catch (err) { setError(err.response?.data?.error || 'Could not release number.'); }
   }
 
   async function markVmRead(id) {
@@ -210,12 +394,19 @@ export default function PhonePage() {
 
   const unreadVms = vms.filter(v => !v.is_read).length;
 
+  const TABS = [
+    { key: 'conversations', label: 'Conversations',   icon: <MessageCircle size={13} /> },
+    { key: 'numbers',       label: 'Numbers',          icon: <Phone size={13} /> },
+    { key: 'calls',         label: 'Call Log',         icon: <PhoneIncoming size={13} /> },
+    { key: 'vms',           label: `Voicemail${unreadVms > 0 ? ` (${unreadVms})` : ''}`, icon: <Voicemail size={13} /> },
+  ];
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 48 }}>
       <div className="page-header">
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--navy)' }}>Phone</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--steel)', fontSize: 14 }}>Business phone numbers, call log, and voicemail</p>
+          <p style={{ margin: '4px 0 0', color: 'var(--steel)', fontSize: 14 }}>Conversations, business numbers, calls, and voicemail</p>
         </div>
         {tab === 'numbers' && (
           <button className="btn-primary" onClick={() => setShowProvision(true)}>
@@ -231,22 +422,28 @@ export default function PhonePage() {
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--lightgray)', marginBottom: 24 }}>
-        {[
-          { key: 'numbers', label: 'Numbers' },
-          { key: 'calls',   label: 'Call Log' },
-          { key: 'vms',     label: `Voicemail${unreadVms > 0 ? ` (${unreadVms})` : ''}` },
-        ].map(t => (
+      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--lightgray)', marginBottom: 24 }}>
+        {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
-            padding: '10px 18px', border: 'none',
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '10px 16px', border: 'none',
             borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent',
-            background: 'none', fontSize: 14, fontWeight: tab === t.key ? 700 : 400,
+            background: 'none', fontSize: 13, fontWeight: tab === t.key ? 700 : 400,
             color: tab === t.key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', marginBottom: -1,
-          }}>{t.label}</button>
+          }}>
+            {t.icon} {t.label}
+          </button>
         ))}
       </div>
 
-      {loading && <p style={{ color: 'var(--steel)', fontSize: 14 }}>Loading…</p>}
+      {/* Conversations Tab */}
+      {tab === 'conversations' && (
+        activeConv
+          ? <ConversationThread clientId={activeConv.id} onBack={() => setActiveConv(null)} />
+          : <ConversationsList onSelect={c => setActiveConv(c)} />
+      )}
+
+      {loading && tab !== 'conversations' && <p style={{ color: 'var(--steel)', fontSize: 14 }}>Loading…</p>}
 
       {/* Numbers Tab */}
       {!loading && tab === 'numbers' && (
@@ -255,7 +452,7 @@ export default function PhonePage() {
             <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
               <Phone size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
               <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No phone numbers yet</div>
-              <div style={{ fontSize: 14, marginBottom: 20 }}>Add a business phone number to start receiving calls.</div>
+              <div style={{ fontSize: 14, marginBottom: 20 }}>Add a business number to handle calls and send iMessages to clients.</div>
               <button className="btn-primary" onClick={() => setShowProvision(true)}><Plus size={14} /> Add Number</button>
             </div>
           ) : (
@@ -264,14 +461,15 @@ export default function PhonePage() {
                 <div key={n.id} style={{ background: 'white', border: '1px solid var(--lightgray)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <Phone size={14} style={{ color: 'var(--navy)', flexShrink: 0 }} />
+                      <Phone size={14} style={{ color: 'var(--navy)' }} />
                       <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
                       <span style={{ fontSize: 11, background: n.is_active ? '#f0fdf4' : '#f1f5f9', color: n.is_active ? '#15803d' : '#64748b', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
                         {n.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--steel)' }}>
-                      {n.label || 'Unlabeled'} {n.forward_to ? `· Forwarding to ${fmtNum(n.forward_to)}` : '· No forwarding set'}
+                      {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
+                      {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -302,7 +500,7 @@ export default function PhonePage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
-                    {['Direction', 'From', 'To', 'Client', 'Status', 'Duration', 'Time'].map(h => (
+                    {['Direction','From','To','Client','Status','Duration','Time'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
                     ))}
                   </tr>
@@ -314,8 +512,7 @@ export default function PhonePage() {
                         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           {c.direction === 'inbound'
                             ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
-                            : <Phone size={13} style={{ color: 'var(--navy)' }} />
-                          }
+                            : <Phone size={13} style={{ color: 'var(--navy)' }} />}
                           <span style={{ textTransform: 'capitalize' }}>{c.direction}</span>
                         </span>
                       </td>
@@ -363,9 +560,7 @@ export default function PhonePage() {
                     </audio>
                   )}
                   {v.transcription && (
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)', fontStyle: 'italic', lineHeight: 1.6 }}>
-                      "{v.transcription}"
-                    </p>
+                    <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
                   )}
                   {!v.is_read && (
                     <button className="btn-secondary" style={{ marginTop: 10, fontSize: 11, padding: '4px 12px' }} onClick={() => markVmRead(v.id)}>
@@ -380,10 +575,7 @@ export default function PhonePage() {
       )}
 
       {showProvision && (
-        <ProvisionModal
-          onDone={n => setNumbers(prev => [...prev, n])}
-          onClose={() => setShowProvision(false)}
-        />
+        <ProvisionModal onDone={n => setNumbers(prev => [...prev, n])} onClose={() => setShowProvision(false)} />
       )}
       {editingNum && (
         <NumberSettings

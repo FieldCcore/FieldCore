@@ -238,4 +238,116 @@ router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), asy
   }
 });
 
+// GET /api/phone/conversations — list clients who have calls or messages, for unified inbox
+router.get('/conversations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         c.id, c.name, c.phone,
+         MAX(GREATEST(
+           COALESCE(last_call.started_at, '1970-01-01'),
+           COALESCE(last_msg.created_at,  '1970-01-01')
+         )) AS last_contact,
+         COUNT(DISTINCT cl.id) AS call_count,
+         COUNT(DISTINCT m.id)  AS message_count,
+         COUNT(DISTINCT m.id) FILTER (WHERE m.direction = 'inbound' AND m.read_at IS NULL) AS unread_messages,
+         (SELECT body FROM messages WHERE client_id = c.id AND account_id = $1 ORDER BY created_at DESC LIMIT 1) AS last_message_body,
+         (SELECT direction FROM messages WHERE client_id = c.id AND account_id = $1 ORDER BY created_at DESC LIMIT 1) AS last_message_dir
+       FROM clients c
+       LEFT JOIN call_logs cl ON cl.client_id = c.id AND cl.account_id = $1
+       LEFT JOIN messages  m  ON m.client_id  = c.id AND m.account_id  = $1
+       LEFT JOIN LATERAL (SELECT started_at FROM call_logs WHERE client_id = c.id AND account_id = $1 ORDER BY started_at DESC LIMIT 1) last_call ON TRUE
+       LEFT JOIN LATERAL (SELECT created_at  FROM messages  WHERE client_id = c.id AND account_id = $1 ORDER BY created_at  DESC LIMIT 1) last_msg  ON TRUE
+       WHERE c.account_id = $1 AND (cl.id IS NOT NULL OR m.id IS NOT NULL)
+       GROUP BY c.id, c.name, c.phone
+       ORDER BY last_contact DESC
+       LIMIT 100`,
+      [req.accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/phone/thread/:clientId — unified call + message history for one client
+router.get('/thread/:clientId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { clientId } = req.params;
+  try {
+    // Verify client belongs to account
+    const { rows: cRows } = await pool.query(
+      `SELECT id, name, phone FROM clients WHERE id = $1 AND account_id = $2`,
+      [clientId, req.accountId]
+    );
+    if (!cRows.length) return res.status(404).json({ error: 'Client not found' });
+
+    // Messages (Sendblue/SMS)
+    const { rows: msgs } = await pool.query(
+      `SELECT id, 'message' AS type, direction, body AS content, provider, status,
+              created_at, NULL::integer AS duration_seconds, NULL AS from_number
+       FROM messages WHERE client_id = $1 AND account_id = $2
+       ORDER BY created_at ASC`,
+      [clientId, req.accountId]
+    );
+
+    // Calls (Twilio)
+    const { rows: calls } = await pool.query(
+      `SELECT id, 'call' AS type, direction, NULL AS content, 'twilio' AS provider, status,
+              started_at AS created_at, duration_seconds, from_number
+       FROM call_logs WHERE client_id = $1 AND account_id = $2
+       ORDER BY started_at ASC`,
+      [clientId, req.accountId]
+    );
+
+    // Merge and sort by timestamp
+    const thread = [...msgs, ...calls].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    res.json({ client: cRows[0], thread });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/phone/click-to-call — mobile tech initiates call to client via FieldCore number
+// Twilio calls tech's registered phone first, then bridges to client so client sees FieldCore number
+router.post('/click-to-call', requireAuth, async (req, res) => {
+  const { client_id, to } = req.body;
+  if (!client_id) return res.status(400).json({ error: 'client_id is required' });
+
+  try {
+    const [userRes, clientRes, numRes] = await Promise.all([
+      pool.query(`SELECT phone FROM users WHERE id = $1`, [req.userId]),
+      pool.query(`SELECT name, phone FROM clients WHERE id = $1 AND account_id = $2`, [client_id, req.accountId]),
+      pool.query(`SELECT number FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`, [req.accountId]),
+    ]);
+
+    const techPhone   = userRes.rows[0]?.phone;
+    const client      = clientRes.rows[0];
+    const fieldcoreNum = numRes.rows[0]?.number;
+    const clientPhone  = to || client?.phone;
+
+    if (!techPhone)     return res.status(400).json({ error: 'No phone on your profile. Direct dial instead.' });
+    if (!fieldcoreNum)  return res.status(400).json({ error: 'No FieldCore number provisioned on this account.' });
+    if (!clientPhone)   return res.status(400).json({ error: 'Client has no phone number.' });
+
+    const appUrl = process.env.APP_URL || 'https://fieldcore-production-ee0d.up.railway.app';
+    const twilioClient = getTwilio();
+
+    const call = await twilioClient.calls.create({
+      to:   techPhone,
+      from: fieldcoreNum,
+      url:  `${appUrl}/api/webhooks/twilio/bridge?client_phone=${encodeURIComponent(clientPhone)}&client_name=${encodeURIComponent(client?.name || '')}`,
+    });
+
+    await pool.query(
+      `INSERT INTO call_logs (account_id, direction, from_number, to_number, client_id, client_name, status)
+       VALUES ($1,'outbound',$2,$3,$4,$5,'in_progress')`,
+      [req.accountId, fieldcoreNum, clientPhone, client_id, client?.name || null]
+    );
+
+    res.json({ callSid: call.sid });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

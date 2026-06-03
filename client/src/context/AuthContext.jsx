@@ -1,21 +1,75 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(null);
 
+const TOKEN_KEY   = 'fc_token';
+const REFRESH_KEY = 'fc_refresh';
+
+// Refresh the access token using the stored refresh token
+async function doRefresh() {
+  const refreshToken = localStorage.getItem(REFRESH_KEY);
+  if (!refreshToken) throw new Error('No refresh token');
+  const res = await axios.post('/api/auth/refresh', { refreshToken });
+  localStorage.setItem(TOKEN_KEY, res.data.token);
+  return res.data.token;
+}
+
+// Axios interceptor: on 401 try one token refresh then retry
+axios.interceptors.response.use(
+  r => r,
+  async err => {
+    const original = err.config;
+    if (err.response?.status === 401 && !original._retry && original.url !== '/api/auth/refresh') {
+      original._retry = true;
+      try {
+        const newToken = await doRefresh();
+        original.headers['Authorization'] = `Bearer ${newToken}`;
+        return axios(original);
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_KEY);
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(err);
+  }
+);
+
 export function AuthProvider({ children }) {
   const [user,     setUser]     = useState(null);
-  const [token,    setToken]    = useState(() => localStorage.getItem('fc_token'));
+  const [token,    setToken]    = useState(() => localStorage.getItem(TOKEN_KEY));
   const [loading,  setLoading]  = useState(true);
   const [accounts, setAccounts] = useState([]);
+  const refreshTimer = useRef(null);
+
+  // Schedule silent token refresh 1 minute before expiry (access token = 15min)
+  function scheduleRefresh() {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(async () => {
+      try {
+        const newToken = await doRefresh();
+        setToken(newToken);
+        scheduleRefresh();
+      } catch {
+        // Refresh failed — user will be prompted on next API call
+      }
+    }, 14 * 60 * 1000); // refresh at 14 minutes
+  }
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
     axios.get('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => setUser(r.data.user))
-      .catch(() => { localStorage.removeItem('fc_token'); setToken(null); })
+      .then(r => { setUser(r.data.user); scheduleRefresh(); })
+      .catch(() => {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_KEY);
+        setToken(null);
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+
+    return () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch accessible accounts whenever the user changes
   useEffect(() => {
@@ -27,10 +81,12 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const res = await axios.post('/api/auth/login', { email, password });
-    const { token: t, user: u } = res.data;
-    localStorage.setItem('fc_token', t);
+    const { token: t, refreshToken, user: u } = res.data;
+    localStorage.setItem(TOKEN_KEY,   t);
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
     setToken(t);
     setUser(u);
+    scheduleRefresh();
     return u;
   }
 
@@ -40,16 +96,25 @@ export function AuthProvider({ children }) {
       { account_id: accountId },
       { headers: { Authorization: `Bearer ${token}` } }
     );
-    const { token: t, user: u } = res.data;
-    localStorage.setItem('fc_token', t);
+    const { token: t, refreshToken, user: u } = res.data;
+    localStorage.setItem(TOKEN_KEY, t);
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
     setToken(t);
     setUser(prev => ({ ...prev, ...u }));
-    // Full reload so all page data re-fetches under the new accountId
     window.location.href = '/dashboard';
   }
 
-  function logout() {
-    localStorage.removeItem('fc_token');
+  async function logout() {
+    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    try {
+      await axios.post('/api/auth/logout',
+        { refreshToken },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch {}
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
     setToken(null);
     setUser(null);
     setAccounts([]);

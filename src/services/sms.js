@@ -1,7 +1,8 @@
-const twilio = require('twilio');
-const pool   = require('../db/pool');
+const twilio      = require('twilio');
+const pool        = require('../db/pool');
+const sendblue    = require('./sendblue');
 
-// Gracefully handle missing Twilio config
+// Twilio client — used only for voice (calls, voicemail)
 function getClient() {
   const sid   = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
@@ -9,38 +10,22 @@ function getClient() {
   return twilio(sid, token);
 }
 
-const FROM = process.env.TWILIO_PHONE_NUMBER;
-
+// Route all outbound client messages through Sendblue (iMessage/RCS/SMS)
+// Twilio stays voice-only
 async function send(accountId, clientId, to, body) {
-  // Single switch: set SMS_ENABLED=true in env once A2P 10DLC registration is approved
-  if (process.env.SMS_ENABLED !== 'true') {
-    console.log(`[SMS disabled — A2P 10DLC pending] To: ${to} | ${body}`);
-    return null;
-  }
-  const client = getClient();
-  if (!client || !FROM || FROM === '+1') {
-    console.log(`[SMS skipped — Twilio not configured] To: ${to} | ${body}`);
-    return null;
-  }
-  const message = await client.messages.create({ body, from: FROM, to });
-  await pool.query(
-    `INSERT INTO messages (account_id, client_id, direction, body, twilio_sid)
-     VALUES ($1,$2,'outbound',$3,$4)`,
-    [accountId, clientId, body, message.sid]
-  );
-  return message;
+  return sendblue.send(accountId, clientId, to, body);
 }
 
 // Templates
 function confirmationBody(clientName, serviceType, scheduledAt) {
-  const dt = new Date(scheduledAt);
+  const dt      = new Date(scheduledAt);
   const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   return `Hi ${clientName}, your ${serviceType} appointment is confirmed for ${dateStr} at ${timeStr}. Reply STOP to opt out.`;
 }
 
 function reminderBody(clientName, serviceType, scheduledAt) {
-  const dt = new Date(scheduledAt);
+  const dt      = new Date(scheduledAt);
   const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   return `Hi ${clientName}, reminder: your ${serviceType} appointment is tomorrow (${dateStr}) at ${timeStr}. Reply STOP to opt out.`;

@@ -519,3 +519,58 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS is_available  BOOLEAN NOT NULL DEFAUL
 ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS tip_amount    NUMERIC(10,2);
 ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS signature_svg TEXT;
 ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS signature_at  TIMESTAMPTZ;
+
+-- ── Sendblue messaging provider ────────────────────────────────────────────────
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider     TEXT DEFAULT 'twilio';
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_id  TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at      TIMESTAMPTZ;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS phone_number TEXT;
+
+-- ── Security: User Sessions ─────────────────────────────────────────────────────
+-- Tracks every active JWT (access + refresh pair) per user device
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id      UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  refresh_token_hash TEXT NOT NULL UNIQUE,
+  device_info     TEXT,
+  ip_address      TEXT,
+  user_agent      TEXT,
+  last_active_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at      TIMESTAMPTZ NOT NULL,
+  revoked_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user    ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_refresh ON user_sessions(refresh_token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON user_sessions(account_id);
+
+-- ── Security: Login Attempts (brute force protection) ────────────────────────────
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email       TEXT NOT NULL,
+  ip_address  TEXT NOT NULL,
+  success     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip    ON login_attempts(ip_address, created_at DESC);
+
+-- Account lockout tracking
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until     TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts  INTEGER NOT NULL DEFAULT 0;
+
+-- ── Security: Audit Log ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id  UUID REFERENCES accounts(id) ON DELETE CASCADE,
+  user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,
+  entity      TEXT,
+  entity_id   TEXT,
+  details     JSONB,
+  ip_address  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_account ON audit_logs(account_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id, created_at DESC);
