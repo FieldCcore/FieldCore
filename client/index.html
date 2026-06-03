@@ -4,15 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FIELDCORE™</title>
-    <!-- Favicons — light theme -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" media="(prefers-color-scheme: light)" />
-    <!-- Favicons — dark theme -->
-    <link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-dark-32x32.png" media="(prefers-color-scheme: dark)" />
-    <!-- Fallback favicon (no media query — for browsers that ignore media) -->
-    <link rel="shortcut icon" href="/favicon-32x32.png" />
+    <!-- Favicon: SVG handles light/dark via internal CSS media query -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- ICO fallback for browsers that don't support SVG favicons (Safari <svg, IE) -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <!-- Apple touch icon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <!-- PWA manifest -->
