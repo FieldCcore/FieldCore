@@ -190,6 +190,54 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_voicemails_account ON voicemails(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_voicemails_read    ON voicemails(account_id, is_read)`,
+
+  // Auth security: brute-force tracking columns on users
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until    TIMESTAMPTZ`,
+
+  // Auth security: login attempt log
+  `CREATE TABLE IF NOT EXISTS login_attempts (
+     id         BIGSERIAL PRIMARY KEY,
+     email      TEXT NOT NULL,
+     ip_address TEXT NOT NULL,
+     success    BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_login_attempts_ip      ON login_attempts(ip_address, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_login_attempts_email   ON login_attempts(email, created_at)`,
+
+  // Auth security: refresh token sessions
+  `CREATE TABLE IF NOT EXISTS user_sessions (
+     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     refresh_token_hash TEXT NOT NULL UNIQUE,
+     device_info        TEXT,
+     ip_address         TEXT,
+     user_agent         TEXT,
+     last_active_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     expires_at         TIMESTAMPTZ NOT NULL,
+     revoked_at         TIMESTAMPTZ,
+     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_user_sessions_user    ON user_sessions(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_sessions_hash    ON user_sessions(refresh_token_hash)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at)`,
+
+  // Audit log
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
+     user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+     action     TEXT NOT NULL,
+     entity     TEXT,
+     entity_id  UUID,
+     details    JSONB,
+     ip_address TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_account ON audit_logs(account_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_user    ON audit_logs(user_id, created_at DESC)`,
 ];
 
 async function runMigrations() {
