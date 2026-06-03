@@ -1,8 +1,8 @@
-const twilio      = require('twilio');
-const pool        = require('../db/pool');
-const sendblue    = require('./sendblue');
+const twilio   = require('twilio');
+const pool     = require('../db/pool');
+const sendblue = require('./sendblue');
 
-// Twilio client — used only for voice (calls, voicemail)
+// Twilio client — used for voice (calls, voicemail) and SMS when provider=twilio
 function getClient() {
   const sid   = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
@@ -10,10 +10,35 @@ function getClient() {
   return twilio(sid, token);
 }
 
-// Route all outbound client messages through Sendblue (iMessage/RCS/SMS)
-// Twilio stays voice-only
+const FROM = process.env.TWILIO_PHONE_NUMBER;
+
+// MESSAGING_PROVIDER controls where outbound client messages go:
+//   'twilio'   — Twilio SMS (default, active once SMS_ENABLED=true + A2P approved)
+//   'sendblue' — Sendblue iMessage/RCS/SMS (activate after app store approval + $100/mo plan)
 async function send(accountId, clientId, to, body) {
-  return sendblue.send(accountId, clientId, to, body);
+  const provider = process.env.MESSAGING_PROVIDER || 'twilio';
+
+  if (provider === 'sendblue') {
+    return sendblue.send(accountId, clientId, to, body);
+  }
+
+  // Twilio SMS (default)
+  if (process.env.SMS_ENABLED !== 'true') {
+    console.log(`[SMS disabled — A2P 10DLC pending] To: ${to} | ${body}`);
+    return null;
+  }
+  const client = getClient();
+  if (!client || !FROM || FROM === '+1') {
+    console.log(`[SMS skipped — Twilio not configured] To: ${to} | ${body}`);
+    return null;
+  }
+  const message = await client.messages.create({ body, from: FROM, to });
+  await pool.query(
+    `INSERT INTO messages (account_id, client_id, direction, body, provider, provider_id, status, phone_number)
+     VALUES ($1,$2,'outbound',$3,'twilio',$4,$5,$6)`,
+    [accountId, clientId, body, message.sid, message.status, to]
+  );
+  return message;
 }
 
 // Templates
