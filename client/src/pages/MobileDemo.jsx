@@ -31,6 +31,11 @@ const GlobalStyle = () => (
     }
     @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
     @keyframes pulse   { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes mapPulse {
+      0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.75; }
+      70%  { transform: translate(-50%, -50%) scale(2.8); opacity: 0;    }
+      100% { transform: translate(-50%, -50%) scale(1);   opacity: 0;    }
+    }
 
     .slide-up  { animation: slideUp 0.35s cubic-bezier(.22,.61,.36,1) both; }
     .fade-in   { animation: fadeIn  0.25s ease both; }
@@ -495,154 +500,227 @@ const HomeScreen = () => {
   const todayJobs = MOCK.jobs.filter(j => !j.time.startsWith("Fri"));
 
   return (
-    <div className="scroll-area" style={{ padding: "0 16px 100px" }}>
-      <div style={{ paddingTop: 16, paddingBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#8A90A2", fontWeight: 500 }}>{MOCK.today}</div>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#1C2333", marginTop: 2, lineHeight: 1.2 }}>
-              Good morning, Kevin
-            </h1>
+    <div className="scroll-area" style={{ padding: "0 0 100px" }}>
+
+      {/* ── Map header zone ───────────────────────────────────────────────────── */}
+      <div style={{ position: "relative", height: 280, flexShrink: 0 }}>
+
+        {/* TODO: Replace with Mapbox or Google Maps embed */}
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "#1C2333",
+          backgroundImage: [
+            "linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px)",
+            "linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px)",
+          ].join(", "),
+          backgroundSize: "24px 24px",
+          overflow: "hidden",
+        }}>
+          {/* Location pin — next job */}
+          <div style={{
+            position: "absolute", top: 158, left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex", flexDirection: "column", alignItems: "center",
+          }}>
+            {/* Pulsing ring */}
+            <div style={{
+              position: "absolute", top: "50%", left: "50%",
+              width: 54, height: 54, borderRadius: "50%",
+              background: "rgba(214,181,138,.22)",
+              transform: "translate(-50%, -50%)",
+              animation: "mapPulse 2s ease-out infinite",
+            }} />
+            {/* Pin SVG */}
+            <svg width="26" height="34" viewBox="0 0 26 34" fill="none">
+              <path d="M13 0C5.82 0 0 5.82 0 13c0 9 11.38 19.84 12.31 20.72a1 1 0 001.38 0C14.62 32.84 26 22 26 13 26 5.82 20.18 0 13 0z" fill="#D6B58A"/>
+              <circle cx="13" cy="13" r="4.5" fill="#1C2333"/>
+            </svg>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ position: "relative" }}>
-              <button style={{ width: 40, height: 40, borderRadius: 12, background: "#FFFFFF",
-                border: "none", display: "flex", alignItems: "center",
-                justifyContent: "center", cursor: "pointer" }}>
-                <Icon name="bell" size={20} color="#1C2333" />
+
+          {/* Gradient fade → app background — bleeds map into content */}
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0, height: 140,
+            background: "linear-gradient(to bottom, transparent, #EDEBE7)",
+            pointerEvents: "none",
+          }} />
+        </div>
+
+        {/* Greeting content floats on top of map */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "16px 16px 0", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,.58)", fontWeight: 500 }}>{MOCK.today}</div>
+              <h1 style={{ fontSize: 26, fontWeight: 800, color: "#FFFFFF", marginTop: 2, lineHeight: 1.2 }}>
+                Good morning, Kevin
+              </h1>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ position: "relative" }}>
+                <button style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: "rgba(255,255,255,.12)", backdropFilter: "blur(6px)",
+                  border: "none", display: "flex", alignItems: "center",
+                  justifyContent: "center", cursor: "pointer",
+                }}>
+                  <Icon name="bell" size={20} color="#FFFFFF" />
+                </button>
+                <span className="notif-badge" style={{ borderColor: "#1C2333" }}>3</span>
+              </div>
+              <button style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: "rgba(214,181,138,.18)", backdropFilter: "blur(6px)",
+                border: "1.5px solid rgba(214,181,138,.38)",
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+              }}>
+                <Icon name="spark" size={18} color="#D6B58A" />
               </button>
-              <span className="notif-badge">3</span>
             </div>
-            <button style={{ width: 40, height: 40, borderRadius: 12, background: "#1C2333",
-              border: "none", display: "flex", alignItems: "center",
-              justifyContent: "center", cursor: "pointer" }}>
-              <Icon name="spark" size={18} color="#D6B58A" />
-            </button>
           </div>
-        </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
-          {[
-            { id: "tech",       label: "Technician"  },
-            { id: "dispatcher", label: "Dispatcher"  },
-            { id: "owner",      label: "Owner View"  },
-          ].map(r => (
-            <button key={r.id}
-              className={`role-pill ${activeRole === r.id ? "active" : "inactive"}`}
-              onClick={() => setActiveRole(r.id)}>
-              {r.label}
-            </button>
-          ))}
+          {/* Role selector pills — light variants for dark map background */}
+          <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
+            {[
+              { id: "tech",       label: "Technician" },
+              { id: "dispatcher", label: "Dispatcher" },
+              { id: "owner",      label: "Owner View" },
+            ].map(r => (
+              <button key={r.id}
+                style={{
+                  padding: "6px 14px", borderRadius: 100,
+                  fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "Inter, sans-serif", transition: "all .2s",
+                  border: activeRole === r.id
+                    ? "1.5px solid #FFFFFF"
+                    : "1.5px solid rgba(255,255,255,.25)",
+                  background: activeRole === r.id
+                    ? "#FFFFFF"
+                    : "rgba(255,255,255,.1)",
+                  color: activeRole === r.id ? "#1C2333" : "rgba(255,255,255,.78)",
+                }}
+                onClick={() => setActiveRole(r.id)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="card" style={{ padding: "14px 16px", marginTop: 4,
-        display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontSize: 13, color: "#8A90A2" }}>
-            {clockedIn ? "Clocked in" : "Let's get started"}
-          </div>
-          {clockedIn && (
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#1C2333", marginTop: 2 }}>
-              {fmtTime(elapsed)}
-            </div>
-          )}
-        </div>
-        <button className={clockedIn ? "btn-ghost" : "btn-cta"}
-          onClick={() => { setClockedIn(v => !v); if (clockedIn) setElapsed(0); }}>
-          <Icon name={clockedIn ? "x" : "play"} size={16} color="#1C2333" />
-          {clockedIn ? "Clock Out" : "Clock In"}
-        </button>
-      </div>
-
-      <div style={{ marginTop: 20 }}>
-        <div className="section-header">
-          <span className="section-title">Today · Jun 4</span>
-          <span className="section-action">View all</span>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: "#5F667A" }}>
-            <strong style={{ color: "#1C2333" }}>{todayJobs.length} visits</strong> today
-          </div>
-          <span style={{ color: "#E6E6E6" }}>·</span>
-          <div style={{ fontSize: 13, color: "#5F667A" }}>
-            worth{" "}
-            <strong style={{ color: "#3D7A4F" }}>
-              ${todayJobs.reduce((a, j) => a + j.value, 0)}
-            </strong>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {todayJobs.map((job, i) => (
-            <div key={job.id} className="slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
-              <JobCard
-                job={job}
-                onStart={(j)    => alert(`Starting: ${j.client}`)}
-                onNavigate={(j) => alert(`Navigating to: ${j.address}`)}
-                onComplete={(j) => alert(`Completed: ${j.client}`)}
-              />
-            </div>
-          ))}
-        </div>
-
-        <button className="btn-ghost" style={{
-          width: "100%", justifyContent: "center", marginTop: 10,
-          borderStyle: "dashed", borderColor: "#D6B58A",
-          color: "#D6B58A", fontWeight: 600, fontSize: 14, padding: "14px",
-        }}>
-          <Icon name="plus" size={16} color="#D6B58A" /> Schedule a New Job
-        </button>
-      </div>
-
-      <div style={{ marginTop: 24 }}>
-        <div className="section-header">
-          <div>
-            <span className="section-title">This week</span>
-            <span style={{ fontSize: 12, color: "#8A90A2", marginLeft: 6 }}>Jun 1 – 7</span>
-          </div>
-          <span className="section-action">View timesheet</span>
-        </div>
-        <KPIStrip kpis={MOCK.kpis} />
-      </div>
-
-      {(activeRole === "owner" || activeRole === "dispatcher") && (
-        <div className="card" style={{ padding: "4px 16px", marginTop: 16 }}>
-          <div style={{ paddingTop: 12, paddingBottom: 4 }}>
-            <span className="section-title">To do</span>
-          </div>
-          <div className="divider" />
-          <ToDoRow icon="alert" label="5 new requests" sub="Awaiting assignment" count="5" />
-          <div className="divider" />
-          <ToDoRow icon="wrench" label="14 action required jobs" sub={`Worth $${MOCK.kpis.actionValue}`} />
-        </div>
-      )}
-
-      {activeRole === "tech" && (
+      {/* Clock-in card — pulled up into the gradient boundary */}
+      <div style={{ padding: "0 16px", marginTop: -48, position: "relative", zIndex: 2 }}>
         <div className="card" style={{
-          padding: "14px 16px", marginTop: 16,
-          background: "#1C2333", display: "flex", gap: 12, alignItems: "center",
+          padding: "14px 16px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12,
-            background: "rgba(214,181,138,.15)",
-            display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="truck" size={22} color="#D6B58A" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: "#8A90A2" }}>Next job in</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#FFFFFF" }}>3 hrs 9 min</div>
-            <div style={{ fontSize: 12, color: "#8A90A2", marginTop: 1 }}>
-              Steve Larson · 2:00 PM · 12 min drive
+          <div>
+            <div style={{ fontSize: 13, color: "#8A90A2" }}>
+              {clockedIn ? "Clocked in" : "Let's get started"}
             </div>
+            {clockedIn && (
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#1C2333", marginTop: 2 }}>
+                {fmtTime(elapsed)}
+              </div>
+            )}
           </div>
-          <button className="btn-ghost"
-            style={{ borderColor: "rgba(255,255,255,.2)", color: "#FFFFFF",
-              padding: "8px 12px", fontSize: 13 }}>
-            <Icon name="nav" size={14} color="#FFFFFF" /> Go
+          <button className={clockedIn ? "btn-ghost" : "btn-cta"}
+            onClick={() => { setClockedIn(v => !v); if (clockedIn) setElapsed(0); }}>
+            <Icon name={clockedIn ? "x" : "play"} size={16} color="#1C2333" />
+            {clockedIn ? "Clock Out" : "Clock In"}
           </button>
         </div>
-      )}
+      </div>
+
+      {/* ── Scrollable content below map ─────────────────────────────────────── */}
+      <div style={{ padding: "0 16px" }}>
+
+        <div style={{ marginTop: 20 }}>
+          <div className="section-header">
+            <span className="section-title">Today · Jun 4</span>
+            <span className="section-action">View all</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: "#5F667A" }}>
+              <strong style={{ color: "#1C2333" }}>{todayJobs.length} visits</strong> today
+            </div>
+            <span style={{ color: "#E6E6E6" }}>·</span>
+            <div style={{ fontSize: 13, color: "#5F667A" }}>
+              worth{" "}
+              <strong style={{ color: "#3D7A4F" }}>
+                ${todayJobs.reduce((a, j) => a + j.value, 0)}
+              </strong>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {todayJobs.map((job, i) => (
+              <div key={job.id} className="slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
+                <JobCard
+                  job={job}
+                  onStart={(j)    => alert(`Starting: ${j.client}`)}
+                  onNavigate={(j) => alert(`Navigating to: ${j.address}`)}
+                  onComplete={(j) => alert(`Completed: ${j.client}`)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button className="btn-ghost" style={{
+            width: "100%", justifyContent: "center", marginTop: 10,
+            borderStyle: "dashed", borderColor: "#D6B58A",
+            color: "#D6B58A", fontWeight: 600, fontSize: 14, padding: "14px",
+          }}>
+            <Icon name="plus" size={16} color="#D6B58A" /> Schedule a New Job
+          </button>
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <div className="section-header">
+            <div>
+              <span className="section-title">This week</span>
+              <span style={{ fontSize: 12, color: "#8A90A2", marginLeft: 6 }}>Jun 1 – 7</span>
+            </div>
+            <span className="section-action">View timesheet</span>
+          </div>
+          <KPIStrip kpis={MOCK.kpis} />
+        </div>
+
+        {(activeRole === "owner" || activeRole === "dispatcher") && (
+          <div className="card" style={{ padding: "4px 16px", marginTop: 16 }}>
+            <div style={{ paddingTop: 12, paddingBottom: 4 }}>
+              <span className="section-title">To do</span>
+            </div>
+            <div className="divider" />
+            <ToDoRow icon="alert" label="5 new requests" sub="Awaiting assignment" count="5" />
+            <div className="divider" />
+            <ToDoRow icon="wrench" label="14 action required jobs" sub={`Worth $${MOCK.kpis.actionValue}`} />
+          </div>
+        )}
+
+        {activeRole === "tech" && (
+          <div className="card" style={{
+            padding: "14px 16px", marginTop: 16,
+            background: "#1C2333", display: "flex", gap: 12, alignItems: "center",
+          }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12,
+              background: "rgba(214,181,138,.15)",
+              display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon name="truck" size={22} color="#D6B58A" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: "#8A90A2" }}>Next job in</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#FFFFFF" }}>3 hrs 9 min</div>
+              <div style={{ fontSize: 12, color: "#8A90A2", marginTop: 1 }}>
+                Steve Larson · 2:00 PM · 12 min drive
+              </div>
+            </div>
+            <button className="btn-ghost"
+              style={{ borderColor: "rgba(255,255,255,.2)", color: "#FFFFFF",
+                padding: "8px 12px", fontSize: 13 }}>
+              <Icon name="nav" size={14} color="#FFFFFF" /> Go
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
