@@ -352,12 +352,17 @@ const HomeScreen = () => {
   const [activeRole, setActiveRole] = useState("tech");
   const [clockedIn,  setClockedIn]  = useState(false);
   const [elapsed,    setElapsed]    = useState(0);
+  const [mapH,       setMapH]       = useState(360);
 
   useEffect(() => {
     if (!clockedIn) return;
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(t);
   }, [clockedIn]);
+
+  useEffect(() => {
+    setMapH(Math.max(window.innerHeight * 0.58, 360));
+  }, []);
 
   const fmtTime = (s) => {
     const h   = String(Math.floor(s / 3600)).padStart(2, "0");
@@ -369,11 +374,11 @@ const HomeScreen = () => {
   const todayJobs = MOCK.jobs.filter(j => !j.time.startsWith("Fri"));
 
   return (
-    <div style={{ overflowY: "auto", height: "calc(100dvh - 44px)", paddingBottom: 100 }}>
+    <div style={{ overflowY: "auto", height: "100dvh", paddingBottom: 100, marginTop: -44 }}>
 
       {/* ── MAP HERO BLOCK — scrolls with the page ── */}
       {/* TODO: Replace map placeholder with Mapbox or Google Maps embed */}
-      <div style={{ position: "relative", minHeight: 340, flexShrink: 0 }}>
+      <div style={{ position: "relative", height: mapH, flexShrink: 0 }}>
 
         {/* Map background fills the entire block */}
         <div style={{
@@ -402,65 +407,65 @@ const HomeScreen = () => {
           </svg>
         </div>
 
-        {/* Gradient overlay — bottom 120px only, transparent → #EDEBE7 */}
+        {/* Gradient overlay — bottom 180px, smooth three-stop fade */}
         <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0, height: 120,
-          background: "linear-gradient(to bottom, rgba(237,235,231,0) 0%, rgba(237,235,231,1) 100%)",
+          position: "absolute", bottom: 0, left: 0, right: 0, height: 180,
+          background: "linear-gradient(to bottom, rgba(237,235,231,0) 0%, rgba(237,235,231,0.6) 40%, rgba(237,235,231,1) 100%)",
           pointerEvents: "none",
         }} />
 
-        {/* Greeting — top-left, paddingTop 56px clears the status bar */}
+        {/* Greeting — top-left, paddingTop 60 clears the status bar */}
         <div style={{
-          position: "absolute", top: 0, left: 0, right: 0,
-          display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-          paddingTop: 56, paddingLeft: 20, paddingRight: 16,
+          position: "absolute", top: 0, left: 0,
+          paddingTop: 60, paddingLeft: 20,
           zIndex: 1,
         }}>
-          <div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)", fontWeight: 500 }}>
-              {MOCK.today}
-            </div>
-            <h1 style={{
-              fontSize: 28, fontWeight: 800, color: "#FFFFFF",
-              marginTop: 4, lineHeight: 1.2, fontFamily: "Inter, sans-serif",
-            }}>
-              Good morning, Kevin
-            </h1>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)", fontWeight: 500 }}>
+            {MOCK.today}
           </div>
+          <h1 style={{
+            fontSize: 26, fontWeight: 800, color: "#FFFFFF",
+            marginTop: 4, lineHeight: 1.2, fontFamily: "Inter, sans-serif",
+          }}>
+            Good morning, Kevin
+          </h1>
+        </div>
 
-          {/* Notification bell + spark — top-right, same vertical as greeting */}
-          <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-            <div style={{ position: "relative" }}>
-              <button style={{
-                width: 40, height: 40, borderRadius: 12,
-                background: "rgba(255,255,255,.12)", border: "none",
-                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-              }}>
-                <Icon name="bell" size={20} color="#FFFFFF" />
-              </button>
-              <span style={{
-                position: "absolute", top: -3, right: -3,
-                width: 16, height: 16, borderRadius: "50%",
-                background: "#C0392B", color: "white",
-                fontSize: 9, fontWeight: 700,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: "2px solid #1B2537",
-              }}>3</span>
-            </div>
+        {/* Notification bell + spark — absolute top-right, position: absolute, top: 56, right: 16 */}
+        <div style={{
+          position: "absolute", top: 56, right: 16,
+          display: "flex", gap: 10, zIndex: 1,
+        }}>
+          <div style={{ position: "relative" }}>
             <button style={{
               width: 40, height: 40, borderRadius: 12,
-              background: "rgba(214,181,138,.18)",
-              border: "1.5px solid rgba(214,181,138,.38)",
+              background: "rgba(28,35,51,0.5)", border: "none",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             }}>
-              <Icon name="spark" size={18} color="#D6B58A" />
+              <Icon name="bell" size={20} color="#FFFFFF" />
             </button>
+            <span style={{
+              position: "absolute", top: -3, right: -3,
+              width: 16, height: 16, borderRadius: "50%",
+              background: "#C0392B", color: "white",
+              fontSize: 9, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              border: "2px solid #1B2537",
+            }}>3</span>
           </div>
+          <button style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: "rgba(28,35,51,0.5)",
+            border: "1.5px solid rgba(214,181,138,.38)",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          }}>
+            <Icon name="spark" size={18} color="#D6B58A" />
+          </button>
         </div>
       </div>
 
       {/* ── CONTENT BELOW MAP — #EDEBE7 matches gradient end color exactly ── */}
-      <div style={{ background: "#EDEBE7" }}>
+      <div style={{ background: "#EDEBE7", marginTop: -32 }}>
 
         {/* 1. Role selector pills */}
         <div style={{ display: "flex", gap: 6, padding: "12px 16px 16px", flexWrap: "wrap" }}>
