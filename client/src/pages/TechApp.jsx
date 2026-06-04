@@ -74,37 +74,93 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
 
   useEffect(() => { load(); }, [user.id]);
 
-  const active    = jobs.filter(j => j.status === 'in_progress').length;
-  const scheduled = jobs.filter(j => j.status === 'scheduled').length;
+  const active = jobs.filter(j => j.status === 'in_progress').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
-      <Topbar
-        title={`Hi, ${user.name.split(' ')[0]}`}
-        right={
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Change password">
-              <Lock size={15} />
-            </button>
-            <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
-              <LogOut size={16} />
-            </button>
-          </div>
+      <style>{`
+        @keyframes mapPulse {
+          0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.75; }
+          70%  { transform: translate(-50%, -50%) scale(2.8); opacity: 0;    }
+          100% { transform: translate(-50%, -50%) scale(1);   opacity: 0;    }
         }
-      />
+      `}</style>
 
-      <div style={{ padding: '10px 12px 4px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, flexShrink: 0 }}>
-        {active > 0 && (
-          <div style={{ background: C.amberLt, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, color: C.amber }}>
-            {active} active
+      {/* ── Map header zone ─────────────────────────────────────────────────── */}
+      <div style={{ position: 'relative', height: 260, flexShrink: 0 }}>
+
+        {/* TODO: Replace with Mapbox or Google Maps embed */}
+        <div style={{
+          position: 'absolute', inset: 0, overflow: 'hidden',
+          background: '#1A2236',
+          backgroundImage: [
+            'linear-gradient(rgba(255,255,255,.038) 1px, transparent 1px)',
+            'linear-gradient(90deg, rgba(255,255,255,.038) 1px, transparent 1px)',
+          ].join(', '),
+          backgroundSize: '28px 28px',
+        }}>
+          {/* Location pin — next scheduled job */}
+          <div style={{
+            position: 'absolute', top: 155, left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+          }}>
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%',
+              width: 54, height: 54, borderRadius: '50%',
+              background: 'rgba(214,181,138,.2)',
+              transform: 'translate(-50%, -50%)',
+              animation: 'mapPulse 2s ease-out infinite',
+            }} />
+            <svg width="26" height="34" viewBox="0 0 26 34" fill="none">
+              <path d="M13 0C5.82 0 0 5.82 0 13c0 9 11.38 19.84 12.31 20.72a1 1 0 001.38 0C14.62 32.84 26 22 26 13 26 5.82 20.18 0 13 0z" fill="#D6B58A"/>
+              <circle cx="13" cy="13" r="4.5" fill="#1C2333"/>
+            </svg>
           </div>
-        )}
-        <div style={{ background: C.navy3, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sub }}>
-          {loading ? '…' : `${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`}
+
+          {/* Gradient fade → app navy background */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: 130,
+            background: `linear-gradient(to bottom, transparent, ${C.navy})`,
+            pointerEvents: 'none',
+          }} />
         </div>
-        <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 12 }}>↻ Refresh</button>
+
+        {/* Header content floats on top of map */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
+          {/* Greeting row — transparent background so map shows through */}
+          <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.white }}>
+              Hi, {user.name.split(' ')[0]}
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Change password">
+                <Lock size={15} />
+              </button>
+              <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
+                <LogOut size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Stats chips */}
+          <div style={{ padding: '0 12px 4px', display: 'flex', gap: 8 }}>
+            {active > 0 && (
+              <div style={{ background: C.amberLt, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, color: C.amber }}>
+                {active} active
+              </div>
+            )}
+            <div style={{ background: 'rgba(45,55,72,.75)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sub }}>
+              {loading ? '…' : `${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`}
+            </div>
+            <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 12 }}>
+              ↻ Refresh
+            </button>
+          </div>
+        </div>
       </div>
 
+      {/* ── Job list ─────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: C.muted, fontSize: 13 }}>Loading jobs…</div>
