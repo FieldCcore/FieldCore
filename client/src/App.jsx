@@ -72,6 +72,7 @@ import EstimatesPage     from './pages/Estimates';
 import SignEstimate      from './pages/SignEstimate';
 import ReviewPage       from './pages/ReviewPage';
 import TechApp         from './pages/TechApp';
+import MobileDemo      from './pages/MobileDemo';
 import Account         from './pages/Account';
 import NoShowStrip      from './components/NoShowStrip';
 import PlanGate         from './components/PlanGate';
@@ -180,6 +181,15 @@ function AppShell() {
     );
   }
 
+  // Demo — full-screen mobile UI prototype, no auth required
+  if (pathname === '/demo') {
+    return (
+      <Routes>
+        <Route path="/demo" element={<MobileDemo />} />
+      </Routes>
+    );
+  }
+
   if (isPublicBook) {
     return (
       <Routes>
@@ -188,7 +198,7 @@ function AppShell() {
     );
   }
 
-  const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/demo', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
+  const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
   if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/') || pathname.startsWith('/sign/') || pathname.startsWith('/review/')) {
     return (
       <Routes>
@@ -196,7 +206,6 @@ function AppShell() {
         <Route path="/login"            element={<Login />} />
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/reset-password"   element={<ResetPassword />} />
-        <Route path="/demo"             element={<Navigate to="/tech" replace />} />
         <Route path="/tablet"           element={<ManagerTablet />} />
         <Route path="/book-confirm"     element={<BookConfirm />} />
         <Route path="/pay/:invoiceId"   element={<PayInvoice />} />
