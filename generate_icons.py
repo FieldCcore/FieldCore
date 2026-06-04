@@ -6,10 +6,13 @@ NAVY  = (28, 35, 51, 255)     # #1C2333
 CREAM = (237, 235, 231, 255)  # #EDEBE7
 TAN   = (214, 181, 138, 255)  # #D6B58A
 
-# 5-square layout in inner SVG coordinate space (viewBox 100x100 inner)
-# SVG group transform: translate(17.3913 17.3913) scale(0.652174)
-TRANSLATE = 17.3913
-INNER_SCALE = 0.652174
+# Mark layout in inner SVG coordinate space (viewBox 100×100 inner).
+# Bounding box: x 9→91 (82 wide), y 4→96 (92 tall), centered at (50,50).
+# Transform: translate(8.695 8.695) scale(0.8261)
+#   → ~12 % padding top/bottom, ~16 % padding left/right
+#   → mark fills ~70-76 % of the icon area
+TRANSLATE    = 8.695
+INNER_SCALE  = 0.8261
 INNER_CORNER = 6  # rx/ry of each small square in inner coords
 
 SQUARES = [
@@ -21,101 +24,81 @@ SQUARES = [
 ]
 
 
-def create_icon(size: int, bg_color=None) -> Image.Image:
-    """
-    Create the navy-squircle FieldCore icon at `size` x `size` pixels.
-    If bg_color is given, the canvas background is that solid colour (no
-    transparency), useful for splash screens.
-    """
-    if bg_color:
-        img = Image.new("RGBA", (size, size), bg_color)
-    else:
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-
-    draw = ImageDraw.Draw(img)
-
-    # Rounded-square background (~20 % corner radius)
-    corner = max(1, int(size * 0.20))
-    draw.rounded_rectangle([(0, 0), (size - 1, size - 1)], radius=corner, fill=NAVY)
-
-    # Map inner SVG coords → pixel coords
-    sf = size / 100.0  # outer SVG viewBox is 100×100
-
-    def px(coord):
-        return (TRANSLATE + coord * INNER_SCALE) * sf
-
+def _draw_mark(draw: ImageDraw.ImageDraw, size: int) -> None:
+    sf   = size / 100.0
     sq_r = max(1, int(INNER_CORNER * INNER_SCALE * sf))
+
+    def px(c: float) -> float:
+        return (TRANSLATE + c * INNER_SCALE) * sf
 
     for (x, y, w, h, color) in SQUARES:
         x0, y0 = px(x), px(y)
-        x1 = x0 + w * INNER_SCALE * sf
-        y1 = y0 + h * INNER_SCALE * sf
-        draw.rounded_rectangle([(x0, y0), (x1, y1)], radius=sq_r, fill=color)
+        draw.rounded_rectangle(
+            [(x0, y0), (x0 + w * INNER_SCALE * sf, y0 + h * INNER_SCALE * sf)],
+            radius=sq_r, fill=color,
+        )
 
+
+def solid_icon(size: int) -> Image.Image:
+    """Fully opaque icon (RGB, no alpha). Use for browser favicons."""
+    img  = Image.new("RGB", (size, size), (28, 35, 51))
+    draw = ImageDraw.Draw(img)
+    _draw_mark(draw, size)
     return img
 
 
-def create_splash(width: int, height: int, icon_fraction=0.35) -> Image.Image:
-    """Cream background with centred navy-squircle icon."""
-    img = Image.new("RGBA", (width, height), CREAM)
-    icon_size = int(min(width, height) * icon_fraction)
-    icon = create_icon(icon_size)
-    x = (width  - icon_size) // 2
-    y = (height - icon_size) // 2
-    img.paste(icon, (x, y), icon)
+def squircle_icon(size: int) -> Image.Image:
+    """Squircle icon with transparent corners. Use for OS-masked app icons."""
+    img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (size - 1, size - 1)],
+                            radius=max(1, int(size * 0.20)), fill=NAVY)
+    _draw_mark(draw, size)
     return img
 
 
-# ── Web client icons ──────────────────────────────────────────────────────────
-web_dir = os.path.join("client", "public")
+def splash_screen(width: int, height: int, icon_fraction: float = 0.30) -> Image.Image:
+    """Cream background with a centred squircle icon."""
+    img  = Image.new("RGBA", (width, height), CREAM)
+    isz  = int(min(width, height) * icon_fraction)
+    icon = squircle_icon(isz)
+    img.paste(icon, ((width - isz) // 2, (height - isz) // 2), icon)
+    return img
 
-web_icons = [
-    (16,  "favicon-16x16.png"),
-    (32,  "favicon-32x32.png"),
-    (180, "apple-touch-icon.png"),
-    (192, "android-chrome-192x192.png"),
-    (512, "android-chrome-512x512.png"),
-]
 
-for size, fname in web_icons:
-    img = create_icon(size)
-    out = os.path.join(web_dir, fname)
-    img.save(out, format="PNG")
-    print(f"  created  {out}  ({size}×{size})")
+# ── Web client ────────────────────────────────────────────────────────────────
+web = "client/public"
 
-# favicon.ico — 16, 32, 48
-ico_images = [create_icon(s).convert("RGBA") for s in (16, 32, 48)]
-ico_path = os.path.join(web_dir, "favicon.ico")
-ico_images[0].save(
-    ico_path,
-    format="ICO",
-    sizes=[(16, 16), (32, 32), (48, 48)],
-    append_images=ico_images[1:],
-)
-print(f"  created  {ico_path}  (16/32/48)")
+# Browser favicons — solid RGB (zero transparency)
+for size, name in [(16, "favicon-16x16.png"), (32, "favicon-32x32.png")]:
+    solid_icon(size).save(f"{web}/{name}", format="PNG")
+    print(f"  {web}/{name}  ({size}×{size}, solid)")
 
-# ── Mobile (Expo) assets ──────────────────────────────────────────────────────
-mobile_dir = os.path.join("mobile", "assets")
-os.makedirs(mobile_dir, exist_ok=True)
+def _to_rgba(img: Image.Image) -> Image.Image:
+    r = Image.new("RGBA", img.size)
+    r.paste(img)
+    return r
 
-# App icon — 1024×1024 is the Expo-recommended size
-app_icon = create_icon(1024)
-app_icon.save(os.path.join(mobile_dir, "icon.png"), format="PNG")
-print(f"  created  {mobile_dir}/icon.png  (1024×1024)")
+ico_imgs = [_to_rgba(solid_icon(s)) for s in (16, 32, 48)]
+ico_imgs[0].save(f"{web}/favicon.ico", format="ICO",
+                 sizes=[(16,16),(32,32),(48,48)], append_images=ico_imgs[1:])
+print(f"  {web}/favicon.ico  (16/32/48, solid)")
 
-# Android adaptive icon foreground — same squircle on transparent bg
-adaptive = create_icon(1024)
-adaptive.save(os.path.join(mobile_dir, "adaptive-icon.png"), format="PNG")
-print(f"  created  {mobile_dir}/adaptive-icon.png  (1024×1024)")
+# App icons — squircle RGBA (OS applies masking)
+for size, name in [(180, "apple-touch-icon.png"),
+                   (192, "android-chrome-192x192.png"),
+                   (512, "android-chrome-512x512.png")]:
+    squircle_icon(size).save(f"{web}/{name}", format="PNG")
+    print(f"  {web}/{name}  ({size}×{size}, squircle)")
 
-# Favicon (Expo web)
-fav = create_icon(196)
-fav.save(os.path.join(mobile_dir, "favicon.png"), format="PNG")
-print(f"  created  {mobile_dir}/favicon.png  (196×196)")
+# ── Mobile (Expo) ─────────────────────────────────────────────────────────────
+mob = "mobile/assets"
+os.makedirs(mob, exist_ok=True)
 
-# Splash screen — 1284×2778 (iPhone 14 Pro Max native; Expo centres it)
-splash = create_splash(1284, 2778, icon_fraction=0.30)
-splash.save(os.path.join(mobile_dir, "splash-icon.png"), format="PNG")
-print(f"  created  {mobile_dir}/splash-icon.png  (1284×2778)")
+squircle_icon(1024).save(f"{mob}/icon.png",          format="PNG"); print(f"  {mob}/icon.png  (1024×1024)")
+squircle_icon(1024).save(f"{mob}/adaptive-icon.png", format="PNG"); print(f"  {mob}/adaptive-icon.png  (1024×1024)")
+squircle_icon(196) .save(f"{mob}/favicon.png",       format="PNG"); print(f"  {mob}/favicon.png  (196×196)")
+splash_screen(1284, 2778).save(f"{mob}/splash-icon.png", format="PNG")
+print(f"  {mob}/splash-icon.png  (1284×2778)")
 
-print("\nAll icons generated successfully.")
+print("\nAll icons generated.")
