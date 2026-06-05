@@ -1,0 +1,446 @@
+{
+  "project": "FieldCore Launch Audit",
+  "generatedAt": "2026-06-05T22:22:18.626Z",
+  "checks": {
+    "packageJsonExists": true,
+    "envExists": true,
+    "nextConfigExists": false,
+    "expoConfigExists": false
+  },
+  "npmScripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "dev:all": "concurrently -n api,web -c cyan,magenta \"nodemon server.js\" \"cd client && npm run dev\"",
+    "build:client": "cd client && npm run build",
+    "db:init": "node scripts/init-db.js"
+  },
+  "features": [
+    {
+      "feature": "auth",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\api.js",
+        "client\\src\\App.jsx",
+        "client\\src\\components\\PlanGate.jsx",
+        "client\\src\\components\\ProtectedRoute.jsx",
+        "client\\src\\context\\AuthContext.jsx",
+        "client\\src\\landing.css",
+        "client\\src\\pages\\Account.jsx",
+        "client\\src\\pages\\BookingSettings.jsx",
+        "client\\src\\pages\\BookingWidget.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx"
+      ]
+    },
+    {
+      "feature": "login",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\api.js",
+        "client\\src\\App.jsx",
+        "client\\src\\components\\ProtectedRoute.jsx",
+        "client\\src\\context\\AuthContext.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Account.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\ClientPortal.jsx"
+      ]
+    },
+    {
+      "feature": "signup",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\Dashboard.jsx",
+        "src\\app.js",
+        "src\\routes\\beta.js",
+        "src\\routes\\chat.js"
+      ]
+    },
+    {
+      "feature": "onboarding",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Onboarding.jsx",
+        "src\\app.js",
+        "src\\routes\\billing.js",
+        "src\\routes\\chat.js",
+        "src\\routes\\connect.js",
+        "src\\routes\\onboarding.js",
+        "test\\smoke.js"
+      ]
+    },
+    {
+      "feature": "dashboard",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\context\\AuthContext.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\Dashboard.jsx",
+        "client\\src\\pages\\Entities.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\Login.jsx",
+        "client\\src\\pages\\Onboarding.jsx"
+      ]
+    },
+    {
+      "feature": "client",
+      "status": "Found in codebase",
+      "files": [
+        "client\\package-lock.json",
+        "client\\package.json",
+        "client\\src\\App.jsx",
+        "client\\src\\components\\CallerID.jsx",
+        "client\\src\\components\\CardSetupForm.jsx",
+        "client\\src\\components\\ClientForm.jsx",
+        "client\\src\\components\\InvoiceDetail.jsx",
+        "client\\src\\components\\JobDetail.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\components\\NoShowClock.jsx"
+      ]
+    },
+    {
+      "feature": "customer",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\Onboarding.jsx",
+        "landing\\src\\components\\Pricing.jsx",
+        "src\\routes\\billing.js",
+        "src\\routes\\booking.js",
+        "src\\routes\\chat.js",
+        "src\\routes\\pay.js",
+        "src\\routes\\payments.js",
+        "src\\routes\\webhooks.js"
+      ]
+    },
+    {
+      "feature": "job",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\CallerID.jsx",
+        "client\\src\\components\\ChatWidget.jsx",
+        "client\\src\\components\\JobDetail.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\components\\NoShowClock.jsx",
+        "client\\src\\components\\NoShowStrip.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\BookConfirm.jsx"
+      ]
+    },
+    {
+      "feature": "schedule",
+      "status": "Found in codebase",
+      "files": [
+        "client\\package-lock.json",
+        "client\\src\\components\\JobDetail.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\context\\AuthContext.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\BookConfirm.jsx",
+        "client\\src\\pages\\BookingWidget.jsx",
+        "client\\src\\pages\\ClientPortal.jsx",
+        "client\\src\\pages\\ClientProfile.jsx",
+        "client\\src\\pages\\Dashboard.jsx"
+      ]
+    },
+    {
+      "feature": "calendar",
+      "status": "Found in codebase",
+      "files": [
+        "client\\package-lock.json",
+        "client\\package.json",
+        "client\\src\\App.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Dashboard.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Jobs.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\Press.jsx",
+        "client\\src\\pages\\Updates.jsx"
+      ]
+    },
+    {
+      "feature": "recurring",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\components\\JobDetail.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\MobileDemo.jsx",
+        "client\\src\\pages\\Partners.jsx",
+        "client\\src\\pages\\Updates.jsx",
+        "landing\\src\\components\\DeepDive.jsx"
+      ]
+    },
+    {
+      "feature": "invoice",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\InvoiceDetail.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\BookingSettings.jsx",
+        "client\\src\\pages\\ClientPortal.jsx",
+        "client\\src\\pages\\Dashboard.jsx",
+        "client\\src\\pages\\Entities.jsx",
+        "client\\src\\pages\\Estimates.jsx",
+        "client\\src\\pages\\Faq.jsx"
+      ]
+    },
+    {
+      "feature": "payment",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\CardSetupForm.jsx",
+        "client\\src\\components\\InvoiceDetail.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\BookConfirm.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\ClientPortal.jsx"
+      ]
+    },
+    {
+      "feature": "stripe",
+      "status": "Found in codebase",
+      "files": [
+        "client\\package-lock.json",
+        "client\\package.json",
+        "client\\src\\components\\CardSetupForm.jsx",
+        "client\\src\\components\\InvoiceDetail.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Deposits.jsx",
+        "client\\src\\pages\\Entities.jsx"
+      ]
+    },
+    {
+      "feature": "sms",
+      "status": "Found in codebase",
+      "files": [
+        "client\\.claude\\settings.local.json",
+        "client\\src\\App.jsx",
+        "client\\src\\landing.css",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\ClientProfile.jsx",
+        "client\\src\\pages\\Deposits.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\ManagerTablet.jsx",
+        "client\\src\\pages\\Messages.jsx"
+      ]
+    },
+    {
+      "feature": "email",
+      "status": "Found in codebase",
+      "files": [
+        "client\\package.json",
+        "client\\src\\components\\ClientForm.jsx",
+        "client\\src\\components\\InvoiceDetail.jsx",
+        "client\\src\\context\\AuthContext.jsx",
+        "client\\src\\pages\\Account.jsx",
+        "client\\src\\pages\\BookingWidget.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\ClientList.jsx",
+        "client\\src\\pages\\ClientPortal.jsx",
+        "client\\src\\pages\\ClientProfile.jsx"
+      ]
+    },
+    {
+      "feature": "reminder",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\BookConfirm.jsx",
+        "client\\src\\pages\\Deposits.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\Messages.jsx",
+        "client\\src\\pages\\SmsTerms.jsx",
+        "client\\src\\pages\\Updates.jsx",
+        "landing\\src\\components\\DeepDive.jsx",
+        "landing\\src\\components\\Pricing.jsx",
+        "server.js"
+      ]
+    },
+    {
+      "feature": "team",
+      "status": "Found in codebase",
+      "files": [
+        ".vercel\\project.json",
+        "client\\.vercel\\project.json",
+        "client\\src\\App.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Contact.jsx",
+        "client\\src\\pages\\Dashboard.jsx",
+        "client\\src\\pages\\Dispatch.jsx",
+        "client\\src\\pages\\Entities.jsx"
+      ]
+    },
+    {
+      "feature": "technician",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Entities.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Team.jsx",
+        "client\\src\\pages\\Updates.jsx",
+        "src\\routes\\chat.js",
+        "src\\routes\\noshow.js",
+        "src\\services\\email.js",
+        "src\\services\\sms.js"
+      ]
+    },
+    {
+      "feature": "admin",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\AddressAutocomplete.jsx",
+        "client\\src\\pages\\Account.jsx",
+        "mobile\\screens\\JobQueue.js",
+        "scripts\\init-db.js",
+        "src\\routes\\auth.js",
+        "src\\routes\\billing.js",
+        "src\\services\\audit.js"
+      ]
+    },
+    {
+      "feature": "owner",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Account.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Entities.jsx",
+        "client\\src\\pages\\Fleet.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\ManagerTablet.jsx"
+      ]
+    },
+    {
+      "feature": "settings",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\JobForm.jsx",
+        "client\\src\\pages\\BookingSettings.jsx",
+        "client\\src\\pages\\BookingWidget.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Deposits.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Jobs.jsx",
+        "client\\src\\pages\\ManagerTablet.jsx",
+        "client\\src\\pages\\MobileDemo.jsx"
+      ]
+    },
+    {
+      "feature": "subscription",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\MobileDemo.jsx",
+        "mobile\\screens\\AccountScreen.js",
+        "mobile\\screens\\MoreScreen.js",
+        "reset_plan.js",
+        "src\\routes\\billing.js",
+        "src\\routes\\webhooks.js",
+        "src\\services\\email.js",
+        "src\\services\\scheduler.js",
+        "test\\smoke.js"
+      ]
+    },
+    {
+      "feature": "tier",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\components\\CallerID.jsx",
+        "client\\src\\components\\ClientForm.jsx",
+        "client\\src\\landing.css",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\BookingSettings.jsx",
+        "client\\src\\pages\\ClientList.jsx",
+        "client\\src\\pages\\ClientProfile.jsx",
+        "client\\src\\pages\\Deposits.jsx",
+        "client\\src\\pages\\Landing.jsx",
+        "client\\src\\pages\\ManagerTablet.jsx"
+      ]
+    },
+    {
+      "feature": "phone",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\CallerID.jsx",
+        "client\\src\\components\\ClientForm.jsx",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Account.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\Blog.jsx",
+        "client\\src\\pages\\BookingWidget.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\ClientList.jsx"
+      ]
+    },
+    {
+      "feature": "twilio",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\pages\\ClientProfile.jsx",
+        "client\\src\\pages\\ManagerTablet.jsx",
+        "client\\src\\pages\\MobileDemo.jsx",
+        "client\\src\\pages\\Phone.jsx",
+        "client\\src\\pages\\Privacy.jsx",
+        "client\\src\\pages\\Updates.jsx",
+        "mobile\\screens\\JobDetail.js",
+        "mobile\\screens\\MessagesScreen.js",
+        "package-lock.json",
+        "package.json"
+      ]
+    },
+    {
+      "feature": "mobile",
+      "status": "Found in codebase",
+      "files": [
+        "client\\src\\App.jsx",
+        "client\\src\\components\\JobDetail.jsx",
+        "client\\src\\landing.css",
+        "client\\src\\pages\\About.jsx",
+        "client\\src\\pages\\Billing.jsx",
+        "client\\src\\pages\\BusinessSettings.jsx",
+        "client\\src\\pages\\Careers.jsx",
+        "client\\src\\pages\\Faq.jsx",
+        "client\\src\\pages\\Fleet.jsx",
+        "client\\src\\pages\\Landing.jsx"
+      ]
+    }
+  ],
+  "buildCheck": "No build script",
+  "lintCheck": "No lint script found",
+  "testCheck": "No test script found"
+}
