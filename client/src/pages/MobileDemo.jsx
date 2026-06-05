@@ -49,6 +49,10 @@ const GlobalStyle = () => (
       70%  { transform: translate(-50%, -50%) scale(2.8); opacity: 0;    }
       100% { transform: translate(-50%, -50%) scale(1);   opacity: 0;    }
     }
+    @keyframes fabSlideUp {
+      from { transform: translateY(12px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
   `}</style>
 );
 
@@ -968,8 +972,20 @@ const MoreScreen = () => {
 };
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
+const ACTION_ITEMS = [
+  { label: "New Expense",  icon: "payment", iconBg: "#F3F0FF", iconColor: "#7C3AED" },
+  { label: "New Request",  icon: "alert",   iconBg: "#FDECEA", iconColor: "#C0392B" },
+  { label: "New Client",   icon: "users",   iconBg: "#EDEBE7", iconColor: "#5F667A" },
+  { label: "New Quote",    icon: "list",    iconBg: "#FEF3E2", iconColor: "#C47B2B" },
+  { label: "New Job",      icon: "wrench",  iconBg: "#EBF5EE", iconColor: "#3D7A4F" },
+  { label: "New Invoice",  icon: "dollar",  iconBg: "#EFF6FF", iconColor: "#2563EB" },
+];
+
+const FAB_RIGHT = "calc(50% - 215px + 16px)";
+
 export default function MobileDemo() {
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab,          setActiveTab]          = useState("home");
+  const [isActionSheetOpen,  setIsActionSheetOpen]  = useState(false);
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -977,6 +993,8 @@ export default function MobileDemo() {
     link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@800&display=swap";
     document.head.appendChild(link);
   }, []);
+
+  const closeSheet = () => setIsActionSheetOpen(false);
 
   const screens = {
     home:      <HomeScreen />,
@@ -1019,20 +1037,79 @@ export default function MobileDemo() {
 
         {screens[activeTab]}
 
+        {/* Overlay */}
+        {isActionSheetOpen && (
+          <div
+            onClick={closeSheet}
+            style={{
+              position: "fixed", inset: 0, zIndex: 80,
+              background: "rgba(28,35,51,0.35)",
+              animation: "fadeIn 0.2s ease both",
+            }}
+          />
+        )}
+
+        {/* Action Sheet — vertical pill stack anchored above FAB */}
+        {isActionSheetOpen && (
+          <div style={{
+            position: "fixed", bottom: 90, right: FAB_RIGHT,
+            zIndex: 90,
+            display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10,
+            pointerEvents: "none",
+          }}>
+            {ACTION_ITEMS.map((item, i) => (
+              <button
+                key={item.label}
+                onClick={() => { closeSheet(); alert(`${item.label} — coming soon`); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  background: "#FFFFFF", borderRadius: 100,
+                  paddingTop: 10, paddingBottom: 10, paddingLeft: 14, paddingRight: 18,
+                  boxShadow: "0 4px 16px rgba(28,35,51,.14)",
+                  cursor: "pointer", border: "none",
+                  fontFamily: "Inter, sans-serif",
+                  pointerEvents: "all",
+                  animation: "fabSlideUp 0.25s ease both",
+                  animationDelay: `${(ACTION_ITEMS.length - 1 - i) * 40}ms`,
+                }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: item.iconBg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}>
+                  <Icon name={item.icon} size={15} color={item.iconColor} />
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#1C2333", whiteSpace: "nowrap" }}>
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* FAB */}
         <button
+          onClick={() => setIsActionSheetOpen(v => !v)}
           style={{
             position: "fixed", bottom: 80,
-            right: "calc(50% - 215px + 16px)",
+            right: FAB_RIGHT,
             width: 52, height: 52, borderRadius: "50%",
-            background: "#1C2333", color: "#FFFFFF",
+            background: "#1C2333",
             border: "none", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             boxShadow: "0 4px 20px rgba(28,35,51,.3)",
-            zIndex: 90,
+            zIndex: 100,
           }}
           aria-label="Add new">
-          <Icon name="plus" size={24} color="#FFFFFF" />
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "transform 0.2s ease",
+            transform: isActionSheetOpen ? "rotate(45deg)" : "rotate(0deg)",
+          }}>
+            <Icon name="plus" size={24} color="#FFFFFF" />
+          </div>
         </button>
 
         <BottomNav active={activeTab} onChange={setActiveTab} />
