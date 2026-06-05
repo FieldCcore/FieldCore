@@ -49,7 +49,7 @@ export default function Blog() {
             <div style={{ padding: 40 }}>
               <div style={{ fontSize: 12, color: '#8A90A2', marginBottom: 12 }}>{posts[0].date} · {posts[0].tag}</div>
               <p style={{ fontSize: 15, color: '#5F667A', lineHeight: 1.75, marginBottom: 24 }}>{posts[0].excerpt}</p>
-              <a href="#" style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', textDecoration: 'none' }}>Read article →</a>
+              <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: '#9ca3af', letterSpacing: '.06em' }}>COMING SOON</span>
             </div>
           </div>
         </div>
@@ -66,7 +66,7 @@ export default function Blog() {
                 </div>
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 20, color: '#1C2333', lineHeight: 1.2, fontWeight: 400 }}>{p.title}</div>
                 <p style={{ fontSize: 13, color: '#5F667A', lineHeight: 1.65, flex: 1 }}>{p.excerpt}</p>
-                <a href="#" style={{ fontSize: 13, fontWeight: 700, color: '#1C2333' }}>Read →</a>
+                <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: '#9ca3af', letterSpacing: '.06em' }}>COMING SOON</span>
               </div>
             );
           })}

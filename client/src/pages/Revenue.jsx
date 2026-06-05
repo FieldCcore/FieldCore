@@ -2,13 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
 import api from '../api';
 
-function triggerCsvDownload(url) {
-  const a = document.createElement('a');
-  a.href = `/api${url}`;
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+async function triggerCsvDownload(url) {
+  try {
+    const res = await api.get(url, { responseType: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(res.data);
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch {
+    alert('Export failed. Please try again.');
+  }
 }
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

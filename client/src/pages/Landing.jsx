@@ -227,7 +227,7 @@ export default function Landing() {
 
       {/* NAV */}
       <nav className={`site-nav${scrolled ? ' scrolled' : ''}`}>
-        <a href="#" className="nav-logo">FIELDCORE<sup>™</sup></a>
+        <a href="/" className="nav-logo">FIELDCORE<sup>™</sup></a>
         <div className="nav-links">
           <a href="#features">Features</a>
           <a href="#deepdive">How It Works</a>
