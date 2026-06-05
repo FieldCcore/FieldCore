@@ -24,12 +24,12 @@ const Chk = () => (
 );
 
 const problems = [
-  { ico: PhoneOff,  t: 'No-show protection',     b: "Client doesn't show. You drove 25 minutes. No deposit. No documentation. No recourse. The slot is gone.", cost: 'avg $4,200/yr lost' },
-  { ico: CreditCard,t: 'Surprise charge calls',  b: "Recurring client gets charged. Didn't know it was coming. Disputes filed. You lose the money and the client.", cost: '3–4 chargebacks/quarter' },
-  { ico: Phone,     t: 'Personal = business',    b: 'Your personal number is your business. Client history lives in iMessage. You answer unknowns blind every time.', cost: 'zero context on every call' },
-  { ico: Receipt,   t: 'Manual fleet billing',   b: 'Commercial accounts billed manually every month. Hours per account. Invoices sent late. Cash flow delayed.', cost: '$3,840/yr in billing labor' },
-  { ico: FolderOpen,t: 'Four disconnected tools',b: 'Square + Google Calendar + spreadsheets + personal phone. You are the integration layer. All day, every day.', cost: 'hours wasted daily' },
-  { ico: Building2, t: 'Multi-LLC nightmare',    b: 'Running two businesses means two of everything. Two calendars, two Square accounts, two sets of problems.', cost: 'no platform solves this' },
+  { ico: Phone,     t: 'Your personal phone is your business', b: 'Clients have your personal number. iMessage is your CRM. You answer unknowns blind on every call with zero context about who they are or what they owe.', cost: 'zero separation, zero context' },
+  { ico: FolderOpen,t: 'Four apps to run one business',       b: 'Square for payments. Google Calendar for scheduling. Spreadsheets for clients. Your personal phone for everything else. You are the integration layer.', cost: 'hours wasted daily' },
+  { ico: PhoneOff,  t: 'No-shows with no recourse',           b: "Client doesn't show. You drove 25 minutes. No deposit on file. No documentation. No automated follow-up. The time slot and the money are both gone.", cost: 'avg $4,200/yr lost' },
+  { ico: CreditCard,t: 'Surprise charges = chargebacks',      b: "Recurring client gets charged. They didn't know it was coming. Dispute filed. You lose the money, the chargeback fee, and sometimes the client.", cost: '3–4 chargebacks/quarter' },
+  { ico: Receipt,   t: 'Manual invoicing eats your evenings', b: 'Jobs done by 5pm. Invoices sent at 10pm from your couch. Follow-up texts sent manually. Payment chased by text. Cash flow always one step behind.', cost: '$3,840/yr in billing labor' },
+  { ico: Building2, t: 'No system built for solo operators',  b: 'Enterprise platforms charge per seat. Consumer apps lack the features. Nothing was designed for the owner-operator running a real business solo.', cost: 'no platform solves this' },
 ];
 
 const feats = [
@@ -45,24 +45,70 @@ const feats = [
 
 const plans = [
   {
-    name: 'Solo', price: '$49', mo: '/month', target: '1 operator · Under $150K',
-    feats: ['Client database + job scheduling', 'Stripe payments + auto-invoicing', 'Online booking widget', 'ETA sender — real clock time', 'Tech mobile app (iOS + Android)'],
-    cta: 'Get started', featured: false,
+    name: 'Solo', price: '$49', mo: '/month', target: 'Built for owner operators',
+    tag: 'Everything you need to run your business from one app.',
+    feats: [
+      'Job scheduling + customer CRM',
+      'Estimates + invoices + online payments',
+      'Online booking widget',
+      'Dedicated business phone number',
+      'Two-way texting with customers',
+      'Call logs + voicemail inbox',
+      'Automated appointment reminders',
+      'Card on file + deposits',
+      'Route optimization',
+      'Mobile app (iOS + Android)',
+      'Customer communication history',
+    ],
+    cta: 'Start free trial', featured: false,
   },
   {
-    name: 'Pro', price: '$99', mo: '/month', target: '1–3 techs · $150K–$600K',
+    name: 'Pro', price: '$99', mo: '/month', target: 'Built for growing businesses',
+    tag: 'Built for teams that need accountability and automation.',
     badge: 'MOST POPULAR',
-    feats: ['Everything in Solo', 'Business phone — included, not add-on', 'No-show clock + 3-layer deposits', 'Smart Caller ID (push when closed)', 'Pre-charge advance notices', 'Travel fee engine + route optimization', 'Fleet + recurring billing automation'],
+    feats: [
+      'Everything in Solo',
+      'Additional team members',
+      'Team permissions + shared inbox',
+      'Call recording',
+      'Missed-call text back',
+      'No-Show Clock™',
+      '3-Layer Deposit System™',
+      'Smart Caller ID',
+      'Pre-charge advance notices',
+      'Travel fee engine',
+      'Fleet management',
+      'Recurring billing automation',
+    ],
     cta: 'Start free trial', featured: true,
   },
   {
-    name: 'Scale', price: '$199', mo: '/month', target: '4–10 techs · $600K–$2M',
-    feats: ['Everything in Pro', 'Multi-entity — unlimited LLCs', '3 phone numbers + call routing', 'GPS fleet tracking integration', 'Custom reports + API access', 'E-signature + white-label booking'],
+    name: 'Scale', price: '$199', mo: '/month', target: 'Built for established service companies',
+    tag: 'Built for companies scaling beyond a single team.',
+    feats: [
+      'Everything in Pro',
+      'Multiple business phone numbers',
+      'Department phone numbers',
+      'Call routing + ring groups',
+      'Multi-entity management',
+      'GPS fleet integrations',
+      'Advanced reporting',
+      'API access',
+      'White-label booking',
+    ],
     cta: 'Get started', featured: false,
   },
   {
-    name: 'Custom', price: '$300+', mo: '/month', target: '10+ techs · $2M+',
-    feats: ['Everything in Scale', 'Unlimited phone numbers', 'Dedicated Customer Success Manager', '99.9% uptime SLA', 'Custom feature development', 'Negotiated processing rate'],
+    name: 'Custom', price: '$300+', mo: '/month', target: 'Enterprise & franchises',
+    tag: 'Dedicated support, custom development, and negotiated rates.',
+    feats: [
+      'Everything in Scale',
+      'Unlimited phone numbers',
+      'Dedicated Customer Success Manager',
+      '99.9% uptime SLA',
+      'Custom feature development',
+      'Negotiated processing rate',
+    ],
     cta: 'Contact sales', featured: false,
   },
 ];
@@ -207,11 +253,11 @@ export default function Landing() {
             <span className="hero-badge-text">Now in beta — 15 service verticals</span>
           </div>
           <h1 className="hero-h">
-            The operating system<br />for <em>service businesses.</em>
+            Run your entire business<br />from <em>one app.</em>
           </h1>
           <p className="hero-sub">
-            Replace Square, Google Calendar, your personal phone, and spreadsheets with one platform.
-            No per-user fees. Ever.
+            Stop using your personal phone for business. FieldCore gives you a dedicated number,
+            job scheduling, invoicing, and every customer conversation — all in one place.
           </p>
           <div className="hero-ctas">
             <a href="#cta" className="btn btn-sand btn-lg">Start free trial →</a>
@@ -223,12 +269,12 @@ export default function Landing() {
               <div className="hstat-l">Starting price</div>
             </div>
             <div className="hstat">
-              <div className="hstat-n">$0</div>
-              <div className="hstat-l">Per-user fees. Ever.</div>
+              <div className="hstat-n">1</div>
+              <div className="hstat-l">Dedicated business number</div>
             </div>
             <div className="hstat">
-              <div className="hstat-n">8</div>
-              <div className="hstat-l">Industry-first features</div>
+              <div className="hstat-n">4+</div>
+              <div className="hstat-l">Apps replaced</div>
             </div>
             <div className="hstat">
               <div className="hstat-n">15</div>
@@ -245,37 +291,29 @@ export default function Landing() {
                 <div className="hc-dot" style={{ background: '#FFBD2E' }} />
                 <div className="hc-dot" style={{ background: '#28CA41' }} />
               </div>
-              <span className="hc-title">DISPATCH · LIVE</span>
+              <span className="hc-title">FIELDCORE · TODAY</span>
             </div>
             <div className="hc-body">
               <div className="hc-alert">
                 <div className="hc-alert-dot" />
-                <div className="hc-alert-text">No-Show Clock · Sarah Chen · Ceramic Coat</div>
-                <div className="hc-alert-time">{fmt(time)}</div>
+                <div className="hc-alert-text">Invoice #1042 paid · Rita Okafor · $320</div>
+                <div className="hc-alert-time" style={{ color: '#4EC87A' }}>Just now</div>
               </div>
               <div className="hc-row">
-                <div className="hc-avatar">DR</div>
+                <div className="hc-avatar">RO</div>
                 <div className="hc-info">
-                  <div className="hc-name">Danny R. — Full Detail</div>
-                  <div className="hc-detail">Rita Okafor · Est. 2:30 PM</div>
+                  <div className="hc-name">Rita Okafor — Full Detail</div>
+                  <div className="hc-detail">887 Pine St · 2:00 PM today</div>
                 </div>
                 <span className="hc-tag tag-green">Active</span>
               </div>
               <div className="hc-row">
-                <div className="hc-avatar">JM</div>
+                <div className="hc-avatar">TG</div>
                 <div className="hc-info">
-                  <div className="hc-name">Javier M. — Fleet Wash</div>
-                  <div className="hc-detail">XYZ Ford · 14/22 vehicles</div>
+                  <div className="hc-name">Thomas G. — Paint Correction</div>
+                  <div className="hc-detail">Fri Jun 7 · 10:00 AM · $650</div>
                 </div>
-                <span className="hc-tag tag-green">Active</span>
-              </div>
-              <div className="hc-row">
-                <div className="hc-avatar">CV</div>
-                <div className="hc-info">
-                  <div className="hc-name">Carlos V. — Available</div>
-                  <div className="hc-detail">Holloway 3:30 PM next</div>
-                </div>
-                <span className="hc-tag tag-sand">Standby</span>
+                <span className="hc-tag tag-sand">Upcoming</span>
               </div>
               <div className="hc-caller">
                 <div className="hc-caller-top">
@@ -283,16 +321,16 @@ export default function Landing() {
                   <span className="hc-caller-lbl">Inbound · Business Line</span>
                 </div>
                 <div className="hc-caller-body">
-                  <div className="hc-caller-name">Thomas Garfield</div>
-                  <div className="hc-caller-sub">VIP · $8,400 LTV · Last: Paint Correction today</div>
+                  <div className="hc-caller-name">Marcus Williams</div>
+                  <div className="hc-caller-sub">Returning client · $2,100 LTV · Last: Interior Detail</div>
                   <div className="hc-caller-grid">
                     <div className="hc-cell">
                       <div className="hc-cell-l">Balance</div>
                       <div className="hc-cell-v" style={{ color: '#4EC87A' }}>$0 clear</div>
                     </div>
                     <div className="hc-cell">
-                      <div className="hc-cell-l">LTV</div>
-                      <div className="hc-cell-v" style={{ color: '#D6B58A' }}>$8,400</div>
+                      <div className="hc-cell-l">Visits</div>
+                      <div className="hc-cell-v" style={{ color: '#D6B58A' }}>6 total</div>
                     </div>
                   </div>
                 </div>
@@ -324,11 +362,11 @@ export default function Landing() {
           <span className="sec-eyebrow" style={{ marginBottom: 0 }}>The Problem</span>
         </div>
         <h2 className="sec-title sec-title-dark">
-          You're running a real business<br />from a personal phone.
+          Why would you switch from<br />your personal phone and a calendar?
         </h2>
         <p className="sec-sub sec-sub-dark" style={{ marginTop: 14 }}>
-          Every operator we talked to runs 4 disconnected tools and loses thousands every year to problems
-          that should be solved by software.
+          Because every operator we talked to is losing thousands a year to problems
+          that one app should solve — but no one built it for solo operators. Until now.
         </p>
         <div className="problem-grid">
           {problems.map(p => (
@@ -349,12 +387,13 @@ export default function Landing() {
           <div>
             <div className="sec-eyebrow" style={{ marginBottom: 12 }}>Core Features</div>
             <h2 className="sec-title sec-title-light">
-              8 features operators asked for.<br />
-              <em style={{ color: '#D6B58A', fontStyle: 'italic' }}>Every one built.</em>
+              One app replaces all of this.<br />
+              <em style={{ color: '#D6B58A', fontStyle: 'italic' }}>Built for solo operators.</em>
             </h2>
           </div>
           <p className="sec-sub sec-sub-light" style={{ maxWidth: 340 }}>
-            Not adapted from salon software. Not a generic CRM. Built from operator conversations about real problems.
+            Not adapted from enterprise software. Not a generic CRM. Built specifically for owner-operators
+            running a real service business solo.
           </p>
         </div>
         <div className="feat-grid">
@@ -548,6 +587,7 @@ export default function Landing() {
               <div className="plan-price">{p.price}</div>
               <div className="plan-mo">{p.mo}</div>
               <div className="plan-target">{p.target}</div>
+              {p.tag && <div style={{ fontSize: 12, color: p.featured ? 'rgba(28,35,51,.6)' : '#8A90A2', marginTop: 6, lineHeight: 1.4, fontStyle: 'italic' }}>{p.tag}</div>}
               <div className="plan-div" />
               <div className="plan-feats">
                 {p.feats.map(f => (
@@ -643,10 +683,11 @@ export default function Landing() {
       <section id="cta" className="lp-cta">
         <div className="cta-inner">
           <h2 className="cta-title">
-            Ready to run your business<br /><em>the right way?</em>
+            Stop running your business<br /><em>from your personal phone.</em>
           </h2>
           <p className="cta-sub">
-            Join the beta. First 100 operators get 3 months free. No credit card required. Cancel anytime.
+            Get a dedicated business number, manage every job and customer, and send invoices — all from one app.
+            First 100 operators get 3 months free.
           </p>
           {ctaDone ? (
             <div style={{ textAlign: 'center' }}>
@@ -694,7 +735,7 @@ export default function Landing() {
         <div className="footer-top">
           <div>
             <div className="footer-brand-name">FIELDCORE<sup>™</sup></div>
-            <p className="footer-brand-tag">The operating system for service businesses.</p>
+            <p className="footer-brand-tag">Run your entire business from one app.</p>
             <div className="footer-social">
               {/* Instagram */}
               <a href="https://instagram.com/getfieldcore" target="_blank" rel="noreferrer" aria-label="Instagram">

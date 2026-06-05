@@ -111,10 +111,10 @@ export default function Onboarding() {
         {step === 1 && (
           <div style={{ padding: 36 }}>
             <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 26, color: '#1C2333', marginBottom: 6 }}>
-              Welcome to FieldCore
+              You're one step away.
             </div>
-            <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 28 }}>
-              Let's set up your account in two quick steps.
+            <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 28, lineHeight: 1.5 }}>
+              Tell us about your business and we'll get everything ready — your schedule, your customers, and your dedicated business phone number.
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -176,10 +176,10 @@ export default function Onboarding() {
         {step === 2 && (
           <div style={{ padding: 36 }}>
             <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 26, color: '#1C2333', marginBottom: 6 }}>
-              Your Services
+              What do you offer?
             </div>
-            <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>
-              These appear in your booking widget. Uncheck any you don't offer.
+            <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 24, lineHeight: 1.5 }}>
+              These show up in your online booking page so customers can book the right service. Uncheck anything you don't offer.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
@@ -226,11 +226,11 @@ export default function Onboarding() {
               ✓
             </div>
             <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 26, color: '#1C2333', marginBottom: 8 }}>
-              You're all set!
+              You're live.
             </div>
             <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 28, lineHeight: 1.6 }}>
               <strong style={{ color: '#1C2333' }}>{businessName}</strong> is ready to take bookings.<br />
-              Share your booking link with clients.
+              Your dedicated business phone number will be set up in minutes. Share your booking link to start getting jobs.
             </div>
 
             <div style={{ background: '#f9f7f3', border: '1px solid #e5e0d8', borderRadius: 8, padding: '14px 16px', marginBottom: 24, textAlign: 'left' }}>
