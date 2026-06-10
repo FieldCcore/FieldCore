@@ -7,8 +7,8 @@ import { EntitySwitcher } from './EntitySwitcher'
 interface Org {
   id: string
   name: string
-  color?: string
-  role?: string
+  color: string
+  role: string
 }
 
 interface Profile {

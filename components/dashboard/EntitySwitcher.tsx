@@ -1,55 +1,25 @@
-interface Org {
-  id: string
-  name: string
-  color?: string
-  role?: string
-}
+'use client'
+import { useRouter } from 'next/navigation'
 
-interface EntitySwitcherProps {
-  organizations: Org[]
-  activeOrgId: string
-}
+interface Org { id: string; name: string; color: string; role: string }
+interface Props { organizations: Org[]; activeOrgId: string }
 
-export function EntitySwitcher({ organizations, activeOrgId }: EntitySwitcherProps) {
+export function EntitySwitcher({ organizations, activeOrgId }: Props) {
+  const router = useRouter()
   return (
-    <div className="px-3 pb-3">
-      <div className="space-y-0.5">
-        {organizations.map(org => {
-          const isActive = org.id === activeOrgId
-          const color = org.color ?? '#D6B58A'
-          const initials = org.name
-            .split(' ')
-            .slice(0, 2)
-            .map(w => w[0])
-            .join('')
-            .toUpperCase()
-
-          return (
-            <div
-              key={org.id}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg ${
-                isActive
-                  ? 'bg-[#D6B58A]/10'
-                  : 'bg-white/[0.06] opacity-70 hover:opacity-100 transition-opacity'
-              }`}
-            >
-              <div
-                className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white"
-                style={{ backgroundColor: color }}
-              >
-                {initials}
-              </div>
-              <span className={`text-sm font-medium truncate flex-1 min-w-0 ${isActive ? 'text-[#D6B58A]' : 'text-white/60'}`}>
-                {org.name}
-              </span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${isActive ? 'bg-[#D6B58A]/20 text-[#D6B58A]' : 'bg-white/[0.06] text-white/40'}`}>
-                {org.role ?? 'owner'}
-              </span>
-            </div>
-          )
-        })}
+    <>
+      <div className="px-2.5 pt-3 pb-1">
+        <p className="text-[9px] font-bold text-steel uppercase tracking-widest px-2 mb-1.5">Entities</p>
+        {organizations.map(org => (
+          <button key={org.id} onClick={() => router.refresh()}
+            className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg transition-colors hover:bg-[#2d3a52] mb-0.5 text-left ${org.id === activeOrgId ? 'bg-sand/10' : ''}`}>
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: org.color }} />
+            <span className={`text-xs font-semibold truncate flex-1 ${org.id === activeOrgId ? 'text-sand' : 'text-white/60'}`}>{org.name}</span>
+            <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 ${org.id === activeOrgId ? 'text-sand bg-sand/15' : 'text-steel bg-white/[0.06]'}`}>{org.role}</span>
+          </button>
+        ))}
       </div>
-      <div className="mt-2 h-px bg-white/[0.06]" />
-    </div>
+      <div className="h-px bg-white/[0.06] mx-2.5 my-2" />
+    </>
   )
 }
