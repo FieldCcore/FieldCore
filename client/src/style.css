@@ -144,7 +144,8 @@ body {
 .entity-badge.active { background: rgba(214,181,138,.2); color: #D6B58A; }
 
 /* ── Sidebar Nav ─────────────────────────────────────────── */
-.sb-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.sb-nav { flex: 1; padding: 8px 0; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.sb-nav::-webkit-scrollbar { display: none; }
 
 .nav-section {
   font-family: 'DM Mono', monospace;
