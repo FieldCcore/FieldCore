@@ -99,9 +99,9 @@ export function Sidebar({ organizations, activeOrgId, profile, planTier }: Sideb
 
   return (
     <aside className="w-56 flex-shrink-0 bg-[#1C2333] flex flex-col h-screen sticky top-0 border-r border-white/[0.06]">
-      <div className="px-5 py-5">
-        <span className="text-lg font-black tracking-widest text-white" style={{ fontFamily: 'Arial Black, sans-serif' }}>
-          FIELDCORE<sup className="text-[#D6B58A] text-[10px] ml-0.5">™</sup>
+      <div className="px-4 pt-5 pb-0">
+        <span className="font-display font-black text-white text-lg tracking-wider uppercase">
+          FIELDCORE<sup className="text-sand text-[9px]">™</sup>
         </span>
       </div>
 
