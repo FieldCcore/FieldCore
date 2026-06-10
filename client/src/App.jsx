@@ -120,7 +120,6 @@ function AppShell() {
   const isPublicBook = pathname.startsWith('/book/');
   const [dateStr,    setDateStr]    = useState('');
   const [callerOpen, setCallerOpen] = useState(false);
-  const [entityOpen, setEntityOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
@@ -132,12 +131,6 @@ function AppShell() {
     setDateStr(`${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`);
   }, []);
 
-  useEffect(() => {
-    if (!entityOpen) return;
-    const close = () => setEntityOpen(false);
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [entityOpen]);
 
   const [isPhone, setIsPhone] = useState(window.innerWidth < 640);
   useEffect(() => {
@@ -265,41 +258,20 @@ function AppShell() {
   return (
     <div className="app">
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
-        <div className="sb-logo" style={{ position: 'relative' }}>
+        <div className="sb-logo">
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-          {(() => {
-            const canSwitch = accounts.length > 1;
-            return (
-              <>
-                <div
-                  className="sb-entity"
-                  onClick={() => canSwitch && setEntityOpen(o => !o)}
-                  style={{ cursor: canSwitch ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {(typeof user?.accountName === 'string' ? user.accountName : null) || (typeof user?.account_name === 'string' ? user.account_name : null) || 'FieldCore'}
-                  </span>
-                  {canSwitch && (
-                    <svg viewBox="0 0 10 6" style={{ width: 9, height: 9, flexShrink: 0, opacity: 0.5, transform: entityOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4"/></svg>
-                  )}
-                </div>
-                {entityOpen && canSwitch && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#2D3748', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, overflow: 'hidden', zIndex: 100, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
-                    {accounts.map(a => (
-                      <button
-                        key={a.id}
-                        onClick={() => { setEntityOpen(false); if (a.id !== user?.accountId) switchAccount(a.id); }}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: a.id === user?.accountId ? 'rgba(214,181,138,.12)' : 'none', border: 'none', color: a.id === user?.accountId ? '#D6B58A' : 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: a.id === user?.accountId ? 600 : 400, cursor: 'pointer', textAlign: 'left', gap: 8 }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                        <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.06em' }}>{a.role}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+          <div className="sb-entity-list">
+            {accounts.map(a => (
+              <button
+                key={a.id}
+                onClick={() => { if (a.id !== user?.accountId) switchAccount(a.id); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: a.id === user?.accountId ? 'rgba(214,181,138,.12)' : 'none', border: 'none', color: a.id === user?.accountId ? '#D6B58A' : 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: a.id === user?.accountId ? 600 : 400, cursor: a.id === user?.accountId ? 'default' : 'pointer', textAlign: 'left', gap: 8 }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.06em' }}>{a.role}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <nav className="sb-nav">
