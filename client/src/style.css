@@ -55,7 +55,6 @@ body {
 
 .sb-logo {
   padding: 18px 18px 14px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .sb-word {
   font-size: 15px;
@@ -82,36 +81,66 @@ body {
 
 /* ── Entity Panel ────────────────────────────────────────── */
 .entity-panel {
-  padding: 10px 12px;
+  padding: 4px 10px 10px;
   border-bottom: 1px solid rgba(255,255,255,.06);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-shrink: 0;
+}
+.entity-section-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--steel, #8A90A2);
+  padding: 0 12px;
+  margin-bottom: 6px;
 }
 .entity-opt {
-  padding: 6px 10px;
-  border-radius: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  background: none;
+  text-align: left;
   transition: background .15s;
+  margin-bottom: 2px;
 }
 .entity-opt:hover { background: rgba(255,255,255,.06); }
-.entity-opt.active { background: rgba(214,181,138,.12); }
+.entity-opt.active { background: rgba(214,181,138,.12); cursor: default; }
 .entity-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.entity-name { font-size: 11.5px; color: rgba(255,255,255,.65); font-weight: 500; }
-.entity-rev {
+.entity-name {
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-name.active { color: #D6B58A; font-weight: 600; }
+.entity-badge {
   font-family: 'DM Mono', monospace;
   font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,.06);
   color: rgba(255,255,255,.3);
-  margin-left: auto;
 }
+.entity-badge.active { background: rgba(214,181,138,.2); color: #D6B58A; }
 
 /* ── Sidebar Nav ─────────────────────────────────────────── */
 .sb-nav { flex: 1; padding: 8px 0; overflow-y: auto; }

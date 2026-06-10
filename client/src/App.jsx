@@ -260,18 +260,25 @@ function AppShell() {
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
         <div className="sb-logo">
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-          <div className="sb-entity-list">
-            {accounts.map(a => (
+        </div>
+
+        <div className="entity-panel">
+          <div className="entity-section-label">Entities</div>
+          {accounts.map((a, i) => {
+            const isActive = a.id === user?.accountId;
+            const dotColors = ['#D6B58A', '#7B9EC9', '#82C9A0', '#C98282', '#C9B882'];
+            return (
               <button
                 key={a.id}
-                onClick={() => { if (a.id !== user?.accountId) switchAccount(a.id); }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: a.id === user?.accountId ? 'rgba(214,181,138,.12)' : 'none', border: 'none', color: a.id === user?.accountId ? '#D6B58A' : 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: a.id === user?.accountId ? 600 : 400, cursor: a.id === user?.accountId ? 'default' : 'pointer', textAlign: 'left', gap: 8 }}
+                onClick={() => { if (!isActive) switchAccount(a.id); }}
+                className={'entity-opt' + (isActive ? ' active' : '')}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.06em' }}>{a.role}</span>
+                <span className="entity-dot" style={{ background: isActive ? '#D6B58A' : dotColors[i % dotColors.length] }} />
+                <span className={'entity-name' + (isActive ? ' active' : '')}>{a.name}</span>
+                <span className={'entity-badge' + (isActive ? ' active' : '')}>{a.role}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
 
         <nav className="sb-nav">
