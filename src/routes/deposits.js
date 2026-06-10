@@ -62,8 +62,8 @@ router.patch('/:id/refund', requireAuth, requireRole('owner', 'manager'), async 
 
     const { rows: updated } = await pool.query(
       `UPDATE deposits SET status = 'refunded', refunded_at = NOW()
-       WHERE id = $1 RETURNING *`,
-      [req.params.id]
+       WHERE id = $1 AND account_id = $2 RETURNING *`,
+      [req.params.id, req.accountId]
     );
     res.json(updated[0]);
   } catch (err) {

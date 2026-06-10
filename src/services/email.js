@@ -17,14 +17,14 @@ async function send({ to, subject, html, attachments }) {
     return;
   }
   await transporter.sendMail({
-    from: process.env.FROM_EMAIL || 'noreply@fieldcore.app',
+    from: process.env.FROM_EMAIL || 'noreply@getfieldcore.com',
     to, subject, html,
     ...(attachments?.length ? { attachments } : {}),
   });
 }
 
 function wrap(content) {
-  const appUrl = process.env.APP_URL || 'https://fieldcore.app';
+  const appUrl = process.env.APP_URL || '';
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f0;font-family:system-ui,sans-serif">
 <div style="max-width:560px;margin:32px auto;background:white;border-radius:12px;overflow:hidden;border:1px solid #e5e0d8">
   <div style="background:#1C2333;padding:22px 32px">
@@ -32,7 +32,7 @@ function wrap(content) {
   </div>
   <div style="padding:32px">${content}</div>
   <div style="padding:14px 32px;background:#f9f7f3;border-top:1px solid #e5e0d8;font-size:11px;color:#9ca3af">
-    Sent via FieldCore &middot; <a href="${appUrl}" style="color:#9ca3af">fieldcore.app</a>
+    Sent via FieldCore &middot; <a href="${appUrl}" style="color:#9ca3af">getfieldcore.com</a>
   </div>
 </div>
 </body></html>`;
@@ -148,7 +148,7 @@ function billingReceiptHtml(accountName, amount, planName, invoicePdfUrl) {
 }
 
 function billingFailedHtml(accountName) {
-  const appUrl = process.env.APP_URL || 'https://getfieldcore.com';
+  const appUrl = process.env.APP_URL || '';
   return wrap(`
     <h2 style="margin:0 0 6px;color:#B52A2A;font-size:20px;font-weight:700">Payment Failed</h2>
     <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${accountName}, we were unable to charge your payment method for your FieldCore subscription.</p>

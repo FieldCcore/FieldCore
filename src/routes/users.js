@@ -103,6 +103,13 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
 // GET /api/users/:id/memberships — cross-account memberships for a user (owner only)
 router.get('/:id/memberships', requireAuth, requireRole('owner'), async (req, res) => {
   try {
+    // Verify the target user belongs to the requesting account before exposing their memberships
+    const { rows: userCheck } = await pool.query(
+      `SELECT 1 FROM users WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!userCheck.length) return res.status(404).json({ error: 'User not found.' });
+
     const { rows } = await pool.query(
       `SELECT am.account_id, a.name AS account_name, am.role
        FROM account_memberships am
@@ -117,10 +124,9 @@ router.get('/:id/memberships', requireAuth, requireRole('owner'), async (req, re
   }
 });
 
-// POST /api/users/:id/memberships — grant access to another account (owner only)
+// POST /api/users/:id/memberships — grant access to this account (owner only)
 router.post('/:id/memberships', requireAuth, requireRole('owner'), async (req, res) => {
-  const { account_id, role = 'manager' } = req.body;
-  if (!account_id) return res.status(400).json({ error: 'account_id is required.' });
+  const { role = 'manager' } = req.body;
   if (!['owner', 'manager', 'tech', 'staff'].includes(role))
     return res.status(400).json({ error: 'role must be owner, manager, tech, or staff.' });
 
@@ -130,7 +136,7 @@ router.post('/:id/memberships', requireAuth, requireRole('owner'), async (req, r
        VALUES ($1, $2, $3)
        ON CONFLICT (user_id, account_id) DO UPDATE SET role = $3
        RETURNING account_id, role`,
-      [req.params.id, account_id, role]
+      [req.params.id, req.accountId, role]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -138,8 +144,11 @@ router.post('/:id/memberships', requireAuth, requireRole('owner'), async (req, r
   }
 });
 
-// DELETE /api/users/:id/memberships/:accountId — revoke access (owner only)
+// DELETE /api/users/:id/memberships/:accountId — revoke access (owner only, own account only)
 router.delete('/:id/memberships/:accountId', requireAuth, requireRole('owner'), async (req, res) => {
+  if (req.params.accountId !== req.accountId)
+    return res.status(403).json({ error: 'You can only manage memberships for your own account.' });
+
   try {
     const { rowCount } = await pool.query(
       `DELETE FROM account_memberships WHERE user_id = $1 AND account_id = $2`,

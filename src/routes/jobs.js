@@ -198,8 +198,8 @@ router.patch('/:id/noshow', requireAuth, requireRole('owner', 'manager'), async 
     // Auto-retain any pending deposit for this job
     await pool.query(
       `UPDATE deposits SET status = 'collected'
-       WHERE job_id = $1 AND status = 'pending'`,
-      [job.id]
+       WHERE job_id = $1 AND status = 'pending' AND account_id = $2`,
+      [job.id, req.accountId]
     );
 
     res.json(job);

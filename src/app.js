@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const path    = require('path');
 const fs      = require('fs');
 
+const pool            = require('./db/pool');
+
 const authRouter      = require('./routes/auth');
 const analyticsRouter = require('./routes/analytics');
 const depositsRouter  = require('./routes/deposits');
@@ -36,13 +38,32 @@ const estimatesRouter      = require('./routes/estimates');
 const reviewsRouter        = require('./routes/reviews');
 const pushTokensRouter     = require('./routes/push-tokens');
 
-const ALLOWED_ORIGINS = [
-  'https://getfieldcore.com',
-  'https://www.getfieldcore.com',
-  'https://fieldcore-production-ee0d.up.railway.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-];
+function buildAllowedOrigins() {
+  const origins = [];
+
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push('http://localhost:5173', 'http://localhost:3000');
+  }
+
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  if (appUrl) {
+    origins.push(appUrl);
+    try {
+      const parsed = new URL(appUrl);
+      if (!parsed.hostname.startsWith('www.')) {
+        origins.push(`${parsed.protocol}//www.${parsed.hostname}`);
+      }
+    } catch {
+      // Invalid APP_URL format — skip www derivation
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn('[CORS] APP_URL is not set in production. No production origins will be allowed.');
+  }
+
+  return origins;
+}
+
+const ALLOWED_ORIGINS = buildAllowedOrigins();
 
 // Auth: 10 requests per 15 min per IP
 const authLimiter = rateLimit({
@@ -119,6 +140,9 @@ app.use(cors({
   credentials: true,
 }));
 
+// Webhook routes must come before JSON body parser — they need raw body for signature verification
+app.use('/api/webhooks', webhooksRouter);
+
 // Request size limit — prevent oversized payload attacks
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -131,9 +155,6 @@ app.use((req, res, next) => {
   })));
   next();
 });
-
-// Webhook routes must come before JSON body parser to get raw body
-app.use('/api/webhooks', webhooksRouter);
 
 app.use('/api/auth',    authLimiter, authRouter);
 app.use('/api/analytics', generalLimiter, analyticsRouter);
@@ -168,7 +189,18 @@ app.use('/api/reviews',          generalLimiter, reviewsRouter);
 app.use('/api/push-tokens',      generalLimiter, pushTokensRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', async (req, res) => {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('DB health check timed out')), 2000)
+  );
+  try {
+    await Promise.race([pool.query('SELECT 1'), timeout]);
+    res.json({ status: 'ok', db: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('[health] DB check failed:', err.message);
+    res.status(503).json({ status: 'degraded', db: 'error', error: err.message });
+  }
+});
 
 // Serve built React app
 const clientDist = path.join(__dirname, '../client/dist');

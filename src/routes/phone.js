@@ -62,7 +62,7 @@ router.post('/numbers/provision', requireAuth, requireRole('owner'), async (req,
       });
     }
 
-    const appUrl    = process.env.APP_URL || 'https://api.fieldcore.app';
+    const appUrl    = process.env.APP_URL || '';
     const voiceUrl  = `${appUrl}/api/webhooks/twilio/voice`;
     const smsUrl    = `${appUrl}/api/webhooks/twilio`;
 
@@ -215,7 +215,7 @@ router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), asy
     const fromNumber = numRes.rows[0]?.number;
     if (!fromNumber) return res.status(400).json({ error: 'No active phone number on account' });
 
-    const appUrl = process.env.APP_URL || 'https://fieldcore-production-ee0d.up.railway.app';
+    const appUrl = process.env.APP_URL || '';
     const twilioClient = getTwilio();
 
     // Call the operator first; when answered, bridge to client
@@ -329,7 +329,7 @@ router.post('/click-to-call', requireAuth, async (req, res) => {
     if (!fieldcoreNum)  return res.status(400).json({ error: 'No FieldCore number provisioned on this account.' });
     if (!clientPhone)   return res.status(400).json({ error: 'Client has no phone number.' });
 
-    const appUrl = process.env.APP_URL || 'https://fieldcore-production-ee0d.up.railway.app';
+    const appUrl = process.env.APP_URL || '';
     const twilioClient = getTwilio();
 
     const call = await twilioClient.calls.create({

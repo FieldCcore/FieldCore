@@ -238,6 +238,207 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_audit_logs_account ON audit_logs(account_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_logs_user    ON audit_logs(user_id, created_at DESC)`,
+
+  // Reviews: post-job review system
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS review_token        TEXT UNIQUE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS review_request_sent BOOLEAN NOT NULL DEFAULT FALSE`,
+  `CREATE TABLE IF NOT EXISTS reviews (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id     UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+     rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+     body       TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_reviews_account ON reviews(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reviews_client  ON reviews(client_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_job ON reviews(job_id)`,
+
+  // Job service address columns
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_address TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_city    TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_state   TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_zip     TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_lat     NUMERIC(9,6)`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS service_lng     NUMERIC(9,6)`,
+
+  // Mobile app columns
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token    TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_available  BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS tip_amount    NUMERIC(10,2)`,
+  `ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS signature_svg TEXT`,
+  `ALTER TABLE jobs  ADD COLUMN IF NOT EXISTS signature_at  TIMESTAMPTZ`,
+
+  // Sendblue messaging provider columns on messages
+  `ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider     TEXT DEFAULT 'twilio'`,
+  `ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_id  TEXT`,
+  `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at      TIMESTAMPTZ`,
+  `ALTER TABLE messages ADD COLUMN IF NOT EXISTS phone_number TEXT`,
+
+  // Notifications table
+  `CREATE TABLE IF NOT EXISTS notifications (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     type       TEXT NOT NULL,
+     title      TEXT NOT NULL,
+     body       TEXT,
+     link       TEXT,
+     read       BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_notifications_account ON notifications(account_id)`,
+
+  // Account columns
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS onboarded              BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`,
+
+  // Invoice columns
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS line_items   JSONB NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_link TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at      TIMESTAMPTZ`,
+
+  // Job photos
+  `ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS filename TEXT`,
+
+  // Business profile table + EIN column
+  `CREATE TABLE IF NOT EXISTS business_profiles (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE UNIQUE,
+     business_name TEXT,
+     phone         TEXT,
+     address       TEXT,
+     city          TEXT,
+     state         TEXT,
+     zip           TEXT,
+     website       TEXT,
+     description   TEXT,
+     timezone      TEXT NOT NULL DEFAULT 'America/New_York',
+     vertical      TEXT,
+     logo_url      TEXT,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS ein TEXT`,
+
+  // Business hours
+  `CREATE TABLE IF NOT EXISTS business_hours (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+     open_time   TIME,
+     close_time  TIME,
+     is_closed   BOOLEAN NOT NULL DEFAULT FALSE,
+     UNIQUE (account_id, day_of_week)
+   )`,
+
+  // Holiday closures
+  `CREATE TABLE IF NOT EXISTS holiday_closures (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     closure_date DATE NOT NULL,
+     name         TEXT NOT NULL,
+     is_emergency BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_closures_account ON holiday_closures(account_id)`,
+
+  // Service duration/price templates
+  `CREATE TABLE IF NOT EXISTS service_templates (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name             TEXT NOT NULL,
+     duration_minutes INTEGER NOT NULL DEFAULT 60,
+     buffer_minutes   INTEGER NOT NULL DEFAULT 15,
+     price            NUMERIC(10,2),
+     description      TEXT,
+     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+     sort_order       INTEGER NOT NULL DEFAULT 0,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_svc_templates_account ON service_templates(account_id)`,
+
+  // Client portal magic-link tokens
+  `CREATE TABLE IF NOT EXISTS client_portal_tokens (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     client_id   UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     token_hash  TEXT NOT NULL UNIQUE,
+     expires_at  TIMESTAMPTZ NOT NULL,
+     used_at     TIMESTAMPTZ,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_portal_tokens_hash ON client_portal_tokens(token_hash)`,
+
+  // Partner applications
+  `CREATE TABLE IF NOT EXISTS partner_applications (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     name       TEXT NOT NULL,
+     email      TEXT NOT NULL,
+     company    TEXT,
+     website    TEXT,
+     type       TEXT NOT NULL DEFAULT 'Referral Partner',
+     notes      TEXT,
+     status     TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','reviewing','approved','rejected')),
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_partner_apps_email ON partner_applications(email)`,
+
+  // Users — contractor / 1099 fields
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_contractor      BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_classification TEXT DEFAULT 'employee'`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS contractor_tax_id  TEXT`,
+
+  // Travel fee engine
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS travel_fee           NUMERIC(10,2) DEFAULT 0`,
+  `ALTER TABLE jobs             ADD COLUMN IF NOT EXISTS travel_fee           NUMERIC(10,2) DEFAULT 0`,
+  `ALTER TABLE jobs             ADD COLUMN IF NOT EXISTS pre_charge_notice_sent BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  // Estimates table (Scale feature)
+  `CREATE TABLE IF NOT EXISTS estimates (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id      UUID NOT NULL REFERENCES clients(id),
+     job_id         UUID REFERENCES jobs(id),
+     title          TEXT NOT NULL DEFAULT 'Service Estimate',
+     line_items     JSONB NOT NULL DEFAULT '[]',
+     amount         NUMERIC(10,2) NOT NULL DEFAULT 0,
+     tax_amount     NUMERIC(10,2) DEFAULT 0,
+     status         TEXT NOT NULL DEFAULT 'draft'
+                      CHECK (status IN ('draft','sent','signed','declined','expired')),
+     notes          TEXT,
+     valid_until    DATE,
+     signing_token  TEXT UNIQUE,
+     signed_at      TIMESTAMPTZ,
+     signature_data TEXT,
+     sent_at        TIMESTAMPTZ,
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token)`,
+
+  // Booking settings deposit rules
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS deposit_rules JSONB NOT NULL DEFAULT '[]'`,
+
+  // Invoice status constraint — add 'failed' for payment_intent.payment_failed webhook
+  `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
+  `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
+     CHECK (status IN ('pending','paid','void','failed'))`,
+
+  // Password reset tokens (missing from original migrate.js — in schema.sql only)
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     token_hash TEXT NOT NULL UNIQUE,
+     expires_at TIMESTAMPTZ NOT NULL,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_reset_tokens_user    ON password_reset_tokens(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at)`,
+
+  // Expired token cleanup — indexes for cron DELETE performance
+  `CREATE INDEX IF NOT EXISTS idx_portal_tokens_expires ON client_portal_tokens(expires_at)`,
 ];
 
 async function runMigrations() {

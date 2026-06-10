@@ -60,13 +60,13 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
     });
 
     await pool.query(
-      `UPDATE invoices SET status = 'paid', stripe_payment_intent_id = $1 WHERE id = $2`,
-      [paymentIntent.id, invoice_id]
+      `UPDATE invoices SET status = 'paid', stripe_payment_intent_id = $1 WHERE id = $2 AND account_id = $3`,
+      [paymentIntent.id, invoice_id, req.accountId]
     );
 
     await pool.query(
-      `UPDATE clients SET ltv = ltv + $1 WHERE id = $2`,
-      [invoice.amount, invoice.client_id]
+      `UPDATE clients SET ltv = ltv + $1 WHERE id = $2 AND account_id = $3`,
+      [invoice.amount, invoice.client_id, req.accountId]
     );
 
     res.json({ status: paymentIntent.status, payment_intent_id: paymentIntent.id });
@@ -108,8 +108,8 @@ router.post('/save-card', requireAuth, requireRole('owner', 'manager'), async (r
     });
 
     await pool.query(
-      `UPDATE clients SET card_on_file = TRUE, stripe_customer_id = $1, stripe_payment_method_id = $2 WHERE id = $3`,
-      [stripeCustomerId, payment_method_id, client_id]
+      `UPDATE clients SET card_on_file = TRUE, stripe_customer_id = $1, stripe_payment_method_id = $2 WHERE id = $3 AND account_id = $4`,
+      [stripeCustomerId, payment_method_id, client_id, req.accountId]
     );
 
     res.json({ success: true });

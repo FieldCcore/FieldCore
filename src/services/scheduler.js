@@ -424,7 +424,7 @@ function startBillingRenewalReminders() {
 function startReviewRequestJob() {
   cron.schedule('45 * * * *', async () => {
     try {
-      const appUrl = process.env.APP_URL || 'https://www.getfieldcore.com';
+      const appUrl = process.env.APP_URL || '';
       const { rows: jobs } = await pool.query(`
         SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
                a.name AS business_name
@@ -472,6 +472,30 @@ function startReviewRequestJob() {
   console.log('[Scheduler] Review request job scheduled (hourly :45)');
 }
 
+// ── 10. Expired token cleanup — runs daily at 03:00 ─────────────────────────
+function startExpiredTokenCleanup() {
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      const { rowCount: resetRows } = await pool.query(
+        `DELETE FROM password_reset_tokens WHERE expires_at < NOW()`
+      );
+      console.log(`[Scheduler] Cleaned up ${resetRows} expired password reset token(s)`);
+    } catch (err) {
+      console.error('[Scheduler] password_reset_tokens cleanup error:', err.message);
+    }
+
+    try {
+      const { rowCount: portalRows } = await pool.query(
+        `DELETE FROM client_portal_tokens WHERE expires_at < NOW()`
+      );
+      console.log(`[Scheduler] Cleaned up ${portalRows} expired portal token(s)`);
+    } catch (err) {
+      console.error('[Scheduler] client_portal_tokens cleanup error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Expired token cleanup scheduled (daily 03:00)');
+}
+
 function startReminderJobs() {
   startReminderJob();
   startRecurringJobCreation();
@@ -481,6 +505,7 @@ function startReminderJobs() {
   startPreChargeNoticeJob();
   startBillingRenewalReminders();
   startReviewRequestJob();
+  startExpiredTokenCleanup();
 }
 
 module.exports = { startReminderJob: startReminderJobs };

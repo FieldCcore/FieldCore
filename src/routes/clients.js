@@ -45,9 +45,9 @@ router.get('/:id', requireAuth, async (req, res) => {
       `SELECT j.*, u.name AS tech_name
        FROM jobs j
        LEFT JOIN users u ON u.id = j.tech_id
-       WHERE j.client_id = $1
+       WHERE j.client_id = $1 AND j.account_id = $2
        ORDER BY j.scheduled_at DESC`,
-      [req.params.id]
+      [req.params.id, req.accountId]
     );
 
     res.json({ ...clientResult.rows[0], jobs: jobsResult.rows });

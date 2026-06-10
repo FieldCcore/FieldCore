@@ -39,6 +39,15 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     }
   }
 
+  if (event.type === 'payment_intent.payment_failed') {
+    const pi = event.data.object;
+    await pool.query(
+      `UPDATE invoices SET status = 'failed'
+       WHERE stripe_payment_intent_id = $1 AND status NOT IN ('paid','void')`,
+      [pi.id]
+    );
+  }
+
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const chargeId = session.payment_intent;
@@ -317,7 +326,7 @@ router.post('/twilio/voice', express.urlencoded({ extended: false }), async (req
       }
     }
 
-    const appUrl      = process.env.APP_URL || 'https://api.fieldcore.app';
+    const appUrl      = process.env.APP_URL || '';
     const recordCb    = `${appUrl}/api/webhooks/twilio/recording?call_log_id=${callLogId}&phone_number_id=${num.id}&account_id=${num.account_id}&from=${encodeURIComponent(from)}&client_id=${caller?.id || ''}&client_name=${encodeURIComponent(caller?.name || '')}`;
     const vmMsg       = num.after_hours_message || `Thank you for calling ${num.account_name}. We're currently closed. Please leave a message after the tone.`;
     const fallbackMsg = `Thank you for calling ${num.account_name}. Please leave a message after the tone.`;
