@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-
-const BACKEND = import.meta.env.VITE_API_URL || '';
-const api = axios.create({ baseURL: BACKEND });
-api.interceptors.request.use(cfg => {
-  const t = localStorage.getItem('fc_token');
-  if (t) cfg.headers.Authorization = `Bearer ${t}`;
-  return cfg;
-});
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const TIMEZONES = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu'];
@@ -77,7 +69,7 @@ export default function BusinessSettings() {
   });
 
   useEffect(() => {
-    api.get('/api/no-show/settings').then(r => {
+    api.get('/no-show/settings').then(r => {
       const s = r.data;
       setNsSettings({
         grace_period_minutes:  s.grace_period_minutes ?? 15,
@@ -92,7 +84,7 @@ export default function BusinessSettings() {
   async function saveNsSettings() {
     setSaving(true);
     try {
-      await api.put('/api/no-show/settings', {
+      await api.put('/no-show/settings', {
         ...nsSettings,
         grace_period_minutes: parseInt(nsSettings.grace_period_minutes) || 15,
         client_sms_template: nsSettings.client_sms_template || null,
@@ -104,7 +96,7 @@ export default function BusinessSettings() {
   }
 
   useEffect(() => {
-    api.get('/api/business-settings').then(r => {
+    api.get('/business-settings').then(r => {
       const d = r.data;
       setData(d);
       if (d.profile) setProfile(p => ({ ...p, ...d.profile }));
@@ -122,7 +114,7 @@ export default function BusinessSettings() {
   async function saveProfile() {
     setSaving(true);
     try {
-      await api.put('/api/business-settings/profile', profile);
+      await api.put('/business-settings/profile', profile);
       flashSaved('profile');
     } catch { setError('Failed to save profile.'); }
     finally { setSaving(false); }
@@ -131,7 +123,7 @@ export default function BusinessSettings() {
   async function saveHours() {
     setSaving(true);
     try {
-      await api.put('/api/business-settings/hours', { hours });
+      await api.put('/business-settings/hours', { hours });
       flashSaved('hours');
     } catch { setError('Failed to save hours.'); }
     finally { setSaving(false); }
@@ -140,7 +132,7 @@ export default function BusinessSettings() {
   async function addClosure() {
     if (!newClosure.closure_date || !newClosure.name) return;
     try {
-      const r = await api.post('/api/business-settings/closures', newClosure);
+      const r = await api.post('/business-settings/closures', newClosure);
       setClosures(c => [...c, r.data]);
       setNewClosure({ closure_date:'', name:'', is_emergency: false });
     } catch { setError('Failed to add closure.'); }
@@ -148,7 +140,7 @@ export default function BusinessSettings() {
 
   async function deleteClosure(id) {
     try {
-      await api.delete(`/api/business-settings/closures/${id}`);
+      await api.delete(`/business-settings/closures/${id}`);
       setClosures(c => c.filter(x => x.id !== id));
     } catch { setError('Failed to delete.'); }
   }
@@ -156,7 +148,7 @@ export default function BusinessSettings() {
   async function addService() {
     if (!newSvc.name) return;
     try {
-      const r = await api.post('/api/business-settings/services', newSvc);
+      const r = await api.post('/business-settings/services', newSvc);
       setServices(s => [...s, r.data]);
       setNewSvc({ name:'', duration_minutes:60, buffer_minutes:15, price:'', description:'' });
     } catch { setError('Failed to create service.'); }
@@ -164,7 +156,7 @@ export default function BusinessSettings() {
 
   async function saveService(svc) {
     try {
-      const r = await api.put(`/api/business-settings/services/${svc.id}`, svc);
+      const r = await api.put(`/business-settings/services/${svc.id}`, svc);
       setServices(s => s.map(x => x.id === svc.id ? r.data : x));
       setEditingSvc(null);
     } catch { setError('Failed to save service.'); }
@@ -172,7 +164,7 @@ export default function BusinessSettings() {
 
   async function deleteService(id) {
     try {
-      await api.delete(`/api/business-settings/services/${id}`);
+      await api.delete(`/business-settings/services/${id}`);
       setServices(s => s.filter(x => x.id !== id));
     } catch { setError('Failed to delete service.'); }
   }

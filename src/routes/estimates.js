@@ -51,6 +51,51 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
   }
 });
 
+// GET /api/estimates/sign/:token — public: fetch estimate for signing page
+router.get('/sign/:token', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.*, c.name AS client_name, c.email AS client_email,
+              a.name AS business_name
+       FROM estimates e
+       JOIN clients c ON c.id = e.client_id
+       JOIN accounts a ON a.id = e.account_id
+       WHERE e.signing_token = $1`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Estimate not found or link expired.' });
+    const est = rows[0];
+    if (est.status === 'signed') return res.json({ ...est, already_signed: true });
+    if (est.status === 'expired') return res.status(410).json({ error: 'This estimate has expired.' });
+    if (est.valid_until && new Date(est.valid_until) < new Date()) {
+      return res.status(410).json({ error: 'This estimate has expired.' });
+    }
+    res.json(est);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/estimates/sign/:token — public: submit signature
+router.post('/sign/:token', async (req, res) => {
+  const { signature_data } = req.body;
+  if (!signature_data) return res.status(400).json({ error: 'signature_data is required' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE estimates
+       SET status = 'signed', signed_at = NOW(), signature_data = $1
+       WHERE signing_token = $2
+         AND status IN ('sent','draft')
+       RETURNING *`,
+      [signature_data, req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Estimate not found or already signed.' });
+    res.json({ success: true, signed_at: rows[0].signed_at });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/estimates/:id
 router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
@@ -159,51 +204,6 @@ router.post('/:id/void', requireAuth, requireRole('owner', 'manager'), async (re
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/estimates/sign/:token — public: fetch estimate for signing page
-router.get('/sign/:token', async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT e.*, c.name AS client_name, c.email AS client_email,
-              a.name AS business_name
-       FROM estimates e
-       JOIN clients c ON c.id = e.client_id
-       JOIN accounts a ON a.id = e.account_id
-       WHERE e.signing_token = $1`,
-      [req.params.token]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Estimate not found or link expired.' });
-    const est = rows[0];
-    if (est.status === 'signed') return res.json({ ...est, already_signed: true });
-    if (est.status === 'expired') return res.status(410).json({ error: 'This estimate has expired.' });
-    if (est.valid_until && new Date(est.valid_until) < new Date()) {
-      return res.status(410).json({ error: 'This estimate has expired.' });
-    }
-    res.json(est);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/estimates/sign/:token — public: submit signature
-router.post('/sign/:token', async (req, res) => {
-  const { signature_data } = req.body;
-  if (!signature_data) return res.status(400).json({ error: 'signature_data is required' });
-  try {
-    const { rows } = await pool.query(
-      `UPDATE estimates
-       SET status = 'signed', signed_at = NOW(), signature_data = $1
-       WHERE signing_token = $2
-         AND status IN ('sent','draft')
-       RETURNING *`,
-      [signature_data, req.params.token]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Estimate not found or already signed.' });
-    res.json({ success: true, signed_at: rows[0].signed_at });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

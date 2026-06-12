@@ -574,3 +574,46 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_account ON audit_logs(account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id, created_at DESC);
+
+-- ── Missing columns: ensure schema.sql alone produces a complete database ──────
+
+-- accounts: entity / business detail columns (from migrate.js)
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS legal_name   TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS dba          TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS business_type TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS ein          TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS address      TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS city         TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS state        TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS zip          TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS phone        TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS entity_email TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_active    BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS lat          NUMERIC(10,6);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS lng          NUMERIC(10,6);
+
+-- clients: address detail columns (from migrate.js)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city  TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS zip   TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS lat   NUMERIC(10,6);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS lng   NUMERIC(10,6);
+
+-- users: add staff role to constraint
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('owner', 'manager', 'tech', 'staff'));
+
+-- account_memberships: add staff role to constraint
+ALTER TABLE account_memberships DROP CONSTRAINT IF EXISTS account_memberships_role_check;
+ALTER TABLE account_memberships ADD CONSTRAINT account_memberships_role_check
+  CHECK (role IN ('owner', 'manager', 'tech', 'staff'));
+
+-- invoices: add 'failed' status for Stripe payment_intent.payment_failed webhook
+ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check;
+ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
+  CHECK (status IN ('pending', 'paid', 'void', 'failed'));
+
+-- no_show_records: service_type column (present in migrate.js definition)
+ALTER TABLE no_show_records ADD COLUMN IF NOT EXISTS service_type TEXT;

@@ -537,10 +537,14 @@ router.get('/audit-log', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/auth/seed-owner — dev-only
+// POST /api/auth/seed-owner — dev-only, requires SEED_SECRET env var
 router.post('/seed-owner', async (req, res) => {
   if (process.env.NODE_ENV === 'production')
     return res.status(403).json({ error: 'Not available in production.' });
+
+  const seedSecret = process.env.SEED_SECRET;
+  if (!seedSecret || req.headers['x-seed-secret'] !== seedSecret)
+    return res.status(403).json({ error: 'Invalid or missing seed secret.' });
 
   const { accountName, name, email, password } = req.body;
   if (!accountName || !name || !email || !password)
