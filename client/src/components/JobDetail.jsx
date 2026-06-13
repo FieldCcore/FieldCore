@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Timer } from 'lucide-react';
+import { Camera, Timer, MessageSquare } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import api from '../api';
 
@@ -19,6 +19,8 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const [clockStarted,  setClockStarted]  = useState(!!job.no_show_clock_started_at);
   const [clockTime,     setClockTime]     = useState(job.no_show_clock_started_at || null);
   const [startingClock, setStartingClock] = useState(false);
+  const [smsSending,    setSmsSending]    = useState(null); // 'confirmation' | 'reminder'
+  const [smsResult,     setSmsResult]     = useState(null); // { ok, message }
 
   useEffect(() => {
     if (!showPhotos) return;
@@ -61,6 +63,21 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
     } catch (err) {
       alert(err.response?.data?.error || 'Could not start clock.');
       setStartingClock(false);
+    }
+  }
+
+  async function sendTemplate(template) {
+    if (!job.client_id) return;
+    setSmsSending(template);
+    setSmsResult(null);
+    try {
+      await api.post('/sms/send-template', { client_id: job.client_id, template, job_id: job.id });
+      setSmsResult({ ok: true, message: template === 'confirmation' ? 'Confirmation sent!' : 'Reminder sent!' });
+    } catch (err) {
+      setSmsResult({ ok: false, message: err.response?.data?.error || 'SMS failed to send.' });
+    } finally {
+      setSmsSending(null);
+      setTimeout(() => setSmsResult(null), 4000);
     }
   }
 
@@ -141,6 +158,38 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
               >
                 <Timer size={11} />{startingClock ? 'Starting…' : 'Start Clock'}
               </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SMS Templates — available for scheduled and in_progress jobs with a client */}
+      {(job.status === 'scheduled' || job.status === 'in_progress') && job.client_id && (
+        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: '1px solid #e5e0d8', background: '#fafaf8' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 8 }}>
+            <MessageSquare size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />SMS
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn-secondary"
+              style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+              onClick={() => sendTemplate('confirmation')}
+              disabled={!!smsSending}
+            >
+              <MessageSquare size={11} />{smsSending === 'confirmation' ? 'Sending…' : 'Send Confirmation'}
+            </button>
+            <button
+              className="btn-secondary"
+              style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+              onClick={() => sendTemplate('reminder')}
+              disabled={!!smsSending}
+            >
+              <MessageSquare size={11} />{smsSending === 'reminder' ? 'Sending…' : 'Send Reminder'}
+            </button>
+          </div>
+          {smsResult && (
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: smsResult.ok ? '#16a34a' : '#dc2626' }}>
+              {smsResult.message}
             </div>
           )}
         </div>

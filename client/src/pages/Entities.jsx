@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react';
+import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink, BarChart2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import AddressAutocomplete from '../components/AddressAutocomplete';
@@ -100,6 +100,8 @@ export default function Entities() {
   const [inviteRole,   setInviteRole]   = useState('manager');
   const [inviting,     setInviting]     = useState(false);
   const [inviteErr,    setInviteErr]    = useState('');
+  const [analytics,    setAnalytics]    = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     api.get('/entities')
@@ -107,6 +109,15 @@ export default function Entities() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!isScale) return;
+    setAnalyticsLoading(true);
+    api.get('/analytics/consolidated')
+      .then(r => setAnalytics(r.data))
+      .catch(() => {})
+      .finally(() => setAnalyticsLoading(false));
+  }, [isScale]);
 
   function openAdd() {
     setEditTarget(null);
@@ -301,6 +312,53 @@ export default function Entities() {
             </div>
           </div>
           <a href="/billing" className="btn-primary" style={{ whiteSpace: 'nowrap', flexShrink: 0, textDecoration: 'none' }}>Upgrade to Scale</a>
+        </div>
+      )}
+
+      {/* Consolidated Analytics — Scale plan only */}
+      {isScale && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <BarChart2 size={16} style={{ color: '#D6B58A' }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', textTransform: 'uppercase', letterSpacing: '.06em' }}>Consolidated Performance</span>
+          </div>
+          {analyticsLoading ? (
+            <p className="muted" style={{ fontSize: 13 }}>Loading analytics…</p>
+          ) : analytics ? (
+            <>
+              {/* MTD / YTD summary cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: 'Month-to-Date Revenue', value: `$${parseFloat(analytics.total_mtd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+                  { label: 'Year-to-Date Revenue',  value: `$${parseFloat(analytics.total_ytd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+                  { label: 'Active Entities',       value: analytics.entities?.length ?? 0 },
+                ].map(card => (
+                  <div key={card.label} style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, padding: '16px 20px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af', marginBottom: 6 }}>{card.label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-entity breakdown table */}
+              {analytics.entities?.length > 0 && (
+                <div style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: 0, padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #e5e0d8' }}>
+                    {['Entity', 'MTD Revenue', 'Jobs MTD'].map(h => (
+                      <div key={h} style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af' }}>{h}</div>
+                    ))}
+                  </div>
+                  {analytics.entities.map((ent, i) => (
+                    <div key={ent.account_id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: 0, padding: '12px 20px', borderBottom: i < analytics.entities.length - 1 ? '1px solid #f4f4f0' : 'none', alignItems: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{ent.account_name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>${parseFloat(ent.mtd_revenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div style={{ fontSize: 13, color: '#4b5563' }}>{ent.mtd_jobs ?? 0}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       )}
 
