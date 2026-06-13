@@ -20,9 +20,11 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const [clockStarted,  setClockStarted]  = useState(!!job.no_show_clock_started_at);
   const [clockTime,     setClockTime]     = useState(job.no_show_clock_started_at || null);
   const [startingClock, setStartingClock] = useState(false);
-  const [smsSending,    setSmsSending]    = useState(null); // 'confirmation' | 'reminder'
-  const [smsResult,     setSmsResult]     = useState(null); // { ok, message }
-  const [tick,          setTick]          = useState(0);    // drives countdown re-render
+  const [smsSending,    setSmsSending]    = useState(null);
+  const [smsResult,     setSmsResult]     = useState(null);
+  const [tick,          setTick]          = useState(0);
+  const [declaring,     setDeclaring]     = useState(false);
+  const [arrived,       setArrived]       = useState(false);
 
   useEffect(() => {
     if (!showPhotos) return;
@@ -70,7 +72,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
 
   useEffect(() => {
     if (!clockStarted) return;
-    const id = setInterval(() => setTick(t => t + 1), 10000);
+    const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, [clockStarted]);
 
@@ -84,6 +86,41 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const remSecs = Math.round(remainingMin * 60);
   const isOverdue = clockStarted && elapsedMin >= graceMin;
   const clockColor = isOverdue ? '#dc2626' : '#d97706';
+
+  async function declareNoShow() {
+    if (!window.confirm('Declare this a no-show? The client will be notified and the deposit retained.')) return;
+    setDeclaring(true);
+    const post = async (body) => {
+      try {
+        await api.post(`/no-show/jobs/${job.id}/declare`, body);
+        onStatusChange({ ...job, status: 'no_show' });
+        onClose();
+      } catch (err) {
+        alert(err.response?.data?.error || 'Failed to declare no-show.');
+        setDeclaring(false);
+      }
+    };
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => post({ tech_gps_lat: pos.coords.latitude, tech_gps_lng: pos.coords.longitude }),
+        ()  => post({}),
+      );
+    } else {
+      await post({});
+    }
+  }
+
+  async function clientArrived() {
+    setArrived(true);
+    try {
+      const res = await api.patch(`/jobs/${job.id}/status`, { status: 'in_progress' });
+      onStatusChange(res.data);
+      onClose();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not update status.');
+      setArrived(false);
+    }
+  }
 
   async function sendTemplate(template) {
     if (!job.client_id) return;
@@ -162,15 +199,34 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
                 <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : '#92400e' }}>
                   No-show clock {isOverdue ? 'expired' : 'running'}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
                   {isOverdue
-                    ? `+${String(Math.floor((elapsedMin - graceMin))).padStart(2,'0')}:${String(Math.round((elapsedMin - graceMin) * 60) % 60).padStart(2,'0')} over`
+                    ? `+${String(Math.floor(elapsedMin - graceMin)).padStart(2,'0')}:${String(Math.round((elapsedMin - graceMin) * 60) % 60).padStart(2,'0')} over`
                     : `${String(Math.floor(remSecs / 60)).padStart(2,'0')}:${String(remSecs % 60).padStart(2,'0')} remaining`}
                 </div>
                 {isAdminViewer && job.checkin_lat && (
                   <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
                     Tech GPS: {parseFloat(job.checkin_lat).toFixed(4)}°, {parseFloat(job.checkin_lng || 0).toFixed(4)}°
                     {job.checkin_at ? ` · Arrived ${format(new Date(job.checkin_at), 'h:mm a')}` : ''}
+                  </div>
+                )}
+                {isAdminViewer && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button
+                      onClick={declareNoShow}
+                      disabled={declaring || arrived}
+                      style={{ fontSize: 11, padding: '5px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 6, cursor: declaring ? 'wait' : 'pointer', fontWeight: 700, opacity: (declaring || arrived) ? 0.6 : 1 }}
+                    >
+                      {declaring ? 'Declaring…' : 'Declare No-Show'}
+                    </button>
+                    <button
+                      onClick={clientArrived}
+                      disabled={declaring || arrived}
+                      className="btn-secondary"
+                      style={{ fontSize: 11, padding: '5px 12px' }}
+                    >
+                      {arrived ? 'Updating…' : 'Client Arrived'}
+                    </button>
                   </div>
                 )}
               </div>

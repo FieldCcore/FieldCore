@@ -220,7 +220,7 @@ export default function Dashboard() {
             <div className="dash-actions">
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/dispatch')}>Dispatch Map</button>
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/deposits')}>Review Deposits</button>
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/messages')}>Business Phone</button>
+              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/communications')}>Business Phone</button>
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/revenue')}>Revenue Analytics</button>
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/team')}>Team Report</button>
               <button className="tb-btn tb-primary dash-act-btn">+ Book New Job</button>

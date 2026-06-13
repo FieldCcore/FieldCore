@@ -70,8 +70,10 @@ export default function Account() {
   }
 
   const TABS = [
-    { key: 'account',  label: 'My Account' },
-    { key: 'business', label: 'Business'   },
+    { key: 'account',       label: 'My Account'    },
+    { key: 'business',      label: 'Business'      },
+    { key: 'notifications', label: 'Notifications' },
+    { key: 'billing',       label: 'Billing'       },
   ];
 
   return (
@@ -93,6 +95,47 @@ export default function Account() {
       </div>
 
       {activeTab === 'business' && <BusinessSettings />}
+
+      {activeTab === 'notifications' && (
+        <div style={{ maxWidth: 540 }}>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h3 style={{ marginBottom: 16 }}>Email Notifications</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+              Choose which events trigger an email to your account address.
+            </p>
+            {[
+              { key: 'new_booking',  label: 'New booking received'           },
+              { key: 'job_complete', label: 'Job marked complete'            },
+              { key: 'no_show',      label: 'No-show declared'               },
+              { key: 'payment',      label: 'Payment collected or deposited' },
+              { key: 'review',       label: 'New client review submitted'    },
+            ].map(n => (
+              <div key={n.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #E6E6E6' }}>
+                <span style={{ fontSize: 14, color: 'var(--navy)' }}>{n.label}</span>
+                <input type="checkbox" defaultChecked style={{ width: 16, height: 16, cursor: 'pointer' }} />
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Notification preferences are sent to {user?.email || 'your account email'}.</p>
+        </div>
+      )}
+
+      {activeTab === 'billing' && (
+        <div style={{ maxWidth: 540 }}>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h3 style={{ marginBottom: 16 }}>Plan & Billing</h3>
+            <p style={{ fontSize: 14, color: 'var(--navy)', marginBottom: 8 }}>
+              Current plan: <strong style={{ textTransform: 'capitalize' }}>{user?.plan || 'Starter'}</strong>
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+              Manage your FieldCore subscription, upgrade your plan, and view payment history.
+            </p>
+            <a href="/billing" style={{ display: 'inline-block', padding: '9px 20px', background: '#1C2333', color: '#D6B58A', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
+              Manage Billing →
+            </a>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'account' && <div style={{ maxWidth: 540 }}>
         {/* Profile */}

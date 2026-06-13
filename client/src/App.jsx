@@ -36,7 +36,6 @@ import ClientList     from './pages/ClientList';
 import ClientProfile  from './pages/ClientProfile';
 import Jobs           from './pages/Jobs';
 import Invoices       from './pages/Invoices';
-import Messages       from './pages/Messages';
 import BookingSettings from './pages/BookingSettings';
 import BookingWidget  from './pages/BookingWidget';
 import Dispatch       from './pages/Dispatch';
@@ -66,7 +65,6 @@ import Privacy         from './pages/Privacy';
 import SmsTerms           from './pages/SmsTerms';
 import BusinessSettings   from './pages/BusinessSettings';
 import Entities          from './pages/Entities';
-import PhonePage         from './pages/Phone';
 import ClientPortal       from './pages/ClientPortal';
 import EstimatesPage     from './pages/Estimates';
 import SignEstimate      from './pages/SignEstimate';
@@ -379,8 +377,8 @@ function AppShell() {
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/communications" element={<ProtectedRoute><Communications /></ProtectedRoute>} />
-            <Route path="/messages"    element={<ProtectedRoute><Messages /></ProtectedRoute>}       />
-            <Route path="/phone"       element={<ProtectedRoute><PhonePage /></ProtectedRoute>}      />
+            <Route path="/messages"    element={<Navigate to="/communications" replace />} />
+            <Route path="/phone"       element={<Navigate to="/communications" replace />} />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
             <Route path="/fleet"       element={<ProtectedRoute><Fleet /></ProtectedRoute>}          />
             <Route path="/booking"     element={<ProtectedRoute><BookingSettings /></ProtectedRoute>}/>
