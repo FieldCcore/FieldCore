@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Monitor, Smartphone, Globe, Trash2, Shield, Lock, Clock } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import BusinessSettings from './BusinessSettings';
 
 export default function Account() {
   const { user, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('account');
   const [form,     setForm]     = useState({ current: '', next: '', confirm: '' });
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState(null);
@@ -67,13 +69,32 @@ export default function Account() {
     return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
+  const TABS = [
+    { key: 'account',  label: 'My Account' },
+    { key: 'business', label: 'Business'   },
+  ];
+
   return (
     <div>
       <div className="page-header">
-        <h1>My Account</h1>
+        <h1>Settings</h1>
       </div>
 
-      <div style={{ maxWidth: 540 }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #E6E6E6', marginBottom: 24 }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+            padding: '10px 18px', border: 'none',
+            borderBottom: activeTab === t.key ? '2px solid #1C2333' : '2px solid transparent',
+            background: 'none', fontSize: 14, fontWeight: activeTab === t.key ? 700 : 400,
+            color: activeTab === t.key ? '#1C2333' : '#8A90A2', cursor: 'pointer', marginBottom: -1,
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {activeTab === 'business' && <BusinessSettings />}
+
+      {activeTab === 'account' && <div style={{ maxWidth: 540 }}>
         {/* Profile */}
         <div className="card" style={{ marginBottom: 20 }}>
           <h3 style={{ marginBottom: 14 }}>Profile</h3>
@@ -179,7 +200,7 @@ export default function Account() {
             <AuditLogSection />
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

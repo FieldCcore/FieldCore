@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Timer, MessageSquare } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 
 const STATUSES = ['scheduled', 'in_progress', 'complete', 'cancelled'];
 const STATUS_COLORS = {
@@ -21,6 +22,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const [startingClock, setStartingClock] = useState(false);
   const [smsSending,    setSmsSending]    = useState(null); // 'confirmation' | 'reminder'
   const [smsResult,     setSmsResult]     = useState(null); // { ok, message }
+  const [tick,          setTick]          = useState(0);    // drives countdown re-render
 
   useEffect(() => {
     if (!showPhotos) return;
@@ -65,6 +67,23 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
       setStartingClock(false);
     }
   }
+
+  useEffect(() => {
+    if (!clockStarted) return;
+    const id = setInterval(() => setTick(t => t + 1), 10000);
+    return () => clearInterval(id);
+  }, [clockStarted]);
+
+  const { user } = useAuth();
+  const isAdminViewer = user?.role === 'owner' || user?.role === 'manager';
+  const graceMin = parseFloat(job.grace_period_minutes) || 15;
+  const elapsedMin = clockStarted && clockTime
+    ? (Date.now() - new Date(clockTime).getTime()) / 60000
+    : 0;
+  const remainingMin = Math.max(graceMin - elapsedMin, 0);
+  const remSecs = Math.round(remainingMin * 60);
+  const isOverdue = clockStarted && elapsedMin >= graceMin;
+  const clockColor = isOverdue ? '#dc2626' : '#d97706';
 
   async function sendTemplate(template) {
     if (!job.client_id) return;
@@ -133,18 +152,27 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         )}
       </div>
 
-      {/* No-show clock */}
+      {/* No-show clock — only when job is scheduled */}
       {job.status === 'scheduled' && (
-        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: `1px solid ${clockStarted ? '#fde68a' : '#e5e0d8'}`, background: clockStarted ? '#fffbeb' : '#fafaf8' }}>
+        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: `1px solid ${clockStarted ? (isOverdue ? '#fca5a5' : '#fde68a') : '#e5e0d8'}`, background: clockStarted ? (isOverdue ? '#fef2f2' : '#fffbeb') : '#fafaf8' }}>
           {clockStarted ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Timer size={14} style={{ color: '#d97706', flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>No-show clock running</div>
-                <div style={{ fontSize: 11, color: '#b45309', marginTop: 1 }}>
-                  Started {clockTime ? formatDistanceToNow(new Date(clockTime), { addSuffix: true }) : ''}
-                  {' '}— auto-declares after grace period
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <Timer size={14} style={{ color: clockColor, flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : '#92400e' }}>
+                  No-show clock {isOverdue ? 'expired' : 'running'}
                 </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
+                  {isOverdue
+                    ? `+${String(Math.floor((elapsedMin - graceMin))).padStart(2,'0')}:${String(Math.round((elapsedMin - graceMin) * 60) % 60).padStart(2,'0')} over`
+                    : `${String(Math.floor(remSecs / 60)).padStart(2,'0')}:${String(remSecs % 60).padStart(2,'0')} remaining`}
+                </div>
+                {isAdminViewer && job.checkin_lat && (
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
+                    Tech GPS: {parseFloat(job.checkin_lat).toFixed(4)}°, {parseFloat(job.checkin_lng || 0).toFixed(4)}°
+                    {job.checkin_at ? ` · Arrived ${format(new Date(job.checkin_at), 'h:mm a')}` : ''}
+                  </div>
+                )}
               </div>
             </div>
           ) : (

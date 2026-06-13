@@ -74,7 +74,7 @@ import ReviewPage       from './pages/ReviewPage';
 import TechApp         from './pages/TechApp';
 import MobileDemo      from './pages/MobileDemo';
 import Account         from './pages/Account';
-import NoShowStrip      from './components/NoShowStrip';
+import Communications  from './pages/Communications';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import CallerID         from './components/CallerID';
@@ -90,15 +90,13 @@ const PAGE_TITLES = {
   '/invoices':           'Invoices',
   '/estimates':          'Estimates',
   '/clients':            'Client Database',
-  '/messages':           'Business Phone',
-  '/phone':              'Phone System',
+  '/communications':     'Communications',
   '/team':               'Team Management',
   '/fleet':              'Fleet',
   '/booking':            'Settings & Rules',
   '/billing':            'Billing & Plan',
-  '/business-settings':  'Business Settings',
   '/entities':           'Entities',
-  '/account':            'My Account',
+  '/account':            'Settings',
 };
 
 const IcoDash     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
@@ -312,9 +310,8 @@ function AppShell() {
                 {(isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">CRM</div>
-                    {ni('/clients', false, IcoClients, 'Clients', null)}
-                    {(isOwner || isManager) && ni('/messages', false, IcoPhone, 'SMS', null)}
-                    {(isOwner || isManager) && ni('/phone',    false, IcoPhone, 'Phone System', null)}
+                    {ni('/clients',        false, IcoClients, 'Clients',        null)}
+                    {(isOwner || isManager) && ni('/communications', false, IcoPhone, 'Communications', null)}
                   </>
                 )}
 
@@ -330,12 +327,11 @@ function AppShell() {
                 {isOwner && (
                   <>
                     <div className="nav-section">Admin</div>
-                    {ni('/team',             false, IcoTeam,     'Team',     null)}
-                    {ni('/fleet',            false, IcoDispatch, 'Fleet',    null)}
-                    {ni('/booking',          false, IcoSettings, 'Settings', null)}
-                    {ni('/business-settings',false, IcoSettings, 'Business', null)}
-                    {ni('/entities',         false, IcoTeam,     'Entities', null)}
-                    {ni('/billing',          false, IcoBilling,  'Billing',  null)}
+                    {ni('/team',    false, IcoTeam,     'Team',     null)}
+                    {ni('/fleet',   false, IcoDispatch, 'Fleet',    null)}
+                    {ni('/booking', false, IcoSettings, 'Settings', null)}
+                    {ni('/entities',false, IcoTeam,     'Entities', null)}
+                    {ni('/billing', false, IcoBilling,  'Billing',  null)}
                   </>
                 )}
               </>
@@ -371,8 +367,6 @@ function AppShell() {
           <button className="tb-btn tb-primary" onClick={() => nav('/jobs?new=1')}>+ New Job</button>
         </div>
 
-        <NoShowStrip />
-
         <div className="content">
           <Routes>
             <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
@@ -384,6 +378,7 @@ function AppShell() {
             <Route path="/estimates"   element={<ProtectedRoute><PlanGate requires="solo"><EstimatesPage /></PlanGate></ProtectedRoute>} />
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
+            <Route path="/communications" element={<ProtectedRoute><Communications /></ProtectedRoute>} />
             <Route path="/messages"    element={<ProtectedRoute><Messages /></ProtectedRoute>}       />
             <Route path="/phone"       element={<ProtectedRoute><PhonePage /></ProtectedRoute>}      />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
