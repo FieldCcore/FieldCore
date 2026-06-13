@@ -87,142 +87,308 @@ export default function BookingSettings() {
     setTimeout(() => setCopied(false), 2500);
   }
 
-  if (loading) return <p className="muted">Loading...</p>;
+  if (loading) return <p style={{ color: '#8A90A2', fontSize: 14, padding: 24 }}>Loading...</p>;
+
+  const labelSt = {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#5F667A',
+    textTransform: 'uppercase',
+    letterSpacing: '.06em',
+    marginBottom: 5,
+  };
+
+  const inputSt = {
+    width: '100%',
+    border: '1px solid #E6E6E6',
+    borderRadius: 6,
+    padding: '8px 12px',
+    fontSize: 14,
+    color: '#1C2333',
+    outline: 'none',
+    background: 'white',
+    fontFamily: 'Inter, sans-serif',
+    boxSizing: 'border-box',
+  };
+
+  const cardSt = {
+    background: 'white',
+    border: '1px solid #E6E6E6',
+    borderRadius: 10,
+    padding: 24,
+    marginBottom: 20,
+  };
+
+  const sectionTitleSt = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#1C2333',
+    textTransform: 'uppercase',
+    letterSpacing: '.08em',
+    marginBottom: 16,
+    paddingBottom: 10,
+    borderBottom: '1px solid #E6E6E6',
+  };
+
+  const rules = settings.deposit_rules || [];
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Online Booking</h1>
-        {widgetUrl && <a href={widgetUrl} target="_blank" rel="noreferrer" className="btn-secondary">
-          Preview Booking Page ↗
-        </a>}
+      {/* Page header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1C2333', margin: '0 0 4px' }}>Settings & Rules</h1>
+        <p style={{ fontSize: 14, color: '#5F667A', margin: 0 }}>Manage your booking widget, deposit rules, and service settings</p>
       </div>
 
-      {/* Embed code */}
-      <div className="card" style={{ marginBottom: 28 }}>
-        <h3 style={{ marginBottom: 12 }}>Embed on Your Website</h3>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 14 }}>
-          Paste this code anywhere on your website to embed the booking form.
-        </p>
-        <div className="embed-box">
-          <code className="embed-code">{embedCode || 'Loading…'}</code>
-          <button className="btn-primary" onClick={copyEmbed} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
-            {copied ? '✓ Copied!' : 'Copy Embed Code'}
-          </button>
-        </div>
-        <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
-          Direct link: {widgetUrl && <a href={widgetUrl} target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>{widgetUrl}</a>}
-        </p>
-      </div>
+      {/* ── Section 1: Booking Widget ──────────────────────────────────────────── */}
+      <div style={cardSt}>
+        <div style={sectionTitleSt}>Booking Widget</div>
 
-      {/* Settings form */}
-      <form onSubmit={handleSave}>
-        <div className="card" style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>Widget Settings</h3>
-
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Business Name</label>
-            <input value={settings.business_name || ''} onChange={set('business_name')} placeholder="Your Business Name" />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Default Deposit Amount ($0 = no deposit)</label>
-            <input type="number" step="0.01" min="0" value={settings.deposit_amount || 0} onChange={set('deposit_amount')} placeholder="0.00" />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Tax Rate (%)</label>
-            <input type="number" step="0.01" min="0" max="100" value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Applied automatically when generating invoices (e.g. 8.5 for 8.5%).</p>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Travel Fee ($0 = none)</label>
-            <input type="number" step="0.01" min="0" value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Auto-added as a line item on invoices for each job. Can be overridden per job.</p>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Agreement / Terms Text</label>
-            <textarea rows={3} value={settings.agreement_text || ''} onChange={set('agreement_text')} />
-          </div>
-
-          {/* Per-service deposit rules */}
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Per-Service Deposit Rules</label>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 2, marginBottom: 10 }}>
-              Override the default deposit for specific services. Takes precedence over the default amount above.
-            </p>
-            <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: '3px solid #94a3b8', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
-              <strong>Automatic overrides:</strong> VIP-tier clients always have their deposit waived. At-risk-tier clients always pay the global default minimum, regardless of service rules. These are enforced by the system and cannot be disabled.
-            </div>
-            {(settings.deposit_rules || []).length > 0 && (
-              <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(settings.deposit_rules || []).map((r, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}>
-                    <span style={{ flex: 1 }}><strong>{r.service}</strong></span>
-                    <span style={{ color: '#64748b' }}>{r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{r.type}</span>
-                    <button type="button" onClick={() => removeRule(i)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                value={newRule.service}
-                onChange={e => setNewRule(r => ({ ...r, service: e.target.value }))}
-                placeholder="Service name..."
-                style={{ flex: '2 1 140px', minWidth: 120, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
-              />
-              <select
-                value={newRule.type}
-                onChange={e => setNewRule(r => ({ ...r, type: e.target.value }))}
-                style={{ flex: '0 0 90px', padding: '8px 8px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelSt}>Embed on your website</label>
+          <textarea
+            readOnly
+            value={embedCode || 'Loading…'}
+            style={{
+              ...inputSt,
+              background: '#EDEBE7',
+              fontFamily: 'DM Mono, monospace',
+              fontSize: 12,
+              color: '#5F667A',
+              resize: 'none',
+              height: 80,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={copyEmbed}
+              style={{ background: '#1C2333', color: 'white', fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer' }}
+            >
+              {copied ? '✓ Copied!' : 'Copy Embed Code'}
+            </button>
+            {widgetUrl && (
+              <a
+                href={widgetUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #D6B58A', color: '#D6B58A', fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 6, textDecoration: 'none' }}
               >
-                <option value="flat">Flat $</option>
-                <option value="percent">Percent %</option>
-              </select>
-              <input
-                type="number" step="0.01" min="0"
-                value={newRule.amount}
-                onChange={e => setNewRule(r => ({ ...r, amount: e.target.value }))}
-                placeholder={newRule.type === 'percent' ? 'e.g. 25' : 'e.g. 150'}
-                style={{ flex: '1 1 90px', minWidth: 80, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13 }}
-              />
-              <button type="button" className="btn-secondary" onClick={addRule}>Add Rule</button>
+                Preview Booking Page ↗
+              </a>
+            )}
+          </div>
+        </div>
+
+        {widgetUrl && (
+          <div>
+            <label style={labelSt}>Direct booking link</label>
+            <a
+              href={widgetUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#D6B58A', fontSize: 13, textDecoration: 'none', fontFamily: 'DM Mono, monospace' }}
+            >
+              {widgetUrl}
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* ── Sections 2–4 inside form ───────────────────────────────────────────── */}
+      <form onSubmit={handleSave}>
+
+        {/* Section 2: Widget Settings */}
+        <div style={cardSt}>
+          <div style={sectionTitleSt}>Widget Settings</div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelSt}>Business Name</label>
+            <input style={inputSt} value={settings.business_name || ''} onChange={set('business_name')} placeholder="Your Business Name" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div>
+              <label style={labelSt}>Default Deposit ($)</label>
+              <input type="number" step="0.01" min="0" style={inputSt} value={settings.deposit_amount || 0} onChange={set('deposit_amount')} placeholder="0.00" />
+            </div>
+            <div>
+              <label style={labelSt}>Tax Rate (%)</label>
+              <input type="number" step="0.1" min="0" max="100" style={inputSt} value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
+            </div>
+            <div>
+              <label style={labelSt}>Travel Fee ($)</label>
+              <input type="number" step="0.01" min="0" style={inputSt} value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
             </div>
           </div>
 
-          {/* Services list */}
-          <div className="form-group">
-            <label>Services Offered</label>
-            <div className="services-list">
-              {settings.services.map(svc => (
-                <div key={svc} className="service-tag">
-                  <span>{svc}</span>
-                  <button type="button" onClick={() => removeService(svc)} className="service-remove">×</button>
+          <div>
+            <label style={labelSt}>Agreement / Terms Text</label>
+            <textarea
+              rows={4}
+              style={{ ...inputSt, resize: 'none', height: 96 }}
+              value={settings.agreement_text || ''}
+              onChange={set('agreement_text')}
+            />
+            <p style={{ fontSize: 12, color: '#8A90A2', marginTop: 5, marginBottom: 0 }}>
+              Shown to clients at booking. They must agree before confirming.
+            </p>
+          </div>
+        </div>
+
+        {/* Section 3: Per-Service Deposit Rules */}
+        <div style={cardSt}>
+          <div style={sectionTitleSt}>Per-Service Deposit Rules</div>
+
+          <p style={{ fontSize: 12, color: '#5F667A', marginBottom: 16, marginTop: 0 }}>
+            Override the default deposit for specific services. Takes priority over the global default.
+          </p>
+
+          <div style={{ background: '#EDEBE7', border: '1px solid #E6E6E6', borderRadius: 6, padding: '12px 16px', fontSize: 12, color: '#5F667A', marginBottom: 16, lineHeight: 1.6 }}>
+            <strong style={{ color: '#1C2333' }}>Automatic overrides:</strong> VIP-tier clients always have their deposit waived.
+            At-risk-tier clients always pay the global default minimum, regardless of service rules.
+            These are enforced by the system and cannot be disabled.
+          </div>
+
+          {rules.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              {rules.map((r, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    paddingTop: 12,
+                    paddingBottom: 12,
+                    borderBottom: i < rules.length - 1 ? '1px solid #E6E6E6' : 'none',
+                  }}
+                >
+                  <span style={{ flex: 1, fontWeight: 500, color: '#1C2333', fontSize: 14 }}>{r.service}</span>
+                  <span style={{ background: 'rgba(214,181,138,.12)', color: '#D6B58A', fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 4 }}>
+                    {r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}
+                  </span>
+                  <span style={{ background: '#EDEBE7', color: '#5F667A', fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #E6E6E6' }}>
+                    {r.type === 'percent' ? 'Percent' : 'Flat'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeRule(i)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 12, fontWeight: 600, marginLeft: 4, padding: 0 }}
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end', marginTop: rules.length > 0 ? 8 : 0 }}>
+            <div>
+              <label style={labelSt}>Service name</label>
               <input
-                value={newService}
-                onChange={e => setNewService(e.target.value)}
-                placeholder="Add a service..."
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addService())}
-                style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14 }}
+                style={inputSt}
+                value={newRule.service}
+                onChange={e => setNewRule(r => ({ ...r, service: e.target.value }))}
+                placeholder="Service name..."
               />
-              <button type="button" className="btn-secondary" onClick={addService}>Add</button>
             </div>
+            <div>
+              <label style={labelSt}>Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                style={inputSt}
+                value={newRule.amount}
+                onChange={e => setNewRule(r => ({ ...r, amount: e.target.value }))}
+                placeholder={newRule.type === 'percent' ? 'e.g. 25' : 'e.g. 150'}
+              />
+            </div>
+            <div>
+              <label style={labelSt}>Type</label>
+              <select style={inputSt} value={newRule.type} onChange={e => setNewRule(r => ({ ...r, type: e.target.value }))}>
+                <option value="flat">Flat $</option>
+                <option value="percent">Percent %</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={addRule}
+              style={{ background: '#1C2333', color: 'white', fontSize: 12, fontWeight: 700, padding: '9px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Add Rule
+            </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button type="submit" className="btn-primary" disabled={saving}>
+        {/* Section 4: Services Offered */}
+        <div style={cardSt}>
+          <div style={sectionTitleSt}>Services Offered</div>
+
+          <p style={{ fontSize: 12, color: '#5F667A', marginBottom: 16, marginTop: 0 }}>
+            Services available for clients to select when booking.
+          </p>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: settings.services.length ? 16 : 0 }}>
+            {settings.services.map(svc => (
+              <span
+                key={svc}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#EDEBE7',
+                  border: '1px solid #E6E6E6',
+                  borderRadius: 9999,
+                  padding: '4px 14px',
+                  fontSize: 13,
+                  color: '#1C2333',
+                  fontWeight: 500,
+                }}
+              >
+                {svc}
+                <button
+                  type="button"
+                  onClick={() => removeService(svc)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A90A2', fontSize: 14, lineHeight: 1, padding: 0 }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              style={{ ...inputSt, flex: 1 }}
+              value={newService}
+              onChange={e => setNewService(e.target.value)}
+              placeholder="Add a service..."
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addService())}
+            />
+            <button
+              type="button"
+              onClick={addService}
+              style={{ background: '#D6B58A', color: '#1C2333', fontSize: 14, fontWeight: 700, padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+
+        {/* Save */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 14 }}>
+          {saved && (
+            <span style={{ fontSize: 13, color: '#1E6B3C', fontWeight: 600 }}>✓ Saved</span>
+          )}
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ background: '#D6B58A', color: '#1C2333', fontWeight: 700, padding: '10px 28px', borderRadius: 6, border: 'none', cursor: saving ? 'wait' : 'pointer', fontSize: 14, opacity: saving ? 0.7 : 1 }}
+          >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
-          {saved && <span style={{ color: '#10b981', fontWeight: 600 }}>✓ Saved</span>}
         </div>
       </form>
     </div>
