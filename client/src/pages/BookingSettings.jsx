@@ -2,6 +2,13 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
+const labelSt = 'block text-xs font-semibold text-slate uppercase tracking-wide mb-1 mt-4 first:mt-0';
+const inputSt = 'w-full border border-lightgray rounded-md px-3 py-2 text-sm text-navy placeholder:text-steel focus:ring-2 focus:ring-sand focus:outline-none bg-white';
+const cardSt = 'bg-white border border-lightgray rounded-lg p-6 mb-6';
+const sectionTitleSt = 'text-sm font-bold text-navy mb-4 pb-2 border-b border-lightgray';
+const btnSt = 'bg-sand text-navy font-bold px-6 py-2.5 rounded-md hover:brightness-95 transition text-sm';
+const btnNavySt = 'bg-navy text-white font-bold px-4 py-2 rounded-md hover:opacity-90 transition text-sm';
+
 export default function BookingSettings() {
   const { user } = useAuth();
   const accountId = user?.accountId;
@@ -87,310 +94,241 @@ export default function BookingSettings() {
     setTimeout(() => setCopied(false), 2500);
   }
 
-  if (loading) return <p style={{ color: '#8A90A2', fontSize: 14, padding: 24 }}>Loading...</p>;
-
-  const labelSt = {
-    display: 'block',
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#5F667A',
-    textTransform: 'uppercase',
-    letterSpacing: '.06em',
-    marginBottom: 5,
-  };
-
-  const inputSt = {
-    width: '100%',
-    border: '1px solid #E6E6E6',
-    borderRadius: 6,
-    padding: '8px 12px',
-    fontSize: 14,
-    color: '#1C2333',
-    outline: 'none',
-    background: 'white',
-    fontFamily: 'Inter, sans-serif',
-    boxSizing: 'border-box',
-  };
-
-  const cardSt = {
-    background: 'white',
-    border: '1px solid #E6E6E6',
-    borderRadius: 10,
-    padding: 24,
-    marginBottom: 20,
-  };
-
-  const sectionTitleSt = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#1C2333',
-    textTransform: 'uppercase',
-    letterSpacing: '.08em',
-    marginBottom: 16,
-    paddingBottom: 10,
-    borderBottom: '1px solid #E6E6E6',
-  };
+  if (loading) return <p className="text-steel text-sm p-6">Loading...</p>;
 
   const rules = settings.deposit_rules || [];
 
   return (
-    <div>
-      {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1C2333', margin: '0 0 4px' }}>Settings & Rules</h1>
-        <p style={{ fontSize: 14, color: '#5F667A', margin: 0 }}>Manage your booking widget, deposit rules, and service settings</p>
-      </div>
+    <div className="min-h-screen bg-offwhite">
+      <div className="max-w-3xl mx-auto px-6 py-8">
 
-      {/* ── Section 1: Booking Widget ──────────────────────────────────────────── */}
-      <div style={cardSt}>
-        <div style={sectionTitleSt}>Booking Widget</div>
+        <h1 className="text-2xl font-bold text-navy mb-1">Settings &amp; Rules</h1>
+        <p className="text-sm text-slate mb-6">Manage your booking widget, deposit rules, and service settings.</p>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelSt}>Embed on your website</label>
-          <textarea
-            readOnly
-            value={embedCode || 'Loading…'}
-            style={{
-              ...inputSt,
-              background: '#EDEBE7',
-              fontFamily: 'DM Mono, monospace',
-              fontSize: 12,
-              color: '#5F667A',
-              resize: 'none',
-              height: 80,
-            }}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            <button
-              onClick={copyEmbed}
-              style={{ background: '#1C2333', color: 'white', fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer' }}
-            >
-              {copied ? '✓ Copied!' : 'Copy Embed Code'}
-            </button>
-            {widgetUrl && (
+        {/* Section 1: Booking Widget */}
+        <div className={cardSt}>
+          <div className={sectionTitleSt}>Booking Widget</div>
+
+          <div className="mb-4">
+            <label className={labelSt}>Embed on your website</label>
+            <textarea
+              readOnly
+              value={embedCode || 'Loading…'}
+              className="w-full border border-lightgray rounded-md px-3 py-2 text-xs text-slate bg-offwhite resize-none h-20 focus:outline-none font-mono"
+            />
+            <div className="flex gap-2 mt-2.5 flex-wrap">
+              <button onClick={copyEmbed} className={btnNavySt}>
+                {copied ? '✓ Copied!' : 'Copy Embed Code'}
+              </button>
+              {widgetUrl && (
+                <a
+                  href={widgetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center border border-sand text-sand font-bold px-4 py-2 rounded-md text-sm no-underline hover:bg-sand/10 transition"
+                >
+                  Preview Booking Page ↗
+                </a>
+              )}
+            </div>
+          </div>
+
+          {widgetUrl && (
+            <div>
+              <label className={labelSt}>Direct booking link</label>
               <a
                 href={widgetUrl}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #D6B58A', color: '#D6B58A', fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 6, textDecoration: 'none' }}
+                className="text-sand text-sm no-underline font-mono hover:underline"
               >
-                Preview Booking Page ↗
+                {widgetUrl}
               </a>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {widgetUrl && (
-          <div>
-            <label style={labelSt}>Direct booking link</label>
-            <a
-              href={widgetUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: '#D6B58A', fontSize: 13, textDecoration: 'none', fontFamily: 'DM Mono, monospace' }}
-            >
-              {widgetUrl}
-            </a>
-          </div>
-        )}
-      </div>
+        {/* Sections 2–4 inside form */}
+        <form onSubmit={handleSave}>
 
-      {/* ── Sections 2–4 inside form ───────────────────────────────────────────── */}
-      <form onSubmit={handleSave}>
+          {/* Section 2: Widget Settings */}
+          <div className={cardSt}>
+            <div className={sectionTitleSt}>Widget Settings</div>
 
-        {/* Section 2: Widget Settings */}
-        <div style={cardSt}>
-          <div style={sectionTitleSt}>Widget Settings</div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelSt}>Business Name</label>
-            <input style={inputSt} value={settings.business_name || ''} onChange={set('business_name')} placeholder="Your Business Name" />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
-            <div>
-              <label style={labelSt}>Default Deposit ($)</label>
-              <input type="number" step="0.01" min="0" style={inputSt} value={settings.deposit_amount || 0} onChange={set('deposit_amount')} placeholder="0.00" />
+            <div className="mb-4">
+              <label className={labelSt}>Business Name</label>
+              <input className={inputSt} value={settings.business_name || ''} onChange={set('business_name')} placeholder="Your Business Name" />
             </div>
-            <div>
-              <label style={labelSt}>Tax Rate (%)</label>
-              <input type="number" step="0.1" min="0" max="100" style={inputSt} value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
+
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className={labelSt}>Default Deposit ($)</label>
+                <input type="number" step="0.01" min="0" className={inputSt} value={settings.deposit_amount || 0} onChange={set('deposit_amount')} placeholder="0.00" />
+              </div>
+              <div>
+                <label className={labelSt}>Tax Rate (%)</label>
+                <input type="number" step="0.1" min="0" max="100" className={inputSt} value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
+              </div>
+              <div>
+                <label className={labelSt}>Travel Fee ($)</label>
+                <input type="number" step="0.01" min="0" className={inputSt} value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
+              </div>
             </div>
+
             <div>
-              <label style={labelSt}>Travel Fee ($)</label>
-              <input type="number" step="0.01" min="0" style={inputSt} value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
+              <label className={labelSt}>Agreement / Terms Text</label>
+              <textarea
+                rows={4}
+                className={inputSt + ' resize-none h-24'}
+                value={settings.agreement_text || ''}
+                onChange={set('agreement_text')}
+              />
+              <p className="text-xs text-steel mt-1">
+                Shown to clients at booking. They must agree before confirming.
+              </p>
             </div>
           </div>
 
-          <div>
-            <label style={labelSt}>Agreement / Terms Text</label>
-            <textarea
-              rows={4}
-              style={{ ...inputSt, resize: 'none', height: 96 }}
-              value={settings.agreement_text || ''}
-              onChange={set('agreement_text')}
-            />
-            <p style={{ fontSize: 12, color: '#8A90A2', marginTop: 5, marginBottom: 0 }}>
-              Shown to clients at booking. They must agree before confirming.
+          {/* Section 3: Per-Service Deposit Rules */}
+          <div className={cardSt}>
+            <div className={sectionTitleSt}>Per-Service Deposit Rules</div>
+
+            <p className="text-xs text-slate mb-4">
+              Override the default deposit for specific services. Takes priority over the global default.
             </p>
+
+            <div className="bg-offwhite border border-lightgray rounded-md px-4 py-3 text-xs text-slate mb-4 leading-relaxed">
+              <strong className="text-navy">Automatic overrides:</strong> VIP-tier clients always have their deposit waived.
+              At-risk-tier clients always pay the global default minimum, regardless of service rules.
+              These are enforced by the system and cannot be disabled.
+            </div>
+
+            {rules.length > 0 && (
+              <div className="mb-4">
+                {rules.map((r, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 py-3"
+                    style={{ borderBottom: i < rules.length - 1 ? '1px solid #E6E6E6' : 'none' }}
+                  >
+                    <span className="flex-1 font-medium text-navy text-sm">{r.service}</span>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded" style={{ background: 'rgba(214,181,138,.12)', color: '#D6B58A' }}>
+                      {r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded border border-lightgray bg-offwhite text-slate">
+                      {r.type === 'percent' ? 'Percent' : 'Flat'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeRule(i)}
+                      className="bg-transparent border-0 cursor-pointer text-red-400 text-xs font-semibold ml-1 p-0 hover:text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid gap-3 items-end" style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
+              <div>
+                <label className={labelSt}>Service name</label>
+                <input
+                  className={inputSt}
+                  value={newRule.service}
+                  onChange={e => setNewRule(r => ({ ...r, service: e.target.value }))}
+                  placeholder="Service name..."
+                />
+              </div>
+              <div>
+                <label className={labelSt}>Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputSt}
+                  value={newRule.amount}
+                  onChange={e => setNewRule(r => ({ ...r, amount: e.target.value }))}
+                  placeholder={newRule.type === 'percent' ? 'e.g. 25' : 'e.g. 150'}
+                />
+              </div>
+              <div>
+                <label className={labelSt}>Type</label>
+                <select className={inputSt} value={newRule.type} onChange={e => setNewRule(r => ({ ...r, type: e.target.value }))}>
+                  <option value="flat">Flat $</option>
+                  <option value="percent">Percent %</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={addRule}
+                className={btnNavySt + ' whitespace-nowrap'}
+              >
+                Add Rule
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Section 3: Per-Service Deposit Rules */}
-        <div style={cardSt}>
-          <div style={sectionTitleSt}>Per-Service Deposit Rules</div>
+          {/* Section 4: Services Offered */}
+          <div className={cardSt}>
+            <div className={sectionTitleSt}>Services Offered</div>
 
-          <p style={{ fontSize: 12, color: '#5F667A', marginBottom: 16, marginTop: 0 }}>
-            Override the default deposit for specific services. Takes priority over the global default.
-          </p>
+            <p className="text-xs text-slate mb-4">
+              Services available for clients to select when booking.
+            </p>
 
-          <div style={{ background: '#EDEBE7', border: '1px solid #E6E6E6', borderRadius: 6, padding: '12px 16px', fontSize: 12, color: '#5F667A', marginBottom: 16, lineHeight: 1.6 }}>
-            <strong style={{ color: '#1C2333' }}>Automatic overrides:</strong> VIP-tier clients always have their deposit waived.
-            At-risk-tier clients always pay the global default minimum, regardless of service rules.
-            These are enforced by the system and cannot be disabled.
-          </div>
-
-          {rules.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              {rules.map((r, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingTop: 12,
-                    paddingBottom: 12,
-                    borderBottom: i < rules.length - 1 ? '1px solid #E6E6E6' : 'none',
-                  }}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {settings.services.map(svc => (
+                <span
+                  key={svc}
+                  className="inline-flex items-center gap-1.5 bg-offwhite border border-lightgray rounded-full px-3.5 py-1 text-sm text-navy font-medium"
                 >
-                  <span style={{ flex: 1, fontWeight: 500, color: '#1C2333', fontSize: 14 }}>{r.service}</span>
-                  <span style={{ background: 'rgba(214,181,138,.12)', color: '#D6B58A', fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 4 }}>
-                    {r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}
-                  </span>
-                  <span style={{ background: '#EDEBE7', color: '#5F667A', fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #E6E6E6' }}>
-                    {r.type === 'percent' ? 'Percent' : 'Flat'}
-                  </span>
+                  {svc}
                   <button
                     type="button"
-                    onClick={() => removeRule(i)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 12, fontWeight: 600, marginLeft: 4, padding: 0 }}
+                    onClick={() => removeService(svc)}
+                    className="bg-transparent border-0 cursor-pointer text-steel text-sm leading-none p-0 hover:text-navy"
                   >
-                    Remove
+                    ×
                   </button>
-                </div>
+                </span>
               ))}
             </div>
-          )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end', marginTop: rules.length > 0 ? 8 : 0 }}>
-            <div>
-              <label style={labelSt}>Service name</label>
+            <div className="flex gap-2">
               <input
-                style={inputSt}
-                value={newRule.service}
-                onChange={e => setNewRule(r => ({ ...r, service: e.target.value }))}
-                placeholder="Service name..."
+                className={inputSt + ' flex-1'}
+                value={newService}
+                onChange={e => setNewService(e.target.value)}
+                placeholder="Add a service..."
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addService())}
               />
-            </div>
-            <div>
-              <label style={labelSt}>Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                style={inputSt}
-                value={newRule.amount}
-                onChange={e => setNewRule(r => ({ ...r, amount: e.target.value }))}
-                placeholder={newRule.type === 'percent' ? 'e.g. 25' : 'e.g. 150'}
-              />
-            </div>
-            <div>
-              <label style={labelSt}>Type</label>
-              <select style={inputSt} value={newRule.type} onChange={e => setNewRule(r => ({ ...r, type: e.target.value }))}>
-                <option value="flat">Flat $</option>
-                <option value="percent">Percent %</option>
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={addRule}
-              style={{ background: '#1C2333', color: 'white', fontSize: 12, fontWeight: 700, padding: '9px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >
-              Add Rule
-            </button>
-          </div>
-        </div>
-
-        {/* Section 4: Services Offered */}
-        <div style={cardSt}>
-          <div style={sectionTitleSt}>Services Offered</div>
-
-          <p style={{ fontSize: 12, color: '#5F667A', marginBottom: 16, marginTop: 0 }}>
-            Services available for clients to select when booking.
-          </p>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: settings.services.length ? 16 : 0 }}>
-            {settings.services.map(svc => (
-              <span
-                key={svc}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: '#EDEBE7',
-                  border: '1px solid #E6E6E6',
-                  borderRadius: 9999,
-                  padding: '4px 14px',
-                  fontSize: 13,
-                  color: '#1C2333',
-                  fontWeight: 500,
-                }}
+              <button
+                type="button"
+                onClick={addService}
+                className={btnSt + ' whitespace-nowrap'}
               >
-                {svc}
-                <button
-                  type="button"
-                  onClick={() => removeService(svc)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A90A2', fontSize: 14, lineHeight: 1, padding: 0 }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
+                Add
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              style={{ ...inputSt, flex: 1 }}
-              value={newService}
-              onChange={e => setNewService(e.target.value)}
-              placeholder="Add a service..."
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addService())}
-            />
+          {/* Save */}
+          <div className="flex justify-end items-center gap-4">
+            {saved && (
+              <span className="text-sm font-semibold" style={{ color: '#1E6B3C' }}>✓ Saved</span>
+            )}
             <button
-              type="button"
-              onClick={addService}
-              style={{ background: '#D6B58A', color: '#1C2333', fontSize: 14, fontWeight: 700, padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              type="submit"
+              disabled={saving}
+              className={btnSt + (saving ? ' opacity-70 cursor-wait' : '')}
             >
-              Add
+              {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
-        </div>
+        </form>
 
-        {/* Save */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 14 }}>
-          {saved && (
-            <span style={{ fontSize: 13, color: '#1E6B3C', fontWeight: 600 }}>✓ Saved</span>
-          )}
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ background: '#D6B58A', color: '#1C2333', fontWeight: 700, padding: '10px 28px', borderRadius: 6, border: 'none', cursor: saving ? 'wait' : 'pointer', fontSize: 14, opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

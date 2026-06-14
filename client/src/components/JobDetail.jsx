@@ -76,7 +76,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
     return () => clearInterval(id);
   }, [clockStarted]);
 
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isAdminViewer = user?.role === 'owner' || user?.role === 'manager';
   const graceMin = parseFloat(job.grace_period_minutes) || 15;
   const elapsedMin = clockStarted && clockTime
@@ -88,36 +88,57 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   const clockColor = isOverdue ? '#dc2626' : '#d97706';
 
   async function declareNoShow() {
-    if (!window.confirm('Declare this a no-show? The client will be notified and the deposit retained.')) return;
+    if (!job?.id) return;
     setDeclaring(true);
-    const post = async (body) => {
-      try {
-        await api.post(`/no-show/jobs/${job.id}/declare`, body);
-        onStatusChange({ ...job, status: 'no_show' });
-        onClose();
-      } catch (err) {
-        alert(err.response?.data?.error || 'Failed to declare no-show.');
+    try {
+      const res = await fetch(`/api/no-show/jobs/${job.id}/declare`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Declare no-show failed:', data);
+        alert(data.error || data.message || 'Failed to declare no-show. Check console for details.');
         setDeclaring(false);
+        return;
       }
-    };
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => post({ tech_gps_lat: pos.coords.latitude, tech_gps_lng: pos.coords.longitude }),
-        ()  => post({}),
-      );
-    } else {
-      await post({});
+      if (onStatusChange) onStatusChange({ ...job, status: 'no_show' });
+      onClose();
+    } catch (err) {
+      console.error('Declare no-show error:', err);
+      alert('Network error — could not declare no-show. Please try again.');
+      setDeclaring(false);
     }
   }
 
   async function clientArrived() {
+    if (!job?.id) return;
     setArrived(true);
     try {
-      const res = await api.patch(`/jobs/${job.id}/status`, { status: 'in_progress' });
-      onStatusChange(res.data);
+      const res = await fetch(`/api/jobs/${job.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: 'in_progress' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Client arrived failed:', data);
+        alert(data.error || data.message || 'Could not update status. Check console for details.');
+        setArrived(false);
+        return;
+      }
+      if (onStatusChange) onStatusChange(data);
       onClose();
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not update status.');
+      console.error('Client arrived error:', err);
+      alert('Network error — could not update status. Please try again.');
       setArrived(false);
     }
   }
