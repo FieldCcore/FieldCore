@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink, BarChart2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -78,6 +78,7 @@ export default function Entities() {
   const { user, switchAccount, switchError } = useAuth();
   const isScale = user?.plan === 'scale';
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const connectSuccess = searchParams.get('connect') === 'success';
 
   const [entities,     setEntities]     = useState([]);
@@ -185,6 +186,7 @@ export default function Entities() {
     setSwitching(entityId);
     try {
       await switchAccount(entityId);
+      navigate('/dashboard');
     } catch {
       setSwitching(null);
     }

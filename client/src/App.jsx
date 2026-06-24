@@ -242,7 +242,7 @@ function AppShell() {
             return (
               <button
                 key={a.id}
-                onClick={() => { if (!isActive && !switching) switchAccount(a.id); }}
+                onClick={async () => { if (!isActive && !switching) { try { await switchAccount(a.id); nav('/dashboard'); } catch {} } }}
                 className={'entity-opt' + (isActive ? ' active' : '')}
                 disabled={switching}
                 title={isActive ? 'Current entity' : `Switch to ${a.name}`}
@@ -361,7 +361,7 @@ function AppShell() {
           <button className="tb-btn tb-primary" onClick={() => nav('/jobs?new=1')}>+ New Job</button>
         </div>
 
-        <div className="content">
+        <div className="content" key={user?.accountId}>
           <Routes>
             <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>}      />
             <Route path="/dispatch"    element={<ProtectedRoute><Dispatch /></ProtectedRoute>}       />
