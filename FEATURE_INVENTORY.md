@@ -1,6 +1,6 @@
 # FieldCore — Feature Inventory
 
-**Last reconciled:** 2026-06-09 (updated after Sprint Tasks 1, 2, 5 completion)  
+**Last reconciled:** 2026-06-24 (updated after UX sprint — mobile access, entity switcher UX, logo navigation)  
 **Source of truth:** Actual codebase scan + Sprint audit
 
 **Multi-tenant isolation status:** AUDITED 2026-06-09 — All 27 route files verified. Security fixes applied to `users.js` (membership endpoints), `clients.js`, `jobs.js`, `deposits.js`, `payments.js`. 22 files confirmed clean.
@@ -29,6 +29,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 **Production Readiness:** High — needs `JWT_SECRET` set to strong value in prod  
 **Missing Work:** No 2FA (TOTP/email OTP); biometric fallback not audited  
+**UX Updates (2026-06-24):** Login logo now `<a href="/">` linking to homepage. "← Back to homepage" added to Login + ForgotPassword. Sidebar logo → `<Link to="/dashboard">`.  
 **Recommended Next Action:** Set strong `JWT_SECRET` in prod `.env`; optionally add email OTP for owner accounts
 
 ---
@@ -457,6 +458,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 **Production Readiness:** Medium — Scale plan feature; needs plan gating tested  
 **Missing Work:** Mobile multi-entity switching; test plan gating  
+**UX Updates (2026-06-24):** Entity switcher in sidebar now has loading state (`switching` in AuthContext), error state (`switchError`), disabled state during switch, and single-entity hint pointing to /entities. Backend `/api/auth/switch` and `/api/auth/accounts` confirmed complete.  
 **Recommended Next Action:** Verify `requireRole` + plan limit gates work correctly for entities endpoint
 
 ---

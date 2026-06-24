@@ -31,6 +31,57 @@
 
 ---
 
+### [DECISION-017] Remove phone-width gate — dashboard now accessible on all screen sizes
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** `client/src/App.jsx` had a hard gate: any authenticated user on a device narrower than 640px was blocked from the dashboard entirely, shown a "Better on a bigger screen" interstitial. The mobile responsive CSS (sidebar overlay, hamburger, bottom nav, stacked grids) was already fully built but never reachable on phones because of this gate.
+
+**Decision:** Remove the `isPhone` state and the gate entirely. All screen widths now reach the authenticated dashboard. The existing responsive CSS handles layout automatically.
+
+**Alternatives considered:** Keep the gate but raise the threshold; add a mobile-optimized simplified dashboard. Both rejected — the CSS already does the right thing at 768px and 390px breakpoints; adding a separate simplified dashboard is unnecessary complexity.
+
+**Reasoning:** The existing responsive CSS (built in commit `8132255`) handles all breakpoints correctly. The gate was a holdover from before the mobile CSS was complete. Removing it immediately unblocks phone users.
+
+**Consequences:** Phone users can now access the dashboard. Bottom nav provides primary navigation. Sidebar slides in as an overlay. Content is scrollable and stacked appropriately.
+
+---
+
+### [DECISION-016] Entity switcher: add error handling and loading state; engine was already complete
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The entity switching engine (backend `/api/auth/switch`, frontend `switchAccount` in AuthContext, entity panel in App.jsx) was already fully implemented. The reported symptom of "does nothing when clicked" was due to: (1) single-entity users clicking their active entity — the `if (!isActive)` guard correctly prevents a no-op API call; (2) no error feedback if the backend call failed; (3) no loading state during the ~1s API round-trip.
+
+**Decision:** Add `switching`/`switchError` state to AuthContext with try/catch in `switchAccount`. Expose both in context. Entity panel buttons use these for disabled state, "Switching…" label, and error display. Single-entity users see a hint linking to `/entities`.
+
+**Alternatives considered:** Build a new entity switching engine from scratch. Rejected — the existing engine is correct and works for multi-entity accounts.
+
+**Reasoning:** The engine worked; the UX didn't communicate what was happening. Error handling and loading state are the right fix.
+
+**Consequences:** Entity switcher now shows clear feedback. Single-entity users understand they need to add entities. Switch failures show an error message instead of silently failing.
+
+---
+
+### [DECISION-015] Login logo clickable; sidebar logo links to /dashboard
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The FieldCore logo in the login card (`div.login-logo`) was a non-interactive div. The sidebar logo in the authenticated shell was also a non-interactive div. Neither provided navigation shortcuts.
+
+**Decision:** Login logo → `<a href="/">` (public homepage). Sidebar logo → `<Link to="/dashboard">` (preserves React Router SPA navigation and user session).
+
+**Alternatives considered:** Add separate buttons next to logos. Rejected — standard UX convention is that the product logo is the home/back-to-start navigation anchor.
+
+**Reasoning:** Both changes match universal web UX conventions. Logo clicks on auth pages go to public site; logo clicks in authenticated dashboard go to the main dashboard.
+
+**Consequences:** Logo on login card now links to getfieldcore.com homepage. Logo in sidebar navigates to `/dashboard` from any nested page without a full page reload.
+
+---
+
 ### [DECISION-013] migrate.js backfilled with all schema.sql entries missing from the migration runner
 **Date:** 2026-06-09  
 **Decided by:** Claude (Sprint Task 5)  

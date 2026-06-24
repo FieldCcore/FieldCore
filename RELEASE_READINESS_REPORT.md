@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-06-09  
+**Last reconciled:** 2026-06-24  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---
@@ -36,7 +36,10 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Booking widget (admin settings + public form) | Complete | Stripe + APP_URL required |
 | Public landing / marketing site | Complete | Needs real content + domain |
 | Beta signup (100-slot cap) | Complete | Email confirmation blocked by SMTP |
-| Manager tablet view | Complete | Needs tablet viewport testing |
+| Manager tablet view | Complete | Tablet + phone viewport now fully supported (gate removed 2026-06-24) |
+| Mobile phone access to dashboard | Complete | Phone gate removed 2026-06-24; bottom nav + sidebar overlay handle all screen widths |
+| Login page navigation (back to home) | Complete | Logo links to homepage; "← Back to homepage" added 2026-06-24 |
+| Dashboard logo home navigation | Complete | Sidebar logo is now Link to /dashboard from any page (2026-06-24) |
 
 ---
 

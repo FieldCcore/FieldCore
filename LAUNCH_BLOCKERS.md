@@ -66,6 +66,11 @@ Blockers are ranked within each tier by consequence severity.
 
 ---
 
+### ~~C-07b — Dashboard inaccessible on mobile phones~~ — RESOLVED 2026-06-24
+**Resolution:** The `isPhone` gate in `client/src/App.jsx` (which blocked all screens narrower than 640px) has been removed. The full authenticated dashboard is now accessible on phones. The existing responsive CSS (768px and 390px breakpoints, sidebar overlay, bottom nav, stacked grids) provides a functional mobile layout. Build verified passing.
+
+---
+
 ### ~~C-08 — Stripe Webhook Raw Body Not Verified~~ — RESOLVED 2026-06-10
 **Resolution:** Sprint Task 6 complete. Root cause confirmed: `express.json()` was registered in `src/app.js` BEFORE the webhook router, silently consuming the request stream. Fixed by moving `app.use('/api/webhooks', webhooksRouter)` to before all body-parser middleware. Also added `payment_intent.payment_failed` handler and widened `invoices` status constraint to include `'failed'`. Full E2E test with Stripe CLI pending until `STRIPE_WEBHOOK_SECRET` is configured.
 

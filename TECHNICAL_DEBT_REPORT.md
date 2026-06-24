@@ -1,6 +1,6 @@
 # FieldCore — Technical Debt Report
 
-**Last reconciled:** 2026-06-09  
+**Last reconciled:** 2026-06-24  
 **Source of truth:** Actual codebase scan
 
 Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (significant operational risk) | **MEDIUM** (quality or maintainability issue) | **LOW** (nice to have)
@@ -56,6 +56,16 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 
 ### ~~TD-H2: Hardcoded Values — Development URLs~~ — RESOLVED 2026-06-10
 **Resolution:** Sprint Task 4 complete. Full grep of src/, mobile/, client/src/ for hardcoded domains, deprecated domains (fieldcore.app, api.fieldcore.app, fieldcore-production-ee0d.up.railway.app), and missing env var usage. Fixed: mobile/api.js, mobile/app.config.js, src/services/email.js, src/routes/webhooks.js, src/routes/phone.js, src/services/scheduler.js. .env.example updated with EXPO_PUBLIC_API_URL and VITE_API_URL entries. Intentionally kept: localhost:5173 fallbacks in backend route files (safe dev defaults). 44/44 smoke tests pass.
+
+---
+
+### ~~TD-H2b: Phone-width gate blocked mobile dashboard access~~ — RESOLVED 2026-06-24
+**Resolution:** `isPhone` state and gate removed from `client/src/App.jsx`. Dashboard now accessible on all screen widths. Existing responsive CSS (768px, 390px breakpoints, bottom nav, sidebar overlay) handles mobile layout correctly. Build passes.
+
+---
+
+### ~~TD-H2c: Entity switcher had no loading/error state~~ — RESOLVED 2026-06-24
+**Resolution:** `switching` and `switchError` state added to `AuthContext`. `switchAccount` wrapped in try/catch. Entity panel now shows "Switching…" label, disabled buttons, and inline error message. Single-entity users see a hint pointing to /entities.
 
 ---
 

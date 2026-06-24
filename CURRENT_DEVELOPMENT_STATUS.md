@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-06-09 (updated after Sprint Tasks 1, 2, 5 completion)  
+**Last reconciled:** 2026-06-24 (updated after UX sprint — mobile access, entity switcher, logo navigation)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -18,7 +18,7 @@
 - **No-Show Tracking** — Grace period clock, auto-declare, deposit retention, SMS notifications, audit trail
 - **Estimates with E-Signature** — Create, send, sign digitally (web + mobile)
 - **Post-Job Reviews** — Submit and store 1-5 star ratings
-- **Multi-Entity Management** — Scale+ feature, account memberships, entity switching
+- **Multi-Entity Management** — Scale+ feature, account memberships, entity switching (with loading state + error handling as of 2026-06-24)
 - **Onboarding Flow** — Account setup wizard
 - **Analytics / Revenue Dashboard** — Revenue metrics, job counts, trends
 - **Audit Logging** — Security audit trail on all sensitive actions
@@ -75,6 +75,13 @@
   - Blocked by: real Stripe account, `STRIPE_PRICE_GROWTH`/`STRIPE_PRICE_SCALE` IDs not created, Stripe Connect not enabled
 
 ---
+
+## UI / UX IMPROVEMENTS — COMPLETED 2026-06-24
+
+- **Mobile Phone Access** — Phone gate removed; dashboard fully accessible on phones/tablets/desktops. Bottom nav and sidebar overlay work on all screen widths. Additional CSS: scrollable filter tabs, bottom-sheet modals, stacked form actions on mobile.
+- **Entity Switcher UX** — Engine was already complete; added loading/error state, disabled state during switch, single-entity hint linking to /entities page.
+- **Login page navigation** — Logo now links to `/` (homepage). "← Back to homepage" link added below form. Applied same to ForgotPassword page.
+- **Dashboard logo navigation** — Sidebar FIELDCORE™ logo is now a `<Link to="/dashboard">` — works from any nested page, preserves session, does not trigger full reload.
 
 ## UI ONLY
 *(Frontend exists; backend endpoint may exist but integration or data flow not confirmed)*
