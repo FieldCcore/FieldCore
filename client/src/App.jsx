@@ -151,7 +151,10 @@ function AppShell() {
   if (pathname === '/onboarding') {
     return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;
   }
-  if (user && user.role === 'owner' && user.onboarded === false) {
+  // Only gate on the user's home account — sub-entities skip onboarding
+  const homeAccountId = accounts.find(a => a.is_home)?.id;
+  const onHomeAccount = homeAccountId ? homeAccountId === user?.accountId : true;
+  if (user && user.role === 'owner' && user.onboarded === false && onHomeAccount) {
     return <Navigate to="/onboarding" replace />;
   }
 

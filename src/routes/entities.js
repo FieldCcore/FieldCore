@@ -73,8 +73,8 @@ router.post('/', requireAuth, requireRole('owner'), async (req, res) => {
     await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO accounts
-         (name, legal_name, dba, business_type, ein, address, city, state, zip, phone, entity_email, plan, plan_status, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scale','active',TRUE)
+         (name, legal_name, dba, business_type, ein, address, city, state, zip, phone, entity_email, plan, plan_status, is_active, onboarded)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scale','active',TRUE,TRUE)
        RETURNING ${ENTITY_COLS.replace(/a\./g, '')}`,
       [name.trim(), legal_name || null, dba || null, business_type || null, ein || null,
        address || null, city || null, state || null, zip || null, phone || null, entity_email || null]
