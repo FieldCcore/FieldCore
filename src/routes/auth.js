@@ -304,6 +304,7 @@ router.delete('/sessions/:id', requireAuth, async (req, res) => {
 });
 
 // GET /api/auth/me — verify token and return user
+// Uses payload.accountId (not u.account_id) so entity-switched tokens return the correct business.
 router.get('/me', async (req, res) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer '))
@@ -312,15 +313,32 @@ router.get('/me', async (req, res) => {
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET);
     const { rows } = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.account_id, u.is_available,
+      `SELECT u.id, u.name, u.email, u.is_available,
+              CASE WHEN u.account_id = $2 THEN u.role ELSE am.role END AS role,
               a.name AS account_name, a.plan, a.plan_status, a.onboarded
-       FROM users u JOIN accounts a ON a.id = u.account_id
+       FROM users u
+       JOIN accounts a ON a.id = $2
+       LEFT JOIN account_memberships am ON am.account_id = $2 AND am.user_id = u.id
        WHERE u.id = $1`,
-      [payload.userId]
+      [payload.userId, payload.accountId]
     );
     if (!rows.length) return res.status(401).json({ error: 'User not found.' });
     const r = rows[0];
-    res.json({ user: { ...r, accountId: r.account_id, accountName: r.account_name, plan: r.plan, planStatus: r.plan_status, onboarded: r.onboarded, is_available: r.is_available } });
+    res.json({
+      user: {
+        id:           r.id,
+        name:         r.name,
+        email:        r.email,
+        role:         r.role,
+        account_id:   payload.accountId,
+        accountId:    payload.accountId,
+        accountName:  r.account_name,
+        plan:         r.plan,
+        planStatus:   r.plan_status,
+        onboarded:    r.onboarded,
+        is_available: r.is_available,
+      },
+    });
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
   }

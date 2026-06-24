@@ -220,11 +220,35 @@ body {
   gap: 12px;
   flex-shrink: 0;
 }
+/* Topbar title + entity name stacked wrapper */
+.tb-title-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
 .tb-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 19px;
+  font-size: 17px;
   color: var(--navy);
-  flex: 1;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tb-entity-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--steel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tb-date {
   font-family: 'DM Mono', monospace;
@@ -785,6 +809,32 @@ body {
   font-weight: 800;
   padding: 1px 6px;
   border-radius: 99px;
+}
+
+/* ── Dashboard entity context bar ───────────────────────── */
+.dash-entity-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 7px 14px;
+  background: var(--white);
+  border: 1px solid var(--lightgray);
+  border-radius: 7px;
+  border-left: 3px solid var(--sand);
+}
+.dash-entity-eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--steel);
+}
+.dash-entity-biz {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
 }
 
 /* ── Dashboard ───────────────────────────────────────────── */

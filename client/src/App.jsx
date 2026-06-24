@@ -349,7 +349,12 @@ function AppShell() {
           <button className="tb-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Open menu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
-          <div className="tb-title">{pageTitle}</div>
+          <div className="tb-title-wrap">
+            <div className="tb-title">{pageTitle}</div>
+            {user?.accountName && (
+              <div className="tb-entity-label">{user.accountName}</div>
+            )}
+          </div>
           <div className="tb-date">{dateStr}</div>
           <NotificationBell />
           <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>

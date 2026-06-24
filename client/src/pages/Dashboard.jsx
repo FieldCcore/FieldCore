@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
 
@@ -40,6 +41,7 @@ function fmtTime(iso) {
 
 export default function Dashboard() {
   const nav = useNavigate();
+  const { user } = useAuth();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [beta, setBeta]       = useState(null);
@@ -74,6 +76,12 @@ export default function Dashboard() {
 
   return (
     <div>
+      {user?.accountName && (
+        <div className="dash-entity-bar">
+          <span className="dash-entity-eyebrow">Viewing</span>
+          <span className="dash-entity-biz">{user.accountName}</span>
+        </div>
+      )}
       <div className="dash-stat-grid">
         <div className="dash-sc">
           <div className="dash-sc-l">Today Revenue</div>
