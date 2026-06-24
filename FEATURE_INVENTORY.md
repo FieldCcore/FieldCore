@@ -1,6 +1,6 @@
 # FieldCore — Feature Inventory
 
-**Last reconciled:** 2026-06-24 (updated after UX sprint — mobile access, entity switcher UX, logo navigation)  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint — calendar, clients, communications, settings, entities, billing)  
 **Source of truth:** Actual codebase scan + Sprint audit
 
 **Multi-tenant isolation status:** AUDITED 2026-06-09 — All 27 route files verified. Security fixes applied to `users.js` (membership endpoints), `clients.js`, `jobs.js`, `deposits.js`, `payments.js`. 22 files confirmed clean.
@@ -46,14 +46,15 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 | Layer | Status |
 |-------|--------|
-| Backend | Complete |
-| Frontend | Complete — list, search, add, edit, profile with job/SMS history |
+| Backend | Complete — `GET /clients` now includes `last_invoice_at`, `last_invoice_status`, `outstanding_balance` via subqueries |
+| Frontend | Complete — list shows LTV, outstanding balance, last invoice date/status, client since; add modal respects viewport height |
 | Mobile | Partial — read-only client info on jobs; no standalone client management |
 | Database | Complete |
 | Integration | Stripe customer linking implemented |
 
 **Production Readiness:** High  
 **Missing Work:** Mobile standalone client management screen  
+**UX Update (2026-06-24):** Client list rebuilt with 7-column grid; real invoice and balance data; styled badges; create modal overflow fixed.  
 **Recommended Next Action:** Test client→job→invoice flow end-to-end in staging
 
 ---

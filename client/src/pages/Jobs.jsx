@@ -148,7 +148,7 @@ export default function Jobs() {
   return (
     <div>
       <div className="page-header">
-        <h1>Schedule</h1>
+        <h1>Calendar</h1>
         <button className="btn-primary" onClick={() => { setDefaultStart(new Date()); setModal('create'); }}>
           + New Job
         </button>
@@ -164,7 +164,9 @@ export default function Jobs() {
       </div>
 
       {loading ? (
-        <p className="muted">Loading...</p>
+        <div style={{ background: 'var(--white)', borderRadius: 10, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
+          Loading schedule…
+        </div>
       ) : (
         <div className="calendar-wrap">
           <Calendar
@@ -181,7 +183,7 @@ export default function Jobs() {
             min={calMin}
             max={calMax}
             selectable
-            style={{ height: 620 }}
+            style={{ height: 'max(560px, calc(100vh - 260px))' }}
           />
         </div>
       )}

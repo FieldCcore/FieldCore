@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-06-24 (updated after UX sprint — mobile access, entity switcher, logo navigation)  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint — calendar, clients, communications, settings, entities, billing downgrade)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -80,9 +80,17 @@
 
 - **Mobile Phone Access** — Phone gate removed; dashboard fully accessible on phones/tablets/desktops. Bottom nav and sidebar overlay work on all screen widths. Additional CSS: scrollable filter tabs, bottom-sheet modals, stacked form actions on mobile.
 - **Entity Switcher — Full Fix** — Root cause found and fixed: `/api/auth/me` was joining on `u.account_id` (home account), now joins on `payload.accountId` (active entity from JWT). After switch + reload, `accountName`, `plan`, and `role` are all correct. Topbar now shows active business name below page title. Dashboard shows "Viewing | Business Name" banner. Frontend state and all API calls were already correct (token-scoped); only the `/me` response was stale.
-- **Entity Switcher UX** — Loading/error state, disabled state during switch, single-entity hint linking to /entities page.
+- **Entity Switcher UX** — Loading/error state, disabled state during switch, single-entity hint linking to /entities page. Fixed: `setSwitching(false)` was never called on success, leaving switcher frozen. Added to success path.
 - **Login page navigation** — Logo now links to `/` (homepage). "← Back to homepage" link added below form. Applied same to ForgotPassword page.
 - **Dashboard logo navigation** — Sidebar FIELDCORE™ logo is now a `<Link to="/dashboard">` — works from any nested page, preserves session, does not trigger full reload.
+- **Calendar page UI polish** — Title renamed to "Calendar". Calendar event cards styled (box-shadow, hover opacity). Current day highlighted (`#FDFAF5`). Headers use DM Mono uppercase. Toolbar uses Inter/sand/navy design tokens. Current time indicator uses sand. Height is responsive: `max(560px, calc(100vh - 260px))`. Loading state is a styled card.
+- **Client list page rebuild** — Full table redesign with Name, Tier, Contact, LTV, Outstanding Balance, Last Invoice (date + status badge), Client Since columns. Outstanding balance in amber if > 0. Backend enhanced: `GET /api/clients` now returns `last_invoice_at`, `last_invoice_status`, `outstanding_balance` via DB subqueries. All real data.
+- **Create Client modal** — `.modal` CSS now has `max-height: 90vh; overflow-y: auto` to prevent overflow on desktop.
+- **Communications — `read_at` DB error fix** — `GET /api/phone/conversations` failed with `column m.read_at does not exist` on Railway. Fixed with try/catch fallback: falls back to a query without `read_at` and returns `unread_messages: 0`.
+- **Communications UI cleanup** — Loading states use styled cards. Fixed `var(--off-white)` → `var(--offwhite)`. Thread bubble background uses `var(--offwhite)`. Hardcoded colors replaced with CSS variables. Section separator uses `var(--lightgray)`.
+- **Settings page** — Active Sessions and Audit Log cards used undefined CSS variables (`--navy-3`, `--border`, `--text-muted`), causing dark broken styling. Fixed to `var(--sand-lt)`, `var(--off)`, `var(--lightgray)`, `var(--steel)`, `var(--navy)`.
+- **Entities page revenue typography** — Revenue figures use Cormorant Garamond at `fontSize: 28` (summary) and `fontSize: 16` (breakdown). Stat cards use `.stat-card` / `.stat-label` / `.stat-value` classes.
+- **Billing downgrade flow** — `DowngradeModal` now shows features at risk and routes user to support (email + phone) instead of triggering automatic plan change or Stripe checkout.
 
 ## UI ONLY
 *(Frontend exists; backend endpoint may exist but integration or data flow not confirmed)*

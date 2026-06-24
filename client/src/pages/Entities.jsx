@@ -341,13 +341,13 @@ export default function Entities() {
               {/* MTD / YTD summary cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
                 {[
-                  { label: 'Month-to-Date Revenue', value: `$${parseFloat(analytics.total_mtd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-                  { label: 'Year-to-Date Revenue',  value: `$${parseFloat(analytics.total_ytd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-                  { label: 'Active Entities',       value: analytics.entities?.length ?? 0 },
+                  { label: 'Month-to-Date Revenue', value: `$${parseFloat(analytics.total_mtd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isMoney: true },
+                  { label: 'Year-to-Date Revenue',  value: `$${parseFloat(analytics.total_ytd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isMoney: true },
+                  { label: 'Active Entities',       value: analytics.entities?.length ?? 0, isMoney: false },
                 ].map(card => (
-                  <div key={card.label} style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, padding: '16px 20px' }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af', marginBottom: 6 }}>{card.label}</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>{card.value}</div>
+                  <div key={card.label} className="stat-card">
+                    <span className="stat-label">{card.label}</span>
+                    <span className="stat-value" style={{ fontSize: card.isMoney ? 28 : 32 }}>{card.value}</span>
                   </div>
                 ))}
               </div>
@@ -362,9 +362,9 @@ export default function Entities() {
                   </div>
                   {analytics.entities.map((ent, i) => (
                     <div key={ent.account_id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: 0, padding: '12px 20px', borderBottom: i < analytics.entities.length - 1 ? '1px solid #f4f4f0' : 'none', alignItems: 'center' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{ent.account_name}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>${parseFloat(ent.mtd_revenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                      <div style={{ fontSize: 13, color: '#4b5563' }}>{ent.mtd_jobs ?? 0}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{ent.account_name}</div>
+                      <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 16, fontWeight: 400, color: 'var(--navy)' }}>${parseFloat(ent.mtd_revenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div style={{ fontSize: 13, color: 'var(--slate)' }}>{ent.mtd_jobs ?? 0}</div>
                     </div>
                   ))}
                 </div>

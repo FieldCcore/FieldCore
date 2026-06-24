@@ -1,7 +1,7 @@
 # FieldCore — Next Development Tasks
 
 **Last reconciled:** 2026-06-24  
-**Status:** UX sprint complete (Tasks 1-4 below are done). Awaiting approval for next work items.
+**Status:** UI polish sprint complete (Tasks UX-1 through UX-4 plus UI-1 through UI-7 done). Awaiting approval for next work items.
 
 ---
 
@@ -20,6 +20,32 @@ Login.jsx logo is now `<a href="/">` linking to homepage. "← Back to homepage"
 
 ### ~~UX-4: Dashboard Logo Routes to /dashboard~~ — COMPLETE 2026-06-24
 Sidebar FIELDCORE™ logo in App.jsx wrapped in `<Link to="/dashboard">`. Works from any authenticated page, preserves session, no full page reload. `Link` import added to App.jsx.
+
+---
+
+## UI POLISH TASKS COMPLETED 2026-06-24
+
+### ~~UI-1: Calendar Page Cleanup~~ — COMPLETE 2026-06-24
+Title renamed to "Calendar". React-big-calendar overrides in `style.css`: DM Mono headers, Inter toolbar, sand active state, navy active background, `#FDFAF5` today highlight, sand current-time indicator, event card box-shadow. Height: `max(560px, calc(100vh - 260px))`. Styled loading card. `client/src/pages/Jobs.jsx`, `client/src/style.css`.
+
+### ~~UI-2: Create Client Modal Overflow Fix~~ — COMPLETE 2026-06-24
+`.modal` in `client/src/style.css` now has `max-height: 90vh; overflow-y: auto` on desktop. Create Client form no longer overflows the viewport on small/standard screens.
+
+### ~~UI-3: Client List Rebuild with Real Invoice Data~~ — COMPLETE 2026-06-24
+Client list rebuilt with 7-column grid: Name, Tier, Contact, LTV, Outstanding Balance, Last Invoice (date + status badge), Client Since. Backend `GET /api/clients` enhanced with subqueries for `last_invoice_at`, `last_invoice_status`, `outstanding_balance`. No fake data. `src/routes/clients.js`, `client/src/pages/ClientList.jsx`.
+
+### ~~UI-4: Communications `read_at` Error Fix + UI Cleanup~~ — COMPLETE 2026-06-24
+Backend: `GET /api/phone/conversations` wrapped in try/catch; on `column m.read_at does not exist` error, falls back to base query returning `unread_messages: 0`. `src/routes/phone.js`.
+UI: Loading states use styled cards. `var(--off-white)` → `var(--offwhite)`. Thread call bubble uses `var(--offwhite)`. Inbound message bubble uses `var(--offwhite)`. Section separator uses `var(--lightgray)`. SMS section header/spacing standardized. `client/src/pages/Communications.jsx`.
+
+### ~~UI-5: Settings Page CSS Variable Fix~~ — COMPLETE 2026-06-24
+Active Sessions and Audit Log cards used undefined CSS variables (`--navy-3`, `--border`, `--text-muted`), rendering dark broken UI. Fixed to use defined variables: current session `var(--sand-lt)` / `#D6B58A55` border; other sessions `var(--off)` / `var(--lightgray)`. Text: `var(--navy)` / `var(--steel)`. `client/src/pages/Account.jsx`.
+
+### ~~UI-6: Entities Page Revenue Typography~~ — COMPLETE 2026-06-24
+Revenue figures in summary stat cards now use Cormorant Garamond serif at `fontSize: 28`. Per-entity breakdown revenue uses `fontSize: 16`. Stat cards use `.stat-card` / `.stat-label` / `.stat-value` CSS classes. Hardcoded hex colors replaced with CSS variables. `client/src/pages/Entities.jsx`.
+
+### ~~UI-7: Billing Downgrade → Support Contact Flow~~ — COMPLETE 2026-06-24
+`DowngradeModal` no longer calls Stripe or executes automatic plan changes. Shows features at risk (amber warning), email link (`mailto:support@getfieldcore.com` with pre-filled subject), and phone link (`tel:+18884302777` showing `(888) 430-2777`). Decision: Do not automate downgrades; route to human support. `client/src/pages/Billing.jsx`.
 
 ---
 

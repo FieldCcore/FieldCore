@@ -31,6 +31,74 @@
 
 ---
 
+### [DECISION-022] Billing downgrade must route to human support, not automatic plan change
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The `DowngradeModal` in `Billing.jsx` previously called Stripe Checkout or plan-change logic (or was wired to do so). User explicitly instructed: do not automate downgrades, do not fake billing changes, do not call Stripe downgrade logic unless it was intentionally designed.
+
+**Decision:** `DowngradeModal` now shows the features that will be lost (amber warning block), an email contact link (`mailto:support@getfieldcore.com` with pre-filled subject line), and a phone contact link (`tel:+18884302777` showing `(888) 430-2777`). No Stripe API call is made.
+
+**Alternatives considered:** Auto-cancel Stripe subscription via API. Rejected — downgrade has business consequences (data loss, feature removal) that require human review.
+
+**Reasoning:** Prevents accidental plan changes; ensures a support agent can verify intent and handle data/seat impacts manually; avoids unintended charges or reversals.
+
+**Consequences:** Users who want to downgrade must contact support. Support team must be staffed to handle these requests. Until then, email/phone are the only paths.
+
+---
+
+### [DECISION-021] `read_at` DB error handled with try/catch fallback, not emergency migration
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The Railway PostgreSQL database is missing the `read_at` column on the `messages` table, causing `GET /api/phone/conversations` to return a 500 error and breaking the Communications page entirely.
+
+**Decision:** Wrap the conversations query in try/catch. Primary query includes `read_at` (unread count). On the specific `column m.read_at does not exist` error, fall back to a base query that omits `read_at` and returns `unread_messages: 0`. Page loads correctly in both cases.
+
+**Alternatives considered:** Run the migration immediately via Railway console SQL. Not done in-session — that's a production DB operation requiring user action.
+
+**Reasoning:** The fallback is safer than either breaking the page or requiring an immediate unplanned migration during a UI sprint. The fix is documented in LAUNCH_BLOCKERS.md and TECHNICAL_DEBT_REPORT.md with the exact SQL needed.
+
+**Consequences:** Communications page works. Unread message counts show 0 until `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` is run on Railway.
+
+---
+
+### [DECISION-020] Client list uses real invoice subqueries — no fake spending data
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The client list needed to show LTV, outstanding balance, and last invoice info. These could be mocked/hardcoded or fetched from real DB data.
+
+**Decision:** Enhanced `GET /api/clients` with SQL subqueries: `last_invoice_at`, `last_invoice_status`, `outstanding_balance` (sum of pending invoices) all come from the `invoices` table. If a client has no invoices, values are `null` / `0` and the UI shows `—`.
+
+**Alternatives considered:** Mock data in frontend. Rejected — explicitly against project requirements.
+
+**Reasoning:** Real data is always preferable; the invoices table already exists and is correctly account-scoped. Adding subqueries is low risk and gives accurate information.
+
+**Consequences:** Client list accurately reflects actual invoicing state. Outstanding balance draws from `status = 'pending'` invoices only.
+
+---
+
+### [DECISION-019] Entity switcher `setSwitching(false)` must be called on success, not only on error
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** After a successful entity switch, the entity panel remained in a frozen/loading state indefinitely. Users had to refresh the page to continue.
+
+**Decision:** Add `setSwitching(false)` to the success path of `switchAccount` in `AuthContext.jsx`, immediately after `setUser`. Previously it was only called in the `catch` block.
+
+**Alternatives considered:** None — this was a clear missing line, not a design question.
+
+**Reasoning:** `switching` is set to `true` at the start of the switch. It must be reset to `false` on both success and failure. The catch handled failure; success did not.
+
+**Consequences:** Entity switcher is now responsive immediately after a successful switch with no extra delay.
+
+---
+
 ### [DECISION-018] /api/auth/me must join on payload.accountId, not u.account_id
 **Date:** 2026-06-24
 **Decided by:** Kevin + Claude

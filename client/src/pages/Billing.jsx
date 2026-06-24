@@ -224,31 +224,60 @@ function CancelModal({ onClose, onConfirmed }) {
   );
 }
 
-// ── Downgrade Modal ───────────────────────────────────────────────────────────
-function DowngradeModal({ from, to, periodEnd, onClose, onConfirm }) {
+const SUPPORT_EMAIL = 'support@getfieldcore.com';
+const SUPPORT_PHONE = '(888) 430-2777';
+
+// ── Downgrade Modal — routes through support ──────────────────────────────────
+function DowngradeModal({ from, to, onClose }) {
   const lost = PLAN_FEATURES[to.key] || [];
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
-      <div style={{ background: 'white', borderRadius: 12, padding: 32, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Downgrade to {to.name}?</div>
-        <div style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 20, lineHeight: 1.6 }}>
-          Downgrading takes effect on <strong>{fmtDate(periodEnd)}</strong>, at the end of your current billing period.
+      <div style={{ background: 'white', borderRadius: 12, padding: 32, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Downgrade to {to.name}</div>
+        <div style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 20, lineHeight: 1.7 }}>
+          To downgrade your FieldCore plan, please contact our support team. We'll help adjust your account without interrupting your service.
         </div>
+
         {lost.length > 0 && (
-          <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Features you will lose</div>
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>Features that change on {to.name}</div>
             {lost.map(f => (
-              <div key={f} style={{ display: 'flex', gap: 8, fontSize: 13, color: '#7f1d1d', marginBottom: 4 }}>
-                <span>✕</span> {f}
+              <div key={f} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#78350f', marginBottom: 3 }}>
+                <span style={{ flexShrink: 0 }}>·</span> {f}
               </div>
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onConfirm} style={{ flex: 1, padding: '11px 0', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            Confirm Downgrade
-          </button>
-          <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Cancel</button>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=Downgrade Request — ${to.name} Plan&body=Hi FieldCore team,%0A%0AI'd like to downgrade my plan from ${from} to ${to.name}. Please let me know the next steps.%0A%0AThanks`}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: 'var(--off)', border: '1.5px solid var(--lightgray)', borderRadius: 10, textDecoration: 'none', color: 'var(--navy)', fontWeight: 600, fontSize: 14, transition: 'border-color .15s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--sand)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--lightgray)'}
+          >
+            <span style={{ fontSize: 20 }}>✉️</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>Email Support</div>
+              <div style={{ fontSize: 12, color: 'var(--steel)', fontWeight: 400 }}>{SUPPORT_EMAIL}</div>
+            </div>
+          </a>
+          <a
+            href={`tel:${SUPPORT_PHONE.replace(/\D/g, '')}`}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: 'var(--off)', border: '1.5px solid var(--lightgray)', borderRadius: 10, textDecoration: 'none', color: 'var(--navy)', fontWeight: 600, fontSize: 14, transition: 'border-color .15s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--sand)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--lightgray)'}
+          >
+            <span style={{ fontSize: 20 }}>📞</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>Call Support</div>
+              <div style={{ fontSize: 12, color: 'var(--steel)', fontWeight: 400 }}>{SUPPORT_PHONE}</div>
+            </div>
+          </a>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn-secondary" style={{ fontSize: 13 }}>Close</button>
         </div>
       </div>
     </div>

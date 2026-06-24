@@ -7,7 +7,14 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM clients WHERE account_id = $1 ORDER BY name`,
+      `SELECT c.*,
+         (SELECT MAX(i.created_at) FROM invoices i WHERE i.client_id = c.id AND i.account_id = $1) AS last_invoice_at,
+         (SELECT MAX(i.amount)     FROM invoices i WHERE i.client_id = c.id AND i.account_id = $1 AND i.created_at = (SELECT MAX(created_at) FROM invoices WHERE client_id = c.id AND account_id = $1)) AS last_invoice_amount,
+         (SELECT i.status          FROM invoices i WHERE i.client_id = c.id AND i.account_id = $1 ORDER BY i.created_at DESC LIMIT 1) AS last_invoice_status,
+         COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.client_id = c.id AND i.account_id = $1 AND i.status = 'pending'), 0) AS outstanding_balance
+       FROM clients c
+       WHERE c.account_id = $1
+       ORDER BY c.name`,
       [req.accountId]
     );
     res.json(rows);

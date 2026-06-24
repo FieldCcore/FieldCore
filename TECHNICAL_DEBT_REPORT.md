@@ -70,7 +70,18 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 ---
 
 ### ~~TD-H2c: Entity switcher had no loading/error state~~ — RESOLVED 2026-06-24
-**Resolution:** `switching` and `switchError` state added to `AuthContext`. `switchAccount` wrapped in try/catch. Entity panel now shows "Switching…" label, disabled buttons, and inline error message. Single-entity users see a hint pointing to /entities.
+**Resolution:** `switching` and `switchError` state added to `AuthContext`. `switchAccount` wrapped in try/catch. Entity panel shows "Switching…" label, disabled buttons, and inline error. Single-entity users see hint pointing to /entities. Also fixed: `setSwitching(false)` was never called on success, leaving the switcher permanently frozen after a successful switch.
+
+---
+
+### TD-H2d: `messages.read_at` column missing on Railway DB
+**Severity:** High  
+**Description:** The `migrate.js` script defines a `read_at` column on the `messages` table, but the Railway PostgreSQL database does not have it. `GET /api/phone/conversations` was failing with `column m.read_at does not exist`.  
+**Risk:** Communications page broken for all users; no unread message tracking  
+**Files:** `src/routes/phone.js`, `src/migrate.js`  
+**Current state:** Worked around with try/catch fallback in the route (2026-06-24). Primary query uses `read_at`; on error, falls back to base query with `unread_messages: 0`.  
+**Fix needed:** Run `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` on Railway DB, then remove the fallback in `phone.js`.  
+**Effort:** 5 minutes (SQL migration on Railway console)
 
 ---
 

@@ -212,30 +212,30 @@ export default function Account() {
               </div>
 
               {sessions.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No active sessions found.</p>
+                <p style={{ color: 'var(--steel)', fontSize: 13 }}>No active sessions found.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {sessions.map((s, i) => (
                     <div key={s.id} style={{
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '12px 14px', borderRadius: 10,
-                      background: 'var(--navy-3)',
-                      border: '1px solid var(--border)',
+                      background: i === 0 ? 'var(--sand-lt)' : 'var(--off)',
+                      border: `1px solid ${i === 0 ? '#D6B58A55' : 'var(--lightgray)'}`,
                     }}>
-                      <div style={{ color: 'var(--text-muted)' }}>{deviceIcon(s.device_info)}</div>
+                      <div style={{ color: 'var(--slate)' }}>{deviceIcon(s.device_info)}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 8 }}>
                           {s.device_info || 'Unknown device'}
-                          {i === 0 && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Current</span>}
+                          {i === 0 && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--sand)', padding: '2px 7px', borderRadius: 99 }}>Current</span>}
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
                           {s.ip_address} · Last active {formatDate(s.last_active_at)}
                         </div>
                       </div>
                       {i !== 0 && (
                         <button
                           onClick={() => revokeSession(s.id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 4 }}
                           title="Revoke session"
                         >
                           <Trash2 size={15} />
@@ -306,16 +306,16 @@ function AuditLogSection() {
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No audit events found.</p>
         ) : (
           logs.map(log => (
-            <div key={log.id} style={{ padding: '10px 12px', background: 'var(--navy-3)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div key={log.id} style={{ padding: '10px 12px', background: 'var(--off)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
                   {ACTION_LABELS[log.action] || log.action}
                 </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 11, color: 'var(--steel)' }}>
                   {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                 </span>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
                 {log.user_name || log.user_email || 'System'} · IP: {log.ip_address || '—'}
               </div>
             </div>

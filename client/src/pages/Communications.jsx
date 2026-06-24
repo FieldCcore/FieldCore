@@ -179,14 +179,20 @@ function ConversationThread({ clientId, onBack }) {
     } finally { setSending(false); }
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--steel)', fontSize: 14 }}>Loading conversation…</div>;
-  if (error)   return <div style={{ padding: 32, color: '#C62828', fontSize: 13 }}>{error}</div>;
+  if (loading) return (
+    <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
+      Loading conversation…
+    </div>
+  );
+  if (error) return (
+    <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12, padding: '16px 20px', color: 'var(--red)', fontSize: 13 }}>{error}</div>
+  );
 
   const { client, thread } = data;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '70vh', background: 'white', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--off-white)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--offwhite)' }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
           <ChevronLeft size={16} /> Back
         </button>
@@ -238,7 +244,7 @@ function ThreadItem({ item }) {
 
   if (isCall) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '8px 14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid var(--lightgray)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '8px 14px', background: 'var(--offwhite)', borderRadius: 10, border: '1px solid var(--lightgray)' }}>
         {item.direction === 'inbound'
           ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
           : <Phone size={13} style={{ color: 'var(--navy)' }} />
@@ -258,7 +264,7 @@ function ThreadItem({ item }) {
         maxWidth: '72%',
         padding: '10px 14px',
         borderRadius: isOutbound ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-        background: isOutbound ? 'var(--navy)' : '#F1F5F9',
+        background: isOutbound ? 'var(--navy)' : 'var(--offwhite)',
         color: isOutbound ? 'white' : 'var(--navy)',
         fontSize: 13,
         lineHeight: 1.5,
@@ -287,8 +293,14 @@ function ConversationsList({ onSelect }) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p style={{ color: 'var(--steel)', fontSize: 14 }}>Loading…</p>;
-  if (error)   return <p style={{ color: '#C62828', fontSize: 13 }}>{error}</p>;
+  if (loading) return (
+    <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
+      Loading conversations…
+    </div>
+  );
+  if (error) return (
+    <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12, padding: '16px 20px', color: 'var(--red)', fontSize: 13 }}>{error}</div>
+  );
 
   if (convs.length === 0) {
     return (
@@ -436,7 +448,11 @@ function PhoneSection() {
           : <ConversationsList onSelect={c => setActiveConv(c)} />
       )}
 
-      {loading && tab !== 'conversations' && <p style={{ color: 'var(--steel)', fontSize: 14 }}>Loading…</p>}
+      {loading && tab !== 'conversations' && (
+        <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
+          Loading…
+        </div>
+      )}
 
       {!loading && tab === 'numbers' && (
         <>
@@ -756,10 +772,10 @@ export default function Communications() {
   return (
     <div>
       <PhoneSection />
-      <div style={{ borderTop: '2px solid #E5E0D8', margin: '40px 0 0' }} />
-      <div style={{ paddingTop: 32 }}>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#1C2333' }}>SMS Messages</div>
+      <div style={{ borderTop: '1px solid var(--lightgray)', margin: '48px 0 0' }} />
+      <div style={{ paddingTop: 40, maxWidth: 900, margin: '0 auto' }}>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)' }}>SMS Messages</div>
           <p style={{ margin: '4px 0 0', color: 'var(--steel)', fontSize: 14 }}>Text message conversations with clients</p>
         </div>
         <MessagesPanel />

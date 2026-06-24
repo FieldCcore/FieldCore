@@ -422,6 +422,8 @@ body {
   padding: 28px;
   width: 560px;
   max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(28,35,51,.22);
   border: 1px solid var(--lightgray);
 }
@@ -659,18 +661,45 @@ body {
 .status-btn:disabled { cursor: default; }
 
 /* ── Calendar ────────────────────────────────────────────── */
-.calendar-wrap { background: var(--white); border-radius: 10px; padding: 16px; border: 1px solid var(--lightgray); }
-.calendar-legend { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate); text-transform: capitalize; }
-.legend-dot  { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.calendar-wrap { background: var(--white); border-radius: 10px; padding: 20px; border: 1px solid var(--lightgray); box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+.calendar-legend { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; padding: 10px 14px; background: var(--off); border-radius: 8px; border: 1px solid var(--lightgray); }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--slate); text-transform: capitalize; font-weight: 500; }
+.legend-dot  { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
-.rbc-toolbar button { font-family: 'Inter', sans-serif; font-size: 13px; }
+/* react-big-calendar overrides */
+.rbc-toolbar { margin-bottom: 16px; gap: 10px; flex-wrap: wrap; }
+.rbc-toolbar-label { font-family: 'Cormorant Garamond', serif; font-size: 18px; color: var(--navy); font-weight: 400; }
+.rbc-btn-group { display: flex; gap: 2px; }
+.rbc-btn-group button,
+.rbc-toolbar button { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1.5px solid var(--lightgray); color: var(--slate); background: var(--white); padding: 6px 14px; cursor: pointer; transition: all .15s; }
+.rbc-btn-group button:hover,
+.rbc-toolbar button:hover { border-color: var(--sand); background: var(--sand-lt); color: var(--navy); }
+.rbc-btn-group button.rbc-active,
 .rbc-toolbar button.rbc-active { background: var(--navy) !important; color: var(--white) !important; border-color: var(--navy) !important; }
-.rbc-toolbar button:hover      { background: var(--off); }
-.rbc-today { background: #FAF8F4 !important; }
-.rbc-event  { cursor: pointer; }
-.rbc-header { font-family: 'DM Mono', monospace; font-weight: 500; font-size: 11px; color: var(--slate); letter-spacing: .04em; text-transform: uppercase; }
-.rbc-event-label { font-size: 11px; }
+.rbc-today { background: #FDFAF5 !important; }
+.rbc-off-range-bg { background: var(--off) !important; }
+.rbc-event  { cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.rbc-event:hover { opacity: .88; }
+.rbc-event-label { font-size: 10px; }
+.rbc-event-content { font-size: 12px; font-weight: 600; }
+.rbc-header { font-family: 'DM Mono', monospace; font-weight: 600; font-size: 10px; color: var(--steel); letter-spacing: .06em; text-transform: uppercase; padding: 10px 8px; border-bottom: 1.5px solid var(--lightgray); }
+.rbc-header.rbc-today { color: var(--navy); }
+.rbc-month-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); }
+.rbc-month-row { border-top: 1px solid var(--lightgray); }
+.rbc-day-bg + .rbc-day-bg { border-left: 1px solid var(--lightgray); }
+.rbc-date-cell { padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--slate); }
+.rbc-date-cell.rbc-now { color: var(--navy); }
+.rbc-date-cell.rbc-now a { color: var(--navy); font-weight: 800; }
+.rbc-date-cell a { color: var(--slate); text-decoration: none; }
+.rbc-show-more { color: var(--navy); font-size: 11px; font-weight: 700; background: none; border: none; cursor: pointer; padding: 2px 6px; }
+.rbc-time-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); }
+.rbc-time-header { border-bottom: 1.5px solid var(--lightgray); }
+.rbc-time-content { border-top: none; }
+.rbc-time-slot { border-top: 1px solid #f4f3f0; }
+.rbc-timeslot-group { border-bottom: 1px solid var(--lightgray); }
+.rbc-time-gutter .rbc-timeslot-group { border-bottom: none; }
+.rbc-current-time-indicator { background: var(--sand); height: 2px; }
+.rbc-slot-selection { background: rgba(214,181,138,.2); border: 1px solid var(--sand); }
 
 /* ── Messages ────────────────────────────────────────────── */
 .messages-layout    { display: flex; height: calc(100vh - 52px - 44px); gap: 0; margin: -22px -24px; overflow: hidden; }
