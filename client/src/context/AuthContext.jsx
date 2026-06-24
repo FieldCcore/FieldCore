@@ -6,6 +6,17 @@ const AuthContext = createContext(null);
 const TOKEN_KEY   = 'fc_token';
 const REFRESH_KEY = 'fc_refresh';
 
+// Decode JWT payload without verification — used client-side so accountId is
+// always read from the token itself rather than depending on /me returning correct data.
+function decodeJwtPayload(token) {
+  try {
+    const [, b64] = token.split('.');
+    return JSON.parse(atob(b64.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+}
+
 // Refresh the access token using the stored refresh token
 async function doRefresh() {
   const refreshToken = localStorage.getItem(REFRESH_KEY);
@@ -61,8 +72,19 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
+    // Decode the JWT so we always know which account is active, independent of
+    // what /me returns (guards against a stale backend returning the home account).
+    const jwtPayload = decodeJwtPayload(token);
     axios.get('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => { setUser(r.data.user); scheduleRefresh(); })
+      .then(r => {
+        const me = r.data.user;
+        setUser({
+          ...me,
+          accountId:  jwtPayload?.accountId ?? me.accountId,
+          account_id: jwtPayload?.accountId ?? me.account_id,
+        });
+        scheduleRefresh();
+      })
       .catch(() => {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_KEY);
@@ -73,11 +95,18 @@ export function AuthProvider({ children }) {
     return () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch accessible accounts whenever the user changes
+  // Fetch accessible accounts whenever the active account or token changes.
+  // Also corrects accountName in case /me returned stale home-account data.
   useEffect(() => {
     if (!user || !token) { setAccounts([]); return; }
     axios.get('/api/auth/accounts', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => setAccounts(r.data))
+      .then(r => {
+        setAccounts(r.data);
+        const active = r.data.find(a => a.id === user.accountId);
+        if (active && active.name !== user.accountName) {
+          setUser(prev => ({ ...prev, accountName: active.name }));
+        }
+      })
       .catch(() => setAccounts([]));
   }, [user?.accountId, token]);
 
@@ -111,6 +140,7 @@ export function AuthProvider({ children }) {
       const msg = err.response?.data?.error || 'Failed to switch account. Please try again.';
       setSwitchError(msg);
       setSwitching(false);
+      throw err;
     }
   }
 

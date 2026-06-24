@@ -75,7 +75,7 @@ function TypeBadge({ type }) {
 }
 
 export default function Entities() {
-  const { user, switchAccount } = useAuth();
+  const { user, switchAccount, switchError } = useAuth();
   const isScale = user?.plan === 'scale';
   const [searchParams, setSearchParams] = useSearchParams();
   const connectSuccess = searchParams.get('connect') === 'success';
@@ -183,8 +183,11 @@ export default function Entities() {
 
   async function handleSwitch(entityId) {
     setSwitching(entityId);
-    try { await switchAccount(entityId); }
-    catch { setSwitching(null); }
+    try {
+      await switchAccount(entityId);
+    } catch {
+      setSwitching(null);
+    }
   }
 
   async function handleConnect(entityId) {
@@ -286,6 +289,13 @@ export default function Entities() {
           </button>
         )}
       </div>
+
+      {/* Switch error banner */}
+      {switchError && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626' }}>
+          {switchError}
+        </div>
+      )}
 
       {/* Stripe Connect success banner */}
       {connectSuccess && (
