@@ -135,6 +135,7 @@ export function AuthProvider({ children }) {
       if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
       setToken(t);
       setUser(prev => ({ ...prev, ...u }));
+      setSwitching(false);
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to switch account. Please try again.';
       setSwitchError(msg);
