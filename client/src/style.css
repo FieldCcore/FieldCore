@@ -1553,3 +1553,58 @@ body {
   .dash-3col        { grid-template-columns: 1fr 1fr; }
   .rev-layout       { grid-template-columns: 1fr !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE — Additional fixes for full phone access
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Filter tabs: scrollable row on mobile */
+  .filter-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tab { flex-shrink: 0; }
+
+  /* Stats row: 2-col on tablet/mobile */
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+
+  /* Profile grid: single column */
+  .profile-grid { grid-template-columns: 1fr; }
+
+  /* Modal: full bottom sheet on mobile */
+  .modal-overlay { align-items: flex-end; }
+  .modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px 16px 0 0;
+    padding: 24px 20px;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  .modal-lg { width: 100% !important; }
+
+  /* Form actions: stack on mobile */
+  .form-actions { flex-direction: column-reverse; }
+  .form-actions .btn-secondary,
+  .form-actions .btn-primary { width: 100%; text-align: center; justify-content: center; }
+
+  /* Topbar: hide "Simulate Call" ghost button on mobile */
+  .tb-ghost { display: none; }
+
+  /* Caller popup: full-width on mobile */
+  .caller-popup { width: calc(100% - 24px); right: 12px; left: 12px; top: 12px; }
+}
+
+@media (max-width: 480px) {
+  /* Topbar: very small — compress + New Job */
+  .tb-btn.tb-primary { padding: 6px 8px; font-size: 11px; }
+  /* Status buttons: wrap */
+  .status-buttons { gap: 6px; }
+  .status-btn { font-size: 11.5px; padding: 6px 10px; }
+  /* Filter count badge: hide on tiny screens */
+  .filter-count { display: none; }
+}

@@ -31,9 +31,9 @@ export default function Login() {
   return (
     <div className="login-shell">
       <div className="login-card">
-        <div className="login-logo">
+        <a href="/" className="login-logo" style={{ display: 'block', textDecoration: 'none', cursor: 'pointer' }} aria-label="Back to FieldCore homepage">
           FIELD<span>CORE</span><sup className="login-tm">™</sup>
-        </div>
+        </a>
 
         <h1 className="login-title">Sign in</h1>
         <p className="login-sub">Access your operator dashboard.</p>
@@ -93,6 +93,9 @@ export default function Login() {
         <p className="login-footer">
           No account?{' '}
           <a href="/#cta" className="login-link">Start free trial →</a>
+        </p>
+        <p className="login-footer" style={{ marginTop: 10 }}>
+          <a href="/" className="login-link" style={{ opacity: 0.55 }}>← Back to homepage</a>
         </p>
       </div>
     </div>

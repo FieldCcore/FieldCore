@@ -37,10 +37,12 @@ axios.interceptors.response.use(
 );
 
 export function AuthProvider({ children }) {
-  const [user,     setUser]     = useState(null);
-  const [token,    setToken]    = useState(() => localStorage.getItem(TOKEN_KEY));
-  const [loading,  setLoading]  = useState(true);
-  const [accounts, setAccounts] = useState([]);
+  const [user,            setUser]            = useState(null);
+  const [token,           setToken]           = useState(() => localStorage.getItem(TOKEN_KEY));
+  const [loading,         setLoading]         = useState(true);
+  const [accounts,        setAccounts]        = useState([]);
+  const [switching,       setSwitching]       = useState(false);
+  const [switchError,     setSwitchError]     = useState(null);
   const refreshTimer = useRef(null);
 
   // Schedule silent token refresh 1 minute before expiry (access token = 15min)
@@ -91,17 +93,25 @@ export function AuthProvider({ children }) {
   }
 
   async function switchAccount(accountId) {
-    const res = await axios.post(
-      '/api/auth/switch',
-      { account_id: accountId },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const { token: t, refreshToken, user: u } = res.data;
-    localStorage.setItem(TOKEN_KEY, t);
-    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
-    setToken(t);
-    setUser(prev => ({ ...prev, ...u }));
-    window.location.href = '/dashboard';
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      const res = await axios.post(
+        '/api/auth/switch',
+        { account_id: accountId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const { token: t, refreshToken, user: u } = res.data;
+      localStorage.setItem(TOKEN_KEY, t);
+      if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+      setToken(t);
+      setUser(prev => ({ ...prev, ...u }));
+      window.location.href = '/dashboard';
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to switch account. Please try again.';
+      setSwitchError(msg);
+      setSwitching(false);
+    }
   }
 
   async function logout() {
@@ -121,7 +131,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, accounts, login, logout, switchAccount }}>
+    <AuthContext.Provider value={{ user, token, loading, accounts, switching, switchError, login, logout, switchAccount }}>
       {children}
     </AuthContext.Provider>
   );

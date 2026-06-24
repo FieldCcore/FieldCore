@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone } from 'lucide-react';
-import { Routes, Route, NavLink, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
 class ErrorBoundary extends React.Component {
@@ -111,7 +111,7 @@ const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 
 function AppShell() {
   const { pathname } = useLocation();
-  const { user, logout, accounts, switchAccount } = useAuth();
+  const { user, logout, accounts, switching, switchError, switchAccount } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
   const [dateStr,    setDateStr]    = useState('');
@@ -128,12 +128,6 @@ function AppShell() {
   }, []);
 
 
-  const [isPhone, setIsPhone] = useState(window.innerWidth < 640);
-  useEffect(() => {
-    const check = () => setIsPhone(window.innerWidth < 640);
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
 
   // Auto-show CallerID on live inbound calls
   const lastCallIdRef = React.useRef(null);
@@ -219,25 +213,6 @@ function AppShell() {
   const isClientProfile = pathname.startsWith('/clients/');
   const pageTitle = isClientProfile ? 'Client Profile' : (PAGE_TITLES[pathname] || 'FieldCore');
 
-  if (isPhone) {
-    return (
-      <div style={{ minHeight: '100vh', background: '#1C2333', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px', textAlign: 'center', gap: 20 }}>
-        <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, letterSpacing: '.12em', fontSize: 15, color: '#fff' }}>
-          FIELD<span style={{ color: '#D6B58A' }}>CORE</span><sup style={{ fontSize: 8, color: '#D6B58A', verticalAlign: 'super' }}>™</sup>
-        </div>
-        <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 28, color: '#fff', fontWeight: 400, lineHeight: 1.2 }}>
-          Better on a<br />bigger screen
-        </div>
-        <p style={{ color: 'rgba(255,255,255,.42)', fontSize: 14, lineHeight: 1.7, maxWidth: 270 }}>
-          FieldCore is built for tablets and desktops. Open this page on a tablet, laptop, or desktop for the full experience.
-        </p>
-        <a href="/" style={{ marginTop: 4, padding: '12px 30px', background: '#D6B58A', color: '#1C2333', borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: 'none', fontFamily: 'Inter, sans-serif' }}>
-          Back to Homepage
-        </a>
-      </div>
-    );
-  }
-
   const ni = (to, end, Icon, label, badge) => (
     <NavLink
       to={to}
@@ -254,27 +229,43 @@ function AppShell() {
   return (
     <div className="app">
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
-        <div className="sb-logo">
+        <Link to="/dashboard" className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
-        </div>
+        </Link>
 
         <div className="entity-panel">
           <div className="entity-section-label">Entities</div>
           {accounts.map((a, i) => {
             const isActive = a.id === user?.accountId;
             const dotColors = ['#D6B58A', '#7B9EC9', '#82C9A0', '#C98282', '#C9B882'];
+            const isSwitchingToThis = switching && !isActive;
             return (
               <button
                 key={a.id}
-                onClick={() => { if (!isActive) switchAccount(a.id); }}
+                onClick={() => { if (!isActive && !switching) switchAccount(a.id); }}
                 className={'entity-opt' + (isActive ? ' active' : '')}
+                disabled={switching}
+                title={isActive ? 'Current entity' : `Switch to ${a.name}`}
+                style={{ opacity: switching && !isActive ? 0.6 : 1, cursor: switching ? 'wait' : (isActive ? 'default' : 'pointer') }}
               >
-                <span className="entity-dot" style={{ background: isActive ? '#D6B58A' : dotColors[i % dotColors.length] }} />
-                <span className={'entity-name' + (isActive ? ' active' : '')}>{a.name}</span>
-                <span className={'entity-badge' + (isActive ? ' active' : '')}>{a.role}</span>
+                <span className="entity-dot" style={{ background: isSwitchingToThis ? '#8A90A2' : (isActive ? '#D6B58A' : dotColors[i % dotColors.length]) }} />
+                <span className={'entity-name' + (isActive ? ' active' : '')} style={{ fontSize: 11.5 }}>
+                  {switching && !isActive ? 'Switching…' : a.name}
+                </span>
+                <span className={'entity-badge' + (isActive ? ' active' : '')}>{isActive ? (switching ? '…' : a.role) : a.role}</span>
               </button>
             );
           })}
+          {switchError && (
+            <div style={{ fontSize: 10.5, color: '#ff8a80', padding: '4px 12px 6px', lineHeight: 1.4 }}>
+              {switchError}
+            </div>
+          )}
+          {accounts.length <= 1 && (
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.22)', padding: '4px 12px', fontStyle: 'italic' }}>
+              Add more entities in <a href="/entities" style={{ color: 'rgba(214,181,138,.55)', textDecoration: 'none' }}>Entities</a>
+            </div>
+          )}
         </div>
 
         <nav className="sb-nav">

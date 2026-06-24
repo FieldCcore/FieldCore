@@ -26,9 +26,9 @@ export default function ForgotPassword() {
   return (
     <div className="login-shell">
       <div className="login-card">
-        <div className="login-logo">
+        <a href="/" className="login-logo" style={{ display: 'block', textDecoration: 'none', cursor: 'pointer' }} aria-label="Back to FieldCore homepage">
           FIELD<span>CORE</span><sup className="login-tm">™</sup>
-        </div>
+        </a>
 
         <h1 className="login-title">Reset password</h1>
 
