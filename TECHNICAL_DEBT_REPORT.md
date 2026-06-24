@@ -74,14 +74,8 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 
 ---
 
-### TD-H2d: `messages.read_at` column missing on Railway DB
-**Severity:** High  
-**Description:** The `migrate.js` script defines a `read_at` column on the `messages` table, but the Railway PostgreSQL database does not have it. `GET /api/phone/conversations` was failing with `column m.read_at does not exist`.  
-**Risk:** Communications page broken for all users; no unread message tracking  
-**Files:** `src/routes/phone.js`, `src/migrate.js`  
-**Current state:** Worked around with try/catch fallback in the route (2026-06-24). Primary query uses `read_at`; on error, falls back to base query with `unread_messages: 0`.  
-**Fix needed:** Run `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` on Railway DB, then remove the fallback in `phone.js`.  
-**Effort:** 5 minutes (SQL migration on Railway console)
+### ~~TD-H2d: `messages.read_at` column missing on Railway DB~~ — RESOLVED 2026-06-24
+**Resolution:** `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` run on Railway production DB. Fallback block removed from `src/routes/phone.js`. Unread message tracking fully operational.
 
 ---
 

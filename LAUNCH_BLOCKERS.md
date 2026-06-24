@@ -103,11 +103,8 @@ Blockers are ranked within each tier by consequence severity.
 
 ---
 
-### ~~C-11b — `messages.read_at` column missing on Railway DB~~ — WORKAROUND APPLIED 2026-06-24
-**Impact was:** `GET /api/phone/conversations` crashed with `column m.read_at does not exist`. Communications page was broken for all users.  
-**Workaround applied:** try/catch in `src/routes/phone.js` — primary query uses `read_at`; on the specific error, falls back to base query returning `unread_messages: 0`. Page now loads correctly.  
-**Remaining action:** Run `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` on Railway console, then remove the fallback block in `phone.js`. This is a 5-minute fix.  
-**Blocking:** Unread message count will always show 0 until migration runs.
+### ~~C-11b — `messages.read_at` column missing on Railway DB~~ — RESOLVED 2026-06-24
+**Resolution:** `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` run directly on Railway production DB via psql. Fallback block removed from `src/routes/phone.js`. Unread message counts now work correctly.
 
 ---
 

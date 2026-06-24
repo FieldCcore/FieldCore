@@ -240,29 +240,7 @@ router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), asy
 
 // GET /api/phone/conversations — list clients who have calls or messages, for unified inbox
 router.get('/conversations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const BASE_SELECT = `
-    SELECT
-      c.id, c.name, c.phone,
-      MAX(GREATEST(
-        COALESCE(last_call.started_at, '1970-01-01'),
-        COALESCE(last_msg.created_at,  '1970-01-01')
-      )) AS last_contact,
-      COUNT(DISTINCT cl.id) AS call_count,
-      COUNT(DISTINCT m.id)  AS message_count,
-      (SELECT body FROM messages WHERE client_id = c.id AND account_id = $1 ORDER BY created_at DESC LIMIT 1) AS last_message_body,
-      (SELECT direction FROM messages WHERE client_id = c.id AND account_id = $1 ORDER BY created_at DESC LIMIT 1) AS last_message_dir
-    FROM clients c
-    LEFT JOIN call_logs cl ON cl.client_id = c.id AND cl.account_id = $1
-    LEFT JOIN messages  m  ON m.client_id  = c.id AND m.account_id  = $1
-    LEFT JOIN LATERAL (SELECT started_at FROM call_logs WHERE client_id = c.id AND account_id = $1 ORDER BY started_at DESC LIMIT 1) last_call ON TRUE
-    LEFT JOIN LATERAL (SELECT created_at  FROM messages  WHERE client_id = c.id AND account_id = $1 ORDER BY created_at  DESC LIMIT 1) last_msg  ON TRUE
-    WHERE c.account_id = $1 AND (cl.id IS NOT NULL OR m.id IS NOT NULL)
-    GROUP BY c.id, c.name, c.phone
-    ORDER BY last_contact DESC
-    LIMIT 100`;
-
   try {
-    // Try with read_at-based unread count first
     const { rows } = await pool.query(
       `SELECT
          c.id, c.name, c.phone,
@@ -288,15 +266,6 @@ router.get('/conversations', requireAuth, requireRole('owner', 'manager'), async
     );
     res.json(rows);
   } catch (err) {
-    // read_at column may not exist yet (pending migration) — fall back without unread count
-    if (err.message && err.message.includes('read_at')) {
-      try {
-        const { rows } = await pool.query(BASE_SELECT, [req.accountId]);
-        return res.json(rows.map(r => ({ ...r, unread_messages: 0 })));
-      } catch (fallbackErr) {
-        return res.status(500).json({ error: fallbackErr.message });
-      }
-    }
     res.status(500).json({ error: err.message });
   }
 });
