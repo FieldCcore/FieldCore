@@ -79,7 +79,8 @@
 ## UI / UX IMPROVEMENTS — COMPLETED 2026-06-24
 
 - **Mobile Phone Access** — Phone gate removed; dashboard fully accessible on phones/tablets/desktops. Bottom nav and sidebar overlay work on all screen widths. Additional CSS: scrollable filter tabs, bottom-sheet modals, stacked form actions on mobile.
-- **Entity Switcher UX** — Engine was already complete; added loading/error state, disabled state during switch, single-entity hint linking to /entities page.
+- **Entity Switcher — Full Fix** — Root cause found and fixed: `/api/auth/me` was joining on `u.account_id` (home account), now joins on `payload.accountId` (active entity from JWT). After switch + reload, `accountName`, `plan`, and `role` are all correct. Topbar now shows active business name below page title. Dashboard shows "Viewing | Business Name" banner. Frontend state and all API calls were already correct (token-scoped); only the `/me` response was stale.
+- **Entity Switcher UX** — Loading/error state, disabled state during switch, single-entity hint linking to /entities page.
 - **Login page navigation** — Logo now links to `/` (homepage). "← Back to homepage" link added below form. Applied same to ForgotPassword page.
 - **Dashboard logo navigation** — Sidebar FIELDCORE™ logo is now a `<Link to="/dashboard">` — works from any nested page, preserves session, does not trigger full reload.
 

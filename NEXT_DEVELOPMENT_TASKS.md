@@ -10,8 +10,10 @@
 ### ~~UX-1: Mobile and Tablet Access~~ — COMPLETE 2026-06-24
 Removed `isPhone` gate from `client/src/App.jsx`. Dashboard accessible on phones, tablets, and desktops. Added CSS: scrollable filter tabs, bottom-sheet modals on mobile, stacked form actions, caller popup width fix at 480px. Build verified passing.
 
-### ~~UX-2: Entity Switcher Loading + Error State~~ — COMPLETE 2026-06-24
-`AuthContext.jsx` — `switchAccount` wrapped in try/catch; `switching` and `switchError` state added and exposed in context. Entity panel in App.jsx shows "Switching…" label, disabled buttons during switch, error message on failure, single-entity hint. Backend engine was already complete.
+### ~~UX-2: Entity Switcher — Full Fix~~ — COMPLETE 2026-06-24
+Root cause: `/api/auth/me` in `src/routes/auth.js` joined on `u.account_id` (always the home account), returning the wrong business name/plan/role after switching. Fixed to join on `payload.accountId` with correct role resolution.
+Frontend: topbar now shows active business name below page title (`.tb-entity-label`). Dashboard shows "Viewing | Business Name" banner (`.dash-entity-bar`).
+AuthContext: `switchAccount` wrapped in try/catch; `switching`/`switchError` state; entity panel shows loading/error/hint.
 
 ### ~~UX-3: Login Page Back to Home~~ — COMPLETE 2026-06-24
 Login.jsx logo is now `<a href="/">` linking to homepage. "← Back to homepage" link added below form footer. Same applied to ForgotPassword.jsx.

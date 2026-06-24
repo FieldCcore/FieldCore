@@ -59,6 +59,11 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 
 ---
 
+### ~~TD-H2a: /api/auth/me returned wrong accountName after entity switch~~ — RESOLVED 2026-06-24
+**Resolution:** `/me` joined on `u.account_id` (home account), ignoring the JWT's `accountId`. Fixed to join on `payload.accountId`. Role resolution fixed via `CASE WHEN u.account_id = $2 THEN u.role ELSE am.role`. Response now uses `accountId: payload.accountId`. Topbar and dashboard both display the correct business name after switch.
+
+---
+
 ### ~~TD-H2b: Phone-width gate blocked mobile dashboard access~~ — RESOLVED 2026-06-24
 **Resolution:** `isPhone` state and gate removed from `client/src/App.jsx`. Dashboard now accessible on all screen widths. Existing responsive CSS (768px, 390px breakpoints, bottom nav, sidebar overlay) handles mobile layout correctly. Build passes.
 

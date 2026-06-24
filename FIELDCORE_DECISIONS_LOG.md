@@ -31,6 +31,23 @@
 
 ---
 
+### [DECISION-018] /api/auth/me must join on payload.accountId, not u.account_id
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The `/api/auth/me` endpoint was running `JOIN accounts a ON a.id = u.account_id`. The `u.account_id` column always stores the user's *home* (original) account. After switching entities, the JWT payload contains a different `accountId`, but `/api/auth/me` ignored it and always returned the home account's name, plan, and role. This meant the topbar and all frontend state showed the wrong business after switching.
+
+**Decision:** Change the query to `JOIN accounts a ON a.id = $2` where `$2 = payload.accountId`. Also resolve `role` correctly: `CASE WHEN u.account_id = $2 THEN u.role ELSE am.role END` — home-account owners use their `users.role`; cross-account members use their `account_memberships.role`. The response explicitly sets `accountId: payload.accountId` (not `r.account_id`) to prevent the home account ID from leaking back.
+
+**Alternatives considered:** Parse accountId client-side from the JWT. Rejected — the frontend should not decode JWTs; the server is the authoritative source of user context.
+
+**Reasoning:** The JWT is the source of truth for which entity is active. The `/me` route should reflect the JWT's entity, not the user's home account. This is the minimal correct fix that doesn't change any other behavior.
+
+**Consequences:** After any entity switch + page reload, `user.accountName`, `user.plan`, `user.role`, and `user.accountId` from `useAuth()` correctly reflect the switched-to entity. All frontend displays that read from these fields now show the right business.
+
+---
+
 ### [DECISION-017] Remove phone-width gate — dashboard now accessible on all screen sizes
 **Date:** 2026-06-24
 **Decided by:** Kevin + Claude

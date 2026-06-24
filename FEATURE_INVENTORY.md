@@ -458,7 +458,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 **Production Readiness:** Medium — Scale plan feature; needs plan gating tested  
 **Missing Work:** Mobile multi-entity switching; test plan gating  
-**UX Updates (2026-06-24):** Entity switcher in sidebar now has loading state (`switching` in AuthContext), error state (`switchError`), disabled state during switch, and single-entity hint pointing to /entities. Backend `/api/auth/switch` and `/api/auth/accounts` confirmed complete.  
+**UX Updates (2026-06-24 — full fix):** Root cause resolved: `/api/auth/me` now uses `payload.accountId` for account lookup, so `accountName`, `plan`, and `role` are correct after switching. Topbar shows active business name below page title. Dashboard shows "Viewing | Business Name" banner. Entity switcher has loading/error states, disabled state, single-entity hint.  
 **Recommended Next Action:** Verify `requireRole` + plan limit gates work correctly for entities endpoint
 
 ---
