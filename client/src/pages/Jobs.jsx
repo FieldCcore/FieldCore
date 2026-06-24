@@ -1,12 +1,49 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, addMinutes } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addMinutes, addDays } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
 import { useSearchParams } from 'react-router-dom';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../api';
 import JobForm from '../components/JobForm';
 import JobDetail from '../components/JobDetail';
+
+function CalendarToolbar({ date, view, onNavigate, onView }) {
+  const label = useMemo(() => {
+    if (view === 'month') return format(date, 'MMMM yyyy');
+    if (view === 'week') {
+      const s = startOfWeek(date, { weekStartsOn: 0 });
+      const e = addDays(s, 6);
+      const sameMonth = format(s, 'MMM') === format(e, 'MMM');
+      return `${format(s, 'MMM d')} – ${format(e, sameMonth ? 'd' : 'MMM d')}, ${format(e, 'yyyy')}`;
+    }
+    if (view === 'day') return format(date, 'EEEE, MMMM d, yyyy');
+    if (view === 'agenda') return 'Upcoming Events';
+    return '';
+  }, [date, view]);
+
+  return (
+    <div className="cal-toolbar">
+      <div className="cal-toolbar-nav">
+        <button className="cal-nav-btn" onClick={() => onNavigate('TODAY')}>Today</button>
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')}>‹</button>
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('NEXT')}>›</button>
+      </div>
+      <span className="cal-toolbar-label">{label}</span>
+      <div className="cal-view-seg">
+        {['month', 'week', 'day', 'agenda'].map(v => (
+          <button
+            key={v}
+            className={`cal-view-btn${view === v ? ' active' : ''}`}
+            onClick={() => onView(v)}
+          >
+            {v === 'agenda' ? 'Agenda' : v.charAt(0).toUpperCase() + v.slice(1)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const localizer = dateFnsLocalizer({
   format,
@@ -183,7 +220,8 @@ export default function Jobs() {
             min={calMin}
             max={calMax}
             selectable
-            style={{ height: 'max(560px, calc(100vh - 260px))' }}
+            components={{ toolbar: CalendarToolbar }}
+            style={{ height: 'max(560px, calc(100vh - 240px))' }}
           />
         </div>
       )}

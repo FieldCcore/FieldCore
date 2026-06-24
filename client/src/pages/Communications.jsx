@@ -54,32 +54,37 @@ function NumberSettings({ num, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'white', borderRadius: 14, padding: 28, maxWidth: 480, width: '100%' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 20 }}>Number Settings</div>
-        <div className="form-group">
-          <label>Label</label>
-          <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Main Business Line" />
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Number Settings</h2>
+          <button className="btn-close" onClick={onClose}>×</button>
         </div>
-        <div className="form-group">
-          <label>Forward calls to</label>
-          <input value={form.forward_to} onChange={e => setForm(p => ({ ...p, forward_to: e.target.value }))} placeholder="+1 (555) 000-0000" />
-        </div>
-        <div className="form-group">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.business_hours_only} onChange={e => setForm(p => ({ ...p, business_hours_only: e.target.checked }))} />
-            Respect business hours
-          </label>
-        </div>
-        {form.business_hours_only && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="form-group">
-            <label>After-hours voicemail message</label>
-            <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} />
+            <label>Label</label>
+            <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Main Business Line" />
           </div>
-        )}
-        <div className="form-actions">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          <div className="form-group">
+            <label>Forward calls to</label>
+            <input value={form.forward_to} onChange={e => setForm(p => ({ ...p, forward_to: e.target.value }))} placeholder="+1 (555) 000-0000" />
+          </div>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontFamily: 'Inter, sans-serif', fontWeight: 500, color: 'var(--navy)' }}>
+              <input type="checkbox" checked={form.business_hours_only} onChange={e => setForm(p => ({ ...p, business_hours_only: e.target.checked }))} />
+              Respect business hours
+            </label>
+          </div>
+          {form.business_hours_only && (
+            <div className="form-group">
+              <label>After-hours voicemail message</label>
+              <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} />
+            </div>
+          )}
+          <div className="form-actions">
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -113,16 +118,26 @@ function ProvisionModal({ onDone, onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'white', borderRadius: 14, padding: 28, maxWidth: 480, width: '100%' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 20 }}>Add Phone Number</div>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Add Phone Number</h2>
+          <button className="btn-close" onClick={onClose}>×</button>
+        </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <input value={areaCode} onChange={e => setAreaCode(e.target.value.replace(/\D/g,'').slice(0,3))} placeholder="Area code (e.g. 813)" style={{ flex: 1 }} />
+          <input
+            className="form-group"
+            style={{ flex: 1, padding: '10px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 6, fontFamily: 'Inter, sans-serif', fontSize: 14, outline: 'none' }}
+            value={areaCode}
+            onChange={e => setAreaCode(e.target.value.replace(/\D/g,'').slice(0,3))}
+            placeholder="Area code (e.g. 813)"
+            onKeyDown={e => e.key === 'Enter' && areaCode && search()}
+          />
           <button className="btn-primary" onClick={search} disabled={loading || !areaCode}>
-            {loading ? 'Searching…' : <><Search size={13} /> Search</>}
+            {loading ? 'Searching…' : 'Search'}
           </button>
         </div>
-        {error && <p style={{ color: '#C62828', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+        {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
         {results.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
             {results.map(n => (
@@ -143,101 +158,7 @@ function ProvisionModal({ onDone, onClose }) {
   );
 }
 
-// ─── Unified Thread View ──────────────────────────────────────────────────────
-function ConversationThread({ clientId, onBack }) {
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error,   setError]   = useState('');
-  const bottomRef = useRef(null);
-
-  useEffect(() => { load(); }, [clientId]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [data?.thread]);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const r = await api.get(`/phone/thread/${clientId}`);
-      setData(r.data);
-    } catch (err) { setError(err.response?.data?.error || 'Failed to load thread.'); }
-    finally { setLoading(false); }
-  }
-
-  async function sendMessage() {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      await api.post('/sms/send', { client_id: clientId, body: message.trim() });
-      setMessage('');
-      setTimeout(load, 800);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not send message.');
-    } finally { setSending(false); }
-  }
-
-  if (loading) return (
-    <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
-      Loading conversation…
-    </div>
-  );
-  if (error) return (
-    <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12, padding: '16px 20px', color: 'var(--red)', fontSize: 13 }}>{error}</div>
-  );
-
-  const { client, thread } = data;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '70vh', background: 'white', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--offwhite)' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
-          <ChevronLeft size={16} /> Back
-        </button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 15 }}>{client.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtNum(client.phone)}</div>
-        </div>
-        <span style={{ fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
-          {thread.length} events
-        </span>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {thread.length === 0 && (
-          <p style={{ textAlign: 'center', color: 'var(--steel)', fontSize: 14, marginTop: 40 }}>No messages or calls yet.</p>
-        )}
-        {thread.map(item => (
-          <ThreadItem key={`${item.type}-${item.id}`} item={item} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--lightgray)', padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <textarea
-          value={message}
-          onChange={e => setMessage(e.target.value)}
-          placeholder="Send a message via iMessage / RCS / SMS…"
-          rows={2}
-          style={{ flex: 1, resize: 'none', borderRadius: 10, border: '1px solid var(--lightgray)', padding: '10px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-        />
-        <button
-          className="btn-primary"
-          style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6 }}
-          onClick={sendMessage}
-          disabled={sending || !message.trim()}
-        >
-          <Send size={14} />
-          {sending ? 'Sending…' : 'Send'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
+// ─── Thread Item ──────────────────────────────────────────────────────────────
 function ThreadItem({ item }) {
   const isOutbound = item.direction === 'outbound';
   const isCall     = item.type === 'call';
@@ -280,321 +201,7 @@ function ThreadItem({ item }) {
   );
 }
 
-// ─── Conversations List ───────────────────────────────────────────────────────
-function ConversationsList({ onSelect }) {
-  const [convs,   setConvs]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
-
-  useEffect(() => {
-    api.get('/phone/conversations')
-      .then(r => setConvs(r.data))
-      .catch(err => setError(err.response?.data?.error || 'Failed to load.'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return (
-    <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
-      Loading conversations…
-    </div>
-  );
-  if (error) return (
-    <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12, padding: '16px 20px', color: 'var(--red)', fontSize: 13 }}>{error}</div>
-  );
-
-  if (convs.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-        <MessageSquare size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-        <div style={{ fontSize: 15, fontWeight: 600 }}>No conversations yet</div>
-        <p style={{ fontSize: 13 }}>Messages sent to clients will appear here alongside calls.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {convs.map(c => (
-        <button
-          key={c.id}
-          onClick={() => onSelect(c)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            background: 'white', border: '1px solid var(--lightgray)',
-            borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
-            textAlign: 'left', width: '100%',
-          }}
-        >
-          <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
-            {(c.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{c.name}</span>
-              <span style={{ fontSize: 11, color: 'var(--steel)' }}>{fmtTime(c.last_contact)}</span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {c.last_message_body
-                ? <span>{c.last_message_dir === 'outbound' ? 'You: ' : ''}{c.last_message_body}</span>
-                : <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {c.call_count} call{c.call_count !== 1 ? 's' : ''}</span>
-              }
-            </div>
-          </div>
-          {c.unread_messages > 0 && (
-            <span style={{ background: 'var(--navy)', color: 'white', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>
-              {c.unread_messages}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Phone Section ────────────────────────────────────────────────────────────
-function PhoneSection() {
-  const [tab,     setTab]     = useState('conversations');
-  const [numbers, setNumbers] = useState([]);
-  const [calls,   setCalls]   = useState([]);
-  const [vms,     setVms]     = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showProvision, setShowProvision] = useState(false);
-  const [editingNum,    setEditingNum]    = useState(null);
-  const [activeConv,    setActiveConv]    = useState(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    setActiveConv(null);
-    if (tab === 'conversations') { setLoading(false); return; }
-    load();
-  }, [tab]);
-
-  async function load() {
-    setLoading(true);
-    try {
-      if (tab === 'numbers') {
-        const r = await api.get('/phone/numbers');
-        setNumbers(r.data);
-      } else if (tab === 'calls') {
-        const r = await api.get('/phone/calls');
-        setCalls(r.data);
-      } else if (tab === 'vms') {
-        const r = await api.get('/phone/voicemails');
-        setVms(r.data);
-      }
-    } catch (err) { setError(err.response?.data?.error || 'Failed to load.'); }
-    finally { setLoading(false); }
-  }
-
-  async function releaseNumber(id) {
-    if (!confirm('Release this number? It will be returned and you will lose it.')) return;
-    try {
-      await api.delete(`/phone/numbers/${id}`);
-      setNumbers(prev => prev.filter(n => n.id !== id));
-    } catch (err) { setError(err.response?.data?.error || 'Could not release number.'); }
-  }
-
-  async function markVmRead(id) {
-    await api.patch(`/phone/voicemails/${id}/read`).catch(() => {});
-    setVms(prev => prev.map(v => v.id === id ? { ...v, is_read: true } : v));
-  }
-
-  const unreadVms = vms.filter(v => !v.is_read).length;
-
-  const TABS = [
-    { key: 'conversations', label: 'Conversations',   icon: <MessageCircle size={13} /> },
-    { key: 'numbers',       label: 'Numbers',          icon: <Phone size={13} /> },
-    { key: 'calls',         label: 'Call Log',         icon: <PhoneIncoming size={13} /> },
-    { key: 'vms',           label: `Voicemail${unreadVms > 0 ? ` (${unreadVms})` : ''}`, icon: <Voicemail size={13} /> },
-  ];
-
-  return (
-    <div style={{ maxWidth: 900, margin: '0 auto' }}>
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--navy)' }}>Phone</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--steel)', fontSize: 14 }}>Conversations, business numbers, calls, and voicemail</p>
-        </div>
-        {tab === 'numbers' && (
-          <button className="btn-primary" onClick={() => setShowProvision(true)}>
-            <Plus size={14} /> Add Number
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#C62828', marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--lightgray)', marginBottom: 24 }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '10px 16px', border: 'none',
-            borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent',
-            background: 'none', fontSize: 13, fontWeight: tab === t.key ? 700 : 400,
-            color: tab === t.key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', marginBottom: -1,
-          }}>
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'conversations' && (
-        activeConv
-          ? <ConversationThread clientId={activeConv.id} onBack={() => setActiveConv(null)} />
-          : <ConversationsList onSelect={c => setActiveConv(c)} />
-      )}
-
-      {loading && tab !== 'conversations' && (
-        <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', padding: '48px 24px', textAlign: 'center', color: 'var(--steel)', fontSize: 14 }}>
-          Loading…
-        </div>
-      )}
-
-      {!loading && tab === 'numbers' && (
-        <>
-          {numbers.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-              <Phone size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No phone numbers yet</div>
-              <div style={{ fontSize: 14, marginBottom: 20 }}>Add a business number to handle calls and send iMessages to clients.</div>
-              <button className="btn-primary" onClick={() => setShowProvision(true)}><Plus size={14} /> Add Number</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {numbers.map(n => (
-                <div key={n.id} style={{ background: 'white', border: '1px solid var(--lightgray)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <Phone size={14} style={{ color: 'var(--navy)' }} />
-                      <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
-                      <span style={{ fontSize: 11, background: n.is_active ? '#f0fdf4' : '#f1f5f9', color: n.is_active ? '#15803d' : '#64748b', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
-                        {n.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>
-                      {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
-                      {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setEditingNum(n)}>
-                      <Settings size={12} /> Settings
-                    </button>
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 10px', color: '#C62828', borderColor: '#FCA5A5' }} onClick={() => releaseNumber(n.id)}>
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {!loading && tab === 'calls' && (
-        <>
-          {calls.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-              <PhoneOff size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-              <div style={{ fontSize: 15, fontWeight: 600 }}>No calls yet</div>
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
-                    {['Direction','From','To','Client','Status','Duration','Time'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {calls.map(c => (
-                    <tr key={c.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          {c.direction === 'inbound'
-                            ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
-                            : <Phone size={13} style={{ color: 'var(--navy)' }} />}
-                          <span style={{ textTransform: 'capitalize' }}>{c.direction}</span>
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontFamily: 'DM Mono, monospace' }}>{fmtNum(c.from_number)}</td>
-                      <td style={{ padding: '10px 12px', fontFamily: 'DM Mono, monospace' }}>{fmtNum(c.to_number)}</td>
-                      <td style={{ padding: '10px 12px' }}>{c.client_name || <span style={{ color: 'var(--steel)' }}>Unknown</span>}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: c.status === 'completed' ? '#f0fdf4' : c.status === 'voicemail' ? '#FFF7ED' : '#f1f5f9', color: c.status === 'completed' ? '#15803d' : c.status === 'voicemail' ? '#C2410C' : '#64748b' }}>
-                          {c.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontFamily: 'DM Mono, monospace' }}>{fmtDur(c.duration_seconds)}</td>
-                      <td style={{ padding: '10px 12px', color: 'var(--steel)' }}>{fmtDt(c.started_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-
-      {!loading && tab === 'vms' && (
-        <>
-          {vms.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-              <Voicemail size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-              <div style={{ fontSize: 15, fontWeight: 600 }}>No voicemails</div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {vms.map(v => (
-                <div key={v.id} style={{ background: v.is_read ? 'white' : 'var(--sand-lt)', border: `1px solid ${v.is_read ? 'var(--lightgray)' : 'var(--sand-dark)'}`, borderRadius: 12, padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-                    <div>
-                      <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 14 }}>{v.client_name || fmtNum(v.from_number)}</span>
-                      {!v.is_read && <span style={{ marginLeft: 8, fontSize: 10, background: 'var(--navy)', color: 'white', padding: '2px 7px', borderRadius: 10, fontWeight: 700 }}>NEW</span>}
-                    </div>
-                    <span style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(v.created_at)} · {fmtDur(v.duration_seconds)}</span>
-                  </div>
-                  {v.recording_url && (
-                    <audio controls style={{ width: '100%', height: 36, marginBottom: 8 }} onPlay={() => markVmRead(v.id)}>
-                      <source src={v.recording_url} />
-                    </audio>
-                  )}
-                  {v.transcription && (
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
-                  )}
-                  {!v.is_read && (
-                    <button className="btn-secondary" style={{ marginTop: 10, fontSize: 11, padding: '4px 12px' }} onClick={() => markVmRead(v.id)}>
-                      Mark as read
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {showProvision && (
-        <ProvisionModal onDone={n => setNumbers(prev => [...prev, n])} onClose={() => setShowProvision(false)} />
-      )}
-      {editingNum && (
-        <NumberSettings
-          num={editingNum}
-          onSave={updated => setNumbers(prev => prev.map(n => n.id === updated.id ? updated : n))}
-          onClose={() => setEditingNum(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── SMS Messages Panel ───────────────────────────────────────────────────────
+// ─── SMS Messages Panel (two-panel layout) ───────────────────────────────────
 function MessagesPanel() {
   const [clients, setClients]   = useState([]);
   const [selected, setSelected] = useState(null);
@@ -668,71 +275,91 @@ function MessagesPanel() {
   );
 
   return (
-    <div className="messages-layout">
-      <div className="client-list-panel">
-        <div className="panel-header">
-          <h2>Messages</h2>
-          <input
-            className="search-input"
-            placeholder="Search clients..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ marginBottom: 0, fontSize: 13 }}
-          />
+    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Left: client list */}
+      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--steel)', pointerEvents: 'none' }} />
+            <input
+              style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1.5px solid var(--lightgray)', borderRadius: 6, fontFamily: 'Inter, sans-serif', fontSize: 13, outline: 'none', color: 'var(--navy)', background: 'var(--off)', boxSizing: 'border-box' }}
+              placeholder="Search clients…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="client-list-scroll">
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {filteredClients.length === 0 && (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No clients found</div>
+          )}
           {filteredClients.map(c => (
             <div
               key={c.id}
-              className={`client-list-item ${selected?.id === c.id ? 'active' : ''}`}
               onClick={() => { setSelected(c); setError(''); }}
+              style={{
+                padding: '12px 16px',
+                cursor: 'pointer',
+                borderBottom: '1px solid var(--lightgray)',
+                background: selected?.id === c.id ? 'var(--sand-lt)' : 'transparent',
+                borderLeft: selected?.id === c.id ? '3px solid var(--sand)' : '3px solid transparent',
+                transition: 'background .1s',
+              }}
             >
-              <div className="client-list-name">{c.name}</div>
-              <div className="client-list-phone">{c.phone || 'No phone'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                  {(c.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{c.phone || 'No phone'}</div>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="chat-panel">
+      {/* Right: conversation */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {!selected ? (
-          <div className="chat-empty">
-            <p>Select a client to view messages</p>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--steel)', gap: 12, background: 'var(--off)' }}>
+            <MessageSquare size={36} style={{ opacity: 0.2 }} />
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Select a client to start messaging</div>
+            <div style={{ fontSize: 12 }}>iMessage / RCS / SMS via Sendblue</div>
           </div>
         ) : (
           <>
-            <div className="chat-header">
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
               <div style={{ flex: 1 }}>
-                <div className="chat-name">{selected.name}</div>
-                <div className="chat-phone">{selected.phone || 'No phone number on file'}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)' }}>{selected.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{selected.phone || 'No phone number on file'}</div>
               </div>
               {clientJobs.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button
                     className="btn-secondary"
-                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     disabled={sending}
                     onClick={() => sendTemplate('confirmation', clientJobs[0].id)}
-                    title={`Confirm: ${clientJobs[0].service_type}`}
                   >
-                    <Mail size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Confirmation
+                    <Mail size={12} /> Confirmation
                   </button>
                   <button
                     className="btn-secondary"
-                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     disabled={sending}
                     onClick={() => sendTemplate('reminder', clientJobs[0].id)}
-                    title={`Remind: ${clientJobs[0].service_type}`}
                   >
-                    <Bell size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Reminder
+                    <Bell size={12} /> Reminder
                   </button>
                 </div>
               )}
             </div>
 
-            <div className="chat-messages">
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--off)' }}>
               {messages.length === 0 && (
-                <p className="muted" style={{ textAlign: 'center', padding: 24 }}>No messages yet.</p>
+                <p style={{ textAlign: 'center', color: 'var(--steel)', fontSize: 14, padding: '32px 0' }}>No messages yet.</p>
               )}
               {messages.map(m => (
                 <div key={m.id} className={`message-bubble ${m.direction}`}>
@@ -745,19 +372,24 @@ function MessagesPanel() {
               <div ref={bottomRef} />
             </div>
 
-            {error && <p className="form-error" style={{ margin: '0 16px 8px' }}>{error}</p>}
+            {error && (
+              <div style={{ margin: '0 16px 8px', background: 'var(--red-lt)', borderLeft: '3px solid var(--red)', padding: '8px 12px', fontSize: 13, color: 'var(--red)', borderRadius: '0 6px 6px 0' }}>
+                {error}
+              </div>
+            )}
 
-            <form className="chat-input-row" onSubmit={handleSend}>
+            <form style={{ display: 'flex', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--lightgray)', background: 'var(--white)', alignItems: 'flex-end' }} onSubmit={handleSend}>
               <textarea
                 className="chat-textarea"
-                placeholder="Type a message..."
+                placeholder="Type a message…"
                 value={body}
                 onChange={e => setBody(e.target.value)}
                 rows={2}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
               />
-              <button type="submit" className="btn-primary" disabled={sending || !body.trim()}>
-                {sending ? '...' : 'Send'}
+              <button type="submit" className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} disabled={sending || !body.trim()}>
+                <Send size={13} />
+                {sending ? '…' : 'Send'}
               </button>
             </form>
           </>
@@ -767,19 +399,298 @@ function MessagesPanel() {
   );
 }
 
+// ─── Phone Numbers Tab ────────────────────────────────────────────────────────
+function NumbersView({ numbers, onRelease, onEdit }) {
+  if (numbers.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
+        <Phone size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--navy)' }}>No phone numbers yet</div>
+        <div style={{ fontSize: 14 }}>Add a business number to handle calls and send iMessages to clients.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {numbers.map(n => (
+        <div key={n.id} style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <Phone size={14} style={{ color: 'var(--navy)' }} />
+              <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 8px', borderRadius: 99, background: n.is_active ? 'var(--green-lt)' : 'var(--offwhite)', color: n.is_active ? 'var(--green)' : 'var(--steel)' }}>
+                {n.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--steel)' }}>
+              {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
+              {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => onEdit(n)}>
+              <Settings size={12} /> Settings
+            </button>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 10px', color: 'var(--red)', borderColor: 'rgba(198,40,40,.25)' }} onClick={() => onRelease(n.id)}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Call Log Tab ─────────────────────────────────────────────────────────────
+function CallsView({ calls }) {
+  if (calls.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
+        <PhoneOff size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+        <div style={{ fontSize: 15, fontWeight: 600 }}>No calls yet</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: 'var(--white)', borderRadius: 10, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '100px 130px 130px 1fr 90px 80px 1fr', gap: 0, padding: '9px 16px', background: 'var(--navy)' }}>
+        {['Direction','From','To','Client','Status','Duration','Time'].map(h => (
+          <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
+        ))}
+      </div>
+      {calls.map((c, i) => (
+        <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '100px 130px 130px 1fr 90px 80px 1fr', gap: 0, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--slate)', textTransform: 'capitalize' }}>
+            {c.direction === 'inbound'
+              ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
+              : <Phone size={13} style={{ color: 'var(--navy)' }} />}
+            {c.direction}
+          </div>
+          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.from_number)}</div>
+          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.to_number)}</div>
+          <div style={{ fontSize: 13, color: 'var(--navy)', fontWeight: 500 }}>{c.client_name || <span style={{ color: 'var(--steel)' }}>Unknown</span>}</div>
+          <div>
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 8px', borderRadius: 99, display: 'inline-block',
+              background: c.status === 'completed' ? 'var(--green-lt)' : c.status === 'voicemail' ? 'var(--amber-lt)' : 'var(--offwhite)',
+              color: c.status === 'completed' ? 'var(--green)' : c.status === 'voicemail' ? 'var(--amber)' : 'var(--steel)',
+            }}>{c.status}</span>
+          </div>
+          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtDur(c.duration_seconds)}</div>
+          <div style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(c.started_at)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Voicemail Tab ────────────────────────────────────────────────────────────
+function VoicemailView({ vms, onMarkRead }) {
+  if (vms.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
+        <Voicemail size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+        <div style={{ fontSize: 15, fontWeight: 600 }}>No voicemails</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {vms.map(v => (
+        <div key={v.id} style={{ background: v.is_read ? 'var(--white)' : 'var(--sand-lt)', border: `1px solid ${v.is_read ? 'var(--lightgray)' : 'var(--sand)'}`, borderRadius: 10, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 14 }}>{v.client_name || fmtNum(v.from_number)}</span>
+              {!v.is_read && <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--navy)', color: 'white', padding: '2px 7px', borderRadius: 99 }}>New</span>}
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(v.created_at)} · {fmtDur(v.duration_seconds)}</span>
+          </div>
+          {v.recording_url && (
+            <audio controls style={{ width: '100%', height: 36, marginBottom: 8 }} onPlay={() => onMarkRead(v.id)}>
+              <source src={v.recording_url} />
+            </audio>
+          )}
+          {v.transcription && (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
+          )}
+          {!v.is_read && (
+            <button className="btn-secondary" style={{ marginTop: 10, fontSize: 11, padding: '4px 12px' }} onClick={() => onMarkRead(v.id)}>
+              Mark as read
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Communications Page ──────────────────────────────────────────────────────
 export default function Communications() {
+  const [activeTab, setActiveTab] = useState('messages');
+  const [numbers, setNumbers]     = useState([]);
+  const [calls, setCalls]         = useState([]);
+  const [vms, setVms]             = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [showProvision, setShowProvision] = useState(false);
+  const [editingNum,    setEditingNum]    = useState(null);
+
+  async function loadTab(tab) {
+    setLoading(true);
+    setError('');
+    try {
+      if (tab === 'numbers') {
+        const r = await api.get('/phone/numbers');
+        setNumbers(r.data);
+      } else if (tab === 'calls') {
+        const r = await api.get('/phone/calls');
+        setCalls(r.data);
+      } else if (tab === 'vms') {
+        const r = await api.get('/phone/voicemails');
+        setVms(r.data);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to load.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchTab(tab) {
+    setActiveTab(tab);
+    setError('');
+    if (tab !== 'messages') loadTab(tab);
+  }
+
+  async function releaseNumber(id) {
+    if (!confirm('Release this number? It will be returned to the carrier and cannot be undone.')) return;
+    try {
+      await api.delete(`/phone/numbers/${id}`);
+      setNumbers(prev => prev.filter(n => n.id !== id));
+    } catch (err) { setError(err.response?.data?.error || 'Could not release number.'); }
+  }
+
+  async function markVmRead(id) {
+    await api.patch(`/phone/voicemails/${id}/read`).catch(() => {});
+    setVms(prev => prev.map(v => v.id === id ? { ...v, is_read: true } : v));
+  }
+
+  const unreadVms = vms.filter(v => !v.is_read).length;
+  const isMessages = activeTab === 'messages';
+
+  const TABS = [
+    { key: 'messages', label: 'Messages',     icon: <MessageCircle size={13} /> },
+    { key: 'numbers',  label: 'Phone Numbers', icon: <Phone size={13} /> },
+    { key: 'calls',    label: 'Call Log',      icon: <PhoneIncoming size={13} /> },
+    { key: 'vms',      label: unreadVms > 0 ? `Voicemail (${unreadVms})` : 'Voicemail', icon: <Voicemail size={13} /> },
+  ];
+
   return (
-    <div>
-      <PhoneSection />
-      <div style={{ borderTop: '1px solid var(--lightgray)', margin: '48px 0 0' }} />
-      <div style={{ paddingTop: 40, maxWidth: 900, margin: '0 auto' }}>
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)' }}>SMS Messages</div>
-          <p style={{ margin: '4px 0 0', color: 'var(--steel)', fontSize: 14 }}>Text message conversations with clients</p>
+    <div style={isMessages ? {
+      margin: '-22px -24px',
+      height: 'calc(100vh - 52px)',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    } : {}}>
+
+      {/* Header bar */}
+      <div style={{
+        background: 'var(--white)',
+        borderBottom: '1px solid var(--lightgray)',
+        flexShrink: 0,
+        padding: isMessages ? '14px 24px 0' : '0 0 0',
+      }}>
+        {!isMessages && (
+          <div className="page-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
+            <div>
+              <h1>Communications</h1>
+              <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--steel)' }}>
+                Phone numbers, messages, calls &amp; voicemail
+              </p>
+            </div>
+            {activeTab === 'numbers' && (
+              <button className="btn-primary" onClick={() => setShowProvision(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Plus size={14} /> Add Number
+              </button>
+            )}
+          </div>
+        )}
+        {isMessages && (
+          <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 17, color: 'var(--navy)', fontWeight: 400 }}>
+            Communications
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 0, marginTop: isMessages ? 8 : 12, marginBottom: -1 }}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => switchTab(t.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '9px 16px',
+                border: 'none',
+                borderBottom: activeTab === t.key ? '2px solid var(--navy)' : '2px solid transparent',
+                background: 'none',
+                fontSize: 13,
+                fontWeight: activeTab === t.key ? 700 : 500,
+                color: activeTab === t.key ? 'var(--navy)' : 'var(--steel)',
+                cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif',
+                whiteSpace: 'nowrap',
+                transition: 'color .15s',
+              }}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
         </div>
-        <MessagesPanel />
       </div>
+
+      {/* Tab content */}
+      {activeTab === 'messages' && <MessagesPanel />}
+
+      {activeTab !== 'messages' && (
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+          {error && (
+            <div style={{ background: 'var(--red-lt)', borderLeft: '3px solid var(--red)', borderRadius: '0 6px 6px 0', padding: '10px 14px', fontSize: 13, color: 'var(--red)', marginBottom: 20 }}>
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)', fontSize: 14 }}>Loading…</div>
+          ) : (
+            <>
+              {activeTab === 'numbers' && (
+                <NumbersView
+                  numbers={numbers}
+                  onRelease={releaseNumber}
+                  onEdit={n => setEditingNum(n)}
+                />
+              )}
+              {activeTab === 'calls' && <CallsView calls={calls} />}
+              {activeTab === 'vms' && <VoicemailView vms={vms} onMarkRead={markVmRead} />}
+            </>
+          )}
+        </div>
+      )}
+
+      {showProvision && (
+        <ProvisionModal
+          onDone={n => setNumbers(prev => [...prev, n])}
+          onClose={() => setShowProvision(false)}
+        />
+      )}
+      {editingNum && (
+        <NumberSettings
+          num={editingNum}
+          onSave={updated => setNumbers(prev => prev.map(n => n.id === updated.id ? updated : n))}
+          onClose={() => setEditingNum(null)}
+        />
+      )}
     </div>
   );
 }

@@ -84,20 +84,18 @@ export default function ClientForm({ client, onSave, onCancel }) {
         />
       </div>
 
-      <div className="form-row">
+      <div className="form-row" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
         <div className="form-group">
           <label>City</label>
           <input value={form.city} onChange={set('city')} placeholder="Tampa" />
         </div>
-        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div>
-            <label>State</label>
-            <input value={form.state} onChange={set('state')} placeholder="FL" maxLength={2} />
-          </div>
-          <div>
-            <label>ZIP</label>
-            <input value={form.zip} onChange={set('zip')} placeholder="33601" />
-          </div>
+        <div className="form-group">
+          <label>State</label>
+          <input value={form.state} onChange={set('state')} placeholder="FL" maxLength={2} />
+        </div>
+        <div className="form-group">
+          <label>ZIP</label>
+          <input value={form.zip} onChange={set('zip')} placeholder="33601" />
         </div>
       </div>
 
