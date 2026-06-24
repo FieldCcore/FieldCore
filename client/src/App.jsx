@@ -151,10 +151,11 @@ function AppShell() {
   if (pathname === '/onboarding') {
     return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;
   }
-  // Only gate on the user's home account — sub-entities skip onboarding
+  // Only gate on the user's home account — sub-entities skip onboarding.
+  // Require homeAccountId to be defined (accounts loaded) to avoid a false
+  // redirect during the brief moment between a switch and accounts reloading.
   const homeAccountId = accounts.find(a => a.is_home)?.id;
-  const onHomeAccount = homeAccountId ? homeAccountId === user?.accountId : true;
-  if (user && user.role === 'owner' && user.onboarded === false && onHomeAccount) {
+  if (user && user.role === 'owner' && user.onboarded === false && homeAccountId && homeAccountId === user?.accountId) {
     return <Navigate to="/onboarding" replace />;
   }
 
