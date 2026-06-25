@@ -61,18 +61,92 @@ const STATUS_COLORS = {
   cancelled:   'var(--red)',
 };
 
-function AgendaEvent({ event }) {
-  const status = event.resource?.status || 'scheduled';
-  const color  = STATUS_COLORS[status] || '#5F667A';
-  const [service, client] = (event.title || '').split(' — ');
+function CustomAgendaView({ date, events, length = 30, onSelectEvent }) {
+  const rangeStart = useMemo(() => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [date]);
+
+  const rangeEnd = useMemo(() => addDays(rangeStart, length), [rangeStart, length]);
+
+  const rows = useMemo(() => {
+    const filtered = [...events]
+      .filter(ev => {
+        const s = new Date(ev.start);
+        return s >= rangeStart && s < rangeEnd;
+      })
+      .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+    let lastDay = null;
+    return filtered.map(ev => {
+      const dayKey = format(new Date(ev.start), 'yyyy-MM-dd');
+      const isFirstOfDay = dayKey !== lastDay;
+      lastDay = dayKey;
+      return { event: ev, isFirstOfDay };
+    });
+  }, [events, rangeStart, rangeEnd]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="rbc-agenda-view">
+        <p className="rbc-agenda-empty">No upcoming events in this range.</p>
+      </div>
+    );
+  }
+
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
-      <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 13 }}>{service}</span>
-      {client && <span style={{ fontWeight: 400, color: 'var(--steel)', fontSize: 12 }}>— {client}</span>}
-    </span>
+    <div className="rbc-agenda-view">
+      <table className="rbc-agenda-table" style={{ tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 120 }} />
+          <col style={{ width: 180 }} />
+          <col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Event</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ event, isFirstOfDay }, idx) => {
+            const start  = new Date(event.start);
+            const end    = new Date(event.end);
+            const status = event.resource?.status || 'scheduled';
+            const color  = STATUS_COLORS[status] || '#5F667A';
+            const [service, client] = (event.title || '').split(' — ');
+            return (
+              <tr key={event.id ?? idx} onClick={e => onSelectEvent?.(event, e)}>
+                <td className="rbc-agenda-date-cell">
+                  {isFirstOfDay ? format(start, 'EEE MMM dd') : ''}
+                </td>
+                <td className="rbc-agenda-time-cell">
+                  {format(start, 'h:mm a')} – {format(end, 'h:mm a')}
+                </td>
+                <td className="rbc-agenda-event-cell">
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 13 }}>{service}</span>
+                    {client && <span style={{ fontWeight: 400, color: 'var(--steel)', fontSize: 12 }}>— {client}</span>}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
+
+CustomAgendaView.title = () => 'Upcoming Events';
+CustomAgendaView.navigate = (date, action, { length = 30 } = {}) => {
+  if (action === 'PREV') return addDays(date, -length);
+  if (action === 'NEXT') return addDays(date, length);
+  return date;
+};
 
 function parseTime(timeStr) {
   if (!timeStr) return null;
@@ -240,7 +314,8 @@ export default function Jobs() {
             min={calMin}
             max={calMax}
             selectable
-            components={{ toolbar: CalendarToolbar, agenda: { event: AgendaEvent } }}
+            views={{ month: true, week: true, day: true, agenda: CustomAgendaView }}
+            components={{ toolbar: CalendarToolbar }}
             style={{ height: 'max(560px, calc(100vh - 240px))' }}
           />
         </div>
