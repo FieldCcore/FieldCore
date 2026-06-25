@@ -757,97 +757,97 @@ body {
 .rbc-time-gutter .rbc-time-slot { font-family: 'DM Mono', monospace !important; font-size: 10px !important; color: var(--steel) !important; }
 .rbc-current-time-indicator { background: var(--sand) !important; height: 2px !important; }
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
-/* ── Agenda view ─────────────────────────────────────────── */
-.rbc-agenda-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); background: var(--white); }
-.rbc-agenda-table { border-collapse: collapse !important; width: 100% !important; border: none !important; table-layout: fixed !important; }
-
-/* Header row — navy bar matching other FieldCore table headers */
-.rbc-agenda-view table.rbc-agenda-table thead tr th {
-  background: var(--navy) !important;
-  font-family: 'DM Mono', monospace !important;
-  font-size: 9px !important;
-  font-weight: 600 !important;
-  color: rgba(255,255,255,.5) !important;
-  text-transform: uppercase !important;
-  letter-spacing: .07em !important;
-  padding: 9px 16px !important;
-  border: none !important;
-  text-align: left !important;
-}
-.rbc-agenda-view table.rbc-agenda-table thead tr th + th { border-left: 1px solid rgba(255,255,255,.08) !important; }
-
-/* Body rows — white background, hover sand */
-.rbc-agenda-view table.rbc-agenda-table tbody > tr { background: var(--white) !important; cursor: pointer; }
-.rbc-agenda-view table.rbc-agenda-table tbody > tr:hover { background: var(--sand-lt) !important; }
-
-/* Date column — custom view renders every row with all 3 cells, no rowspan */
-.rbc-agenda-date-cell {
-  font-family: 'DM Mono', monospace !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  color: var(--slate) !important;
-  padding: 13px 16px !important;
-  border-bottom: 1px solid var(--lightgray) !important;
-  vertical-align: top !important;
-  white-space: nowrap !important;
+/* ── FieldCore Agenda View ────────────────────────────────── */
+.fc-agenda {
+  width: 100%;
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--white);
+  font-family: 'Inter', sans-serif;
 }
 
-/* Time column */
-.rbc-agenda-time-cell {
-  font-family: 'DM Mono', monospace !important;
-  font-size: 11px !important;
-  font-weight: 400 !important;
-  color: var(--steel) !important;
-  padding: 13px 16px !important;
-  border-left: 1px solid var(--lightgray) !important;
-  border-bottom: 1px solid var(--lightgray) !important;
-  vertical-align: top !important;
-  white-space: nowrap !important;
-  text-transform: none !important;
-  width: 140px !important;
+.fc-agenda-header,
+.fc-agenda-row {
+  display: grid;
+  grid-template-columns: 130px 180px 1fr;
+  width: 100%;
 }
 
-/* Event column */
-.rbc-agenda-event-cell {
-  font-family: 'Inter', sans-serif !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  color: var(--navy) !important;
-  padding: 13px 16px !important;
-  border-left: 1px solid var(--lightgray) !important;
-  border-bottom: 1px solid var(--lightgray) !important;
-  vertical-align: top !important;
+.fc-agenda-header {
+  background: var(--navy);
 }
 
-/* Strip the colored event block inside agenda rows — events are just text here */
-.rbc-agenda-view .rbc-event {
-  background: none !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  color: var(--navy) !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-}
-.rbc-agenda-view .rbc-event:focus { outline: none !important; }
-
-/* Last row — no bottom border (outer container already has it) */
-.rbc-agenda-view table.rbc-agenda-table tbody > tr:last-child > td {
-  border-bottom: none !important;
+.fc-agenda-hcell {
+  padding: 9px 16px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Empty state */
-.rbc-agenda-empty {
-  padding: 48px 24px !important;
-  text-align: center !important;
-  font-family: 'Inter', sans-serif !important;
-  font-size: 14px !important;
-  color: var(--steel) !important;
-  background: var(--white) !important;
-  border-top: none !important;
+.fc-agenda-row {
+  background: var(--white);
+  border-bottom: 1px solid var(--lightgray);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.fc-agenda-row:hover { background: var(--sand-lt); }
+.fc-agenda-row-last  { border-bottom: none; }
+
+.fc-agenda-cell { padding: 13px 16px; }
+
+.fc-agenda-date {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+  white-space: nowrap;
+  border-right: 1px solid var(--lightgray);
+}
+
+.fc-agenda-time {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--steel);
+  white-space: nowrap;
+  border-right: 1px solid var(--lightgray);
+}
+
+.fc-agenda-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fc-agenda-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fc-agenda-svc {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.fc-agenda-cli {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--steel);
+}
+
+.fc-agenda-empty {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--steel);
 }
 
 /* ── Messages ────────────────────────────────────────────── */
