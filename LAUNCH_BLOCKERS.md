@@ -108,6 +108,16 @@ Blockers are ranked within each tier by consequence severity.
 
 ---
 
+### ~~C-11c — Stripe Connect "Connect Stripe" button dead-ended on Entities page~~ — RESOLVED 2026-06-24
+**Resolution:** Button now calls real `/api/connect/onboard` backend endpoint. Creates Stripe Express account, saves `stripe_account_id` to `accounts` table, generates Stripe account link, redirects operator to Stripe onboarding. Shows per-entity loading state. Inline `connectErrors[entityId]` replaces dead `alert()`. `client/src/pages/Entities.jsx`.
+
+---
+
+### ~~C-11d — Downgrade path hidden in Billing page~~ — RESOLVED 2026-06-24
+**Resolution:** "Request Downgrade" button added in two locations: (1) Current Plan banner alongside "Manage Billing →", (2) Plans tab footer alongside "Cancel my subscription". Opens `DowngradeModal` with wording per DECISION-022. No Stripe API called. Routes to support email + phone.
+
+---
+
 ### C-12 — TimesheetScreen Orphaned in Mobile App
 **Impact:** `mobile/screens/TimesheetScreen.js` exists in the navigation but has no confirmed backend route. If the screen makes API calls to a non-existent endpoint, it returns 404 errors that could crash the screen, confuse technicians, or cause App Store reviewers to reject the submission.  
 **Root cause:** The screen was added during development beyond the original MVP scope but the backend was not confirmed. See Task 7 in sprint plan.  

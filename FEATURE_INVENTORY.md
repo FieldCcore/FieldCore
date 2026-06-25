@@ -1,6 +1,6 @@
 # FieldCore — Feature Inventory
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint — calendar, clients, communications, settings, entities, billing)  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Billing downgrade, Stripe Connect entity flow, payout schedule, typography)  
 **Source of truth:** Actual codebase scan + Sprint audit
 
 **Multi-tenant isolation status:** AUDITED 2026-06-09 — All 27 route files verified. Security fixes applied to `users.js` (membership endpoints), `clients.js`, `jobs.js`, `deposits.js`, `payments.js`. 22 files confirmed clean.
@@ -297,6 +297,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 **Production Readiness:** Low — not in original MVP scope; requires Twilio Voice setup  
 **Missing Work:** Twilio credentials; number provisioning; A2P registration; Growth/Scale plan gating unclear  
+**UX Updates (2026-06-24):** Phone Numbers, Call Log, and Voicemail tabs rebuilt with shared `CommCard` + `CommEmptyState`. All three tabs now match Messages tab quality (full-width cards, column headers, status badges, icons, empty states). Header padding and typography standardized.  
 **Recommended Next Action:** Confirm this is in scope for launch; if yes, set up Twilio Voice; if no, gate behind plan flag
 
 ---
@@ -344,6 +345,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 **Production Readiness:** Low — needs real Stripe account with Connect enabled; price IDs (`STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE`) must be created  
 **Missing Work:** Create Stripe products/prices; enable Stripe Connect; set all Stripe env vars  
+**UX Updates (2026-06-24):** "Request Downgrade" button added in Current Plan banner and Plans tab footer; opens modal with support contact info. Stripe Connect tab clarified — explains routing model; button calls real backend. Payout schedule selector (Daily/Weekly/Monthly/Manual) added; backend GET/POST `/billing/connect/payout-schedule` endpoints added.  
 **Recommended Next Action:** Create Stripe products and price IDs; test subscription creation
 
 ---

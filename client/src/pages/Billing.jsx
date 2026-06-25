@@ -230,18 +230,19 @@ const SUPPORT_PHONE = '(888) 430-2777';
 
 // ── Downgrade Modal — routes through support ──────────────────────────────────
 function DowngradeModal({ from, to, onClose }) {
-  const lost = PLAN_FEATURES[to.key] || [];
+  const lost = to ? (PLAN_FEATURES[to.key] || []) : [];
+  const toName = to?.name || 'a lower plan';
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
       <div style={{ background: 'white', borderRadius: 12, padding: 32, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Downgrade to {to.name}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Downgrade to {toName}</div>
         <div style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 20, lineHeight: 1.7 }}>
-          To downgrade your FieldCore plan, please contact our support team. We'll help adjust your account without interrupting your service.
+          To downgrade your FieldCore plan, please contact support so we can help adjust your account without interrupting your service, active entities, phone numbers, billing, or payment routing.
         </div>
 
         {lost.length > 0 && (
           <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>Features that change on {to.name}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>Features that change on {toName}</div>
             {lost.map(f => (
               <div key={f} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#78350f', marginBottom: 3 }}>
                 <span style={{ flexShrink: 0 }}>·</span> {f}
@@ -485,11 +486,21 @@ export default function Billing() {
                 </div>
               )}
             </div>
-            {billing?.hasSubscription && (
-              <button className="btn-secondary" disabled={busy} onClick={openPortal} style={{ flexShrink: 0 }}>
-                {busy ? '…' : 'Manage Billing →'}
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 10, flexShrink: 0, alignItems: 'center' }}>
+              {billing?.hasSubscription && (
+                <button
+                  onClick={() => setDowngradeModal({ from: currentPlan, to: null })}
+                  style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: '1px solid var(--lightgray)', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+                >
+                  Request Downgrade
+                </button>
+              )}
+              {billing?.hasSubscription && (
+                <button className="btn-secondary" disabled={busy} onClick={openPortal} style={{ flexShrink: 0 }}>
+                  {busy ? '…' : 'Manage Billing →'}
+                </button>
+              )}
+            </div>
           </div>
           {planStatus === 'past_due' && (
             <div style={{ margin: '0 24px 20px', padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 6, fontSize: 13, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -568,12 +579,20 @@ export default function Billing() {
               <a href="mailto:info@getfieldcore.com?subject=Custom Plan Inquiry" style={{ flexShrink: 0, padding: '10px 24px', background: 'var(--navy)', color: 'var(--sand)', borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>Contact Sales →</a>
             </div>
 
-            {/* Cancel plan */}
-            {billing?.hasSubscription && !sub?.cancel_at_period_end && (
-              <div style={{ textAlign: 'center', marginTop: 8, marginBottom: 4 }}>
-                <button onClick={() => setCancelModal(true)} style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'Inter, sans-serif' }}>
-                  Cancel my subscription
+            {/* Downgrade / Cancel */}
+            {billing?.hasSubscription && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 12, marginBottom: 4 }}>
+                <button
+                  onClick={() => setDowngradeModal({ from: currentPlan, to: null })}
+                  style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'Inter, sans-serif' }}
+                >
+                  Request Downgrade
                 </button>
+                {!sub?.cancel_at_period_end && (
+                  <button onClick={() => setCancelModal(true)} style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'Inter, sans-serif' }}>
+                    Cancel my subscription
+                  </button>
+                )}
               </div>
             )}
           </>

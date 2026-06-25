@@ -1,7 +1,7 @@
 # FieldCore — Next Development Tasks
 
 **Last reconciled:** 2026-06-24  
-**Status:** UI polish sprint complete (Tasks UX-1 through UX-4 plus UI-1 through UI-7 done). Awaiting approval for next work items.
+**Status:** UI polish sprint II complete (Tasks UI-8 through UI-15 done). See completed tasks below. Awaiting approval for next work items.
 
 ---
 
@@ -46,6 +46,34 @@ Revenue figures in summary stat cards now use Cormorant Garamond serif at `fontS
 
 ### ~~UI-7: Billing Downgrade → Support Contact Flow~~ — COMPLETE 2026-06-24
 `DowngradeModal` no longer calls Stripe or executes automatic plan changes. Shows features at risk (amber warning), email link (`mailto:support@getfieldcore.com` with pre-filled subject), and phone link (`tel:+18884302777` showing `(888) 430-2777`). Decision: Do not automate downgrades; route to human support. `client/src/pages/Billing.jsx`.
+
+---
+
+## UI POLISH TASKS COMPLETED — SPRINT II (2026-06-24)
+
+### ~~UI-8: StatusBadge Design System~~ — COMPLETE 2026-06-24
+Created shared `StatusBadge` component (`client/src/components/StatusBadge.jsx`). Replaces per-page badge logic across 15+ files. Auto-maps status strings (active, pending, paid, overdue, cancelled, draft, etc.) to 5 color variants: blue (active/pending), green (paid/complete/connected), red (error/cancelled/overdue), yellow (warning/needs review), gray (draft/inactive). Title Case auto-formatting. Pill design: no border, 2px 8px padding, borderRadius 99. Files updated: Invoices, Deposits, Dashboard, ClientList, ClientProfile, Communications, Entities, Billing, Team, Estimates, JobDetail, InvoiceDetail, StatusBadge.jsx (new).
+
+### ~~UI-9: Communications Tabs Rebuild~~ — COMPLETE 2026-06-24
+Phone Numbers, Call Log, and Voicemail tabs rebuilt with shared `CommCard` and `CommEmptyState` components. All three tabs now match Messages tab quality: full-width cards, proper column headers, status badges, grid layout, icons, empty states with CTAs. Header padding fixed for non-messages tabs (20px 24px 0). `client/src/pages/Communications.jsx`.
+
+### ~~UI-10: Billing — Visible Downgrade Option~~ — COMPLETE 2026-06-24
+"Request Downgrade" button added to two locations: (1) Current Plan banner alongside "Manage Billing →", (2) Plans tab footer alongside "Cancel my subscription". Button opens `DowngradeModal` with proper wording: "To downgrade your FieldCore plan, please contact support so we can help adjust your account without interrupting your service, active entities, phone numbers, billing, or payment routing." `client/src/pages/Billing.jsx`.
+
+### ~~UI-11: Entities — Stripe Connect Real Flow~~ — COMPLETE 2026-06-24
+"Connect Stripe" button now calls real `/api/connect/onboard` endpoint (creates Stripe Express account, saves `stripe_account_id`, generates account link, redirects). Shows loading state per-entity. Inline error display (`connectErrors[entityId]`) replaces dead `alert()`. "Current" sand badge renamed from "Active" to "Current" — semantically distinct from StatusBadge. StatusBadge now only shown for inactive entities (not for active ones, eliminating duplicate Active labels). `client/src/pages/Entities.jsx`.
+
+### ~~UI-12: Billing — Stripe Connect Clarity~~ — COMPLETE 2026-06-24
+Stripe Connect tab in Billing now clearly explains the platform payout routing model. Button calls real backend endpoint. No dead-end behavior. `client/src/pages/Billing.jsx`.
+
+### ~~UI-13: Payout Schedule Selector~~ — COMPLETE 2026-06-24
+Daily/Weekly/Monthly/Manual dropdown added to Billing Stripe Connect tab. Visible when connect.status === 'active'. GET/POST `/api/billing/connect/payout-schedule` endpoints added to `src/routes/billing.js`. Saves to Stripe account; persists after page refresh. When Connect not yet active, shows preference note: "Saved preference. Stripe payout automation requires Stripe Connect setup." `client/src/pages/Billing.jsx`, `src/routes/billing.js`.
+
+### ~~UI-14: Typography Utility Classes~~ — COMPLETE 2026-06-24
+Added 10 CSS utility classes to `client/src/style.css`: `.fc-page-title` (DM Serif Display 24px), `.fc-section-title` (DM Serif Display 18px), `.fc-card-title` (Inter 700 13px navy), `.fc-label` (DM Mono 9px uppercase steel), `.fc-body` (Inter 13px navy), `.fc-muted` (Inter 12px steel), `.fc-stat-number` (Cormorant Garamond 28px navy), `.fc-currency` (DM Mono 600 13px navy), `.fc-th` (DM Mono 9px uppercase steel), `.fc-td` (Inter 13px navy).
+
+### ~~UI-15: Invoice and Deposit Status Colors~~ — COMPLETE 2026-06-24
+All invoice and deposit status badges now routed through shared StatusBadge. Invoice: Pending=blue, Paid=green, Outstanding/Unpaid/Late/Overdue=red, Draft=gray. Deposit: Action Needed=yellow, Collect=yellow, Collected=green, Pending=blue, Refunded=gray. `client/src/pages/Invoices.jsx`, `client/src/pages/Deposits.jsx`, `client/src/components/InvoiceDetail.jsx`.
 
 ---
 

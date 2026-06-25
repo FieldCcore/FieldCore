@@ -1,6 +1,6 @@
 # FieldCore — Technical Debt Report
 
-**Last reconciled:** 2026-06-24  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint II)  
 **Source of truth:** Actual codebase scan
 
 Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (significant operational risk) | **MEDIUM** (quality or maintainability issue) | **LOW** (nice to have)
@@ -76,6 +76,21 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 
 ### ~~TD-H2d: `messages.read_at` column missing on Railway DB~~ — RESOLVED 2026-06-24
 **Resolution:** `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` run on Railway production DB. Fallback block removed from `src/routes/phone.js`. Unread message tracking fully operational.
+
+---
+
+### ~~TD-H2e: Per-page badge logic duplicated across 15+ files~~ — RESOLVED 2026-06-24
+**Resolution:** Created shared `StatusBadge` component (`client/src/components/StatusBadge.jsx`). All per-page `STATUS_COLORS`, `STATUS_CLS`, `dash-jbadge` badge implementations replaced with StatusBadge. Status string auto-maps to color variant; Title Case label auto-formatted. Files updated: Invoices, Deposits, Dashboard, ClientList, ClientProfile, Communications, Entities, Billing, Team, Estimates, JobDetail, InvoiceDetail.
+
+---
+
+### ~~TD-H2f: Duplicate "Active" badge on Entities page~~ — RESOLVED 2026-06-24
+**Resolution:** The sand-colored "Active" badge (shown for `isCurrent` entity) was labeling the same state as the blue StatusBadge `status="active"`. Renamed sand badge to "Current" (semantically distinct: "this is your selected entity"). StatusBadge now only shown for inactive entities, not active ones — eliminating the visual duplication.
+
+---
+
+### ~~TD-H2g: Communications Phone Numbers/Call Log/Voicemail tabs had no card structure~~ — RESOLVED 2026-06-24
+**Resolution:** All three tabs rebuilt with shared `CommCard` wrapper and `CommEmptyState` component. Consistent with Messages tab. Full-width cards, proper column headers (DM Mono), status badges, icons, and empty states with CTAs.
 
 ---
 

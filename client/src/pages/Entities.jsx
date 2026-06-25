@@ -374,10 +374,10 @@ export default function Entities() {
                         </span>
                         {isCurrent && (
                           <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', background: '#D6B58A', color: '#1C2333', padding: '2px 8px', borderRadius: 99 }}>
-                            Active
+                            Current
                           </span>
                         )}
-                        <StatusBadge status={entity.is_active ? 'active' : 'inactive'} />
+                        {!entity.is_active && <StatusBadge status="inactive" />}
                         <TypeBadge type={entity.business_type} />
                       </div>
 

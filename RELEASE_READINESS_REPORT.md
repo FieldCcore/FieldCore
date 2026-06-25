@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint)  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Stripe Connect entity flow, payout schedule)  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---
@@ -47,6 +47,13 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Settings page styling | Complete | CSS variable fixes; no more dark broken session cards (2026-06-24) |
 | Entities revenue typography | Complete | Cormorant Garamond serif for revenue figures (2026-06-24) |
 | Billing downgrade flow | Complete | Routes to support contact instead of automatic change (2026-06-24) |
+| StatusBadge design system | Complete | Shared badge component across 15+ pages; auto color-mapped (2026-06-24) |
+| Communications tabs (Phone Numbers, Call Log, Voicemail) | Complete | CommCard + CommEmptyState; matches Messages tab quality (2026-06-24) |
+| Billing downgrade — visible button | Complete | Request Downgrade in Current Plan banner + Plans tab footer (2026-06-24) |
+| Entities Stripe Connect flow | Complete | Real `/api/connect/onboard` call; loading state; inline errors; redirect to Stripe (2026-06-24) |
+| Payout schedule selector | Complete | Daily/Weekly/Monthly/Manual; GET/POST backend endpoints; persists after refresh (2026-06-24) |
+| Typography utility classes | Complete | `.fc-page-title`, `.fc-card-title`, `.fc-currency`, `.fc-stat-number`, etc. added to style.css (2026-06-24) |
+| Invoice/deposit status colors | Complete | All status badges via StatusBadge; correct colors per status (2026-06-24) |
 
 ---
 

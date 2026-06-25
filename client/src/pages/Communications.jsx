@@ -646,14 +646,14 @@ export default function Communications() {
         background: 'var(--white)',
         borderBottom: '1px solid var(--lightgray)',
         flexShrink: 0,
-        padding: isMessages ? '14px 24px 0' : '0 0 0',
+        padding: isMessages ? '14px 24px 0' : '20px 24px 0',
       }}>
         {!isMessages && (
-          <div className="page-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 0 }}>
             <div>
-              <h1>Communications</h1>
-              <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--steel)' }}>
-                Phone numbers, messages, calls &amp; voicemail
+              <h1 style={{ fontFamily: 'DM Serif Display, serif', fontSize: 24, fontWeight: 400, color: 'var(--navy)', margin: 0 }}>Communications</h1>
+              <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--steel)' }}>
+                Phone numbers · Messages · Calls · Voicemail
               </p>
             </div>
           </div>
@@ -663,7 +663,7 @@ export default function Communications() {
             Communications
           </div>
         )}
-        <div style={{ display: 'flex', gap: 0, marginTop: isMessages ? 8 : 12, marginBottom: -1 }}>
+        <div style={{ display: 'flex', gap: 0, marginTop: isMessages ? 8 : 14, marginBottom: -1 }}>
           {TABS.map(t => (
             <button
               key={t.key}

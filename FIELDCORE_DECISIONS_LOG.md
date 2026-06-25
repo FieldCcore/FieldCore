@@ -31,6 +31,91 @@
 
 ---
 
+### [DECISION-027] Typography utility classes use fc- prefix to avoid collision
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Adding typography utility classes to `style.css` — needed a naming convention that wouldn't conflict with existing classes (`.stat-card`, `.dash-sc-l`, etc.) or common framework names.
+
+**Decision:** All typography utility classes use the `fc-` prefix: `.fc-page-title`, `.fc-section-title`, `.fc-card-title`, `.fc-label`, `.fc-body`, `.fc-muted`, `.fc-stat-number`, `.fc-currency`, `.fc-th`, `.fc-td`.
+
+**Alternatives considered:** No prefix (conflicts with existing classes). `t-` prefix (too terse). BEM block syntax (verbose for single-purpose utilities).
+
+**Reasoning:** `fc-` is short, project-unique, and makes grep-for-all-typography trivial.
+
+**Consequences:** All new typography in new components should use these classes. Existing components may use inline styles — migration is optional, not required.
+
+---
+
+### [DECISION-026] StatusBadge auto-formats Title Case — no explicit label required
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Early StatusBadge implementation showed labels in lowercase (e.g., "active" instead of "Active") because the raw status string was used directly.
+
+**Decision:** Added `toTitleCase()` function to StatusBadge. `label = children != null ? children : toTitleCase(status || '')`. All underscore-separated values (e.g., `in_progress`) are converted to space-separated Title Case ("In Progress").
+
+**Alternatives considered:** Require callers to always pass `children` with explicit label. Rejected — too much boilerplate.
+
+**Reasoning:** A shared component should handle formatting; callers pass status strings, not display strings. Custom labels are still possible via `children`.
+
+**Consequences:** All StatusBadge renders are Title Case by default. Callers can override with `children` for edge cases.
+
+---
+
+### [DECISION-025] Entities "Current" badge (sand) is semantically distinct from "Active" StatusBadge
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Entities page was showing two badges for the current active entity: a sand-colored "Active" badge (for `isCurrent`) AND a blue "Active" StatusBadge (for `entity.is_active === true`). This was visually confusing and semantically redundant.
+
+**Decision:** Sand badge renamed to "Current" (indicates this is the selected entity context). StatusBadge (`status="inactive"`) only shown for inactive entities — not for active ones. Result: active+current entity shows only "Current" (sand). Active+non-current shows nothing. Inactive entity shows "Inactive" (gray StatusBadge).
+
+**Alternatives considered:** Remove sand badge entirely, rely on StatusBadge only. Rejected — "Current" has distinct meaning (selected entity, not just active status).
+
+**Reasoning:** Two badges for the same condition is never correct. Semantic distinction: "Current" = which entity you're operating as; "Active/Inactive" = whether the entity record is enabled.
+
+**Consequences:** No more duplicate badge problem. Clear visual hierarchy: sand = context, StatusBadge = state.
+
+---
+
+### [DECISION-024] Payout schedule preference saved to Stripe even when Connect is not yet active
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The payout schedule dropdown should be available before Stripe Connect is fully active so operators can set their preference during setup.
+
+**Decision:** Show payout schedule dropdown when connect.status === 'active'. When Connect is not yet active, show note: "Saved preference. Stripe payout automation requires Stripe Connect setup." POST endpoint validates interval (daily/weekly/monthly/manual) and saves to Stripe account settings.
+
+**Alternatives considered:** Only show dropdown when Connect is active. Rejected — operators lose their preference if they set it up later.
+
+**Reasoning:** Pre-configuring payout schedule is low-risk and saves a step during Connect onboarding. The note clearly communicates the dependency.
+
+**Consequences:** Operators can set payout schedule at any time; it takes effect once Connect is active.
+
+---
+
+### [DECISION-023] StatusBadge is the only badge system — per-page badge logic is tech debt
+**Date:** 2026-06-24
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** 15+ pages each had their own `STATUS_COLORS`, `STATUS_CLS`, `dash-jbadge`, or similar badge logic. This caused inconsistent colors, varying label formats, and no shared design contract.
+
+**Decision:** All badge rendering goes through `client/src/components/StatusBadge.jsx`. Per-page badge objects are removed when a page is touched. StatusBadge handles: color variant lookup, Title Case formatting, pill design (no border, 2px 8px padding, borderRadius 99).
+
+**Alternatives considered:** Keep per-page systems — rejected (duplicate logic, inconsistent colors). Use a library — rejected (overkill for 5 variants).
+
+**Reasoning:** Single source of truth for badge design. New statuses added to StatusBadge benefit all pages immediately.
+
+**Consequences:** Any new status string must be added to `STATUS_TO_VARIANT` in StatusBadge.jsx. Pages not yet updated still use their local badge systems until touched.
+
+---
+
 ### [DECISION-022] Billing downgrade must route to human support, not automatic plan change
 **Date:** 2026-06-24
 **Decided by:** Kevin + Claude

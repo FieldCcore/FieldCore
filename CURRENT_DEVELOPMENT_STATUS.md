@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint — calendar, clients, communications, settings, entities, billing downgrade)  
+**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Billing downgrade, Stripe Connect entities, payout schedule, typography)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -91,6 +91,14 @@
 - **Settings page** — Active Sessions and Audit Log cards used undefined CSS variables (`--navy-3`, `--border`, `--text-muted`), causing dark broken styling. Fixed to `var(--sand-lt)`, `var(--off)`, `var(--lightgray)`, `var(--steel)`, `var(--navy)`.
 - **Entities page revenue typography** — Revenue figures use Cormorant Garamond at `fontSize: 28` (summary) and `fontSize: 16` (breakdown). Stat cards use `.stat-card` / `.stat-label` / `.stat-value` classes.
 - **Billing downgrade flow** — `DowngradeModal` now shows features at risk and routes user to support (email + phone) instead of triggering automatic plan change or Stripe checkout.
+- **StatusBadge design system** — Shared `StatusBadge` component (`client/src/components/StatusBadge.jsx`) replaces per-page badge logic across 15+ files. Auto-maps status strings to 5 color variants (blue/green/red/yellow/gray). Title Case labels. Pill design: no border, 2px 8px padding, borderRadius 99. Used in: Invoices, Deposits, Dashboard, ClientList, ClientProfile, Communications, Entities, Billing, Team, Estimates, JobDetail, InvoiceDetail.
+- **Communications tabs** — Phone Numbers, Call Log, and Voicemail tabs rebuilt with shared `CommCard` wrapper and `CommEmptyState` component matching Messages tab quality. Full-width cards, proper headers, matching typography, rounded corners, icons, and empty states.
+- **Billing — visible downgrade option** — "Request Downgrade" button added to Current Plan banner and Plans tab footer. Opens `DowngradeModal` with support contact info. Wording: "To downgrade your FieldCore plan, please contact support so we can help adjust your account without interrupting your service, active entities, phone numbers, billing, or payment routing."
+- **Entities — Stripe Connect fixed** — "Connect Stripe" button now calls real `/api/connect/onboard` backend endpoint. Shows loading state, creates Stripe Express account, saves `stripe_account_id`, redirects to Stripe onboarding URL. Inline error state (`connectErrors[entityId]`) replaces dead `alert()`. "Current" (sand badge) now semantically distinct from "Active" (StatusBadge — only shown for inactive entities).
+- **Billing — Stripe Connect clarified** — Connect tab explains routing model clearly; button calls real backend; no dead-end behavior.
+- **Payout schedule** — Daily/Weekly/Monthly/Manual selector in Billing Stripe Connect tab. GET/POST `/billing/connect/payout-schedule` backend endpoints added. Saves and persists after refresh. Shows confirmation note when Connect not yet active.
+- **Typography utilities** — CSS utility classes added to `client/src/style.css`: `.fc-page-title`, `.fc-section-title`, `.fc-card-title`, `.fc-label`, `.fc-body`, `.fc-muted`, `.fc-stat-number`, `.fc-currency`, `.fc-th`, `.fc-td`.
+- **Invoice/deposit status colors** — All status badges now route through `StatusBadge`: Pending=blue, Paid=green, Outstanding/Unpaid/Late/Overdue=red; Deposits: Action Needed=yellow, Collect=yellow, Collected=green, Pending=blue.
 
 ## UI ONLY
 *(Frontend exists; backend endpoint may exist but integration or data flow not confirmed)*

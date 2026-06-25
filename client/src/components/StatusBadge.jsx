@@ -73,11 +73,15 @@ const STATUS_TO_VARIANT = {
   available:               'gray',
 };
 
+function toTitleCase(str) {
+  return String(str).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function StatusBadge({ status, variant, children, style = {} }) {
   const key = (status || '').toLowerCase().replace(/_/g, ' ').trim();
   const v = variant || STATUS_TO_VARIANT[key] || 'gray';
   const colors = VARIANTS[v] || VARIANTS.gray;
-  const label = children != null ? children : status || '';
+  const label = children != null ? children : toTitleCase(status || '');
 
   return (
     <span style={{
