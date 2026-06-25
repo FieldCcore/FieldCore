@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import StatusBadge from '../components/StatusBadge';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
 
@@ -13,12 +14,6 @@ const STATUS_DOT = {
   in_progress: 'var(--green)',
   complete:    'var(--green)',
   cancelled:   'var(--red)',
-};
-const STATUS_CLS = {
-  scheduled:   'js-pending',
-  in_progress: 'js-active',
-  complete:    'js-done',
-  cancelled:   'js-noshow',
 };
 const STATUS_LABEL = {
   scheduled:   'Scheduled',
@@ -166,7 +161,7 @@ export default function Dashboard() {
                   </div>
                   <div className="dash-jmeta">
                     <div className="dash-jtime">{fmtTime(j.scheduled_at)}</div>
-                    <span className={`dash-jbadge ${STATUS_CLS[j.status]}`}>{STATUS_LABEL[j.status]}</span>
+                    <StatusBadge status={j.status}>{STATUS_LABEL[j.status]}</StatusBadge>
                   </div>
                 </div>
               ))

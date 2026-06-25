@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import api from '../api';
+import StatusBadge from '../components/StatusBadge';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
@@ -457,7 +458,7 @@ export default function Billing() {
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 6 }}>Current Plan</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: sub ? 10 : 0 }}>
                 <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1 }}>{currentName}</span>
-                <span className={`dash-jbadge ${statusClass}`}>{statusLabel}</span>
+                <StatusBadge status={planStatus}>{statusLabel}</StatusBadge>
               </div>
               {sub && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '6px 24px', marginTop: 6 }}>
@@ -607,7 +608,7 @@ export default function Billing() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {pm.is_default && <span className="dash-jbadge js-active">Default</span>}
+                      {pm.is_default && <StatusBadge status="active">Default</StatusBadge>}
                       {!pm.is_default && (
                         <button onClick={() => setDefaultPm(pm.id)} style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Set default</button>
                       )}
@@ -671,9 +672,9 @@ export default function Billing() {
                       </td>
                       <td style={{ padding: '12px', color: 'var(--navy)', fontWeight: 700 }}>{fmt$(ev.amount)}</td>
                       <td style={{ padding: '12px' }}>
-                        <span className={`dash-jbadge ${ev.status === 'paid' ? 'js-done' : ev.status === 'failed' ? 'js-noshow' : 'js-pending'}`}>
+                        <StatusBadge status={ev.status}>
                           {ev.status === 'paid' ? 'Paid' : ev.status === 'failed' ? 'Failed' : ev.status}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td style={{ padding: '12px' }}>
                         {ev.invoice_pdf_url ? (
@@ -720,7 +721,7 @@ export default function Billing() {
                 {connect.status === 'not_connected' && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span className="dash-jbadge" style={{ background: '#f3f4f6', color: '#6b7280' }}>Not Connected</span>
+                      <StatusBadge status="not connected" />
                       <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 22px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
                         {connectBusy ? 'Redirecting…' : 'Connect with Stripe →'}
                       </button>
@@ -733,7 +734,7 @@ export default function Billing() {
                 {connect.status === 'pending' && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span className="dash-jbadge js-pending">Verification Pending</span>
+                      <StatusBadge status="verification pending" />
                       <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
                         {connectBusy ? 'Redirecting…' : 'Continue Setup →'}
                       </button>
@@ -745,7 +746,7 @@ export default function Billing() {
                 )}
                 {connect.status === 'active' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span className="dash-jbadge js-active">Active</span>
+                    <StatusBadge status="active" />
                     <button onClick={openStripeDashboard} disabled={connectBusy} className="btn-secondary">{connectBusy ? '…' : 'Stripe Dashboard →'}</button>
                   </div>
                 )}

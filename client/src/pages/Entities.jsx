@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, AlertCircle, Clock, ExternalLink, BarChart2 } from 'lucide-react';
+import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, ExternalLink, BarChart2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import StatusBadge from '../components/StatusBadge';
 
 const BUSINESS_TYPES = ['LLC', 'S-Corp', 'C-Corp', 'Sole Proprietor', 'Partnership', 'Non-Profit', 'Other'];
 const US_STATES = [
@@ -24,43 +25,6 @@ function formatEIN(ein) {
   const digits = ein.replace(/\D/g, '');
   if (digits.length >= 2) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
   return ein;
-}
-
-function ConnectBadge({ status }) {
-  if (status === 'active') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#16a34a' }}>
-        <CheckCircle size={12} />Payouts Connected
-      </div>
-    );
-  }
-  if (status === 'pending') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#d97706' }}>
-        <Clock size={12} />Stripe Pending
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>
-      <AlertCircle size={12} />Not Connected
-    </div>
-  );
-}
-
-function StatusBadge({ active }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700,
-      textTransform: 'uppercase', letterSpacing: '.06em',
-      background: active ? '#dcfce7' : '#f3f4f6',
-      color: active ? '#15803d' : '#6b7280',
-    }}>
-      <span style={{ width: 5, height: 5, borderRadius: '50%', background: active ? '#16a34a' : '#9ca3af', display: 'inline-block' }} />
-      {active ? 'Active' : 'Inactive'}
-    </span>
-  );
 }
 
 function TypeBadge({ type }) {
@@ -413,7 +377,7 @@ export default function Entities() {
                             Active
                           </span>
                         )}
-                        <StatusBadge active={entity.is_active} />
+                        <StatusBadge status={entity.is_active ? 'active' : 'inactive'} />
                         <TypeBadge type={entity.business_type} />
                       </div>
 
@@ -457,7 +421,11 @@ export default function Entities() {
                         )}
                         <div>
                           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Payouts</div>
-                          <ConnectBadge status={entity.stripe_connect_status || 'not_connected'} />
+                          <StatusBadge status={
+                            entity.stripe_connect_status === 'active' ? 'payouts connected' :
+                            entity.stripe_connect_status === 'pending' ? 'stripe pending' :
+                            'not connected'
+                          } />
                         </div>
                         <div>
                           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Members</div>

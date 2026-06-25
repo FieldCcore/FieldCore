@@ -4,11 +4,10 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import api from '../api';
 import CardSetupForm from './CardSetupForm';
+import StatusBadge from './StatusBadge';
 
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
-
-const STATUS_COLORS = { pending: '#2563eb', paid: '#10b981', void: '#6b7280' };
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
   const [invoice, setInvoice]             = useState(initialInvoice);
@@ -128,9 +127,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       <div className="modal-header">
         <div>
           <h2>Invoice</h2>
-          <span className="status-badge" style={{ background: STATUS_COLORS[invoice.status] }}>
-            {invoice.status}
-          </span>
+          <StatusBadge status={invoice.status} />
         </div>
         <button className="btn-close" onClick={onClose}>×</button>
       </div>

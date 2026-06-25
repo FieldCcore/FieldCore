@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import ClientForm from '../components/ClientForm';
+import StatusBadge from '../components/StatusBadge';
 
 function fmt$(n) {
   const v = parseFloat(n || 0);
@@ -149,10 +150,7 @@ export default function ClientList() {
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--slate)' }}>{fmtDate(c.last_invoice_at)}</div>
                     {c.last_invoice_status && (
-                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '1px 6px', borderRadius: 99, display: 'inline-block', marginTop: 2,
-                        background: c.last_invoice_status === 'paid' ? 'var(--green-lt)' : c.last_invoice_status === 'void' ? 'var(--lightgray)' : '#dbeafe',
-                        color: c.last_invoice_status === 'paid' ? 'var(--green)' : c.last_invoice_status === 'void' ? 'var(--slate)' : '#1d4ed8',
-                      }}>{c.last_invoice_status}</span>
+                      <StatusBadge status={c.last_invoice_status} style={{ fontSize: 9, marginTop: 2 }} />
                     )}
                   </div>
                 ) : <span style={{ color: 'var(--steel)', fontSize: 13 }}>—</span>}

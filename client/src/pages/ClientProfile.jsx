@@ -3,13 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import api from '../api';
 import ClientForm from '../components/ClientForm';
-
-const STATUS_COLORS = {
-  scheduled: '#5F667A',
-  in_progress: '#D6B58A',
-  complete: '#1E6B3C',
-  cancelled: '#B52A2A',
-};
+import StatusBadge from '../components/StatusBadge';
 
 export default function ClientProfile() {
   const { id } = useParams();
@@ -191,9 +185,7 @@ export default function ClientProfile() {
                   <td>{j.service_type}</td>
                   <td>{j.tech_name || '—'}</td>
                   <td>
-                    <span className="status-badge" style={{ background: STATUS_COLORS[j.status] }}>
-                      {j.status.replace('_', ' ')}
-                    </span>
+                    <StatusBadge status={j.status} />
                   </td>
                   <td>{j.scheduled_at ? new Date(j.scheduled_at).toLocaleDateString() : '—'}</td>
                   <td>{j.amount ? `$${parseFloat(j.amount).toFixed(2)}` : '—'}</td>

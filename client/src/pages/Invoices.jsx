@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
-
-const STATUS_COLORS = { pending: '#2563eb', paid: '#10b981', void: '#6b7280' };
+import StatusBadge from '../components/StatusBadge';
 const FILTERS = ['all', 'pending', 'paid', 'void'];
 
 export default function Invoices() {
@@ -84,9 +83,7 @@ export default function Invoices() {
                 <td><strong>{inv.client_name}</strong></td>
                 <td>${parseFloat(inv.amount).toFixed(2)}</td>
                 <td>
-                  <span className="status-badge" style={{ background: STATUS_COLORS[inv.status] }}>
-                    {inv.status}
-                  </span>
+                  <StatusBadge status={inv.status} />
                 </td>
                 <td>{format(new Date(inv.created_at), 'MMM d, yyyy')}</td>
               </tr>

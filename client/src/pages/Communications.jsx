@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
+import StatusBadge from '../components/StatusBadge';
 
 // ─── Phone helpers ────────────────────────────────────────────────────────────
 function fmtNum(n) {
@@ -399,130 +400,174 @@ function MessagesPanel() {
   );
 }
 
-// ─── Phone Numbers Tab ────────────────────────────────────────────────────────
-function NumbersView({ numbers, onRelease, onEdit }) {
-  if (numbers.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-        <Phone size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--navy)' }}>No phone numbers yet</div>
-        <div style={{ fontSize: 14 }}>Add a business number to handle calls and send iMessages to clients.</div>
-      </div>
-    );
-  }
-
+// ─── Shared card wrapper for non-Messages tabs ───────────────────────────────
+function CommCard({ title, subtitle, action, children }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {numbers.map(n => (
-        <div key={n.id} style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <Phone size={14} style={{ color: 'var(--navy)' }} />
-              <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 8px', borderRadius: 99, background: n.is_active ? 'var(--green-lt)' : 'var(--offwhite)', color: n.is_active ? 'var(--green)' : 'var(--steel)' }}>
-                {n.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--steel)' }}>
-              {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
-              {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => onEdit(n)}>
-              <Settings size={12} /> Settings
-            </button>
-            <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 10px', color: 'var(--red)', borderColor: 'rgba(198,40,40,.25)' }} onClick={() => onRelease(n.id)}>
-              <Trash2 size={12} />
-            </button>
-          </div>
+    <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>{subtitle}</div>}
         </div>
-      ))}
+        {action}
+      </div>
+      {children}
     </div>
+  );
+}
+
+function CommEmptyState({ icon: Icon, title, body, cta }) {
+  return (
+    <div style={{ padding: '56px 24px', textAlign: 'center' }}>
+      <Icon size={36} style={{ color: 'var(--navy)', opacity: 0.18, marginBottom: 14 }} />
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 13, color: 'var(--steel)', maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>{body}</div>
+      {cta && <div style={{ marginTop: 20 }}>{cta}</div>}
+    </div>
+  );
+}
+
+// ─── Phone Numbers Tab ────────────────────────────────────────────────────────
+function NumbersView({ numbers, onRelease, onEdit, onAdd }) {
+  return (
+    <CommCard
+      title="Phone Numbers"
+      subtitle="Business numbers for calls and iMessage/RCS texts"
+      action={
+        <button className="btn-primary" style={{ fontSize: 12, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 6 }} onClick={onAdd}>
+          <Plus size={13} /> Add Number
+        </button>
+      }
+    >
+      {numbers.length === 0 ? (
+        <CommEmptyState
+          icon={Phone}
+          title="No phone numbers yet"
+          body="Add a Twilio business number to handle inbound calls and send iMessage/RCS messages to clients."
+          cta={
+            <button className="btn-primary" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={onAdd}>
+              <Plus size={14} /> Add Your First Number
+            </button>
+          }
+        />
+      ) : (
+        numbers.map((n, i) => (
+          <div key={n.id} style={{ padding: '14px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Phone size={16} style={{ color: 'var(--navy)' }} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
+                  <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--steel)' }}>
+                  {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
+                  {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => onEdit(n)}>
+                <Settings size={12} /> Settings
+              </button>
+              <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 10px', color: 'var(--red)', borderColor: 'rgba(198,40,40,.25)' }} onClick={() => onRelease(n.id)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </CommCard>
   );
 }
 
 // ─── Call Log Tab ─────────────────────────────────────────────────────────────
 function CallsView({ calls }) {
-  if (calls.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-        <PhoneOff size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-        <div style={{ fontSize: 15, fontWeight: 600 }}>No calls yet</div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ background: 'var(--white)', borderRadius: 10, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '100px 130px 130px 1fr 90px 80px 1fr', gap: 0, padding: '9px 16px', background: 'var(--navy)' }}>
-        {['Direction','From','To','Client','Status','Duration','Time'].map(h => (
-          <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
-        ))}
-      </div>
-      {calls.map((c, i) => (
-        <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '100px 130px 130px 1fr 90px 80px 1fr', gap: 0, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--slate)', textTransform: 'capitalize' }}>
-            {c.direction === 'inbound'
-              ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
-              : <Phone size={13} style={{ color: 'var(--navy)' }} />}
-            {c.direction}
+    <CommCard title="Call Log" subtitle="All inbound and outbound calls">
+      {calls.length === 0 ? (
+        <CommEmptyState
+          icon={PhoneOff}
+          title="No calls yet"
+          body="Calls will appear here once your business number receives or makes calls."
+        />
+      ) : (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 100px 110px', gap: 0, padding: '8px 20px', background: 'var(--off)', borderBottom: '1px solid var(--lightgray)' }}>
+            {['', 'Caller', 'Number', 'Duration', 'Status', 'Time'].map(h => (
+              <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
+            ))}
           </div>
-          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.from_number)}</div>
-          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.to_number)}</div>
-          <div style={{ fontSize: 13, color: 'var(--navy)', fontWeight: 500 }}>{c.client_name || <span style={{ color: 'var(--steel)' }}>Unknown</span>}</div>
-          <div>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 8px', borderRadius: 99, display: 'inline-block',
-              background: c.status === 'completed' ? 'var(--green-lt)' : c.status === 'voicemail' ? 'var(--amber-lt)' : 'var(--offwhite)',
-              color: c.status === 'completed' ? 'var(--green)' : c.status === 'voicemail' ? 'var(--amber)' : 'var(--steel)',
-            }}>{c.status}</span>
-          </div>
-          <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtDur(c.duration_seconds)}</div>
-          <div style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(c.started_at)}</div>
+          {calls.map((c, i) => (
+            <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 100px 110px', gap: 0, padding: '13px 20px', borderTop: '1px solid var(--lightgray)', alignItems: 'center' }}>
+              <div>
+                {c.direction === 'inbound'
+                  ? <PhoneIncoming size={13} style={{ color: 'var(--green)' }} />
+                  : <Phone size={13} style={{ color: 'var(--navy)' }} />}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.client_name || <span style={{ color: 'var(--steel)', fontWeight: 400 }}>Unknown</span>}</div>
+                <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--steel)', marginTop: 1 }}>{fmtNum(c.from_number)}</div>
+              </div>
+              <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.to_number)}</div>
+              <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtDur(c.duration_seconds)}</div>
+              <div>
+                <StatusBadge
+                  status={c.status === 'completed' ? 'complete' : c.status === 'voicemail' ? 'voicemail' : c.status}
+                  variant={c.status === 'completed' ? 'green' : c.status === 'voicemail' ? 'yellow' : 'gray'}
+                />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(c.started_at)}</div>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      )}
+    </CommCard>
   );
 }
 
 // ─── Voicemail Tab ────────────────────────────────────────────────────────────
 function VoicemailView({ vms, onMarkRead }) {
-  if (vms.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)' }}>
-        <Voicemail size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-        <div style={{ fontSize: 15, fontWeight: 600 }}>No voicemails</div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {vms.map(v => (
-        <div key={v.id} style={{ background: v.is_read ? 'var(--white)' : 'var(--sand-lt)', border: `1px solid ${v.is_read ? 'var(--lightgray)' : 'var(--sand)'}`, borderRadius: 10, padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 14 }}>{v.client_name || fmtNum(v.from_number)}</span>
-              {!v.is_read && <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--navy)', color: 'white', padding: '2px 7px', borderRadius: 99 }}>New</span>}
+    <CommCard title="Voicemail" subtitle="Inbound voicemails with transcriptions">
+      {vms.length === 0 ? (
+        <CommEmptyState
+          icon={Voicemail}
+          title="No voicemails"
+          body="Voicemails from missed calls will appear here with AI transcriptions."
+        />
+      ) : (
+        vms.map((v, i) => (
+          <div key={v.id} style={{ padding: '16px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', background: !v.is_read ? 'rgba(21,101,192,.025)' : 'transparent' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: v.transcription || v.recording_url ? 10 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 14 }}>{v.client_name || fmtNum(v.from_number)}</span>
+                {!v.is_read && <StatusBadge variant="blue">New</StatusBadge>}
+                {v.duration_seconds && <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtDur(v.duration_seconds)}</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(v.created_at)}</span>
+                {!v.is_read && (
+                  <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => onMarkRead(v.id)}>
+                    Mark read
+                  </button>
+                )}
+              </div>
             </div>
-            <span style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(v.created_at)} · {fmtDur(v.duration_seconds)}</span>
+            {v.recording_url && (
+              <audio controls style={{ width: '100%', maxWidth: 380, height: 36, marginBottom: v.transcription ? 8 : 0 }} onPlay={() => onMarkRead(v.id)}>
+                <source src={v.recording_url} />
+              </audio>
+            )}
+            {v.transcription && (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
+            )}
           </div>
-          {v.recording_url && (
-            <audio controls style={{ width: '100%', height: 36, marginBottom: 8 }} onPlay={() => onMarkRead(v.id)}>
-              <source src={v.recording_url} />
-            </audio>
-          )}
-          {v.transcription && (
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
-          )}
-          {!v.is_read && (
-            <button className="btn-secondary" style={{ marginTop: 10, fontSize: 11, padding: '4px 12px' }} onClick={() => onMarkRead(v.id)}>
-              Mark as read
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
+        ))
+      )}
+    </CommCard>
   );
 }
 
@@ -611,11 +656,6 @@ export default function Communications() {
                 Phone numbers, messages, calls &amp; voicemail
               </p>
             </div>
-            {activeTab === 'numbers' && (
-              <button className="btn-primary" onClick={() => setShowProvision(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Plus size={14} /> Add Number
-              </button>
-            )}
           </div>
         )}
         {isMessages && (
@@ -669,6 +709,7 @@ export default function Communications() {
                   numbers={numbers}
                   onRelease={releaseNumber}
                   onEdit={n => setEditingNum(n)}
+                  onAdd={() => setShowProvision(true)}
                 />
               )}
               {activeTab === 'calls' && <CallsView calls={calls} />}
