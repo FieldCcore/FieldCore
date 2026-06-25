@@ -31,6 +31,23 @@
 
 ---
 
+### [DECISION-030] FIELDCORE_DEVELOPMENT_STANDARD.md adopted as mandatory development process
+**Date:** 2026-06-25
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Development tasks were being completed with inconsistent levels of verification, documentation, and reporting. Some tasks closed without confirming all requirements were met, without hostile QA review, and without structured final reports. A binding standard was needed to govern all future work.
+
+**Decision:** Created `FIELDCORE_DEVELOPMENT_STANDARD.md` in the repo root. This file is the mandatory operating standard for all future Claude Code tasks on FieldCore. It defines: requirement tracking (extract → checklist → PASS/FAIL/IN PROGRESS/NOT APPLICABLE), completion gates (all must pass before task is closed), UI verification checklist, hostile QA review protocol, documentation update rules for 7 files, file tracking requirements, route verification table, mobile breakpoint requirements, database migration rules, Vercel deployment instructions (including the path warning), and a structured final report format.
+
+**Alternatives considered:** Informal conventions in CLAUDE.md only. Rejected — CLAUDE.md is already used for stack/auth/domain rules and should stay focused on those. A separate governance file gives the standard its own explicit authority and makes it easier to reference and update.
+
+**Reasoning:** A written standard that Claude reads before every task eliminates the recurring pattern of partially-verified work. The hostile QA review requirement specifically addresses the failure mode of treating code inspection as equivalent to runtime verification.
+
+**Consequences:** All future tasks must produce a structured final report. All tasks must pass the hostile QA review before being marked complete. Documentation must be updated after every task. The standard itself should be updated via a new DECISION entry whenever the process changes.
+
+---
+
 ### [DECISION-029] Sidebar reorganized; duplicate page h1 headers removed; Communications title removed from component
 **Date:** 2026-06-25
 **Decided by:** Kevin + Claude
