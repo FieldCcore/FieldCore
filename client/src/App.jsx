@@ -285,17 +285,18 @@ function AppShell() {
                 {/* Operations — all roles see Dashboard + Calendar; Dispatch hidden from tech/staff */}
                 <div className="nav-section">Operations</div>
                 {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
+                {ni('/jobs',      false, IcoCalendar, 'Calendar',  null)}
                 {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
-                {ni('/jobs',     false, IcoCalendar, 'Calendar',  null)}
 
                 {/* Finance — owner + manager see all; staff sees invoices only */}
                 {(isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">Finance</div>
                     {(isOwner || isManager) && ni('/revenue',   false, IcoRevenue,  'Revenue',   null)}
-                    {(isOwner || isManager) && ni('/deposits',  false, IcoDeposits, 'Deposits',  null)}
-                    {ni('/invoices',  false, IcoInvoice, 'Invoices',  null)}
+                    {ni('/invoices',  false, IcoInvoice,  'Invoices',  null)}
                     {(isOwner || isManager) && ni('/estimates', false, IcoInvoice,  'Estimates', null)}
+                    {(isOwner || isManager) && ni('/deposits',  false, IcoDeposits, 'Deposits',  null)}
+                    {isOwner && ni('/billing', false, IcoBilling,  'Billing',  null)}
                   </>
                 )}
 
@@ -308,8 +309,8 @@ function AppShell() {
                   </>
                 )}
 
-                {/* Tech mobile app — techs + owners */}
-                {(isTech) && (
+                {/* Tech mobile app — techs only */}
+                {isTech && (
                   <>
                     <div className="nav-section">Mobile</div>
                     {ni('/tech', false, IcoDispatch, 'My Jobs', null)}
@@ -320,11 +321,10 @@ function AppShell() {
                 {isOwner && (
                   <>
                     <div className="nav-section">Admin</div>
-                    {ni('/team',    false, IcoTeam,     'Team',     null)}
-                    {ni('/fleet',   false, IcoDispatch, 'Fleet',    null)}
-                    {ni('/booking', false, IcoSettings, 'Settings', null)}
-                    {ni('/entities',false, IcoTeam,     'Entities', null)}
-                    {ni('/billing', false, IcoBilling,  'Billing',  null)}
+                    {ni('/team',     false, IcoTeam,     'Team',     null)}
+                    {ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
+                    {ni('/entities', false, IcoTeam,     'Entities', null)}
+                    {ni('/booking',  false, IcoSettings, 'Settings', null)}
                   </>
                 )}
               </>

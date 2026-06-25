@@ -806,19 +806,16 @@ export default function Communications() {
   return (
     <div style={{ margin: '-22px -24px', height: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* Header bar — same for all tabs */}
-      <div style={{ background: 'var(--white)', borderBottom: '1px solid var(--lightgray)', flexShrink: 0, padding: '14px 24px 0' }}>
-        <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 17, color: 'var(--navy)', fontWeight: 400 }}>
-          Communications
-        </div>
-        <div style={{ display: 'flex', gap: 0, marginTop: 8, marginBottom: -1 }}>
+      {/* Tab bar */}
+      <div style={{ background: 'var(--white)', borderBottom: '1px solid var(--lightgray)', flexShrink: 0, padding: '0 24px' }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => switchTab(t.key)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '9px 16px',
+                padding: '12px 16px',
                 border: 'none',
                 borderBottom: activeTab === t.key ? '2px solid var(--navy)' : '2px solid transparent',
                 background: 'none',

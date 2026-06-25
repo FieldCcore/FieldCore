@@ -29,10 +29,6 @@ export default function Invoices() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Invoices</h1>
-      </div>
-
       <div className="stats-row">
         <div className="stat-card">
           <span className="stat-label">Outstanding</span>

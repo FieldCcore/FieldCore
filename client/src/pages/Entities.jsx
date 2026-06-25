@@ -243,14 +243,10 @@ export default function Entities() {
 
   return (
     <div>
-      {/* Page Header */}
       <div className="page-header">
-        <div>
-          <h1>Business Entities</h1>
-          <p className="muted" style={{ marginTop: 3, fontSize: 13 }}>
-            Manage multiple business entities, locations, or brands under one account.
-          </p>
-        </div>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          Manage multiple business entities, locations, or brands under one account.
+        </p>
         {isScale && (
           <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <Plus size={14} />Add Entity

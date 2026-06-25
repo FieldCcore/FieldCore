@@ -758,8 +758,8 @@ body {
 .rbc-current-time-indicator { background: var(--sand) !important; height: 2px !important; }
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
 /* ── Agenda view ─────────────────────────────────────────── */
-.rbc-agenda-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); }
-.rbc-agenda-table { border-collapse: collapse !important; width: 100% !important; }
+.rbc-agenda-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); background: var(--white); }
+.rbc-agenda-table { border-collapse: collapse !important; width: 100% !important; border: none !important; }
 
 /* Header row — navy bar matching other FieldCore table headers */
 .rbc-agenda-view table.rbc-agenda-table thead tr th {
@@ -833,6 +833,11 @@ body {
   font-weight: 600 !important;
 }
 .rbc-agenda-view .rbc-event:focus { outline: none !important; }
+
+/* Last row — no bottom border (outer container already has it) */
+.rbc-agenda-view table.rbc-agenda-table tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
 
 /* Empty state */
 .rbc-agenda-empty {

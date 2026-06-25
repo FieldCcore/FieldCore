@@ -249,10 +249,7 @@ export default function EstimatesPage() {
   return (
     <div>
       <div className="page-header">
-        <div>
-          <h1>Estimates</h1>
-          <p style={{ margin:'4px 0 0',color:'var(--steel)',fontSize:14 }}>Send estimates with e-signature to clients</p>
-        </div>
+        <p style={{ margin: 0, color: 'var(--steel)', fontSize: 13 }}>Send estimates with e-signature to clients</p>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
       </div>
 

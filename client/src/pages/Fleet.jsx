@@ -75,14 +75,13 @@ export default function Fleet() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Fleet</h1>
-        {canEdit && (
+      {canEdit && (
+        <div className="page-header" style={{ justifyContent: 'flex-end' }}>
           <button className="btn-primary" onClick={() => { setForm({ ...EMPTY }); setError(''); }}>
             + Add Vehicle
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="muted">Loading fleet…</p>

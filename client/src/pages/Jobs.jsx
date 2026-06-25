@@ -211,13 +211,6 @@ export default function Jobs() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Calendar</h1>
-        <button className="btn-primary" onClick={() => { setDefaultStart(new Date()); setModal('create'); }}>
-          + New Job
-        </button>
-      </div>
-
       <div className="calendar-legend">
         {Object.entries(STATUS_COLORS).map(([s, color]) => (
           <span key={s} className="legend-item">

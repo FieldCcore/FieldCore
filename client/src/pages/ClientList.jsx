@@ -41,12 +41,9 @@ export default function ClientList() {
   return (
     <div>
       <div className="page-header">
-        <div>
-          <h1>Clients</h1>
-          <p style={{ margin: '3px 0 0', color: 'var(--steel)', fontSize: 13 }}>
-            {loading ? '' : `${clients.length} client${clients.length !== 1 ? 's' : ''} total`}
-          </p>
-        </div>
+        <p style={{ margin: 0, color: 'var(--steel)', fontSize: 13 }}>
+          {loading ? '' : `${clients.length} client${clients.length !== 1 ? 's' : ''} total`}
+        </p>
         <button className="btn-primary" onClick={() => setShowForm(true)}>+ Add Client</button>
       </div>
 

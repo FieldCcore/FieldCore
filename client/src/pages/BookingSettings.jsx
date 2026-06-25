@@ -97,12 +97,9 @@ export default function BookingSettings() {
   return (
     <form onSubmit={handleSave}>
       <div className="page-header">
-        <div>
-          <h1>Settings &amp; Rules</h1>
-          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--steel)' }}>
-            Booking widget, deposit rules, and services offered
-          </p>
-        </div>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--steel)' }}>
+          Booking widget, deposit rules, and services offered
+        </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {saved && (
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>✓ Saved</span>
