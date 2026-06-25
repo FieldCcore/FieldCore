@@ -139,7 +139,7 @@ export default function ClientList() {
               </div>
 
               {/* Outstanding */}
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? 'var(--amber)' : 'var(--steel)' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? '#dc2626' : 'var(--steel)' }}>
                 {parseFloat(c.outstanding_balance || 0) > 0 ? fmt$(c.outstanding_balance) : '—'}
               </div>
 
@@ -150,8 +150,8 @@ export default function ClientList() {
                     <div style={{ fontSize: 12, color: 'var(--slate)' }}>{fmtDate(c.last_invoice_at)}</div>
                     {c.last_invoice_status && (
                       <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '1px 6px', borderRadius: 99, display: 'inline-block', marginTop: 2,
-                        background: c.last_invoice_status === 'paid' ? 'var(--green-lt)' : c.last_invoice_status === 'void' ? 'var(--lightgray)' : 'var(--amber-lt)',
-                        color: c.last_invoice_status === 'paid' ? 'var(--green)' : c.last_invoice_status === 'void' ? 'var(--slate)' : 'var(--amber)',
+                        background: c.last_invoice_status === 'paid' ? 'var(--green-lt)' : c.last_invoice_status === 'void' ? 'var(--lightgray)' : '#dbeafe',
+                        color: c.last_invoice_status === 'paid' ? 'var(--green)' : c.last_invoice_status === 'void' ? 'var(--slate)' : '#1d4ed8',
                       }}>{c.last_invoice_status}</span>
                     )}
                   </div>

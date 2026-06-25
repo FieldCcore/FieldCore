@@ -103,6 +103,7 @@ export default function Entities() {
   const [inviteErr,    setInviteErr]    = useState('');
   const [analytics,    setAnalytics]    = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [connectErrors, setConnectErrors] = useState({});
 
   useEffect(() => {
     api.get('/entities')
@@ -194,11 +195,12 @@ export default function Entities() {
 
   async function handleConnect(entityId) {
     setConnecting(entityId);
+    setConnectErrors(prev => ({ ...prev, [entityId]: '' }));
     try {
       const { data } = await api.post('/connect/onboard', { entity_id: entityId });
       window.location.href = data.url;
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not start Stripe Connect. Please try again.');
+      setConnectErrors(prev => ({ ...prev, [entityId]: err.response?.data?.error || 'Could not start Stripe Connect. Please try again.' }));
       setConnecting(null);
     }
   }
@@ -498,29 +500,43 @@ export default function Entities() {
 
                   {/* Stripe Connect status action */}
                   {(entity.stripe_connect_status === 'not_connected' || !entity.stripe_connect_status) && (
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, color: 'var(--steel)' }}>Connect a bank account to enable payouts for this entity.</span>
-                      <button
-                        className="btn-secondary"
-                        style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-                        onClick={() => handleConnect(entity.id)}
-                        disabled={connecting === entity.id}
-                      >
-                        {connecting === entity.id ? 'Redirecting…' : 'Connect Stripe →'}
-                      </button>
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 12, color: 'var(--steel)' }}>Connect a bank account to enable payouts. Bank details are entered securely on Stripe — FieldCore never sees them.</span>
+                        <button
+                          className="btn-secondary"
+                          style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, marginLeft: 12 }}
+                          onClick={() => handleConnect(entity.id)}
+                          disabled={connecting === entity.id}
+                        >
+                          {connecting === entity.id ? 'Redirecting…' : 'Connect Stripe →'}
+                        </button>
+                      </div>
+                      {connectErrors[entity.id] && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626' }}>
+                          {connectErrors[entity.id]}
+                        </div>
+                      )}
                     </div>
                   )}
                   {entity.stripe_connect_status === 'pending' && (
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, color: '#d97706' }}>Stripe is reviewing this account — payouts will activate automatically once verified.</span>
-                      <button
-                        className="btn-secondary"
-                        style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-                        onClick={() => handleConnect(entity.id)}
-                        disabled={connecting === entity.id}
-                      >
-                        {connecting === entity.id ? 'Redirecting…' : 'Resume Setup →'}
-                      </button>
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f4f4f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 12, color: '#d97706' }}>Stripe is reviewing this account — payouts activate automatically once verified. If more info is needed, Stripe will email you.</span>
+                        <button
+                          className="btn-secondary"
+                          style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, marginLeft: 12 }}
+                          onClick={() => handleConnect(entity.id)}
+                          disabled={connecting === entity.id}
+                        >
+                          {connecting === entity.id ? 'Redirecting…' : 'Resume Setup →'}
+                        </button>
+                      </div>
+                      {connectErrors[entity.id] && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626' }}>
+                          {connectErrors[entity.id]}
+                        </div>
+                      )}
                     </div>
                   )}
                   {entity.stripe_connect_status === 'active' && (

@@ -299,6 +299,9 @@ export default function Billing() {
   const [cancelModal,  setCancelModal]  = useState(false);
   const [cancelledUntil, setCancelledUntil] = useState(null);
   const [downgradeModal, setDowngradeModal] = useState(null); // { from, to }
+  const [payoutSchedule, setPayoutSchedule] = useState('daily');
+  const [payoutScheduleSaving, setPayoutScheduleSaving] = useState(false);
+  const [payoutScheduleSaved, setPayoutScheduleSaved] = useState(false);
 
   const load = useCallback(async () => {
     const [billingRes, methodsRes, historyRes] = await Promise.allSettled([
@@ -306,7 +309,15 @@ export default function Billing() {
       api.get('/billing/payment-methods'),
       api.get('/billing/history'),
     ]);
-    if (billingRes.status === 'fulfilled') setBilling(billingRes.value.data);
+    if (billingRes.status === 'fulfilled') {
+      const d = billingRes.value.data;
+      setBilling(d);
+      if (d?.connect?.status === 'active') {
+        api.get('/billing/connect/payout-schedule').then(r => {
+          if (r.data?.interval) setPayoutSchedule(r.data.interval);
+        }).catch(() => {});
+      }
+    }
     if (methodsRes.status === 'fulfilled') setPayMethods(methodsRes.value.data);
     if (historyRes.status === 'fulfilled') setHistory(historyRes.value.data);
   }, []);
@@ -355,6 +366,21 @@ export default function Billing() {
     } catch (err) {
       alert(err.response?.data?.error || 'Could not open Stripe dashboard.');
     } finally { setConnectBusy(false); }
+  }
+
+  async function savePayoutSchedule(interval) {
+    setPayoutScheduleSaving(true);
+    setPayoutScheduleSaved(false);
+    try {
+      await api.post('/billing/connect/payout-schedule', { interval });
+      setPayoutSchedule(interval);
+      setPayoutScheduleSaved(true);
+      setTimeout(() => setPayoutScheduleSaved(false), 3000);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not update payout schedule.');
+    } finally {
+      setPayoutScheduleSaving(false);
+    }
   }
 
   async function openPortal() {
@@ -664,38 +690,98 @@ export default function Billing() {
 
         {/* ── STRIPE CONNECT TAB ────────────────────────────────────────────── */}
         {tab === 'connect' && (
-          <div className="dash-card" style={{ padding: 24 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Stripe Connect</div>
-            <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.6, marginBottom: 24, maxWidth: 540 }}>
-              Connect your bank account so invoice payments and booking deposits go directly to you. FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Explainer */}
+            <div className="dash-card" style={{ padding: '20px 24px' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Direct Payout Setup</div>
+              <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.7, maxWidth: 600 }}>
+                Stripe Connect routes invoice payments and booking deposits directly to your bank account — no manual transfers.
+                FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
+                {[
+                  { step: '1', label: 'Click Connect', desc: 'Opens Stripe\'s secure onboarding page' },
+                  { step: '2', label: 'Enter Bank Info', desc: 'Routing + account number entered on Stripe — FieldCore never sees it' },
+                  { step: '3', label: 'Payouts Go Live', desc: 'Stripe verifies your account, usually within minutes' },
+                ].map(s => (
+                  <div key={s.step} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8 }}>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Step {s.step}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', lineHeight: 1.5 }}>{s.desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {connect.status === 'not_connected' && (
-                <>
-                  <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '12px 24px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer', width: 'fit-content' }}>
-                    {connectBusy ? '…' : 'Connect with Stripe →'}
-                  </button>
-                  <div style={{ padding: '12px 16px', background: '#f9f7f3', borderRadius: 8, fontSize: 12, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 480 }}>
-                    Without Connect, payments are collected by FieldCore and require manual transfer. Takes ~5 minutes via Stripe's hosted onboarding.
+            {/* Status + actions */}
+            <div className="dash-card" style={{ padding: '20px 24px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Connection Status</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {connect.status === 'not_connected' && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span className="dash-jbadge" style={{ background: '#f3f4f6', color: '#6b7280' }}>Not Connected</span>
+                      <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 22px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
+                        {connectBusy ? 'Redirecting…' : 'Connect with Stripe →'}
+                      </button>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: 'var(--off)', borderRadius: 8, fontSize: 12, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 500 }}>
+                      Without Connect, payments must be transferred manually. Setup takes about 5 minutes on Stripe's hosted page.
+                    </div>
+                  </>
+                )}
+                {connect.status === 'pending' && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span className="dash-jbadge js-pending">Verification Pending</span>
+                      <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
+                        {connectBusy ? 'Redirecting…' : 'Continue Setup →'}
+                      </button>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.6, maxWidth: 500 }}>
+                      Stripe is reviewing your account. Payouts activate automatically once verified — usually within minutes. If more info is required, Stripe will email you.
+                    </div>
+                  </>
+                )}
+                {connect.status === 'active' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span className="dash-jbadge js-active">Active</span>
+                    <button onClick={openStripeDashboard} disabled={connectBusy} className="btn-secondary">{connectBusy ? '…' : 'Stripe Dashboard →'}</button>
                   </div>
-                </>
-              )}
-              {connect.status === 'pending' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span className="dash-jbadge js-pending">Verification Pending</span>
-                  <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
-                    {connectBusy ? '…' : 'Continue Setup →'}
-                  </button>
-                </div>
-              )}
-              {connect.status === 'active' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span className="dash-jbadge js-active">Active</span>
-                  <button onClick={openStripeDashboard} disabled={connectBusy} className="btn-secondary">{connectBusy ? '…' : 'Stripe Dashboard →'}</button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* Payout Schedule — only when active */}
+            {connect.status === 'active' && (
+              <div className="dash-card" style={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>Payout Schedule</div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.6 }}>
+                  How often Stripe sends your available balance to your bank account. Daily is the fastest; Manual means you initiate each payout from the Stripe Dashboard.
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <select
+                    value={payoutSchedule}
+                    onChange={e => setPayoutSchedule(e.target.value)}
+                    style={{ padding: '9px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, color: 'var(--navy)', background: 'white', fontFamily: 'Inter, sans-serif', cursor: 'pointer' }}
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                  <button
+                    onClick={() => savePayoutSchedule(payoutSchedule)}
+                    disabled={payoutScheduleSaving}
+                    className="btn-secondary"
+                    style={{ fontSize: 13 }}
+                  >
+                    {payoutScheduleSaving ? 'Saving…' : 'Save Schedule'}
+                  </button>
+                  {payoutScheduleSaved && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>✓ Saved</span>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

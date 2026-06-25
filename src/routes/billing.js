@@ -487,6 +487,46 @@ router.post('/connect/login', requireAuth, requireRole('owner'), async (req, res
   }
 });
 
+// ── GET /api/billing/connect/payout-schedule ─────────────────────────────────
+router.get('/connect/payout-schedule', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
+    if (!connectId || status !== 'active') return res.json({ interval: 'daily', available: false });
+    const account = await stripe.accounts.retrieve(connectId);
+    const schedule = account.settings?.payouts?.schedule || {};
+    res.json({ interval: schedule.interval || 'daily', available: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/connect/payout-schedule ─────────────────────────────────
+router.post('/connect/payout-schedule', requireAuth, requireRole('owner'), async (req, res) => {
+  const { interval } = req.body;
+  if (!['daily', 'weekly', 'monthly', 'manual'].includes(interval)) {
+    return res.status(400).json({ error: 'interval must be daily, weekly, monthly, or manual.' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
+    if (!connectId) return res.status(400).json({ error: 'No connected Stripe account.' });
+    if (status !== 'active') return res.status(400).json({ error: 'Stripe account not yet verified.' });
+    await stripe.accounts.update(connectId, {
+      settings: { payouts: { schedule: { interval } } },
+    });
+    res.json({ ok: true, interval });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/billing/admin-metrics ───────────────────────────────────────────
 router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res) => {
   try {

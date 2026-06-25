@@ -8,7 +8,7 @@ import CardSetupForm from './CardSetupForm';
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
-const STATUS_COLORS = { pending: '#f59e0b', paid: '#10b981', void: '#6b7280' };
+const STATUS_COLORS = { pending: '#2563eb', paid: '#10b981', void: '#6b7280' };
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
   const [invoice, setInvoice]             = useState(initialInvoice);

@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
 
-const STATUS_COLORS = { pending: '#f59e0b', paid: '#10b981', void: '#6b7280' };
+const STATUS_COLORS = { pending: '#2563eb', paid: '#10b981', void: '#6b7280' };
 const FILTERS = ['all', 'pending', 'paid', 'void'];
 
 export default function Invoices() {
@@ -37,7 +37,7 @@ export default function Invoices() {
       <div className="stats-row">
         <div className="stat-card">
           <span className="stat-label">Outstanding</span>
-          <span className="stat-value" style={{ color: '#f59e0b' }}>${totals.outstanding.toFixed(2)}</span>
+          <span className="stat-value" style={{ color: '#dc2626' }}>${totals.outstanding.toFixed(2)}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">Collected</span>

@@ -5,10 +5,10 @@ import api from '../api';
 import ClientForm from '../components/ClientForm';
 
 const STATUS_COLORS = {
-  scheduled: '#3b82f6',
-  in_progress: '#f59e0b',
-  complete: '#10b981',
-  cancelled: '#6b7280',
+  scheduled: '#5F667A',
+  in_progress: '#D6B58A',
+  complete: '#1E6B3C',
+  cancelled: '#B52A2A',
 };
 
 export default function ClientProfile() {
