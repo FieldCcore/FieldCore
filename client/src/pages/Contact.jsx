@@ -93,7 +93,7 @@ export default function Contact() {
                   <label style={labelStyle}>Message</label>
                   <textarea style={{ ...inputStyle, height: 140, resize: 'vertical' }} value={form.message} onChange={e => set('message', e.target.value)} placeholder="Tell us what's on your mind..." />
                 </div>
-                {error && <div style={{ fontSize: 13, color: '#C62828' }}>{error}</div>}
+                {error && <div style={{ fontSize: 13, color: 'var(--red)' }}>{error}</div>}
                 <button type="submit" disabled={sending} style={{ padding: '13px 0', background: '#1C2333', color: '#D6B58A', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: sending ? 'wait' : 'pointer', opacity: sending ? 0.6 : 1 }}>
                   {sending ? 'Sending…' : 'Send message →'}
                 </button>

@@ -16,7 +16,7 @@ const C = {
   sd:'#D6B58A',sd2:'#C09A6A',slt:'#F5EDE0',
   cr:'#EDEBE7',lg:'#E6E6E6',wh:'#FFFFFF',of:'#F8F7F5',
   gn:'#1E6B3C',gl:'#E4F4EC',gn2:'#4EC87A',
-  rd:'#B52A2A',rl:'#FDEAEA',rd2:'#E05555',
+  rd:'#C62828',rl:'#FFEBEE',rd2:'#E05555',
   am:'#B86200',al:'#FEF3E2',am2:'#F5A623',
   bl:'#1A5EA8',bll:'#EBF3FD',
 };
@@ -180,7 +180,7 @@ function ClientsPanel() {
     mtApi.get('/clients').then(r=>setClients(r.data)).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
-  const tierColors={'vip':'#1E6B3C','at-risk':'#B52A2A','standard':'#B86200','new':'#5F667A'};
+  const tierColors={'vip':'#1E6B3C','at-risk':'#C62828','standard':'#B86200','new':'#5F667A'};
   const filtered=clients.filter(c=>!search||(c.name||'').toLowerCase().includes(search.toLowerCase())||(c.phone||'').includes(search)||(c.email||'').toLowerCase().includes(search.toLowerCase()));
 
   return(

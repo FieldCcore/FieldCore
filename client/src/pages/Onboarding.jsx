@@ -155,7 +155,7 @@ export default function Onboarding() {
               </div>
             </div>
 
-            {error && <div style={{ marginBottom: 16, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+            {error && <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>{error}</div>}
 
             <button
               onClick={() => setStep(2)}
@@ -197,7 +197,7 @@ export default function Onboarding() {
               })}
             </div>
 
-            {error && <div style={{ marginBottom: 16, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+            {error && <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>{error}</div>}
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setStep(1)} style={{ flex: '0 0 auto', padding: '13px 20px', background: 'none', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer' }}>

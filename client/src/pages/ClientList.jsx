@@ -140,7 +140,7 @@ export default function ClientList() {
               </div>
 
               {/* Outstanding */}
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? '#dc2626' : 'var(--steel)' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? 'var(--red)' : 'var(--steel)' }}>
                 {parseFloat(c.outstanding_balance || 0) > 0 ? fmt$(c.outstanding_balance) : '—'}
               </div>
 

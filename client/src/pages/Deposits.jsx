@@ -79,7 +79,7 @@ export default function Deposits() {
           <div className="dash-sc-l">Pending Collection</div>
           <div className="dash-sc-v">${pending.toFixed(0)}</div>
           <div className="dash-sc-s">{deposits.filter(d => d.status === 'pending').length} open</div>
-          {pending > 0 && <span className="dash-sc-b ba">Action needed</span>}
+          {pending > 0 && <StatusBadge status="action needed" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
           <div className="dash-sc-l">Total Deposits</div>

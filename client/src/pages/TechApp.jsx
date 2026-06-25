@@ -13,7 +13,7 @@ const C = {
   green: '#2E7D32', greenLt: 'rgba(46,125,50,.18)',
   blue:  '#1565C0', blueLt: 'rgba(21,101,192,.18)',
   amber: '#D97706', amberLt: 'rgba(217,119,6,.15)',
-  red:   '#B52A2A', redLt: 'rgba(181,42,42,.15)',
+  red:   '#C62828', redLt: 'rgba(198,40,40,.15)',
 };
 
 const STATUS_COLOR = { scheduled: C.blue, in_progress: C.amber, complete: C.green, cancelled: C.red };

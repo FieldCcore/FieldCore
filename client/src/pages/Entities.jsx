@@ -260,7 +260,7 @@ export default function Entities() {
 
       {/* Switch error banner */}
       {switchError && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626' }}>
+        <div style={{ background: 'var(--red-lt)', border: '1px solid rgba(198,40,40,.25)', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>
           {switchError}
         </div>
       )}
@@ -457,7 +457,7 @@ export default function Entities() {
                       </button>
                       {!entity.is_home && (
                         <button
-                          style={{ padding: '7px 10px', fontSize: 12, background: 'none', border: '1px solid #fee2e2', borderRadius: 8, color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          style={{ padding: '7px 10px', fontSize: 12, background: 'none', border: '1px solid rgba(198,40,40,.15)', borderRadius: 8, color: 'var(--red)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => setDeleteTarget(entity)}
                         >
                           <Trash2 size={12} />
@@ -481,7 +481,7 @@ export default function Entities() {
                         </button>
                       </div>
                       {connectErrors[entity.id] && (
-                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626' }}>
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--red-lt)', border: '1px solid rgba(198,40,40,.25)', borderRadius: 6, fontSize: 12, color: 'var(--red)' }}>
                           {connectErrors[entity.id]}
                         </div>
                       )}
@@ -501,7 +501,7 @@ export default function Entities() {
                         </button>
                       </div>
                       {connectErrors[entity.id] && (
-                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626' }}>
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--red-lt)', border: '1px solid rgba(198,40,40,.25)', borderRadius: 6, fontSize: 12, color: 'var(--red)' }}>
                           {connectErrors[entity.id]}
                         </div>
                       )}
@@ -553,7 +553,7 @@ export default function Entities() {
                                   </div>
                                   <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 7px', borderRadius: 4, background: '#f4f4f0', color: '#6b7280' }}>{m.role}</span>
                                   {m.membership_type === 'cross' && (
-                                    <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} title="Remove">×</button>
+                                    <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} title="Remove">×</button>
                                   )}
                                 </div>
                               ))}
@@ -707,7 +707,7 @@ export default function Entities() {
             <div className="form-actions">
               <button
                 className="btn-primary"
-                style={{ background: '#dc2626', borderColor: '#dc2626' }}
+                style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }}
                 onClick={handleDelete}
                 disabled={deleting}
               >

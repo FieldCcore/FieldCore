@@ -36,11 +36,11 @@ export default function Invoices() {
       <div className="stats-row">
         <div className="stat-card">
           <span className="stat-label">Outstanding</span>
-          <span className="stat-value" style={{ color: '#dc2626' }}>${totals.outstanding.toFixed(2)}</span>
+          <span className="stat-value" style={{ color: 'var(--red)' }}>${totals.outstanding.toFixed(2)}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">Collected</span>
-          <span className="stat-value" style={{ color: '#10b981' }}>${totals.collected.toFixed(2)}</span>
+          <span className="stat-value" style={{ color: 'var(--green)' }}>${totals.collected.toFixed(2)}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">Total Invoices</span>

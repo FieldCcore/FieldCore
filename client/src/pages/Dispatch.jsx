@@ -19,7 +19,7 @@ const JOB_COLORS = {
   scheduled:   '#8A90A2',
   in_progress: '#1565C0',
   complete:    '#2E7D32',
-  cancelled:   '#C62828',
+  cancelled:   'var(--red)',
 };
 
 const STATUS_STYLES = {
@@ -206,7 +206,7 @@ export default function Dispatch() {
             { color: '#8A90A2', label: 'Tech — no GPS yet'},
             { color: '#1565C0', label: 'Job — active'     },
             { color: '#2E7D32', label: 'Job — complete'   },
-            { color: '#C62828', label: 'Job — cancelled'  },
+            { color: 'var(--red)', label: 'Job — cancelled'  },
             { color: '#8A90A2', label: 'Job — scheduled'  },
           ].map((l, i) => (
             <div key={i} className="dispatch-legend-item">

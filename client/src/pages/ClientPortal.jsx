@@ -78,7 +78,7 @@ function RequestAccess({ accountId }) {
                 placeholder="your@email.com"
                 style={{ padding: '12px 14px', border: '1.5px solid #E6E6E6', borderRadius: 8, fontSize: 14, outline: 'none', fontFamily: 'inherit', color: '#1C2333' }}
               />
-              {err && <div style={{ fontSize: 13, color: '#C62828' }}>{err}</div>}
+              {err && <div style={{ fontSize: 13, color: 'var(--red)' }}>{err}</div>}
               <button type="submit" disabled={busy} style={{ padding: '12px 0', background: '#1C2333', color: '#D6B58A', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
                 {busy ? 'Sending…' : 'Send magic link →'}
               </button>

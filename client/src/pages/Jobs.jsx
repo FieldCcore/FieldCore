@@ -58,7 +58,7 @@ const STATUS_COLORS = {
   scheduled:   '#5F667A',
   in_progress: '#D6B58A',
   complete:    '#1E6B3C',
-  cancelled:   '#B52A2A',
+  cancelled:   'var(--red)',
 };
 
 function AgendaEvent({ event }) {
