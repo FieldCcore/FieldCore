@@ -779,28 +779,31 @@ body {
 /* Body rows — white background, hover sand */
 .rbc-agenda-view table.rbc-agenda-table tbody > tr { background: var(--white) !important; cursor: pointer; }
 .rbc-agenda-view table.rbc-agenda-table tbody > tr:hover { background: var(--sand-lt) !important; }
-.rbc-agenda-view table.rbc-agenda-table tbody > tr > td + td { border-left: 1px solid var(--lightgray) !important; }
 
-/* Date column */
+/* Date column — right border only; no bottom border because the cell uses rowspan
+   for same-day events, which would create an orphan line below the last event */
 .rbc-agenda-date-cell {
   font-family: 'DM Mono', monospace !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   color: var(--slate) !important;
   padding: 13px 16px !important;
-  border-bottom: 1px solid var(--lightgray) !important;
+  border-right: 1px solid var(--lightgray) !important;
+  border-bottom: none !important;
   vertical-align: top !important;
   white-space: nowrap !important;
   width: 110px !important;
 }
 
-/* Time column */
+/* Time column — explicit left border so the column divider shows even when
+   the time cell is the first <td> in a same-day continuation row */
 .rbc-agenda-time-cell {
   font-family: 'DM Mono', monospace !important;
   font-size: 11px !important;
   font-weight: 400 !important;
   color: var(--steel) !important;
   padding: 13px 16px !important;
+  border-left: 1px solid var(--lightgray) !important;
   border-bottom: 1px solid var(--lightgray) !important;
   vertical-align: top !important;
   white-space: nowrap !important;
@@ -815,6 +818,7 @@ body {
   font-weight: 600 !important;
   color: var(--navy) !important;
   padding: 13px 16px !important;
+  border-left: 1px solid var(--lightgray) !important;
   border-bottom: 1px solid var(--lightgray) !important;
   vertical-align: top !important;
 }
