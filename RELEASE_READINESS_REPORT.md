@@ -40,7 +40,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Mobile phone access to dashboard | Complete | Phone gate removed 2026-06-24; bottom nav + sidebar overlay handle all screen widths |
 | Login page navigation (back to home) | Complete | Logo links to homepage; "← Back to homepage" added 2026-06-24 |
 | Dashboard logo home navigation | Complete | Sidebar logo is now Link to /dashboard from any page (2026-06-24) |
-| Calendar page UI | Complete | Styled toolbar, event cards, today highlight, current-time indicator, responsive height (2026-06-24) |
+| Calendar page UI | Complete | Styled toolbar, event cards, today highlight, current-time indicator, responsive height (2026-06-24); Agenda view fully restyled with FieldCore tokens, custom AgendaEvent component, navy header, white rows (2026-06-25) |
 | Client list with real invoice data | Complete | LTV, outstanding balance, last invoice date/status from DB (2026-06-24) |
 | Create Client modal overflow | Complete | `max-height: 90vh` + scroll on `.modal` (2026-06-24) |
 | Communications `read_at` error | Complete | Fallback query when column missing on Railway DB (2026-06-24) |

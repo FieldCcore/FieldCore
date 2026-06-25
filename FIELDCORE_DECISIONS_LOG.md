@@ -31,6 +31,23 @@
 
 ---
 
+### [DECISION-028] Calendar Agenda view uses custom AgendaEvent component + full CSS override
+**Date:** 2026-06-25
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The react-big-calendar Agenda view rendered with default dark gray/blue row blocks and unstyled headers. The `eventPropGetter` (which correctly adds colored background chips to month/week/day events) was applying the same status background colors to the full-width agenda rows, making them unreadable.
+
+**Decision:** Two-part fix: (1) CSS — override all `.rbc-agenda-*` selectors with FieldCore design tokens (navy header bar, white rows, DM Mono columns, subtle borders, styled empty state). (2) JavaScript — added `AgendaEvent` component rendered as `components.agenda.event` that shows a 7px status-color dot + bold service name + muted client name. `eventStyleGetter` now checks `view === 'agenda'` and returns transparent/no-background styles so the colored block doesn't show behind the component.
+
+**Alternatives considered:** Pure CSS override only (no component). Rejected — inline styles from `eventPropGetter` override CSS specificity and the background could bleed through. Custom component + transparent eventStyleGetter is the correct pattern.
+
+**Reasoning:** The `components.agenda.event` render prop is the intended extension point for customising agenda rows. Using it alongside CSS overrides gives full control without fighting specificity battles.
+
+**Consequences:** Agenda view now matches the rest of the FieldCore UI. Month/Week/Day views are unaffected. Status colors are preserved as small dots in the agenda row.
+
+---
+
 ### [DECISION-027] Typography utility classes use fc- prefix to avoid collision
 **Date:** 2026-06-24
 **Decided by:** Kevin + Claude

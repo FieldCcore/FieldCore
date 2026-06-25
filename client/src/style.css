@@ -757,10 +757,93 @@ body {
 .rbc-time-gutter .rbc-time-slot { font-family: 'DM Mono', monospace !important; font-size: 10px !important; color: var(--steel) !important; }
 .rbc-current-time-indicator { background: var(--sand) !important; height: 2px !important; }
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
+/* ── Agenda view ─────────────────────────────────────────── */
 .rbc-agenda-view { border-radius: 8px; overflow: hidden; border: 1px solid var(--lightgray); }
 .rbc-agenda-table { border-collapse: collapse !important; width: 100% !important; }
-.rbc-agenda-date-cell, .rbc-agenda-time-cell { font-family: 'DM Mono', monospace !important; font-size: 11px !important; color: var(--steel) !important; padding: 10px 14px !important; border-bottom: 1px solid var(--lightgray) !important; }
-.rbc-agenda-event-cell { font-size: 13px !important; color: var(--navy) !important; padding: 10px 14px !important; border-bottom: 1px solid var(--lightgray) !important; }
+
+/* Header row — navy bar matching other FieldCore table headers */
+.rbc-agenda-view table.rbc-agenda-table thead tr th {
+  background: var(--navy) !important;
+  font-family: 'DM Mono', monospace !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  color: rgba(255,255,255,.5) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .07em !important;
+  padding: 9px 16px !important;
+  border: none !important;
+  text-align: left !important;
+}
+.rbc-agenda-view table.rbc-agenda-table thead tr th + th { border-left: 1px solid rgba(255,255,255,.08) !important; }
+
+/* Body rows — white background, hover sand */
+.rbc-agenda-view table.rbc-agenda-table tbody > tr { background: var(--white) !important; cursor: pointer; }
+.rbc-agenda-view table.rbc-agenda-table tbody > tr:hover { background: var(--sand-lt) !important; }
+.rbc-agenda-view table.rbc-agenda-table tbody > tr > td + td { border-left: 1px solid var(--lightgray) !important; }
+
+/* Date column */
+.rbc-agenda-date-cell {
+  font-family: 'DM Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--slate) !important;
+  padding: 13px 16px !important;
+  border-bottom: 1px solid var(--lightgray) !important;
+  vertical-align: top !important;
+  white-space: nowrap !important;
+  width: 110px !important;
+}
+
+/* Time column */
+.rbc-agenda-time-cell {
+  font-family: 'DM Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  color: var(--steel) !important;
+  padding: 13px 16px !important;
+  border-bottom: 1px solid var(--lightgray) !important;
+  vertical-align: top !important;
+  white-space: nowrap !important;
+  text-transform: none !important;
+  width: 140px !important;
+}
+
+/* Event column */
+.rbc-agenda-event-cell {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--navy) !important;
+  padding: 13px 16px !important;
+  border-bottom: 1px solid var(--lightgray) !important;
+  vertical-align: top !important;
+}
+
+/* Strip the colored event block inside agenda rows — events are just text here */
+.rbc-agenda-view .rbc-event {
+  background: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: var(--navy) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+.rbc-agenda-view .rbc-event:focus { outline: none !important; }
+
+/* Empty state */
+.rbc-agenda-empty {
+  padding: 48px 24px !important;
+  text-align: center !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  color: var(--steel) !important;
+  background: var(--white) !important;
+  border-top: none !important;
+}
 
 /* ── Messages ────────────────────────────────────────────── */
 .messages-layout    { display: flex; height: calc(100vh - 52px - 44px); gap: 0; margin: -22px -24px; overflow: hidden; }

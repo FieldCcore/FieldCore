@@ -61,6 +61,19 @@ const STATUS_COLORS = {
   cancelled:   '#B52A2A',
 };
 
+function AgendaEvent({ event }) {
+  const status = event.resource?.status || 'scheduled';
+  const color  = STATUS_COLORS[status] || '#5F667A';
+  const [service, client] = (event.title || '').split(' — ');
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
+      <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 13 }}>{service}</span>
+      {client && <span style={{ fontWeight: 400, color: 'var(--steel)', fontSize: 12 }}>— {client}</span>}
+    </span>
+  );
+}
+
 function parseTime(timeStr) {
   if (!timeStr) return null;
   const [h, m] = timeStr.split(':').map(Number);
@@ -171,6 +184,19 @@ export default function Jobs() {
 
   function eventStyleGetter(event) {
     const status = event.resource?.status || 'scheduled';
+    if (view === 'agenda') {
+      return {
+        style: {
+          background: 'none',
+          backgroundColor: 'transparent',
+          boxShadow: 'none',
+          border: 'none',
+          borderRadius: 0,
+          padding: 0,
+          color: 'var(--navy)',
+        },
+      };
+    }
     return {
       style: {
         backgroundColor: STATUS_COLORS[status],
@@ -221,7 +247,7 @@ export default function Jobs() {
             min={calMin}
             max={calMax}
             selectable
-            components={{ toolbar: CalendarToolbar }}
+            components={{ toolbar: CalendarToolbar, agenda: { event: AgendaEvent } }}
             style={{ height: 'max(560px, calc(100vh - 240px))' }}
           />
         </div>

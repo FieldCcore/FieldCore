@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Billing downgrade, Stripe Connect entities, payout schedule, typography)  
+**Last reconciled:** 2026-06-25 (Calendar Agenda view restyled to match FieldCore design system; see DECISION-028)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -10,7 +10,7 @@
 
 - **Authentication** — JWT login/signup/refresh/logout, password reset, brute-force protection, role-based access
 - **Client Database (M1)** — Full CRUD, search, profile, job/SMS history, Stripe customer ID linking
-- **Job Scheduling & Dispatch (M2)** — Create/edit/delete jobs, calendar views, technician assignment, recurring jobs, GPS check-in, status tracking
+- **Job Scheduling & Dispatch (M2)** — Create/edit/delete jobs, calendar views (Month/Week/Day/Agenda all styled to FieldCore design system as of 2026-06-25), technician assignment, recurring jobs, GPS check-in, status tracking
 - **Technician Mobile App (M4)** — All 14 screens implemented: job queue, schedule, GPS check-in, photo capture, mark complete, messages, invoice view, signature
 - **Team Management** — Owner/manager/tech/staff roles, per-plan user limits enforced
 - **Business Settings** — Profile, operating hours, holiday closures, timezone, service vertical
