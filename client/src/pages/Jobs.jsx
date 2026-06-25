@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMinutes, addDays } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
@@ -26,8 +27,8 @@ function CalendarToolbar({ date, view, onNavigate, onView }) {
     <div className="cal-toolbar">
       <div className="cal-toolbar-nav">
         <button className="cal-nav-btn" onClick={() => onNavigate('TODAY')}>Today</button>
-        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')}>‹</button>
-        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('NEXT')}>›</button>
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')}><ChevronLeft size={16} /></button>
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('NEXT')}><ChevronRight size={16} /></button>
       </div>
       <span className="cal-toolbar-label">{label}</span>
       <div className="cal-view-seg">

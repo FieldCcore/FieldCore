@@ -99,13 +99,13 @@ export default function Dashboard() {
           <div className="dash-sc-l">Pending Invoices</div>
           <div className="dash-sc-v">{fmt$(pendingInvoices.total || 0)}</div>
           <div className="dash-sc-s">{pendingInvoices.count || 0} outstanding</div>
-          {pendingInvoices.count > 0 && <span className="dash-sc-b ba">Collect</span>}
+          {pendingInvoices.count > 0 && <StatusBadge status="collect" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
           <div className="dash-sc-l">Pending Deposits</div>
           <div className="dash-sc-v">{pendingDeposits.length}</div>
           <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
-          {pendingDeposits.length > 0 && <span className="dash-sc-b ba">Action needed</span>}
+          {pendingDeposits.length > 0 && <StatusBadge status="action needed" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
           <div className="dash-sc-l">Avg Rating</div>

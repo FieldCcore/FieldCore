@@ -695,7 +695,7 @@ body {
   line-height: 1;
 }
 .cal-nav-btn:hover { border-color: var(--sand); background: var(--sand-lt); }
-.cal-nav-arrow { padding: 6px 12px; font-size: 20px; }
+.cal-nav-arrow { padding: 6px 10px; display: flex; align-items: center; }
 .cal-toolbar-label {
   font-family: 'Cormorant Garamond', serif;
   font-size: 20px;
