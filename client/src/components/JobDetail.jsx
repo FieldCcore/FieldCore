@@ -3,6 +3,7 @@ import { Camera, Timer, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import StatusBadge from './StatusBadge';
 
 const STATUSES = ['scheduled', 'in_progress', 'complete', 'cancelled'];
 const STATUS_COLORS = {
@@ -163,9 +164,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
       <div className="job-detail-header">
         <div>
           <h2>{job.service_type}</h2>
-          <span className="status-badge" style={{ background: STATUS_COLORS[job.status] }}>
-            {job.status.replace('_', ' ')}
-          </span>
+          <StatusBadge status={job.status} />
         </div>
         <button className="btn-close" onClick={onClose}>×</button>
       </div>

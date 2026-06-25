@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import StatusBadge from '../components/StatusBadge';
 
 function fmtTimer(expiresAt) {
   const diff = new Date(expiresAt) - Date.now();
@@ -130,9 +131,9 @@ export default function Deposits() {
                         </td>
                         <td><strong>${parseFloat(d.amount).toFixed(0)}</strong></td>
                         <td>
-                          <span className="dash-jbadge" style={STATUS_STYLE[d.status]}>
+                          <StatusBadge status={d.status}>
                             {STATUS_LABEL[d.status]}
-                          </span>
+                          </StatusBadge>
                         </td>
                         <td>
                           {d.expires_at && d.status === 'pending' ? (

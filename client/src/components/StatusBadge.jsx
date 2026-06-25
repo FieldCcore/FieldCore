@@ -29,6 +29,8 @@ const STATUS_TO_VARIANT = {
   success:                 'green',
   verified:                'green',
   excellent:               'green',
+  signed:                  'green',
+  collected:               'green',
   'payouts connected':     'green',
   'payouts active':        'green',
   'stripe connected':      'green',
@@ -41,6 +43,7 @@ const STATUS_TO_VARIANT = {
   failed:                  'red',
   cancelled:               'red',
   canceled:                'red',
+  declined:                'red',
   error:                   'red',
   void:                    'red',
   'no-show':               'red',
@@ -57,13 +60,17 @@ const STATUS_TO_VARIANT = {
   'most popular':          'yellow',
   'action needed':         'yellow',
   collect:                 'yellow',
-  // gray — inactive/disabled/unknown
+  sent:                    'yellow',
+  // gray — inactive/disabled/unknown/expired
   draft:                   'gray',
   disabled:                'gray',
   'not connected':         'gray',
   inactive:                'gray',
   unknown:                 'gray',
   void:                    'gray',
+  expired:                 'gray',
+  refunded:                'gray',
+  available:               'gray',
 };
 
 export default function StatusBadge({ status, variant, children, style = {} }) {

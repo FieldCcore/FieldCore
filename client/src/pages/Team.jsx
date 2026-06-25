@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import StatusBadge from '../components/StatusBadge';
 
 const AVATAR_COLORS = ['var(--green)', 'var(--blue)', 'var(--amber)', 'var(--sand-dark)', 'var(--slate)'];
 const DAY_LABELS    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -406,9 +407,9 @@ export default function Team() {
                           <td><strong style={{ color: 'var(--green)' }}>{fmt$(stats.revenue || 0)}</strong></td>
                           <td>{fmt$(stats.commission || 0)}</td>
                           <td>
-                            <span className={`dash-jbadge ${parseInt(stats.active || 0) > 0 ? 'js-active' : 'js-pending'}`}>
+                            <StatusBadge status={parseInt(stats.active || 0) > 0 ? 'active' : 'available'}>
                               {parseInt(stats.active || 0) > 0 ? 'Active' : 'Available'}
-                            </span>
+                            </StatusBadge>
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: 6 }}>
@@ -558,7 +559,7 @@ export default function Team() {
                       <td>{stats.jobs || 0}</td>
                       <td><strong style={{ color: 'var(--green)' }}>{fmt$(stats.revenue || 0)}</strong></td>
                       <td><strong style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16 }}>{fmt$(stats.commission || 0)}</strong></td>
-                      <td><span className="dash-jbadge js-pending">Pending</span></td>
+                      <td><StatusBadge status="pending">Pending</StatusBadge></td>
                     </tr>
                   );
                 })}

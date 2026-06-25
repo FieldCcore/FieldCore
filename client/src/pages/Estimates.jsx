@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import api from '../api';
-
-const STATUS_COLORS = {
-  draft:    { bg:'#f1f5f9', color:'#475569' },
-  sent:     { bg:'#fff7ed', color:'#c2410c' },
-  signed:   { bg:'#f0fdf4', color:'#15803d' },
-  declined: { bg:'#fef2f2', color:'#b91c1c' },
-  expired:  { bg:'#f8f7f5', color:'#8a90a2' },
-};
+import StatusBadge from '../components/StatusBadge';
 
 function fmt$(n) { return `$${parseFloat(n || 0).toFixed(2)}`; }
 function fmtDt(d) { return d ? format(new Date(d), 'MMM d, yyyy') : '—'; }
@@ -128,7 +121,6 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
   const [estimate, setEstimate] = useState(init);
   const [sending, setSending] = useState(false);
   const [copied, setCopied]   = useState(false);
-  const sc = STATUS_COLORS[estimate.status] || STATUS_COLORS.draft;
 
   async function send() {
     setSending(true);
@@ -165,9 +157,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
         <div className="modal-header">
           <div>
             <h2>{estimate.title}</h2>
-            <span style={{ fontSize:11,fontWeight:700,padding:'2px 9px',borderRadius:99,background:sc.bg,color:sc.color,marginTop:4,display:'inline-block' }}>
-              {estimate.status.toUpperCase()}
-            </span>
+            <StatusBadge status={estimate.status} style={{ marginTop: 4 }} />
           </div>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
@@ -284,14 +274,13 @@ export default function EstimatesPage() {
             </thead>
             <tbody>
               {estimates.map(est => {
-                const sc = STATUS_COLORS[est.status] || STATUS_COLORS.draft;
                 return (
                   <tr key={est.id} style={{ borderBottom:'1px solid var(--lightgray)',cursor:'pointer' }} onClick={() => setSelected(est)}>
                     <td style={{ padding:'10px 12px',fontWeight:600 }}>{est.client_name}</td>
                     <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{est.title}</td>
                     <td style={{ padding:'10px 12px',fontFamily:'DM Mono, monospace' }}>{fmt$(est.amount)}</td>
                     <td style={{ padding:'10px 12px' }}>
-                      <span style={{ fontSize:11,fontWeight:700,padding:'2px 9px',borderRadius:99,background:sc.bg,color:sc.color }}>{est.status}</span>
+                      <StatusBadge status={est.status} />
                     </td>
                     <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{fmtDt(est.created_at)}</td>
                     <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{est.valid_until ? fmtDt(est.valid_until) : '—'}</td>
