@@ -808,7 +808,7 @@ export default function Communications() {
 
       {/* Tab bar */}
       <div style={{ background: 'var(--white)', borderBottom: '1px solid var(--lightgray)', flexShrink: 0, padding: '0 24px' }}>
-        <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: -1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {TABS.map(t => (
             <button
               key={t.key}
