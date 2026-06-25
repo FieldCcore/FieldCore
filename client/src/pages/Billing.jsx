@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Mail, Phone } from 'lucide-react';
 import api from '../api';
 import StatusBadge from '../components/StatusBadge';
 
@@ -258,7 +259,9 @@ function DowngradeModal({ from, to, onClose }) {
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--sand)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--lightgray)'}
           >
-            <span style={{ fontSize: 20 }}>✉️</span>
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--offwhite)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Mail size={16} style={{ color: 'var(--slate)' }} strokeWidth={1.8} />
+            </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>Email Support</div>
               <div style={{ fontSize: 12, color: 'var(--steel)', fontWeight: 400 }}>{SUPPORT_EMAIL}</div>
@@ -270,7 +273,9 @@ function DowngradeModal({ from, to, onClose }) {
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--sand)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--lightgray)'}
           >
-            <span style={{ fontSize: 20 }}>📞</span>
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--offwhite)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Phone size={16} style={{ color: 'var(--slate)' }} strokeWidth={1.8} />
+            </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>Call Support</div>
               <div style={{ fontSize: 12, color: 'var(--steel)', fontWeight: 400 }}>{SUPPORT_PHONE}</div>
