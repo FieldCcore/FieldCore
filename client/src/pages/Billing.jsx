@@ -253,7 +253,7 @@ function DowngradeModal({ from, to, onClose }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
           <a
-            href={`mailto:${SUPPORT_EMAIL}?subject=Downgrade Request — ${to.name} Plan&body=Hi FieldCore team,%0A%0AI'd like to downgrade my plan from ${from} to ${to.name}. Please let me know the next steps.%0A%0AThanks`}
+            href={`mailto:${SUPPORT_EMAIL}?subject=Downgrade Request&body=Hi FieldCore team,%0A%0AI'd like to downgrade my plan. Please let me know the next steps.%0A%0AThanks`}
             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: 'var(--off)', border: '1.5px solid var(--lightgray)', borderRadius: 10, textDecoration: 'none', color: 'var(--navy)', fontWeight: 600, fontSize: 14, transition: 'border-color .15s' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--sand)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--lightgray)'}
@@ -487,14 +487,12 @@ export default function Billing() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, alignItems: 'center' }}>
-              {billing?.hasSubscription && (
-                <button
-                  onClick={() => setDowngradeModal({ from: currentPlan, to: null })}
-                  style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: '1px solid var(--lightgray)', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
-                >
-                  Request Downgrade
-                </button>
-              )}
+              <button
+                onClick={() => setDowngradeModal({ from: currentPlan, to: null })}
+                style={{ fontSize: 12, color: 'var(--steel)', background: 'none', border: '1px solid var(--lightgray)', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}
+              >
+                Request Downgrade
+              </button>
               {billing?.hasSubscription && (
                 <button className="btn-secondary" disabled={busy} onClick={openPortal} style={{ flexShrink: 0 }}>
                   {busy ? '…' : 'Manage Billing →'}

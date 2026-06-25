@@ -50,7 +50,12 @@ const STATUS_TO_VARIANT = {
   noshow:                  'red',
   past_due:                'red',
   'past due':              'red',
-  // yellow — warnings/verification/setup
+  collect:                 'red',
+  'action needed':         'red',
+  'payment failed':        'red',
+  'deposit due':           'red',
+  'balance due':           'red',
+  // yellow — true warnings / neutral attention (NOT negative/urgent)
   warning:                 'yellow',
   'needs review':          'yellow',
   'setup required':        'yellow',
@@ -58,8 +63,6 @@ const STATUS_TO_VARIANT = {
   'pending setup':         'yellow',
   'stripe pending':        'yellow',
   'most popular':          'yellow',
-  'action needed':         'yellow',
-  collect:                 'yellow',
   sent:                    'yellow',
   // gray — inactive/disabled/unknown/expired
   draft:                   'gray',

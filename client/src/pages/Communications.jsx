@@ -400,174 +400,346 @@ function MessagesPanel() {
   );
 }
 
-// ─── Shared card wrapper for non-Messages tabs ───────────────────────────────
-function CommCard({ title, subtitle, action, children }) {
+// ─── Shared two-panel empty state (right panel) ──────────────────────────────
+function PanelEmpty({ icon: Icon, title, body, cta }) {
   return (
-    <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>{subtitle}</div>}
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--steel)', gap: 10, background: 'var(--off)', padding: 32 }}>
+      <Icon size={36} style={{ opacity: 0.2 }} />
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{title}</div>
+      {body && <div style={{ fontSize: 12, textAlign: 'center', maxWidth: 280, lineHeight: 1.6 }}>{body}</div>}
+      {cta && <div style={{ marginTop: 8 }}>{cta}</div>}
+    </div>
+  );
+}
+
+// ─── Phone Numbers Tab — two-panel layout ────────────────────────────────────
+function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
+  const [selected, setSelected] = useState(null);
+
+  const selectedNum = numbers.find(n => n.id === selected);
+
+  return (
+    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Left panel */}
+      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Phone Numbers</div>
+          <button
+            className="btn-primary"
+            style={{ fontSize: 11, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+            onClick={onAdd}
+          >
+            <Plus size={12} /> Add
+          </button>
         </div>
-        {action}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {numbers.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No numbers yet</div>
+          ) : (
+            numbers.map(n => (
+              <div
+                key={n.id}
+                onClick={() => setSelected(selected === n.id ? null : n.id)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--lightgray)',
+                  background: selected === n.id ? 'var(--sand-lt)' : 'transparent',
+                  borderLeft: selected === n.id ? '3px solid var(--sand)' : '3px solid transparent',
+                  transition: 'background .1s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Phone size={14} style={{ color: 'white' }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', fontFamily: 'DM Mono, monospace' }}>{fmtNum(n.number)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{n.label || 'Unlabeled'}</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                    <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
-      {children}
+
+      {/* Right panel */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {!selectedNum ? (
+          <PanelEmpty
+            icon={Phone}
+            title={numbers.length === 0 ? 'No phone numbers yet' : 'Select a number'}
+            body={numbers.length === 0
+              ? 'Add a Twilio business number to handle inbound calls and send iMessage/RCS messages to clients.'
+              : 'Select a phone number on the left to view settings and details.'}
+            cta={numbers.length === 0 && (
+              <button className="btn-primary" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={onAdd}>
+                <Plus size={14} /> Add Your First Number
+              </button>
+            )}
+          />
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--off)' }}>
+            {/* Detail header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 16, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(selectedNum.number)}</div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>{selectedNum.label || 'Unlabeled'}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => onEdit(selectedNum)}>
+                  <Settings size={12} /> Settings
+                </button>
+                <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 10px', color: 'var(--red)', borderColor: 'rgba(198,40,40,.25)' }} onClick={() => onRelease(selectedNum.id)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+            {/* Detail body */}
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Status',      <StatusBadge status={selectedNum.is_active ? 'active' : 'inactive'} />],
+                ['Number',      <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: 'var(--navy)' }}>{fmtNum(selectedNum.number)}</span>],
+                ['Label',       selectedNum.label || <span style={{ color: 'var(--steel)' }}>Unlabeled</span>],
+                ['Forwarding',  selectedNum.forward_to ? fmtNum(selectedNum.forward_to) : <span style={{ color: 'var(--steel)' }}>Not set</span>],
+                ['Business Hours', selectedNum.business_hours_only ? 'Respect business hours' : 'Always open'],
+                ['Calls via',   'Twilio Voice'],
+                ['Texts via',   'Sendblue (iMessage/RCS)'],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', paddingTop: 2, width: 110, flexShrink: 0 }}>{label}</div>
+                  <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function CommEmptyState({ icon: Icon, title, body, cta }) {
-  return (
-    <div style={{ padding: '56px 24px', textAlign: 'center' }}>
-      <Icon size={36} style={{ color: 'var(--navy)', opacity: 0.18, marginBottom: 14 }} />
-      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 13, color: 'var(--steel)', maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>{body}</div>
-      {cta && <div style={{ marginTop: 20 }}>{cta}</div>}
-    </div>
-  );
-}
+// ─── Call Log Tab — two-panel layout ─────────────────────────────────────────
+function CallsPanel({ calls }) {
+  const [selected, setSelected] = useState(null);
 
-// ─── Phone Numbers Tab ────────────────────────────────────────────────────────
-function NumbersView({ numbers, onRelease, onEdit, onAdd }) {
-  return (
-    <CommCard
-      title="Phone Numbers"
-      subtitle="Business numbers for calls and iMessage/RCS texts"
-      action={
-        <button className="btn-primary" style={{ fontSize: 12, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 6 }} onClick={onAdd}>
-          <Plus size={13} /> Add Number
-        </button>
-      }
-    >
-      {numbers.length === 0 ? (
-        <CommEmptyState
-          icon={Phone}
-          title="No phone numbers yet"
-          body="Add a Twilio business number to handle inbound calls and send iMessage/RCS messages to clients."
-          cta={
-            <button className="btn-primary" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={onAdd}>
-              <Plus size={14} /> Add Your First Number
-            </button>
-          }
-        />
-      ) : (
-        numbers.map((n, i) => (
-          <div key={n.id} style={{ padding: '14px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Phone size={16} style={{ color: 'var(--navy)' }} />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(n.number)}</span>
-                  <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--steel)' }}>
-                  {n.label || 'Unlabeled'} · Calls via Twilio · Texts via Sendblue
-                  {n.forward_to ? ` · Forwarding to ${fmtNum(n.forward_to)}` : ' · No forwarding set'}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-              <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => onEdit(n)}>
-                <Settings size={12} /> Settings
-              </button>
-              <button className="btn-secondary" style={{ fontSize: 12, padding: '6px 10px', color: 'var(--red)', borderColor: 'rgba(198,40,40,.25)' }} onClick={() => onRelease(n.id)}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-          </div>
-        ))
-      )}
-    </CommCard>
-  );
-}
+  const selectedCall = calls.find(c => c.id === selected);
 
-// ─── Call Log Tab ─────────────────────────────────────────────────────────────
-function CallsView({ calls }) {
   return (
-    <CommCard title="Call Log" subtitle="All inbound and outbound calls">
-      {calls.length === 0 ? (
-        <CommEmptyState
-          icon={PhoneOff}
-          title="No calls yet"
-          body="Calls will appear here once your business number receives or makes calls."
-        />
-      ) : (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 100px 110px', gap: 0, padding: '8px 20px', background: 'var(--off)', borderBottom: '1px solid var(--lightgray)' }}>
-            {['', 'Caller', 'Number', 'Duration', 'Status', 'Time'].map(h => (
-              <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
-            ))}
-          </div>
-          {calls.map((c, i) => (
-            <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 100px 110px', gap: 0, padding: '13px 20px', borderTop: '1px solid var(--lightgray)', alignItems: 'center' }}>
-              <div>
-                {c.direction === 'inbound'
-                  ? <PhoneIncoming size={13} style={{ color: 'var(--green)' }} />
-                  : <Phone size={13} style={{ color: 'var(--navy)' }} />}
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.client_name || <span style={{ color: 'var(--steel)', fontWeight: 400 }}>Unknown</span>}</div>
-                <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--steel)', marginTop: 1 }}>{fmtNum(c.from_number)}</div>
-              </div>
-              <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtNum(c.to_number)}</div>
-              <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--slate)' }}>{fmtDur(c.duration_seconds)}</div>
-              <div>
-                <StatusBadge
-                  status={c.status === 'completed' ? 'complete' : c.status === 'voicemail' ? 'voicemail' : c.status}
-                  variant={c.status === 'completed' ? 'green' : c.status === 'voicemail' ? 'yellow' : 'gray'}
-                />
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(c.started_at)}</div>
-            </div>
-          ))}
+    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Left panel */}
+      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Call Log</div>
+          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Inbound &amp; outbound calls</div>
         </div>
-      )}
-    </CommCard>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {calls.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No calls yet</div>
+          ) : (
+            calls.map(c => (
+              <div
+                key={c.id}
+                onClick={() => setSelected(selected === c.id ? null : c.id)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--lightgray)',
+                  background: selected === c.id ? 'var(--sand-lt)' : 'transparent',
+                  borderLeft: selected === c.id ? '3px solid var(--sand)' : '3px solid transparent',
+                  transition: 'background .1s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--lightgray)' }}>
+                    {c.direction === 'inbound'
+                      ? <PhoneIncoming size={14} style={{ color: 'var(--green)' }} />
+                      : <Phone size={14} style={{ color: 'var(--navy)' }} />}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {c.client_name || fmtNum(c.from_number) || 'Unknown'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{fmtDt(c.started_at)}</div>
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    <StatusBadge
+                      status={c.status === 'completed' ? 'complete' : c.status === 'voicemail' ? 'voicemail' : c.status || 'unknown'}
+                      variant={c.status === 'completed' ? 'green' : c.status === 'voicemail' ? 'yellow' : 'gray'}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {!selectedCall ? (
+          <PanelEmpty
+            icon={PhoneOff}
+            title={calls.length === 0 ? 'No calls yet' : 'Select a call'}
+            body={calls.length === 0
+              ? 'Calls will appear here once your business number receives or makes calls.'
+              : 'Select a call on the left to view details.'}
+          />
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--off)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--lightgray)', flexShrink: 0 }}>
+                {selectedCall.direction === 'inbound'
+                  ? <PhoneIncoming size={16} style={{ color: 'var(--green)' }} />
+                  : <Phone size={16} style={{ color: 'var(--navy)' }} />}
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)' }}>{selectedCall.client_name || fmtNum(selectedCall.from_number) || 'Unknown Caller'}</div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtNum(selectedCall.from_number)}</div>
+              </div>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Direction',  selectedCall.direction === 'inbound' ? 'Inbound' : 'Outbound'],
+                ['Status',     <StatusBadge status={selectedCall.status === 'completed' ? 'complete' : selectedCall.status || 'unknown'} variant={selectedCall.status === 'completed' ? 'green' : 'gray'} />],
+                ['Duration',   fmtDur(selectedCall.duration_seconds)],
+                ['From',       fmtNum(selectedCall.from_number)],
+                ['To',         fmtNum(selectedCall.to_number)],
+                ['Time',       fmtDt(selectedCall.started_at)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', paddingTop: 2, width: 80, flexShrink: 0 }}>{label}</div>
+                  <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
-// ─── Voicemail Tab ────────────────────────────────────────────────────────────
-function VoicemailView({ vms, onMarkRead }) {
+// ─── Voicemail Tab — two-panel layout ────────────────────────────────────────
+function VoicemailPanel({ vms, onMarkRead }) {
+  const [selected, setSelected] = useState(null);
+
+  const selectedVm = vms.find(v => v.id === selected);
+
+  function handleSelect(id) {
+    setSelected(selected === id ? null : id);
+    const vm = vms.find(v => v.id === id);
+    if (vm && !vm.is_read) onMarkRead(id);
+  }
+
   return (
-    <CommCard title="Voicemail" subtitle="Inbound voicemails with transcriptions">
-      {vms.length === 0 ? (
-        <CommEmptyState
-          icon={Voicemail}
-          title="No voicemails"
-          body="Voicemails from missed calls will appear here with AI transcriptions."
-        />
-      ) : (
-        vms.map((v, i) => (
-          <div key={v.id} style={{ padding: '16px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)', background: !v.is_read ? 'rgba(21,101,192,.025)' : 'transparent' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: v.transcription || v.recording_url ? 10 : 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 14 }}>{v.client_name || fmtNum(v.from_number)}</span>
-                {!v.is_read && <StatusBadge variant="blue">New</StatusBadge>}
-                {v.duration_seconds && <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtDur(v.duration_seconds)}</span>}
+    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Left panel */}
+      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Voicemail</div>
+          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Inbound voicemails with transcriptions</div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {vms.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No voicemails</div>
+          ) : (
+            vms.map(v => (
+              <div
+                key={v.id}
+                onClick={() => handleSelect(v.id)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--lightgray)',
+                  background: selected === v.id ? 'var(--sand-lt)' : !v.is_read ? 'rgba(21,101,192,.03)' : 'transparent',
+                  borderLeft: selected === v.id ? '3px solid var(--sand)' : '3px solid transparent',
+                  transition: 'background .1s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 17, background: !v.is_read ? 'var(--blue-lt)' : 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--lightgray)' }}>
+                    <Voicemail size={14} style={{ color: !v.is_read ? 'var(--blue)' : 'var(--steel)' }} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {v.client_name || fmtNum(v.from_number) || 'Unknown'}
+                      </span>
+                      {!v.is_read && <StatusBadge variant="blue">New</StatusBadge>}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>
+                      {fmtDur(v.duration_seconds)} · {fmtDt(v.created_at)}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                <span style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDt(v.created_at)}</span>
-                {!v.is_read && (
-                  <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => onMarkRead(v.id)}>
-                    Mark read
-                  </button>
-                )}
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {!selectedVm ? (
+          <PanelEmpty
+            icon={Voicemail}
+            title={vms.length === 0 ? 'No voicemails' : 'Select a voicemail'}
+            body={vms.length === 0
+              ? 'Voicemails from missed calls will appear here with AI transcriptions.'
+              : 'Select a voicemail on the left to listen and read the transcription.'}
+          />
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--off)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)' }}>{selectedVm.client_name || fmtNum(selectedVm.from_number) || 'Unknown Caller'}</div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>{fmtNum(selectedVm.from_number)}</div>
               </div>
+              {!selectedVm.is_read && (
+                <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px' }} onClick={() => onMarkRead(selectedVm.id)}>
+                  Mark read
+                </button>
+              )}
             </div>
-            {v.recording_url && (
-              <audio controls style={{ width: '100%', maxWidth: 380, height: 36, marginBottom: v.transcription ? 8 : 0 }} onPlay={() => onMarkRead(v.id)}>
-                <source src={v.recording_url} />
-              </audio>
-            )}
-            {v.transcription && (
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', fontStyle: 'italic', lineHeight: 1.6 }}>"{v.transcription}"</p>
-            )}
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 24 }}>
+                {[
+                  ['Duration', fmtDur(selectedVm.duration_seconds)],
+                  ['Received', fmtDt(selectedVm.created_at)],
+                  ['Status',   <StatusBadge variant={selectedVm.is_read ? 'gray' : 'blue'}>{selectedVm.is_read ? 'Read' : 'New'}</StatusBadge>],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              {selectedVm.recording_url && (
+                <div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Recording</div>
+                  <audio controls style={{ width: '100%', maxWidth: 420, height: 36 }} onPlay={() => onMarkRead(selectedVm.id)}>
+                    <source src={selectedVm.recording_url} />
+                  </audio>
+                </div>
+              )}
+              {selectedVm.transcription && (
+                <div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Transcription</div>
+                  <div style={{ fontSize: 14, color: 'var(--slate)', fontStyle: 'italic', lineHeight: 1.7, background: 'var(--white)', padding: '14px 16px', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
+                    "{selectedVm.transcription}"
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        ))
-      )}
-    </CommCard>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -623,47 +795,23 @@ export default function Communications() {
   }
 
   const unreadVms = vms.filter(v => !v.is_read).length;
-  const isMessages = activeTab === 'messages';
 
   const TABS = [
-    { key: 'messages', label: 'Messages',     icon: <MessageCircle size={13} /> },
+    { key: 'messages', label: 'Messages',      icon: <MessageCircle size={13} /> },
     { key: 'numbers',  label: 'Phone Numbers', icon: <Phone size={13} /> },
-    { key: 'calls',    label: 'Call Log',      icon: <PhoneIncoming size={13} /> },
+    { key: 'calls',    label: 'Call Log',       icon: <PhoneIncoming size={13} /> },
     { key: 'vms',      label: unreadVms > 0 ? `Voicemail (${unreadVms})` : 'Voicemail', icon: <Voicemail size={13} /> },
   ];
 
   return (
-    <div style={isMessages ? {
-      margin: '-22px -24px',
-      height: 'calc(100vh - 52px)',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    } : {}}>
+    <div style={{ margin: '-22px -24px', height: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* Header bar */}
-      <div style={{
-        background: 'var(--white)',
-        borderBottom: '1px solid var(--lightgray)',
-        flexShrink: 0,
-        padding: isMessages ? '14px 24px 0' : '20px 24px 0',
-      }}>
-        {!isMessages && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 0 }}>
-            <div>
-              <h1 style={{ fontFamily: 'DM Serif Display, serif', fontSize: 24, fontWeight: 400, color: 'var(--navy)', margin: 0 }}>Communications</h1>
-              <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--steel)' }}>
-                Phone numbers · Messages · Calls · Voicemail
-              </p>
-            </div>
-          </div>
-        )}
-        {isMessages && (
-          <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 17, color: 'var(--navy)', fontWeight: 400 }}>
-            Communications
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 0, marginTop: isMessages ? 8 : 14, marginBottom: -1 }}>
+      {/* Header bar — same for all tabs */}
+      <div style={{ background: 'var(--white)', borderBottom: '1px solid var(--lightgray)', flexShrink: 0, padding: '14px 24px 0' }}>
+        <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 17, color: 'var(--navy)', fontWeight: 400 }}>
+          Communications
+        </div>
+        <div style={{ display: 'flex', gap: 0, marginTop: 8, marginBottom: -1 }}>
           {TABS.map(t => (
             <button
               key={t.key}
@@ -689,34 +837,34 @@ export default function Communications() {
         </div>
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — all tabs use the same full-height two-panel container */}
       {activeTab === 'messages' && <MessagesPanel />}
 
       {activeTab !== 'messages' && (
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-          {error && (
-            <div style={{ background: 'var(--red-lt)', borderLeft: '3px solid var(--red)', borderRadius: '0 6px 6px 0', padding: '10px 14px', fontSize: 13, color: 'var(--red)', marginBottom: 20 }}>
+        loading ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--steel)', fontSize: 13, background: 'var(--off)' }}>
+            Loading…
+          </div>
+        ) : error ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--off)', padding: 24 }}>
+            <div style={{ background: 'var(--red-lt)', borderLeft: '3px solid var(--red)', borderRadius: '0 6px 6px 0', padding: '10px 14px', fontSize: 13, color: 'var(--red)' }}>
               {error}
             </div>
-          )}
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--steel)', fontSize: 14 }}>Loading…</div>
-          ) : (
-            <>
-              {activeTab === 'numbers' && (
-                <NumbersView
-                  numbers={numbers}
-                  onRelease={releaseNumber}
-                  onEdit={n => setEditingNum(n)}
-                  onAdd={() => setShowProvision(true)}
-                />
-              )}
-              {activeTab === 'calls' && <CallsView calls={calls} />}
-              {activeTab === 'vms' && <VoicemailView vms={vms} onMarkRead={markVmRead} />}
-            </>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'numbers' && (
+              <NumbersPanel
+                numbers={numbers}
+                onRelease={releaseNumber}
+                onEdit={n => setEditingNum(n)}
+                onAdd={() => setShowProvision(true)}
+              />
+            )}
+            {activeTab === 'calls' && <CallsPanel calls={calls} />}
+            {activeTab === 'vms' && <VoicemailPanel vms={vms} onMarkRead={markVmRead} />}
+          </>
+        )
       )}
 
       {showProvision && (
