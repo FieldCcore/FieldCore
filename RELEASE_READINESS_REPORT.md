@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Stripe Connect entity flow, payout schedule)  
+**Last reconciled:** 2026-06-25 (UI layout sprint — sidebar reorganized, duplicate page headers removed, Communications tab cleaned, Agenda table borders fixed, red color tokens standardized globally)  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---

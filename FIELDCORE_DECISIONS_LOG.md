@@ -31,6 +31,23 @@
 
 ---
 
+### [DECISION-029] Sidebar reorganized; duplicate page h1 headers removed; Communications title removed from component
+**Date:** 2026-06-25
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Three separate UI issues: (1) Sidebar order was illogical — Billing was isolated at the bottom of Admin instead of sitting under Finance, Dispatch was above Calendar in Operations, and Entities appeared after Settings. (2) Several pages rendered an `<h1>` inside a `.page-header` div that mirrored the page name already shown in the topbar `.tb-title`, creating visible duplicate titles. (3) Communications.jsx rendered a "Communications" heading inside its own tab-bar header, duplicating the topbar title.
+
+**Decision:** (1) Sidebar: Operations → Dashboard, Calendar, Dispatch. Finance → Revenue, Invoices, Estimates, Deposits, Billing. CRM → Clients, Communications. Admin → Team, Fleet, Entities, Settings. (2) Removed duplicate `<h1>` from Jobs, Invoices, ClientList, Fleet, Estimates, Entities, BookingSettings — action buttons and subtitles retained. (3) Removed "Communications" title from within the Communications component; tab bar padding adjusted.
+
+**Alternatives considered:** Keeping page-level h1s and removing the topbar title. Rejected — the topbar title is needed for consistency and shows the entity name subtitle; removing it would break the layout.
+
+**Reasoning:** The topbar title is the authoritative page label. Inner `h1` elements that repeat it waste vertical space and create visual noise. Sidebar order was corrected to match natural workflow progression (Operations → Finance → CRM → Admin).
+
+**Consequences:** Cleaner visual hierarchy on every page. Sidebar now groups items logically. Billing is discoverable under Finance where users expect it. No routes were changed.
+
+---
+
 ### [DECISION-028] Calendar Agenda view uses custom AgendaEvent component + full CSS override
 **Date:** 2026-06-25
 **Decided by:** Kevin + Claude

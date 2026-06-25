@@ -1,6 +1,6 @@
 # FieldCore — Technical Debt Report
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint II)  
+**Last reconciled:** 2026-06-25 (UI layout sprint — sidebar reorganized, duplicate headers removed, Agenda borders fixed)  
 **Source of truth:** Actual codebase scan
 
 Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (significant operational risk) | **MEDIUM** (quality or maintainability issue) | **LOW** (nice to have)
@@ -91,6 +91,11 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 
 ### ~~TD-H2g: Communications Phone Numbers/Call Log/Voicemail tabs had no card structure~~ — RESOLVED 2026-06-24
 **Resolution:** All three tabs rebuilt with shared `CommCard` wrapper and `CommEmptyState` component. Consistent with Messages tab. Full-width cards, proper column headers (DM Mono), status badges, icons, and empty states with CTAs.
+
+---
+
+### ~~TD-H2h: Duplicate page titles and illogical sidebar ordering~~ — RESOLVED 2026-06-25
+**Resolution:** (1) Removed duplicate `<h1>` page headers from Jobs, Invoices, ClientList, Fleet, Estimates, Entities, and BookingSettings — action buttons and contextual subtitles retained. (2) Removed "Communications" title from within the Communications component (duplicated topbar). (3) Sidebar reorganized: Operations (Dashboard → Calendar → Dispatch), Finance (Revenue → Invoices → Estimates → Deposits → Billing), CRM, Admin (Team → Fleet → Entities → Settings). Billing moved from Admin to Finance. See DECISION-029.
 
 ---
 
