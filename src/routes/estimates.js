@@ -7,6 +7,46 @@ const email   = require('../services/email');
 
 function escHtml(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+let _tableReady = false;
+async function ensureTable() {
+  if (_tableReady) return;
+  const c = await pool.connect();
+  try {
+    await c.query(`
+      CREATE TABLE IF NOT EXISTS estimates (
+        id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        client_id      UUID NOT NULL REFERENCES clients(id),
+        job_id         UUID REFERENCES jobs(id),
+        title          TEXT NOT NULL DEFAULT 'Service Estimate',
+        line_items     JSONB NOT NULL DEFAULT '[]',
+        amount         NUMERIC(10,2) NOT NULL DEFAULT 0,
+        tax_amount     NUMERIC(10,2) DEFAULT 0,
+        status         TEXT NOT NULL DEFAULT 'draft'
+                         CHECK (status IN ('draft','sent','signed','declined','expired')),
+        notes          TEXT,
+        valid_until    DATE,
+        signing_token  TEXT UNIQUE,
+        signed_at      TIMESTAMPTZ,
+        signature_data TEXT,
+        sent_at        TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token)`);
+    _tableReady = true;
+    console.log('[estimates] table ready');
+  } catch (err) {
+    console.error('[estimates] ensureTable failed:', err.message);
+  } finally {
+    c.release();
+  }
+}
+
+router.use((req, res, next) => { ensureTable().then(next).catch(next); });
+
 // GET /api/estimates — list all estimates for account
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {

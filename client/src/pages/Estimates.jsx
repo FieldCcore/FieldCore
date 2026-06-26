@@ -55,7 +55,7 @@ function CreateEstimateModal({ onCreated, onClose }) {
           <h2>New Estimate</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
-        <form onSubmit={submit} style={{ padding: '4px 0' }}>
+        <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:16, paddingTop:4 }}>
           {error && <p className="form-error">{error}</p>}
           <div className="form-row">
             <div className="form-group">
@@ -80,18 +80,18 @@ function CreateEstimateModal({ onCreated, onClose }) {
                   placeholder="Description" style={{ flex:1 }}
                 />
                 <input
-                  type="number" step="0.01" min="0"
                   value={item.amount} onChange={e => setLI(i,'amount',e.target.value)}
-                  placeholder="0.00" style={{ width:90 }}
+                  placeholder="0.00" inputMode="decimal"
+                  style={{ width:110, textAlign:'right', fontFamily:'DM Mono, monospace' }}
                 />
                 {lineItems.length > 1 && (
-                  <button type="button" onClick={() => removeLI(i)} style={{ background:'none',border:'none',color:'#e53e3e',cursor:'pointer',fontSize:18,lineHeight:1 }}>×</button>
+                  <button type="button" onClick={() => removeLI(i)} style={{ flexShrink:0, background:'none',border:'none',color:'#e53e3e',cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 2px' }}>×</button>
                 )}
               </div>
             ))}
-            <button type="button" className="btn-secondary" onClick={addLI} style={{ fontSize:12,padding:'5px 12px',marginTop:4 }}>+ Add Item</button>
-            <div style={{ textAlign:'right',fontSize:13,fontWeight:700,color:'var(--navy)',marginTop:8 }}>
-              Subtotal: {fmt$(subtotal)}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:4 }}>
+              <button type="button" className="btn-secondary" onClick={addLI} style={{ fontSize:12, padding:'5px 12px' }}>+ Add Item</button>
+              <span style={{ fontSize:13, fontWeight:700, color:'var(--navy)' }}>Subtotal: {fmt$(subtotal)}</span>
             </div>
           </div>
 
