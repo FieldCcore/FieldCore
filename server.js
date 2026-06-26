@@ -13,26 +13,25 @@ const { runMigrations } = require('./src/db/migrate');
 
 const PORT = process.env.PORT || 3000;
 
-runMigrations()
-  .catch(err => console.error('[DB] runMigrations error:', err.message))
-  .then(() => {
-    const server = app.listen(PORT, () => {
-      console.log(`FieldCore API running on port ${PORT}`);
-      scheduler.startReminderJob();
-    });
+// Start server immediately so health checks pass during deployment
+const server = app.listen(PORT, () => {
+  console.log(`FieldCore API running on port ${PORT}`);
+  scheduler.startReminderJob();
+  // Run migrations after server is up (non-blocking)
+  runMigrations().catch(err => console.error('[DB] runMigrations error:', err.message));
+});
 
-    function shutdown(signal) {
-      console.log(`[${signal}] Graceful shutdown…`);
-      server.close(() => {
-        console.log('HTTP server closed.');
-        process.exit(0);
-      });
-      setTimeout(() => {
-        console.error('Shutdown timed out — forcing exit.');
-        process.exit(1);
-      }, 10_000).unref();
-    }
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT',  () => shutdown('SIGINT'));
+function shutdown(signal) {
+  console.log(`[${signal}] Graceful shutdown…`);
+  server.close(() => {
+    console.log('HTTP server closed.');
+    process.exit(0);
   });
+  setTimeout(() => {
+    console.error('Shutdown timed out — forcing exit.');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
