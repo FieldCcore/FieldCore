@@ -3,7 +3,7 @@ import React from 'react';
 const VARIANTS = {
   blue:   { bg: 'var(--blue-lt)',  color: 'var(--blue)'  },
   green:  { bg: 'var(--green-lt)', color: 'var(--green)' },
-  red:    { bg: 'var(--red-lt)',   color: 'var(--red)'   },
+  red:    { bg: '#B52A2A',         color: '#fff'          },
   yellow: { bg: '#fef3c7',         color: '#92400e'      },
   gray:   { bg: 'var(--offwhite)', color: 'var(--slate)' },
 };
@@ -35,7 +35,7 @@ const STATUS_TO_VARIANT = {
   'payouts active':        'green',
   'stripe connected':      'green',
   default:                 'green',
-  // red — overdue/cancelled/error/failed
+  // red — negative/action-required/failed
   outstanding:             'red',
   unpaid:                  'red',
   late:                    'red',
@@ -45,7 +45,6 @@ const STATUS_TO_VARIANT = {
   canceled:                'red',
   declined:                'red',
   error:                   'red',
-  void:                    'red',
   'no-show':               'red',
   noshow:                  'red',
   past_due:                'red',
@@ -55,7 +54,7 @@ const STATUS_TO_VARIANT = {
   'payment failed':        'red',
   'deposit due':           'red',
   'balance due':           'red',
-  // yellow — true warnings / neutral attention (NOT negative/urgent)
+  // yellow — warnings / neutral attention
   warning:                 'yellow',
   'needs review':          'yellow',
   'setup required':        'yellow',
@@ -92,12 +91,12 @@ export default function StatusBadge({ status, variant, children, style = {} }) {
       alignItems: 'center',
       padding: '2px 8px',
       borderRadius: 99,
-      fontSize: 11,
-      fontWeight: 700,
+      fontSize: 10.5,
+      fontWeight: 600,
       fontFamily: 'Inter, sans-serif',
       letterSpacing: '.02em',
       whiteSpace: 'nowrap',
-      lineHeight: 1.6,
+      lineHeight: 1.35,
       background: colors.bg,
       color: colors.color,
       ...style,
