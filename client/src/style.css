@@ -629,15 +629,7 @@ body {
 .card-element-wrap     { border: 1.5px solid var(--lightgray); border-radius: 6px; padding: 12px 14px; background: var(--white); }
 
 /* ── Job detail ──────────────────────────────────────────── */
-.job-detail-header   { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.job-detail-header h2 {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 17px;
-  font-weight: 400;
-  color: var(--navy);
-  margin-bottom: 8px;
-}
-.job-detail-body     { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+.job-detail-body     { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; }
 .detail-row          { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--lightgray); }
 .detail-row:last-child { border-bottom: none; }
 .detail-row label    {
@@ -648,8 +640,28 @@ body {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: .08em;
+  padding-top: 1px;
 }
-.job-status-section  { background: var(--off); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); }
+.jd-section {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--lightgray);
+  background: var(--off);
+}
+.jd-section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--steel);
+  margin-bottom: 8px;
+}
+.job-status-section  { background: var(--off); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); margin-top: 10px; }
 .status-label        {
   font-family: 'DM Mono', monospace;
   font-size: 9px;

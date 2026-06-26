@@ -94,23 +94,18 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
     try {
       const res = await fetch(`/api/no-show/jobs/${job.id}/declare`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ jobId: job.id }),
       });
       const data = await res.json();
       if (!res.ok) {
-        console.error('Declare no-show failed:', data);
-        alert(data.error || data.message || 'Failed to declare no-show. Check console for details.');
+        alert(data.error || data.message || 'Failed to declare no-show.');
         setDeclaring(false);
         return;
       }
       if (onStatusChange) onStatusChange({ ...job, status: 'no_show' });
       onClose();
     } catch (err) {
-      console.error('Declare no-show error:', err);
       alert('Network error — could not declare no-show. Please try again.');
       setDeclaring(false);
     }
@@ -122,23 +117,18 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
     try {
       const res = await fetch(`/api/jobs/${job.id}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: 'in_progress' }),
       });
       const data = await res.json();
       if (!res.ok) {
-        console.error('Client arrived failed:', data);
-        alert(data.error || data.message || 'Could not update status. Check console for details.');
+        alert(data.error || data.message || 'Could not update status.');
         setArrived(false);
         return;
       }
       if (onStatusChange) onStatusChange(data);
       onClose();
     } catch (err) {
-      console.error('Client arrived error:', err);
       alert('Network error — could not update status. Please try again.');
       setArrived(false);
     }
@@ -161,14 +151,16 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
 
   return (
     <div>
-      <div className="job-detail-header">
-        <div>
+      {/* Header */}
+      <div className="modal-header" style={{ alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <h2>{job.service_type}</h2>
           <StatusBadge status={job.status} />
         </div>
         <button className="btn-close" onClick={onClose}>×</button>
       </div>
 
+      {/* Detail rows */}
       <div className="job-detail-body">
         <div className="detail-row"><label>Client</label><span>{job.client_name || '—'}</span></div>
         <div className="detail-row"><label>Tech</label><span>{job.tech_name || 'Unassigned'}</span></div>
@@ -181,12 +173,18 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
           <span>{job.amount ? `$${parseFloat(job.amount).toFixed(2)}` : '—'}</span>
         </div>
         {job.recurring !== 'none' && (
-          <div className="detail-row"><label>Recurring</label><span style={{ textTransform: 'capitalize' }}>{job.recurring}</span></div>
+          <div className="detail-row">
+            <label>Recurring</label>
+            <span style={{ textTransform: 'capitalize' }}>{job.recurring}</span>
+          </div>
         )}
         {job.checkin_at && (
           <div className="detail-row">
             <label>Check-in</label>
-            <span>{format(new Date(job.checkin_at), 'h:mm a')} {job.checkin_lat ? `· ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}</span>
+            <span>
+              {format(new Date(job.checkin_at), 'h:mm a')}
+              {job.checkin_lat ? ` · ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}
+            </span>
           </div>
         )}
         {job.service_address && (
@@ -209,9 +207,15 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         )}
       </div>
 
-      {/* No-show clock — only when job is scheduled */}
+      {/* No-show grace period clock */}
       {job.status === 'scheduled' && (
-        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: `1px solid ${clockStarted ? (isOverdue ? '#fca5a5' : '#fde68a') : '#e5e0d8'}`, background: clockStarted ? (isOverdue ? '#fef2f2' : '#fffbeb') : '#fafaf8' }}>
+        <div
+          className="jd-section"
+          style={{
+            borderColor: clockStarted ? (isOverdue ? '#fca5a5' : '#fde68a') : 'var(--lightgray)',
+            background:  clockStarted ? (isOverdue ? '#fef2f2' : '#fffbeb') : 'var(--off)',
+          }}
+        >
           {clockStarted ? (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <Timer size={14} style={{ color: clockColor, flexShrink: 0, marginTop: 2 }} />
@@ -267,11 +271,11 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         </div>
       )}
 
-      {/* SMS Templates — available for scheduled and in_progress jobs with a client */}
+      {/* SMS templates */}
       {(job.status === 'scheduled' || job.status === 'in_progress') && job.client_id && (
-        <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 8, border: '1px solid #e5e0d8', background: '#fafaf8' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 8 }}>
-            <MessageSquare size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />SMS
+        <div className="jd-section">
+          <div className="jd-section-label">
+            <MessageSquare size={10} />SMS
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -299,14 +303,14 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         </div>
       )}
 
-      {/* Photos section */}
-      <div style={{ margin: '12px 0' }}>
+      {/* Job photos */}
+      <div className="jd-section">
         <button
           className="btn-secondary"
-          style={{ fontSize: 13, padding: '6px 14px' }}
+          style={{ fontSize: 12, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
           onClick={() => setShowPhotos(v => !v)}
         >
-          {showPhotos ? 'Hide Photos' : <><Camera size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} />Job Photos</>}
+          <Camera size={13} />{showPhotos ? 'Hide Photos' : 'Job Photos'}
         </button>
         {showPhotos && (
           <div style={{ marginTop: 12 }}>
@@ -321,7 +325,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
                     <img
                       src={p.url}
                       alt="Job photo"
-                      style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }}
+                      style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 6, border: '1px solid var(--lightgray)' }}
                     />
                   </a>
                 ))}
@@ -331,6 +335,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         )}
       </div>
 
+      {/* Status update */}
       <div className="job-status-section">
         <p className="status-label">Update Status</p>
         <div className="status-buttons">
@@ -341,8 +346,8 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
               className="status-btn"
               style={{
                 background: job.status === s ? STATUS_COLORS[s] : '#f1f5f9',
-                color: job.status === s ? '#fff' : '#475569',
-                opacity: updating ? 0.6 : 1,
+                color:      job.status === s ? '#fff' : '#475569',
+                opacity:    updating ? 0.6 : 1,
               }}
               onClick={() => updateStatus(s)}
             >
