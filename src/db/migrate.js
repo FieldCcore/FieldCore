@@ -442,19 +442,29 @@ const MIGRATIONS = [
 ];
 
 async function runMigrations() {
+  const client = await pool.connect();
   let failed = 0;
-  for (const sql of MIGRATIONS) {
-    const client = await pool.connect();
-    try {
-      await client.query(sql);
-    } catch (err) {
-      console.error('[DB] Migration step skipped:', err.message);
-      failed++;
-    } finally {
-      client.release();
+  try {
+    await client.query('BEGIN');
+    for (const sql of MIGRATIONS) {
+      try {
+        await client.query('SAVEPOINT m');
+        await client.query(sql);
+        await client.query('RELEASE SAVEPOINT m');
+      } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT m');
+        console.error('[DB] Migration step skipped:', err.message.split('\n')[0]);
+        failed++;
+      }
     }
+    await client.query('COMMIT');
+    console.log(`[DB] Migrations complete — ${failed} step(s) skipped`);
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('[DB] Migration fatal error:', err.message);
+  } finally {
+    client.release();
   }
-  console.log(`[DB] Migrations complete — ${failed} step(s) skipped`);
 }
 
 module.exports = { runMigrations };
