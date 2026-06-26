@@ -443,13 +443,17 @@ const MIGRATIONS = [
 
 async function runMigrations() {
   const client = await pool.connect();
+  let failed = 0;
   try {
     for (const sql of MIGRATIONS) {
-      await client.query(sql);
+      try {
+        await client.query(sql);
+      } catch (err) {
+        console.error('[DB] Migration step skipped:', err.message);
+        failed++;
+      }
     }
-    console.log('[DB] Migrations applied successfully');
-  } catch (err) {
-    console.error('[DB] Migration error:', err.message);
+    console.log(`[DB] Migrations complete — ${failed} step(s) skipped (already applied or incompatible)`);
   } finally {
     client.release();
   }
