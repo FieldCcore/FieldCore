@@ -30,6 +30,9 @@
   --yellow:     #92400e;
   --yellow-lt:  #fef3c7;
   --sb:         220px;
+  --text-muted: #5F667A;
+  --navy-3:     #2D3748;
+  --border:     #E6E6E6;
 }
 
 body {
