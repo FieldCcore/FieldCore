@@ -588,7 +588,8 @@ export default function Entities() {
               <button className="btn-close" onClick={() => setShowForm(false)}>×</button>
             </div>
 
-            <form onSubmit={handleSave} style={{ maxHeight: '72vh', overflowY: 'auto', paddingRight: 2 }}>
+            <div className="modal-body">
+            <form onSubmit={handleSave}>
               {formError && <p className="form-error" style={{ marginBottom: 14 }}>{formError}</p>}
 
               {/* Business Identity */}
@@ -682,6 +683,7 @@ export default function Entities() {
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
@@ -694,22 +696,24 @@ export default function Entities() {
               <h2>Deactivate Entity</h2>
               <button className="btn-close" onClick={() => setDeleteTarget(null)}>×</button>
             </div>
-            <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.7, margin: '0 0 8px' }}>
-              Are you sure you want to deactivate <strong>{deleteTarget.legal_name || deleteTarget.name}</strong>?
-            </p>
-            <p style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.7, margin: '0 0 24px' }}>
-              The entity will be marked inactive. All data (jobs, clients, invoices) is preserved and can be reactivated by editing the entity.
-            </p>
-            <div className="form-actions">
-              <button
-                className="btn-primary"
-                style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }}
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting ? 'Deactivating…' : 'Deactivate Entity'}
-              </button>
-              <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <div className="modal-body">
+              <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.7, margin: '0 0 8px' }}>
+                Are you sure you want to deactivate <strong>{deleteTarget.legal_name || deleteTarget.name}</strong>?
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.7, margin: '0 0 24px' }}>
+                The entity will be marked inactive. All data (jobs, clients, invoices) is preserved and can be reactivated by editing the entity.
+              </p>
+              <div className="form-actions">
+                <button
+                  className="btn-primary"
+                  style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }}
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deactivating…' : 'Deactivate Entity'}
+                </button>
+                <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              </div>
             </div>
           </div>
         </div>
@@ -723,31 +727,33 @@ export default function Entities() {
               <h2>Invite to {inviteModal.entityName}</h2>
               <button className="btn-close" onClick={() => setInviteModal(null)}>×</button>
             </div>
-            <form onSubmit={handleInvite}>
-              {inviteErr && <p className="form-error" style={{ marginBottom: 12 }}>{inviteErr}</p>}
-              <div className="form-group">
-                <label>Email Address</label>
-                <input autoFocus type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="user@example.com" />
-              </div>
-              <div className="form-group" style={{ marginTop: 12 }}>
-                <label>Role</label>
-                <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-                  <option value="owner">Owner</option>
-                  <option value="manager">Manager</option>
-                  <option value="staff">Staff</option>
-                  <option value="tech">Technician</option>
-                </select>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--steel)', margin: '10px 0 16px', lineHeight: 1.6 }}>
-                The user must already have a FieldCore account. They'll see this entity in their sidebar switcher.
-              </p>
-              <div className="form-actions">
-                <button type="submit" className="btn-primary" disabled={inviting || !inviteEmail.trim()}>
-                  {inviting ? 'Adding…' : 'Add Member'}
-                </button>
-                <button type="button" className="btn-secondary" onClick={() => setInviteModal(null)}>Cancel</button>
-              </div>
-            </form>
+            <div className="modal-body">
+              <form onSubmit={handleInvite}>
+                {inviteErr && <p className="form-error" style={{ marginBottom: 12 }}>{inviteErr}</p>}
+                <div className="form-group">
+                  <label>Email Address</label>
+                  <input autoFocus type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="user@example.com" />
+                </div>
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label>Role</label>
+                  <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+                    <option value="owner">Owner</option>
+                    <option value="manager">Manager</option>
+                    <option value="staff">Staff</option>
+                    <option value="tech">Technician</option>
+                  </select>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--steel)', margin: '10px 0 16px', lineHeight: 1.6 }}>
+                  The user must already have a FieldCore account. They'll see this entity in their sidebar switcher.
+                </p>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary" disabled={inviting || !inviteEmail.trim()}>
+                    {inviting ? 'Adding…' : 'Add Member'}
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setInviteModal(null)}>Cancel</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

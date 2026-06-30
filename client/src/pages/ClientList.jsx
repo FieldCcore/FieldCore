@@ -61,7 +61,9 @@ export default function ClientList() {
               <h2>New Client</h2>
               <button className="btn-close" onClick={() => setShowForm(false)}>×</button>
             </div>
-            <ClientForm onSave={handleCreated} onCancel={() => setShowForm(false)} />
+            <div className="modal-body">
+              <ClientForm onSave={handleCreated} onCancel={() => setShowForm(false)} />
+            </div>
           </div>
         </div>
       )}

@@ -160,6 +160,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
         <button className="btn-close" onClick={onClose}>×</button>
       </div>
 
+      <div className="modal-body">
       {/* Detail rows */}
       <div className="job-detail-body">
         <div className="detail-row"><label>Client</label><span>{job.client_name || '—'}</span></div>
@@ -359,6 +360,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
 
       <div className="form-actions" style={{ marginTop: 16 }}>
         <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
+      </div>
       </div>
     </div>
   );

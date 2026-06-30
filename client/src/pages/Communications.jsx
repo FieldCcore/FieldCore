@@ -61,30 +61,32 @@ function NumberSettings({ num, onSave, onClose }) {
           <h2>Number Settings</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="form-group">
-            <label>Label</label>
-            <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Main Business Line" />
-          </div>
-          <div className="form-group">
-            <label>Forward calls to</label>
-            <input value={form.forward_to} onChange={e => setForm(p => ({ ...p, forward_to: e.target.value }))} placeholder="+1 (555) 000-0000" />
-          </div>
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontFamily: 'Inter, sans-serif', fontWeight: 500, color: 'var(--navy)' }}>
-              <input type="checkbox" checked={form.business_hours_only} onChange={e => setForm(p => ({ ...p, business_hours_only: e.target.checked }))} />
-              Respect business hours
-            </label>
-          </div>
-          {form.business_hours_only && (
+        <div className="modal-body">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="form-group">
-              <label>After-hours voicemail message</label>
-              <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} />
+              <label>Label</label>
+              <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Main Business Line" />
             </div>
-          )}
-          <div className="form-actions">
-            <button className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <div className="form-group">
+              <label>Forward calls to</label>
+              <input value={form.forward_to} onChange={e => setForm(p => ({ ...p, forward_to: e.target.value }))} placeholder="+1 (555) 000-0000" />
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontFamily: 'Inter, sans-serif', fontWeight: 500, color: 'var(--navy)' }}>
+                <input type="checkbox" checked={form.business_hours_only} onChange={e => setForm(p => ({ ...p, business_hours_only: e.target.checked }))} />
+                Respect business hours
+              </label>
+            </div>
+            {form.business_hours_only && (
+              <div className="form-group">
+                <label>After-hours voicemail message</label>
+                <textarea value={form.after_hours_message} onChange={e => setForm(p => ({ ...p, after_hours_message: e.target.value }))} rows={3} />
+              </div>
+            )}
+            <div className="form-actions">
+              <button className="btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -125,6 +127,7 @@ function ProvisionModal({ onDone, onClose }) {
           <h2>Add Phone Number</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
+        <div className="modal-body">
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <input
             className="form-group"
@@ -140,7 +143,7 @@ function ProvisionModal({ onDone, onClose }) {
         </div>
         {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
         {results.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
             {results.map(n => (
               <div key={n.phone_number} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', border: '1px solid var(--lightgray)', borderRadius: 8 }}>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{fmtNum(n.phone_number)}</span>
@@ -153,6 +156,7 @@ function ProvisionModal({ onDone, onClose }) {
         )}
         <div className="form-actions" style={{ marginTop: 20 }}>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
         </div>
       </div>
     </div>

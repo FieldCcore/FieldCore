@@ -312,11 +312,13 @@ export default function Jobs() {
               <h2>New Job</h2>
               <button className="btn-close" onClick={() => setModal(null)}>×</button>
             </div>
-            <JobForm
-              defaultStart={defaultStart}
-              onSave={handleJobCreated}
-              onCancel={() => setModal(null)}
-            />
+            <div className="modal-body">
+              <JobForm
+                defaultStart={defaultStart}
+                onSave={handleJobCreated}
+                onCancel={() => setModal(null)}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -341,11 +343,13 @@ export default function Jobs() {
               <h2>Edit Job</h2>
               <button className="btn-close" onClick={() => setModal(null)}>×</button>
             </div>
-            <JobForm
-              job={selectedJob}
-              onSave={handleJobEdited}
-              onCancel={() => setModal('detail')}
-            />
+            <div className="modal-body">
+              <JobForm
+                job={selectedJob}
+                onSave={handleJobEdited}
+                onCancel={() => setModal('detail')}
+              />
+            </div>
           </div>
         </div>
       )}

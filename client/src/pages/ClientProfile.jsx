@@ -102,7 +102,7 @@ export default function ClientProfile() {
               <h2>Call {client.name}</h2>
               <button className="btn-close" onClick={() => setCallModal(false)}>×</button>
             </div>
-            <div style={{ padding: '4px 0 16px' }}>
+            <div className="modal-body">
               <p style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 16 }}>
                 Twilio will call your phone first. When you answer, it connects you to {client.name} ({client.phone}).
               </p>
@@ -135,7 +135,9 @@ export default function ClientProfile() {
               <h2>Edit Client</h2>
               <button className="btn-close" onClick={() => setEditing(false)}>×</button>
             </div>
-            <ClientForm client={client} onSave={handleUpdated} onCancel={() => setEditing(false)} />
+            <div className="modal-body">
+              <ClientForm client={client} onSave={handleUpdated} onCancel={() => setEditing(false)} />
+            </div>
           </div>
         </div>
       )}

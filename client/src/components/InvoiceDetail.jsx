@@ -132,6 +132,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         <button className="btn-close" onClick={onClose}>×</button>
       </div>
 
+      <div className="modal-body">
       {error && <p className="form-error" style={{ marginBottom: 16 }}>{error}</p>}
 
       <div className="invoice-meta">
@@ -244,6 +245,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

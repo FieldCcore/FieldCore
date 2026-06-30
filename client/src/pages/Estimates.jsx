@@ -55,6 +55,7 @@ function CreateEstimateModal({ onCreated, onClose }) {
           <h2>New Estimate</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
+        <div className="modal-body">
         <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:16, paddingTop:4 }}>
           {error && <p className="form-error">{error}</p>}
           <div className="form-row">
@@ -111,6 +112,7 @@ function CreateEstimateModal({ onCreated, onClose }) {
             <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create Estimate'}</button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
@@ -162,6 +164,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
 
+        <div className="modal-body">
         <div className="invoice-meta" style={{ marginBottom:12 }}>
           <div className="detail-row"><label>Client</label><span>{estimate.client_name}</span></div>
           <div className="detail-row"><label>Created</label><span>{fmtDt(estimate.created_at)}</span></div>
@@ -219,6 +222,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           {['draft','sent'].includes(estimate.status) && (
             <button className="btn-void" onClick={voidEst}>Expire</button>
           )}
+        </div>
         </div>
       </div>
     </div>

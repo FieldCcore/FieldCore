@@ -116,6 +116,7 @@ function MemberModal({ user, onClose, onSaved }) {
           <h2>{isEdit ? 'Edit Team Member' : 'Add Team Member'}</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
+        <div className="modal-body">
         {error && <div className="form-error" style={{ marginBottom: 16 }}>{error}</div>}
         <form className="client-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -180,7 +181,7 @@ function MemberModal({ user, onClose, onSaved }) {
         </form>
 
         {isEdit && otherAccounts.length > 0 && (
-          <div style={{ borderTop: '1px solid var(--lightgray)', padding: '16px 24px 20px' }}>
+          <div style={{ borderTop: '1px solid var(--lightgray)', padding: '16px 0 20px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 10 }}>
               Cross-Account Access
             </div>
@@ -210,6 +211,7 @@ function MemberModal({ user, onClose, onSaved }) {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

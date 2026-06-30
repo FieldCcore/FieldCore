@@ -178,6 +178,7 @@ export default function Fleet() {
               <h2>{form.id ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
               <button className="btn-close" onClick={() => setForm(null)}>×</button>
             </div>
+            <div className="modal-body">
             <form onSubmit={handleSave}>
               {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
               <div className="form-grid-2">
@@ -214,6 +215,7 @@ export default function Fleet() {
                 <button type="button" className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
