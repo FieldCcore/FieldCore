@@ -86,7 +86,7 @@ export default function BookingSettings() {
 
   if (loading) {
     return (
-      <div style={{ background: 'var(--white)', borderRadius: 10, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
+      <div style={{ background: 'var(--white)', borderRadius: 12, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
         Loading settings…
       </div>
     );

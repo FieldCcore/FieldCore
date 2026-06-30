@@ -170,7 +170,7 @@ function ThreadItem({ item }) {
 
   if (isCall) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '8px 14px', background: 'var(--offwhite)', borderRadius: 10, border: '1px solid var(--lightgray)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '8px 14px', background: 'var(--offwhite)', borderRadius: 12, border: '1px solid var(--lightgray)' }}>
         {item.direction === 'inbound'
           ? <PhoneIncoming size={13} style={{ color: '#15803d' }} />
           : <Phone size={13} style={{ color: 'var(--navy)' }} />

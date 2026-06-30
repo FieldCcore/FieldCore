@@ -69,11 +69,11 @@ export default function ClientList() {
       )}
 
       {loading ? (
-        <div style={{ background: 'var(--white)', borderRadius: 10, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
+        <div style={{ background: 'var(--white)', borderRadius: 12, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
           Loading clients…
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ background: 'var(--white)', borderRadius: 10, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)' }}>
+        <div style={{ background: 'var(--white)', borderRadius: 12, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)' }}>
           <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.25 }}>👤</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>
             {search ? 'No clients match your search' : 'No clients yet'}
@@ -88,7 +88,7 @@ export default function ClientList() {
           )}
         </div>
       ) : (
-        <div style={{ background: 'var(--white)', borderRadius: 10, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
+        <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
           {/* Table header */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px', gap: 0, padding: '9px 20px', background: 'var(--navy)', alignItems: 'center' }}>
             {['Name', 'Tier', 'Contact', 'LTV', 'Outstanding', 'Last Invoice', 'Client Since'].map(h => (
