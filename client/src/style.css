@@ -421,6 +421,7 @@ body {
   z-index: 100;
   backdrop-filter: blur(2px);
   padding: 24px 16px;
+  overflow-y: auto;
 }
 .modal {
   background: var(--white);
@@ -452,6 +453,7 @@ body {
   padding: 20px 28px 28px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }

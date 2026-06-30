@@ -150,7 +150,7 @@ export default function JobDetail({ job, onClose, onStatusChange, onEdit }) {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* Header */}
       <div className="modal-header" style={{ alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

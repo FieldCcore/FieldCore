@@ -123,7 +123,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const isPending = invoice.status === 'pending';
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div className="modal-header">
         <div>
           <h2>Invoice</h2>
