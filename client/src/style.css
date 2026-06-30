@@ -527,16 +527,37 @@ body {
 .card:last-child { margin-bottom: 0; }
 .card h3 {
   font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  font-weight: 500;
+  font-size: 9.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: .12em;
+  letter-spacing: .05em;
   color: var(--steel);
-  margin-bottom: 14px;
+  padding-bottom: 10px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--lightgray);
 }
-.card p              { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--lightgray); }
-.card p:last-child   { border-bottom: none; }
-.card label          { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .08em; font-weight: 500; color: var(--steel); min-width: 110px; text-transform: uppercase; }
+.card p {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--off);
+  font-size: 13px;
+  color: var(--navy);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.card p:last-child   { border-bottom: none; padding-bottom: 0; }
+.card label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--steel);
+  min-width: 120px;
+  flex-shrink: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 /* ── Profile ─────────────────────────────────────────────── */
 .profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -659,17 +680,27 @@ body {
 
 /* ── Job detail ──────────────────────────────────────────── */
 .job-detail-body     { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; }
-.detail-row          { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--lightgray); }
+.detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--off);
+  font-size: 13px;
+  color: var(--navy);
+  font-weight: 500;
+}
 .detail-row:last-child { border-bottom: none; }
-.detail-row label    {
-  font-family: 'DM Mono', monospace;
+.detail-row label {
+  font-family: 'Inter', sans-serif;
   font-weight: 500;
   color: var(--steel);
   min-width: 90px;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  padding-top: 1px;
+  font-size: 11.5px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding-top: 0;
+  flex-shrink: 0;
 }
 .jd-section {
   margin: 10px 0;
