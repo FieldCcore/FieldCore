@@ -192,23 +192,31 @@ export default function Revenue() {
       {tab === 'revenue' && <div>
       <div className="dash-stat-grid">
         <div className="dash-sc">
-          <div className="dash-sc-l">Month to Date</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Month to Date</div>
+            {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
+          </div>
           <div className="dash-sc-v">{fmt$(mtdRevenue)}</div>
           <div className="dash-sc-s">{parseInt(monthly[monthly.length - 1]?.jobs || 0)} jobs this month</div>
-          {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Total Jobs</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Total Jobs</div>
+          </div>
           <div className="dash-sc-v">{totalJobs}</div>
           <div className="dash-sc-s">Last 6 months</div>
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Services</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Services</div>
+          </div>
           <div className="dash-sc-v">{byService.length}</div>
           <div className="dash-sc-s">Service types billed</div>
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Avg per Job</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Avg per Job</div>
+          </div>
           <div className="dash-sc-v">{totalJobs > 0 ? fmt$(monthly.reduce((s,m) => s + parseFloat(m.revenue||0), 0) / totalJobs) : '$0'}</div>
           <div className="dash-sc-s">All time average</div>
         </div>

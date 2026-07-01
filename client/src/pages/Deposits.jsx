@@ -70,24 +70,32 @@ export default function Deposits() {
     <div>
       <div className="dash-stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <div className="dash-sc">
-          <div className="dash-sc-l">Collected</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Collected</div>
+            {collected > 0 && <span className="dash-sc-b bg">Received</span>}
+          </div>
           <div className="dash-sc-v">${collected.toFixed(0)}</div>
           <div className="dash-sc-s">{deposits.filter(d => d.status === 'collected').length} deposits</div>
-          {collected > 0 && <span className="dash-sc-b bg">Received</span>}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Pending Collection</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Pending Collection</div>
+            {pending > 0 && <StatusBadge status="action needed" />}
+          </div>
           <div className="dash-sc-v">${pending.toFixed(0)}</div>
           <div className="dash-sc-s">{deposits.filter(d => d.status === 'pending').length} open</div>
-          {pending > 0 && <StatusBadge status="action needed" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Total Deposits</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Total Deposits</div>
+          </div>
           <div className="dash-sc-v">{deposits.length}</div>
           <div className="dash-sc-s">All time</div>
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Rules Active</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Rules Active</div>
+          </div>
           <div className="dash-sc-v">{rulesCount}</div>
           <div className="dash-sc-s">Deposit policies</div>
         </div>

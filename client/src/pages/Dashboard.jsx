@@ -79,39 +79,51 @@ export default function Dashboard() {
       )}
       <div className="dash-stat-grid">
         <div className="dash-sc">
-          <div className="dash-sc-l">Today Revenue</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Today Revenue</div>
+          </div>
           <div className="dash-sc-v">{fmt$(weekBars[todayIdx]?.revenue || 0)}</div>
           <div className="dash-sc-s">{todayJobs.length} job{todayJobs.length !== 1 ? 's' : ''} today</div>
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Month to Date</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Month to Date</div>
+            {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
+          </div>
           <div className="dash-sc-v">{fmt$(mtdRevenue)}</div>
           <div className="dash-sc-s">Completed jobs</div>
-          {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Active Jobs</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Active Jobs</div>
+            {activeJobs > 0 && <span className="dash-sc-b bg">Live</span>}
+          </div>
           <div className="dash-sc-v">{activeJobs}</div>
           <div className="dash-sc-s">{activeJobs > 0 ? 'In progress now' : 'None in progress'}</div>
-          {activeJobs > 0 && <span className="dash-sc-b bg">Live</span>}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Pending Invoices</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Pending Invoices</div>
+            {pendingInvoices.count > 0 && <StatusBadge status="collect" />}
+          </div>
           <div className="dash-sc-v">{fmt$(pendingInvoices.total || 0)}</div>
           <div className="dash-sc-s">{pendingInvoices.count || 0} outstanding</div>
-          {pendingInvoices.count > 0 && <StatusBadge status="collect" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Pending Deposits</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Pending Deposits</div>
+            {pendingDeposits.length > 0 && <StatusBadge status="action needed" />}
+          </div>
           <div className="dash-sc-v">{pendingDeposits.length}</div>
           <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
-          {pendingDeposits.length > 0 && <StatusBadge status="action needed" style={{ position: 'absolute', top: 13, right: 13 }} />}
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-l">Avg Rating</div>
+          <div className="dash-sc-header">
+            <div className="dash-sc-l">Avg Rating</div>
+            {avgRating >= 4.5 && <span className="dash-sc-b bg">Excellent</span>}
+          </div>
           <div className="dash-sc-v">{avgRating ? `${avgRating} ★` : '—'}</div>
           <div className="dash-sc-s">{recentReviews.length > 0 ? `${recentReviews.length} review${recentReviews.length !== 1 ? 's' : ''}` : 'No reviews yet'}</div>
-          {avgRating >= 4.5 && <span className="dash-sc-b bg">Excellent</span>}
         </div>
       </div>
 
