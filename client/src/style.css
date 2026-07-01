@@ -2325,3 +2325,104 @@ body {
   font-family: 'Inter', sans-serif;
   padding: 10px 0;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   COMMUNICATIONS — Two-panel layout + mobile stacked view
+   ═══════════════════════════════════════════════════════════ */
+.comms-container {
+  margin: -22px -24px;
+  height: calc(100vh - 52px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.comms-tabbar {
+  background: var(--white);
+  border-bottom: 1px solid var(--lightgray);
+  flex-shrink: 0;
+  padding: 0 24px;
+}
+.comms-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: -1px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.comms-tabs::-webkit-scrollbar { display: none; }
+
+.comms-panel-wrap {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.comms-left {
+  width: 300px;
+  background: var(--white);
+  border-right: 1px solid var(--lightgray);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.comms-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.comms-back { display: none; }
+
+@media (max-width: 768px) {
+  .comms-container {
+    margin: -12px -12px;
+    height: calc(100vh - 50px - 62px);
+  }
+  .comms-tabbar { padding: 0 12px; }
+  .comms-left  { width: 100%; border-right: none; }
+  .comms-right { width: 100%; }
+
+  .comms-panel-wrap[data-view="list"]   .comms-right { display: none; }
+  .comms-panel-wrap[data-view="detail"] .comms-left  { display: none; }
+
+  .comms-back {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 14px;
+    background: var(--white);
+    border: none;
+    border-bottom: 1px solid var(--lightgray);
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    flex-shrink: 0;
+    width: 100%;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .comms-back:active { background: var(--offwhite); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE — Action button sizing (768px)
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .btn-primary, .btn-secondary {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  /* Table / card inline action buttons — even more compact */
+  td .btn-primary, td .btn-secondary,
+  .dash-card .btn-primary, .dash-card .btn-secondary {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  /* Status badge: prevent overlap in tight rows */
+  .status-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+}

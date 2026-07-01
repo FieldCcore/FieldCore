@@ -117,6 +117,33 @@ function AppShell() {
   const [dateStr,    setDateStr]    = useState('');
   const [callerOpen, setCallerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const touchStartX = React.useRef(null);
+  const touchStartY = React.useRef(null);
+
+  function handleTouchStart(e) {
+    const t = e.touches[0];
+    touchStartX.current = t.clientX;
+    touchStartY.current = t.clientY;
+  }
+
+  function handleTouchEnd(e) {
+    const startX = touchStartX.current;
+    if (startX === null) return;
+    touchStartX.current = null;
+    if (window.innerWidth >= 769) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = Math.abs(t.clientY - touchStartY.current);
+    // Ignore mostly-vertical gestures (scrolling)
+    if (dy > Math.abs(dx) * 0.9) return;
+    if (dx > 60 && startX <= 40) {
+      // Swipe right from left edge → open
+      setSidebarOpen(true);
+    } else if (dx < -60 && sidebarOpen) {
+      // Swipe left → close
+      setSidebarOpen(false);
+    }
+  }
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
@@ -231,7 +258,7 @@ function AppShell() {
   );
 
   return (
-    <div className="app">
+    <div className="app" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
         <Link to="/dashboard" className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>

@@ -206,7 +206,7 @@ function ThreadItem({ item }) {
   );
 }
 
-// ─── SMS Messages Panel (two-panel layout) ───────────────────────────────────
+// ─── SMS Messages Panel ───────────────────────────────────────────────────────
 function MessagesPanel() {
   const [clients, setClients]   = useState([]);
   const [selected, setSelected] = useState(null);
@@ -216,6 +216,7 @@ function MessagesPanel() {
   const [error, setError]       = useState('');
   const [search, setSearch]     = useState('');
   const [clientJobs, setClientJobs] = useState([]);
+  const [mobilePane, setMobilePane] = useState('list');
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -274,15 +275,21 @@ function MessagesPanel() {
     }
   }
 
+  function handleSelectClient(c) {
+    setSelected(c);
+    setError('');
+    setMobilePane('detail');
+  }
+
   const filteredClients = clients.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     (c.phone || '').includes(search)
   );
 
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="comms-panel-wrap" data-view={mobilePane}>
       {/* Left: client list */}
-      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="comms-left">
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
           <div style={{ position: 'relative' }}>
             <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--steel)', pointerEvents: 'none' }} />
@@ -301,7 +308,7 @@ function MessagesPanel() {
           {filteredClients.map(c => (
             <div
               key={c.id}
-              onClick={() => { setSelected(c); setError(''); }}
+              onClick={() => handleSelectClient(c)}
               style={{
                 padding: '12px 16px',
                 cursor: 'pointer',
@@ -326,7 +333,10 @@ function MessagesPanel() {
       </div>
 
       {/* Right: conversation */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="comms-right">
+        <button className="comms-back" onClick={() => setMobilePane('list')}>
+          <ChevronLeft size={15} /> Back to Messages
+        </button>
         {!selected ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--steel)', gap: 12, background: 'var(--off)' }}>
             <MessageSquare size={36} style={{ opacity: 0.2 }} />
@@ -416,16 +426,23 @@ function PanelEmpty({ icon: Icon, title, body, cta }) {
   );
 }
 
-// ─── Phone Numbers Tab — two-panel layout ────────────────────────────────────
+// ─── Phone Numbers Tab ────────────────────────────────────────────────────────
 function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
   const [selected, setSelected] = useState(null);
+  const [mobilePane, setMobilePane] = useState('list');
 
   const selectedNum = numbers.find(n => n.id === selected);
 
+  function handleSelectNum(id) {
+    const newId = selected === id ? null : id;
+    setSelected(newId);
+    setMobilePane(newId !== null ? 'detail' : 'list');
+  }
+
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="comms-panel-wrap" data-view={mobilePane}>
       {/* Left panel */}
-      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="comms-left">
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Phone Numbers</div>
           <button
@@ -443,7 +460,7 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
             numbers.map(n => (
               <div
                 key={n.id}
-                onClick={() => setSelected(selected === n.id ? null : n.id)}
+                onClick={() => handleSelectNum(n.id)}
                 style={{
                   padding: '12px 16px',
                   cursor: 'pointer',
@@ -472,7 +489,10 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
       </div>
 
       {/* Right panel */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="comms-right">
+        <button className="comms-back" onClick={() => { setSelected(null); setMobilePane('list'); }}>
+          <ChevronLeft size={15} /> Back to Numbers
+        </button>
         {!selectedNum ? (
           <PanelEmpty
             icon={Phone}
@@ -488,7 +508,6 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
           />
         ) : (
           <div style={{ flex: 1, overflowY: 'auto', background: 'var(--off)' }}>
-            {/* Detail header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--lightgray)', background: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
                 <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 16, fontWeight: 700, color: 'var(--navy)' }}>{fmtNum(selectedNum.number)}</div>
@@ -503,7 +522,6 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
                 </button>
               </div>
             </div>
-            {/* Detail body */}
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
               {[
                 ['Status',      <StatusBadge status={selectedNum.is_active ? 'active' : 'inactive'} />],
@@ -527,16 +545,23 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
   );
 }
 
-// ─── Call Log Tab — two-panel layout ─────────────────────────────────────────
+// ─── Call Log Tab ─────────────────────────────────────────────────────────────
 function CallsPanel({ calls }) {
   const [selected, setSelected] = useState(null);
+  const [mobilePane, setMobilePane] = useState('list');
 
   const selectedCall = calls.find(c => c.id === selected);
 
+  function handleSelectCall(id) {
+    const newId = selected === id ? null : id;
+    setSelected(newId);
+    setMobilePane(newId !== null ? 'detail' : 'list');
+  }
+
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="comms-panel-wrap" data-view={mobilePane}>
       {/* Left panel */}
-      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="comms-left">
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Call Log</div>
           <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Inbound &amp; outbound calls</div>
@@ -548,7 +573,7 @@ function CallsPanel({ calls }) {
             calls.map(c => (
               <div
                 key={c.id}
-                onClick={() => setSelected(selected === c.id ? null : c.id)}
+                onClick={() => handleSelectCall(c.id)}
                 style={{
                   padding: '12px 16px',
                   cursor: 'pointer',
@@ -584,7 +609,10 @@ function CallsPanel({ calls }) {
       </div>
 
       {/* Right panel */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="comms-right">
+        <button className="comms-back" onClick={() => { setSelected(null); setMobilePane('list'); }}>
+          <ChevronLeft size={15} /> Back to Call Log
+        </button>
         {!selectedCall ? (
           <PanelEmpty
             icon={PhoneOff}
@@ -628,22 +656,25 @@ function CallsPanel({ calls }) {
   );
 }
 
-// ─── Voicemail Tab — two-panel layout ────────────────────────────────────────
+// ─── Voicemail Tab ────────────────────────────────────────────────────────────
 function VoicemailPanel({ vms, onMarkRead }) {
   const [selected, setSelected] = useState(null);
+  const [mobilePane, setMobilePane] = useState('list');
 
   const selectedVm = vms.find(v => v.id === selected);
 
   function handleSelect(id) {
-    setSelected(selected === id ? null : id);
+    const newId = selected === id ? null : id;
+    setSelected(newId);
+    setMobilePane(newId !== null ? 'detail' : 'list');
     const vm = vms.find(v => v.id === id);
     if (vm && !vm.is_read) onMarkRead(id);
   }
 
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="comms-panel-wrap" data-view={mobilePane}>
       {/* Left panel */}
-      <div style={{ width: 300, background: 'var(--white)', borderRight: '1px solid var(--lightgray)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="comms-left">
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--lightgray)' }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>Voicemail</div>
           <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Inbound voicemails with transcriptions</div>
@@ -688,7 +719,10 @@ function VoicemailPanel({ vms, onMarkRead }) {
       </div>
 
       {/* Right panel */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="comms-right">
+        <button className="comms-back" onClick={() => { setSelected(null); setMobilePane('list'); }}>
+          <ChevronLeft size={15} /> Back to Voicemail
+        </button>
         {!selectedVm ? (
           <PanelEmpty
             icon={Voicemail}
@@ -808,11 +842,11 @@ export default function Communications() {
   ];
 
   return (
-    <div style={{ margin: '-22px -24px', height: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="comms-container">
 
       {/* Tab bar */}
-      <div style={{ background: 'var(--white)', borderBottom: '1px solid var(--lightgray)', flexShrink: 0, padding: '0 24px' }}>
-        <div style={{ display: 'flex', gap: 0, marginBottom: -1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="comms-tabbar">
+        <div className="comms-tabs">
           {TABS.map(t => (
             <button
               key={t.key}
@@ -838,7 +872,7 @@ export default function Communications() {
         </div>
       </div>
 
-      {/* Tab content — all tabs use the same full-height two-panel container */}
+      {/* Tab content */}
       {activeTab === 'messages' && <MessagesPanel />}
 
       {activeTab !== 'messages' && (
