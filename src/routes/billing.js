@@ -469,6 +469,40 @@ router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
   }
 });
 
+// ── POST /api/billing/connect/account-session ─────────────────────────────────
+router.post('/connect/account-session', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id FROM accounts WHERE id = $1`, [req.accountId]
+    );
+    let connectId = rows[0]?.stripe_connect_account_id;
+
+    if (!connectId) {
+      const account = await stripe.accounts.create({
+        type:     'express',
+        metadata: { account_id: req.accountId },
+      });
+      connectId = account.id;
+      await pool.query(
+        `UPDATE accounts SET stripe_connect_account_id = $1, stripe_connect_status = 'pending' WHERE id = $2`,
+        [connectId, req.accountId]
+      );
+    }
+
+    const accountSession = await stripe.accountSessions.create({
+      account: connectId,
+      components: {
+        account_onboarding: { enabled: true },
+      },
+    });
+
+    res.json({ client_secret: accountSession.client_secret });
+  } catch (err) {
+    console.error('[connect/account-session]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/billing/connect/login ──────────────────────────────────────────
 router.post('/connect/login', requireAuth, requireRole('owner'), async (req, res) => {
   try {
