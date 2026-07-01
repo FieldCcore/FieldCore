@@ -48,6 +48,23 @@
 
 ---
 
+### [DECISION-053] Fleet page UI: Fleet Tracking Integration uses mailto CTA, not a dead button
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The Fleet Tracking Integration card needed a call-to-action for users who want to connect a GPS/camera provider. The integration itself is not self-serve — it requires API credentials from the provider and backend implementation work. A disabled `<button>` would be a dead-end UX with no path forward.
+
+**Decision:** The "Request Integration →" link in the Fleet Tracking Integration card is an `<a href="mailto:info@getfieldcore.com?subject=Fleet Tracking Integration">` anchor. This gives users a real action (sending an email to request integration setup) and avoids shipping a dead button.
+
+**Alternatives considered:** Disabled button with tooltip. Rejected — no path forward. Modal with "coming soon" message. Rejected — same problem, more friction. A form submission to a backend endpoint. Rejected — overkill for pre-launch; email is sufficient.
+
+**Reasoning:** Every interactive element should do something. A mailto link is a real, tested, functional action and requires no backend plumbing.
+
+**Consequences:** Support email (`info@getfieldcore.com`) must be monitored. Once a provider integration is built, the mailto link should be replaced with a real onboarding flow or API key entry modal.
+
+---
+
 ### [DECISION-052] Fleet camera streams: store external_camera_id, not raw stream URLs
 **Date:** 2026-07-01
 **Decided by:** Kevin + Claude

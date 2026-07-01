@@ -1,24 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Truck, MapPin, Navigation, Camera } from 'lucide-react';
+import { Truck, MapPin, Navigation, Camera, Radio } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
 // ─── Camera tile ─────────────────────────────────────────────────────────────
-// Renders one camera view (front / cab / rear) with all possible states.
-// IMPORTANT: This component never shows fake video as real.
-// Live stream rendering is prepared but only activates when a real stream_url
-// is supplied by a connected third-party provider (Samsara, Motive, etc.).
+// Renders one camera position (front / cab / rear) with all possible states.
+// Never shows fake video. Live stream only activates when a real stream_url
+// is returned by a connected third-party provider (Samsara, Motive, etc.).
 const CAM_LABELS = { front: 'Front Camera', cab: 'Cab Camera', rear: 'Rear Camera' };
 
 function CameraTile({ position, camera, providerConnected, loading }) {
   const label = CAM_LABELS[position] || position;
 
-  // Derive display state
   let state = 'no_camera';
-  if (loading)               state = 'loading';
-  else if (!providerConnected) state = 'setup_required';
-  else if (!camera)            state = 'no_camera';
+  if (loading)                      state = 'loading';
+  else if (!providerConnected)      state = 'setup_required';
+  else if (!camera)                 state = 'no_camera';
   else if (camera.status === 'offline') state = 'offline';
   else if (camera.status === 'error')   state = 'error';
   else if (camera.stream_url)           state = 'live';
@@ -26,17 +24,21 @@ function CameraTile({ position, camera, providerConnected, loading }) {
   else                                  state = 'offline';
 
   const badge = {
-    live:      <span className="fleet-cam-badge fleet-cam-badge--live">Live</span>,
-    snapshot:  <span className="fleet-cam-badge fleet-cam-badge--snapshot">Snapshot</span>,
-    offline:   <span className="fleet-cam-badge fleet-cam-badge--offline">Offline</span>,
-    error:     <span className="fleet-cam-badge fleet-cam-badge--error">Error</span>,
+    live:     <span className="fleet-cam-badge fleet-cam-badge--live">Live</span>,
+    snapshot: <span className="fleet-cam-badge fleet-cam-badge--snapshot">Snapshot</span>,
+    offline:  <span className="fleet-cam-badge fleet-cam-badge--offline">Offline</span>,
+    error:    <span className="fleet-cam-badge fleet-cam-badge--error">Error</span>,
   }[state];
 
   return (
     <div className="fleet-cam-tile">
       <div className="fleet-cam-tile-header">
         <span className="fleet-cam-label">{label}</span>
-        {badge}
+        {badge || (
+          <span className="fleet-cam-badge fleet-cam-badge--offline">
+            {state === 'setup_required' ? 'Setup Required' : state === 'no_camera' ? 'No Camera' : 'Unknown'}
+          </span>
+        )}
       </div>
       <div className="fleet-cam-body">
         {state === 'loading' && (
@@ -82,11 +84,7 @@ function CameraTile({ position, camera, providerConnected, loading }) {
         )}
         {state === 'snapshot' && camera?.snapshot_url && (
           <div className="fleet-cam-snapshot">
-            <img
-              src={camera.snapshot_url}
-              alt={`${label} snapshot`}
-              style={{ width: '100%', borderRadius: 4, display: 'block' }}
-            />
+            <img src={camera.snapshot_url} alt={`${label} snapshot`} style={{ width: '100%', borderRadius: 4, display: 'block' }} />
             <div style={{ fontSize: 10, color: 'var(--steel)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
               Snapshot · not live
             </div>
@@ -95,11 +93,7 @@ function CameraTile({ position, camera, providerConnected, loading }) {
         {/* Live stream — only rendered when stream_url is supplied by a real provider */}
         {state === 'live' && camera?.stream_url && (
           <div className="fleet-cam-stream">
-            <video
-              src={camera.stream_url}
-              autoPlay muted playsInline
-              style={{ width: '100%', borderRadius: 4, display: 'block' }}
-            />
+            <video src={camera.stream_url} autoPlay muted playsInline style={{ width: '100%', borderRadius: 4, display: 'block' }} />
             <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
               ● Live
             </div>
@@ -117,22 +111,20 @@ export default function Fleet() {
   const canEdit        = user?.role === 'owner' || user?.role === 'manager';
   // fleet.camera.view — owners, managers, and admins only.
   // NOTE: 'admin' is a future role; currently active roles are owner/manager/tech/staff.
-  // When an admin role is formally added to the system, include it here.
   const canViewCameras = user?.role === 'owner' || user?.role === 'manager' || user?.role === 'admin';
 
   const [vehicles,  setVehicles]  = useState([]);
   const [techs,     setTechs]     = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [form,      setForm]      = useState(null);  // null | EMPTY | vehicle obj
+  const [form,      setForm]      = useState(null);
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
-  // Camera state
-  const [camVehicleId,      setCamVehicleId]      = useState(null);
-  const [camData,           setCamData]           = useState({ cameras: [], provider_connected: false, last_updated_at: null });
-  const [camLoading,        setCamLoading]        = useState(false);
-  const [camError,          setCamError]          = useState('');
+  const [camVehicleId, setCamVehicleId] = useState(null);
+  const [camData,      setCamData]      = useState({ cameras: [], provider_connected: false, last_updated_at: null });
+  const [camLoading,   setCamLoading]   = useState(false);
+  const [camError,     setCamError]     = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -146,14 +138,12 @@ export default function Fleet() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  // Default camera vehicle to the first vehicle once fleet loads
   useEffect(() => {
     if (vehicles.length > 0 && camVehicleId === null) {
       setCamVehicleId(vehicles[0].id);
     }
   }, [vehicles, camVehicleId]);
 
-  // Fetch camera data whenever selected vehicle changes
   useEffect(() => {
     if (!camVehicleId || !canViewCameras) return;
     setCamLoading(true);
@@ -207,179 +197,299 @@ export default function Fleet() {
 
   const techName = (techId) => techs.find(t => t.id === techId)?.name || '—';
 
+  const openAdd = () => { setForm({ ...EMPTY }); setError(''); };
+
   return (
     <div>
-      {canEdit && (
-        <div className="page-header" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn-primary" onClick={() => { setForm({ ...EMPTY }); setError(''); }}>
-            + Add Vehicle
-          </button>
+      {/* Page header */}
+      <div className="page-header">
+        <div>
+          <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 3 }}>Fleet</div>
+          <div style={{ fontSize: 13, color: 'var(--slate)' }}>Manage vehicles, GPS locations, and camera feeds</div>
         </div>
-      )}
-
-      {loading ? (
-        <p className="muted">Loading fleet…</p>
-      ) : vehicles.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--steel)', fontSize: 14 }}>
-          No vehicles in your fleet yet.{canEdit && ' Click "+ Add Vehicle" to get started.'}
-        </div>
-      ) : (
-        <div className="fleet-grid">
-          {vehicles.map(v => (
-            <div key={v.id} className="fleet-card">
-              <div className="fleet-card-top">
-                <div className="fleet-icon" style={{ color: 'var(--sand)' }}><Truck size={26} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="fleet-name">{[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}</div>
-                  <div className="fleet-plate">{v.plate || 'No plate'}</div>
-                </div>
-                {canEdit && (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '4px 10px', fontSize: 12 }}
-                      onClick={() => { setForm({ ...v, tech_id: v.tech_id || '' }); setError(''); }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, color: '#e53e3e', cursor: 'pointer' }}
-                      onClick={() => handleDelete(v.id)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="fleet-card-meta">
-                <div className="fleet-meta-row">
-                  <span className="fleet-meta-label">Assigned Tech</span>
-                  <span>{v.tech_name || techName(v.tech_id)}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Live Locations */}
-      <div style={{ marginTop: 40 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Navigation size={18} style={{ color: 'var(--sand)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Live Locations</h2>
-          <span style={{ fontSize: 12, color: 'var(--steel)', marginLeft: 4 }}>Today's check-ins</span>
-        </div>
-        {locations.length === 0 ? (
-          <p style={{ color: 'var(--steel)', fontSize: 14 }}>No GPS check-ins recorded today. Techs check in when they start a job on mobile.</p>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {locations.map(loc => (
-              <div key={loc.tech_id} style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, marginTop: 3 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{loc.tech_name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>{loc.service_type || 'On job'}</div>
-                    </div>
-                  </div>
-                  <a
-                    href={`https://www.google.com/maps?q=${loc.checkin_lat},${loc.checkin_lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--sand)', textDecoration: 'none', flexShrink: 0 }}
-                  >
-                    <MapPin size={13} />
-                    View Map
-                  </a>
-                </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--steel)', fontFamily: 'monospace' }}>
-                  {parseFloat(loc.checkin_lat).toFixed(5)}, {parseFloat(loc.checkin_lng).toFixed(5)}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
-                  {loc.checkin_at ? `${formatDistanceToNow(new Date(loc.checkin_at))} ago` : ''}
-                </div>
-              </div>
-            ))}
-          </div>
+        {canEdit && (
+          <button className="btn-primary" onClick={openAdd}>+ Add Vehicle</button>
         )}
       </div>
 
-      {/* ── Live Vehicle Cameras ──────────────────────────────────── */}
-      <div style={{ marginTop: 40 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <Camera size={18} style={{ color: 'var(--sand)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Live Vehicle Cameras</h2>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 16, marginTop: 4 }}>
-          Front, cab, and rear views via connected fleet camera provider. FieldCore does not host camera hardware.
-        </p>
+      {loading ? (
+        <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading fleet…</div>
+      ) : (
+        <>
+          {/* ── Overview stat cards ───────────────────────────────────── */}
+          <div className="dash-stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="dash-sc">
+              <div className="dash-sc-header"><div className="dash-sc-l">Total Vehicles</div></div>
+              <div className="dash-sc-v">{vehicles.length}</div>
+              <div className="dash-sc-s">In fleet registry</div>
+            </div>
+            <div className="dash-sc">
+              <div className="dash-sc-header"><div className="dash-sc-l">On Job Today</div></div>
+              <div className="dash-sc-v" style={{ color: locations.length > 0 ? 'var(--green)' : undefined }}>
+                {locations.length}
+              </div>
+              <div className="dash-sc-s">Tech GPS check-ins</div>
+            </div>
+            <div className="dash-sc">
+              <div className="dash-sc-header"><div className="dash-sc-l">GPS Tracking</div></div>
+              <div className="dash-sc-v" style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'var(--steel)', paddingTop: 4 }}>—</div>
+              <div className="dash-sc-s">No provider connected</div>
+            </div>
+            <div className="dash-sc">
+              <div className="dash-sc-header"><div className="dash-sc-l">Cameras</div></div>
+              <div className="dash-sc-v" style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'var(--steel)', paddingTop: 4 }}>—</div>
+              <div className="dash-sc-s">No provider connected</div>
+            </div>
+          </div>
 
-        {!canViewCameras ? (
-          <div style={{ padding: '16px 20px', background: 'var(--offwhite)', border: '1px solid var(--lightgray)', borderRadius: 10, fontSize: 13, color: 'var(--slate)' }}>
-            Camera access is restricted to owners and managers.{/* fleet.camera.view permission */}
+          {/* ── Fleet Vehicles card ───────────────────────────────────── */}
+          <div className="dash-card">
+            <div className="dash-ch">
+              <span className="dash-cht">Fleet Vehicles</span>
+              {vehicles.length > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--steel)' }}>{vehicles.length} total</span>
+              )}
+            </div>
+
+            {vehicles.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <div style={{ width: 52, height: 52, background: 'var(--offwhite)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <Truck size={26} style={{ color: 'var(--steel)' }} />
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>No vehicles yet</div>
+                <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.65, maxWidth: 340, margin: '0 auto 20px' }}>
+                  Add vehicles to enable GPS tracking, camera feeds, and maintenance monitoring.
+                </div>
+                {canEdit && (
+                  <button className="btn-primary" onClick={openAdd}>+ Add Vehicle</button>
+                )}
+              </div>
+            ) : (
+              <div style={{ padding: 16 }}>
+                <div className="fleet-grid" style={{ marginTop: 0 }}>
+                  {vehicles.map(v => (
+                    <div key={v.id} className="fleet-card">
+                      <div className="fleet-card-top">
+                        <div className="fleet-icon" style={{ color: 'var(--sand)' }}><Truck size={26} /></div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="fleet-name">{[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}</div>
+                          <div className="fleet-plate">{v.plate || 'No plate'}</div>
+                        </div>
+                        {canEdit && (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: 12 }}
+                              onClick={() => { setForm({ ...v, tech_id: v.tech_id || '' }); setError(''); }}
+                            >Edit</button>
+                            <button
+                              style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid var(--lightgray)', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+                              onClick={() => handleDelete(v.id)}
+                            >×</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="fleet-card-meta">
+                        <div className="fleet-meta-row">
+                          <span className="fleet-meta-label">Assigned Tech</span>
+                          <span>{v.tech_name || techName(v.tech_id)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        ) : vehicles.length === 0 ? (
-          <div style={{ color: 'var(--steel)', fontSize: 13, padding: '12px 0' }}>
-            Add vehicles to your fleet before configuring cameras.
+
+          {/* ── Two-column: Live Locations + Fleet Tracking ───────────── */}
+          <div className="fleet-2col">
+
+            {/* Live Locations */}
+            <div className="dash-card" style={{ marginBottom: 0 }}>
+              <div className="dash-ch">
+                <div>
+                  <div className="dash-cht">Live Locations</div>
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Tech GPS check-ins today</div>
+                </div>
+                <Navigation size={14} style={{ color: 'var(--steel)', flexShrink: 0 }} />
+              </div>
+
+              {locations.length === 0 ? (
+                <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+                  <div style={{ width: 44, height: 44, background: 'var(--offwhite)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                    <MapPin size={20} style={{ color: 'var(--steel)' }} />
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>No live locations yet</div>
+                  <div style={{ fontSize: 12, color: 'var(--steel)', lineHeight: 1.65, maxWidth: 260, margin: '0 auto' }}>
+                    GPS locations appear here once techs check in on a job via the mobile app.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {locations.map(loc => (
+                    <div key={loc.tech_id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, padding: '10px 12px', background: 'var(--off)', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0, marginTop: 1 }} />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{loc.tech_name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{loc.service_type || 'On job'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', marginTop: 2 }}>
+                            {parseFloat(loc.checkin_lat).toFixed(4)}, {parseFloat(loc.checkin_lng).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                        <a
+                          href={`https://www.google.com/maps?q=${loc.checkin_lat},${loc.checkin_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--sand)', textDecoration: 'none', fontWeight: 700 }}
+                        >
+                          <MapPin size={11} />
+                          Map
+                        </a>
+                        {loc.checkin_at && (
+                          <span style={{ fontSize: 10, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
+                            {formatDistanceToNow(new Date(loc.checkin_at))} ago
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Fleet Tracking Integration */}
+            <div className="dash-card" style={{ marginBottom: 0 }}>
+              <div className="dash-ch">
+                <div>
+                  <div className="dash-cht">Fleet Tracking Integration</div>
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Live GPS, speed, and route history</div>
+                </div>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', flexShrink: 0 }}>
+                  Setup Required
+                </span>
+              </div>
+
+              <div style={{ padding: '20px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 8 }}>
+                  <Radio size={16} style={{ color: 'var(--steel)', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy)' }}>No provider connected</div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>Connect a GPS provider to enable live tracking</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14 }}>Supported providers:</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 20 }}>
+                  {['Samsara', 'Motive', 'Geotab', 'Verizon Connect', 'Azuga', 'Fleetio'].map(p => (
+                    <div key={p} style={{ padding: '7px 10px', background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 6, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                      {p}
+                    </div>
+                  ))}
+                </div>
+
+                <a
+                  href="mailto:info@getfieldcore.com?subject=Fleet Tracking Integration"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: 'var(--navy)', color: 'white', borderRadius: 7, fontSize: 13, fontWeight: 700, textDecoration: 'none', fontFamily: 'Inter, sans-serif' }}
+                >
+                  Request Integration →
+                </a>
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 8, lineHeight: 1.55 }}>
+                  Fleet tracking integrations are coming soon. Contact us to request early access for your provider.
+                </div>
+              </div>
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Vehicle selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-              <select
-                value={camVehicleId || ''}
-                onChange={e => setCamVehicleId(e.target.value)}
-                style={{ padding: '7px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif', color: 'var(--navy)', background: 'var(--white)', cursor: 'pointer' }}
-              >
-                {vehicles.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}
-                    {v.plate ? ` · ${v.plate}` : ''}
-                  </option>
-                ))}
-              </select>
-              {camData.last_updated_at && !camLoading && (
-                <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
-                  Updated {formatDistanceToNow(new Date(camData.last_updated_at))} ago
+
+          {/* ── Live Vehicle Cameras — full width ────────────────────── */}
+          <div className="dash-card">
+            <div className="dash-ch">
+              <div>
+                <div className="dash-cht">Live Vehicle Cameras</div>
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                  Front, cab, and rear views · third-party provider required
+                </div>
+              </div>
+              {!camData.provider_connected && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', flexShrink: 0 }}>
+                  Setup Required
                 </span>
               )}
             </div>
 
-            {/* Setup required notice */}
-            {!camLoading && !camData.provider_connected && !camError && (
-              <div style={{ padding: '14px 18px', background: 'var(--offwhite)', border: '1px dashed var(--lightgray)', borderRadius: 10, marginBottom: 16, fontSize: 13, color: 'var(--slate)', lineHeight: 1.7 }}>
-                <strong style={{ color: 'var(--navy)', display: 'block', marginBottom: 3 }}>
-                  No camera provider connected
-                </strong>
-                Live camera feeds require a connected fleet camera provider. Supported integrations: Samsara, Motive, Geotab, Verizon Connect, Azuga, Fleetio.
-                Stream URLs may require short-lived tokens from the provider — contact support to enable.
-              </div>
-            )}
+            <div style={{ padding: '16px 20px 24px' }}>
+              {!canViewCameras ? (
+                <div style={{ padding: '14px 16px', background: 'var(--offwhite)', borderRadius: 8, fontSize: 13, color: 'var(--slate)' }}>
+                  Camera access is restricted to owners and managers.
+                </div>
+              ) : vehicles.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                  <div style={{ width: 44, height: 44, background: 'var(--offwhite)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                    <Camera size={20} style={{ color: 'var(--steel)' }} />
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>No vehicles in fleet</div>
+                  <div style={{ fontSize: 12, color: 'var(--steel)', lineHeight: 1.6 }}>Add vehicles to configure camera feeds.</div>
+                </div>
+              ) : (
+                <>
+                  {/* Vehicle selector */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <select
+                      value={camVehicleId || ''}
+                      onChange={e => setCamVehicleId(e.target.value)}
+                      style={{ padding: '7px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif', color: 'var(--navy)', background: 'var(--white)', cursor: 'pointer' }}
+                    >
+                      {vehicles.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}
+                          {v.plate ? ` · ${v.plate}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {camData.last_updated_at && !camLoading && (
+                      <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
+                        Updated {formatDistanceToNow(new Date(camData.last_updated_at))} ago
+                      </span>
+                    )}
+                  </div>
 
-            {/* API error */}
-            {camError && (
-              <div style={{ padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)', marginBottom: 14 }}>
-                {camError}
-              </div>
-            )}
+                  {/* Setup required notice */}
+                  {!camLoading && !camData.provider_connected && !camError && (
+                    <div style={{ padding: '12px 14px', background: 'var(--offwhite)', border: '1px dashed var(--lightgray)', borderRadius: 8, marginBottom: 16, fontSize: 13, color: 'var(--slate)', lineHeight: 1.65 }}>
+                      <strong style={{ color: 'var(--navy)', display: 'block', marginBottom: 2 }}>No camera provider connected</strong>
+                      Live feeds require a fleet camera provider (Samsara, Motive, Geotab, etc.). Contact support to enable.
+                    </div>
+                  )}
 
-            {/* Camera tiles — front / cab / rear */}
-            <div className="fleet-cam-grid">
-              {['front', 'cab', 'rear'].map(pos => (
-                <CameraTile
-                  key={pos}
-                  position={pos}
-                  camera={(camData.cameras || []).find(c => c.camera_position === pos) || null}
-                  providerConnected={camData.provider_connected}
-                  loading={camLoading}
-                />
-              ))}
+                  {camError && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)', marginBottom: 14 }}>
+                      {camError}
+                    </div>
+                  )}
+
+                  {/* Camera tiles — front / cab / rear */}
+                  <div className="fleet-cam-grid">
+                    {['front', 'cab', 'rear'].map(pos => (
+                      <CameraTile
+                        key={pos}
+                        position={pos}
+                        camera={(camData.cameras || []).find(c => c.camera_position === pos) || null}
+                        providerConnected={camData.provider_connected}
+                        loading={camLoading}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
+      {/* Add / Edit Vehicle modal */}
       {form && (
         <div className="modal-overlay" onClick={() => setForm(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -388,42 +498,42 @@ export default function Fleet() {
               <button className="btn-close" onClick={() => setForm(null)}>×</button>
             </div>
             <div className="modal-body">
-            <form onSubmit={handleSave}>
-              {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label>Make</label>
-                  <input value={form.make} onChange={setField('make')} placeholder="e.g. Ford" />
+              <form onSubmit={handleSave}>
+                {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label>Make</label>
+                    <input value={form.make} onChange={setField('make')} placeholder="e.g. Ford" />
+                  </div>
+                  <div className="form-group">
+                    <label>Model</label>
+                    <input value={form.model} onChange={setField('model')} placeholder="e.g. Transit" />
+                  </div>
+                  <div className="form-group">
+                    <label>Year</label>
+                    <input type="number" min="1990" max="2099" value={form.year} onChange={setField('year')} placeholder="e.g. 2022" />
+                  </div>
+                  <div className="form-group">
+                    <label>License Plate</label>
+                    <input value={form.plate} onChange={setField('plate')} placeholder="e.g. ABC-1234" />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>Model</label>
-                  <input value={form.model} onChange={setField('model')} placeholder="e.g. Transit" />
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label>Assigned Tech</label>
+                  <select value={form.tech_id} onChange={setField('tech_id')}>
+                    <option value="">Unassigned</option>
+                    {techs.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="form-group">
-                  <label>Year</label>
-                  <input type="number" min="1990" max="2099" value={form.year} onChange={setField('year')} placeholder="e.g. 2022" />
+                <div className="form-actions" style={{ marginTop: 20 }}>
+                  <button type="submit" className="btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : 'Save Vehicle'}
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
                 </div>
-                <div className="form-group">
-                  <label>License Plate</label>
-                  <input value={form.plate} onChange={setField('plate')} placeholder="e.g. ABC-1234" />
-                </div>
-              </div>
-              <div className="form-group" style={{ marginTop: 12 }}>
-                <label>Assigned Tech</label>
-                <select value={form.tech_id} onChange={setField('tech_id')}>
-                  <option value="">Unassigned</option>
-                  {techs.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-actions" style={{ marginTop: 20 }}>
-                <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : 'Save Vehicle'}
-                </button>
-                <button type="button" className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
-              </div>
-            </form>
+              </form>
             </div>
           </div>
         </div>

@@ -10,6 +10,9 @@
 ### ~~FLEET-CAM-1: Fleet Camera UI and Backend Foundation~~ — COMPLETE 2026-07-01
 Added Live Vehicle Cameras section to /fleet. CameraTile component (all states), vehicle selector, provider-not-connected notice, permission gate (owner/manager). Backend: `GET /api/fleet/cameras/:vehicleId` with graceful fallback when table doesn't exist. CSS: `.fleet-cam-grid`, `.fleet-cam-tile`, all badge variants. Currently shows setup-required state (no provider connected).
 
+### ~~FLEET-UI-1: Fleet Page UI Redesign~~ — COMPLETE 2026-07-01
+Full `/fleet` page redesign to match FieldCore design system: 4-column stat cards (Total Vehicles, On Job Today from real GPS check-ins, GPS Tracking placeholder, Cameras placeholder). Polished vehicle list empty state (truck icon, CTA). `.fleet-2col` responsive two-column section: Live Locations card (real tech check-in data, MapPin empty state) and Fleet Tracking Integration card (Setup Required badge, 6-provider grid, mailto CTA). Live Vehicle Cameras as full-width dash-card. CSS: `.fleet-2col` added to style.css (1fr 1fr, stacks at 900px). No fake data anywhere.
+
 ### FLEET-CAM-2: fleet_vehicle_cameras DB Migration (PENDING)
 **Blocked by:** First camera provider being selected  
 **Task:** Run the migration SQL from fleet.js header comment to create `fleet_vehicle_cameras`. Add `integration_id` FK once integrations table exists.  

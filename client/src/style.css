@@ -1585,6 +1585,17 @@ body {
 }
 .fleet-meta-label { color: var(--steel); font-size: 11px; }
 
+/* ── Fleet Two-Column Layout ─────────────────────────────── */
+.fleet-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media (max-width: 900px) {
+  .fleet-2col { grid-template-columns: 1fr; }
+}
+
 /* ── Fleet Cameras ───────────────────────────────────────── */
 .fleet-cam-grid {
   display: grid;

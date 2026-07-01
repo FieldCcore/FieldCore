@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-07-01 (Fleet camera section added: Live Vehicle Cameras UI, GET /fleet/cameras/:vehicleId backend endpoint, fleet_vehicle_cameras schema defined, 7 provider integrations scaffolded)  
+**Last reconciled:** 2026-07-01 (Fleet UI redesign: stat cards, two-column layout, polished empty states, Live Locations card, Fleet Tracking Integration card, cameras card; fleet-2col CSS class added)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -14,7 +14,7 @@
 - **Technician Mobile App (M4)** — All 14 screens implemented: job queue, schedule, GPS check-in, photo capture, mark complete, messages, invoice view, signature
 - **Team Management** — Owner/manager/tech/staff roles, per-plan user limits enforced
 - **Business Settings** — Profile, operating hours, holiday closures, timezone, service vertical
-- **Fleet Management** — Vehicle registry CRUD, live locations, Live Vehicle Cameras section (setup-required state; provider integration foundation in place)
+- **Fleet Management** — Vehicle registry CRUD, live locations, Live Vehicle Cameras section (setup-required state; provider integration foundation in place). Full UI redesign 2026-07-01: stat cards, two-column desktop layout, polished empty states, Fleet Tracking Integration card with provider grid and mailto CTA.
 - **No-Show Tracking** — Grace period clock, auto-declare, deposit retention, SMS notifications, audit trail
 - **Estimates with E-Signature** — Create, send, sign digitally (web + mobile)
 - **Post-Job Reviews** — Submit and store 1-5 star ratings

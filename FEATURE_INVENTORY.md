@@ -1,6 +1,6 @@
 # FieldCore — Feature Inventory
 
-**Last reconciled:** 2026-06-24 (updated after UI polish sprint II — StatusBadge system, Communications tabs, Billing downgrade, Stripe Connect entity flow, payout schedule, typography)  
+**Last reconciled:** 2026-07-01 (Fleet UI redesign: stat cards, polished empty states, two-column layout, Live Locations card, Fleet Tracking Integration card, cameras card)  
 **Source of truth:** Actual codebase scan + Sprint audit
 
 **Multi-tenant isolation status:** AUDITED 2026-06-09 — All 27 route files verified. Security fixes applied to `users.js` (membership endpoints), `clients.js`, `jobs.js`, `deposits.js`, `payments.js`. 22 files confirmed clean.
@@ -443,6 +443,15 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 - Tile states: live, snapshot, offline, error, no_camera, setup_required, loading
 - IMPORTANT: stream_url values are short-lived; when a provider is connected, fetch fresh signed URLs via provider API rather than storing raw stream URLs long-term
 - `external_camera_id` + `external_vehicle_id` fields are the stable references to use for token refresh
+
+**UI Redesign (2026-07-01):**
+- 4-column stat cards: Total Vehicles, On Job Today (real GPS check-in count), GPS Tracking (—), Cameras (—)
+- Polished empty state for vehicle list (truck icon, CTA button)
+- `.fleet-2col` responsive two-column layout on desktop (stacks at 900px): Live Locations | Fleet Tracking Integration
+- Live Locations card: shows real tech check-in data (coords, service type, time ago); empty state with MapPin icon
+- Fleet Tracking Integration card: Setup Required badge, provider grid (Samsara/Motive/Geotab/Verizon Connect/Azuga/Fleetio), mailto CTA
+- Live Vehicle Cameras: full-width dash-card, vehicle selector, camera tile grid, setup-required notice
+- No fake data — all stat cards show real values or "—" + "No provider connected"
 
 **Production Readiness:** High for vehicle registry; Low for cameras (no provider connected)  
 **Missing Work:** Mobile view; `fleet_vehicle_cameras` DB migration; actual provider API integration  

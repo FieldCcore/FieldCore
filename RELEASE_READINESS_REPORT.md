@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-06-25 (UI layout sprint — sidebar reorganized, duplicate page headers removed, Communications tab cleaned, Agenda table borders fixed, red color tokens standardized globally)  
+**Last reconciled:** 2026-07-01 (Fleet UI redesign: stat cards, two-column layout, polished empty states, Live Locations card, Fleet Tracking Integration card, cameras card)  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---
@@ -23,7 +23,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Technician mobile app (14 screens) | Complete | Needs `BASE_URL` update + EAS build |
 | Team management + role enforcement | Complete | — |
 | Business settings + hours | Complete | Logo storage destination TBD |
-| Fleet management | Complete | Camera section added; shows setup-required until provider connected |
+| Fleet management | Complete | UI redesigned 2026-07-01: stat cards, two-column layout, provider grid, camera tiles. Shows setup-required until provider connected. |
 | No-show tracking + clock | Complete | SMS delivery blocked by Twilio |
 | Estimates + e-signature | Complete | Email delivery blocked by SMTP |
 | Post-job reviews | Complete | Email delivery blocked by SMTP |
