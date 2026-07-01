@@ -23,7 +23,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Technician mobile app (14 screens) | Complete | Needs `BASE_URL` update + EAS build |
 | Team management + role enforcement | Complete | — |
 | Business settings + hours | Complete | Logo storage destination TBD |
-| Fleet management | Complete | — |
+| Fleet management | Complete | Camera section added; shows setup-required until provider connected |
 | No-show tracking + clock | Complete | SMS delivery blocked by Twilio |
 | Estimates + e-signature | Complete | Email delivery blocked by SMTP |
 | Post-job reviews | Complete | Email delivery blocked by SMTP |

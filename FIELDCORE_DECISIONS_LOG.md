@@ -48,6 +48,40 @@
 
 ---
 
+### [DECISION-052] Fleet camera streams: store external_camera_id, not raw stream URLs
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** When adding the fleet camera foundation, a decision was needed about whether to store raw stream URLs in `fleet_vehicle_cameras.stream_url`. Most fleet camera providers (Samsara, Motive, Geotab) issue short-lived signed stream URLs that expire in minutes to hours. Storing these in the DB creates two problems: (1) URLs expire before the next page load; (2) a DB read leak exposes camera access credentials.
+
+**Decision:** The `stream_url` column exists in the schema for convenience during development, but the production pattern is: store only `external_camera_id` and `external_vehicle_id`; fetch a fresh short-lived signed URL from the provider API on each request via a token-refresh endpoint. `snapshot_url` is acceptable if the provider hosts stable thumbnails.
+
+**Alternatives considered:** Store stream URL with TTL and refresh on expiry. Rejected — adds complexity and still doesn't solve the credential exposure risk.
+
+**Reasoning:** External camera IDs are stable, non-secret references. Signed stream URLs are credentials. The distinction is important for security.
+
+**Consequences:** Provider integrations must implement a `GET /fleet/cameras/:vehicleId/:position/stream-token` endpoint that proxies the provider's token API. The `stream_url` DB column should be treated as a transient cache only, never a long-term store.
+
+---
+
+### [DECISION-051] Fleet camera access permission: fleet.camera.view (owner + manager only at launch)
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Live vehicle camera feeds expose sensitive location and interior vehicle footage. Permission must be restricted. The task specified preparing for owner/manager/admin roles. The 'admin' role does not currently exist in the FieldCore role system (known roles: owner, manager, tech, staff).
+
+**Decision:** `canViewCameras` checks `owner || manager || admin` in the frontend. Backend `requireRole('owner', 'manager')` does not include admin yet. When the admin role is formally added, update the backend accordingly. This is documented in fleet.js and NEXT_DEVELOPMENT_TASKS.md as FLEET-CAM-4.
+
+**Alternatives considered:** Restrict to owner only. Rejected — managers need camera access for operational oversight.
+
+**Reasoning:** Manager access is operationally required. Admin is aspirational and documented as a placeholder so it is not forgotten when roles expand.
+
+**Consequences:** If an admin role is added to JWT payloads without updating `requireRole()` in fleet.js, admins will see the camera section in the UI but get 403s from the API. This is documented as a known gap.
+
+---
+
 ### [DECISION-029] Sidebar reorganized; duplicate page h1 headers removed; Communications title removed from component
 **Date:** 2026-06-25
 **Decided by:** Kevin + Claude

@@ -1,7 +1,29 @@
 # FieldCore — Next Development Tasks
 
-**Last reconciled:** 2026-06-24  
-**Status:** UI polish sprint II complete (Tasks UI-8 through UI-15 done). See completed tasks below. Awaiting approval for next work items.
+**Last reconciled:** 2026-07-01  
+**Status:** Fleet camera foundation complete. Awaiting first provider integration.
+
+---
+
+## FLEET CAMERA TASKS — 2026-07-01
+
+### ~~FLEET-CAM-1: Fleet Camera UI and Backend Foundation~~ — COMPLETE 2026-07-01
+Added Live Vehicle Cameras section to /fleet. CameraTile component (all states), vehicle selector, provider-not-connected notice, permission gate (owner/manager). Backend: `GET /api/fleet/cameras/:vehicleId` with graceful fallback when table doesn't exist. CSS: `.fleet-cam-grid`, `.fleet-cam-tile`, all badge variants. Currently shows setup-required state (no provider connected).
+
+### FLEET-CAM-2: fleet_vehicle_cameras DB Migration (PENDING)
+**Blocked by:** First camera provider being selected  
+**Task:** Run the migration SQL from fleet.js header comment to create `fleet_vehicle_cameras`. Add `integration_id` FK once integrations table exists.  
+**Effort:** 30 min
+
+### FLEET-CAM-3: First Provider Integration (PENDING)
+**Blocked by:** Provider account + API credentials  
+**Task:** Pick one provider (Samsara recommended for first integration), implement OAuth or API key flow, map provider camera data to `fleet_vehicle_cameras` columns, implement stream token refresh (short-lived URL regeneration).  
+**Effort:** 1–3 days per provider depending on API quality
+
+### FLEET-CAM-4: Admin Role for Camera Access (PENDING)
+**Blocked by:** Admin role being formally added to the auth system  
+**Task:** Currently `canViewCameras` checks owner/manager/admin but the admin role does not exist yet. When the admin role is added to JWT payloads and `requireRole()`, update the backend endpoint to include `requireRole('owner', 'manager', 'admin')`.  
+**Effort:** 1 hour (once admin role exists)
 
 ---
 

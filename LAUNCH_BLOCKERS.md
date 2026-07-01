@@ -1,6 +1,7 @@
 # FieldCore — Launch Blockers
 
 **Created:** 2026-06-09  
+**Last updated:** 2026-07-01 (fleet camera foundation added — NOT a launch blocker)  
 **Source:** Full codebase reconciliation + documentation audit  
 **Definition of Critical:** Anything that prevents a paying customer from successfully signing up, logging in, scheduling a job, taking a payment, receiving a communication, or accessing their data.
 

@@ -1,14 +1,124 @@
 import React, { useEffect, useState } from 'react';
-import { Truck, MapPin, Navigation } from 'lucide-react';
+import { Truck, MapPin, Navigation, Camera } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+
+// ─── Camera tile ─────────────────────────────────────────────────────────────
+// Renders one camera view (front / cab / rear) with all possible states.
+// IMPORTANT: This component never shows fake video as real.
+// Live stream rendering is prepared but only activates when a real stream_url
+// is supplied by a connected third-party provider (Samsara, Motive, etc.).
+const CAM_LABELS = { front: 'Front Camera', cab: 'Cab Camera', rear: 'Rear Camera' };
+
+function CameraTile({ position, camera, providerConnected, loading }) {
+  const label = CAM_LABELS[position] || position;
+
+  // Derive display state
+  let state = 'no_camera';
+  if (loading)               state = 'loading';
+  else if (!providerConnected) state = 'setup_required';
+  else if (!camera)            state = 'no_camera';
+  else if (camera.status === 'offline') state = 'offline';
+  else if (camera.status === 'error')   state = 'error';
+  else if (camera.stream_url)           state = 'live';
+  else if (camera.snapshot_url)         state = 'snapshot';
+  else                                  state = 'offline';
+
+  const badge = {
+    live:      <span className="fleet-cam-badge fleet-cam-badge--live">Live</span>,
+    snapshot:  <span className="fleet-cam-badge fleet-cam-badge--snapshot">Snapshot</span>,
+    offline:   <span className="fleet-cam-badge fleet-cam-badge--offline">Offline</span>,
+    error:     <span className="fleet-cam-badge fleet-cam-badge--error">Error</span>,
+  }[state];
+
+  return (
+    <div className="fleet-cam-tile">
+      <div className="fleet-cam-tile-header">
+        <span className="fleet-cam-label">{label}</span>
+        {badge}
+      </div>
+      <div className="fleet-cam-body">
+        {state === 'loading' && (
+          <div className="fleet-cam-state" style={{ color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
+            Loading…
+          </div>
+        )}
+        {state === 'setup_required' && (
+          <div className="fleet-cam-state fleet-cam-state--setup">
+            <div className="fleet-cam-state-icon">
+              <Camera size={28} strokeWidth={1.2} style={{ color: 'var(--lightgray)' }} />
+            </div>
+            <div style={{ fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>Setup required</div>
+            <div>Connect a camera provider</div>
+          </div>
+        )}
+        {state === 'no_camera' && (
+          <div className="fleet-cam-state fleet-cam-state--none">
+            <div className="fleet-cam-state-icon">
+              <Camera size={26} strokeWidth={1.2} style={{ color: 'var(--lightgray)', opacity: .5 }} />
+            </div>
+            <div>No camera installed</div>
+          </div>
+        )}
+        {state === 'offline' && (
+          <div className="fleet-cam-state fleet-cam-state--offline">
+            <div className="fleet-cam-state-icon">
+              <Camera size={26} strokeWidth={1.2} style={{ color: 'var(--lightgray)' }} />
+            </div>
+            <div style={{ fontWeight: 600 }}>Camera offline</div>
+            {camera?.last_online_at && (
+              <div style={{ fontSize: 11, marginTop: 4 }}>
+                Last online {formatDistanceToNow(new Date(camera.last_online_at))} ago
+              </div>
+            )}
+          </div>
+        )}
+        {state === 'error' && (
+          <div className="fleet-cam-state fleet-cam-state--error">
+            <div style={{ fontWeight: 600, color: 'var(--red)' }}>Camera error</div>
+            <div style={{ fontSize: 11, marginTop: 4 }}>Check provider dashboard</div>
+          </div>
+        )}
+        {state === 'snapshot' && camera?.snapshot_url && (
+          <div className="fleet-cam-snapshot">
+            <img
+              src={camera.snapshot_url}
+              alt={`${label} snapshot`}
+              style={{ width: '100%', borderRadius: 4, display: 'block' }}
+            />
+            <div style={{ fontSize: 10, color: 'var(--steel)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              Snapshot · not live
+            </div>
+          </div>
+        )}
+        {/* Live stream — only rendered when stream_url is supplied by a real provider */}
+        {state === 'live' && camera?.stream_url && (
+          <div className="fleet-cam-stream">
+            <video
+              src={camera.stream_url}
+              autoPlay muted playsInline
+              style={{ width: '100%', borderRadius: 4, display: 'block' }}
+            />
+            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              ● Live
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const EMPTY = { make: '', model: '', year: '', plate: '', tech_id: '' };
 
 export default function Fleet() {
   const { user } = useAuth();
-  const canEdit  = user?.role === 'owner' || user?.role === 'manager';
+  const canEdit        = user?.role === 'owner' || user?.role === 'manager';
+  // fleet.camera.view — owners, managers, and admins only.
+  // NOTE: 'admin' is a future role; currently active roles are owner/manager/tech/staff.
+  // When an admin role is formally added to the system, include it here.
+  const canViewCameras = user?.role === 'owner' || user?.role === 'manager' || user?.role === 'admin';
 
   const [vehicles,  setVehicles]  = useState([]);
   const [techs,     setTechs]     = useState([]);
@@ -17,6 +127,12 @@ export default function Fleet() {
   const [form,      setForm]      = useState(null);  // null | EMPTY | vehicle obj
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
+
+  // Camera state
+  const [camVehicleId,      setCamVehicleId]      = useState(null);
+  const [camData,           setCamData]           = useState({ cameras: [], provider_connected: false, last_updated_at: null });
+  const [camLoading,        setCamLoading]        = useState(false);
+  const [camError,          setCamError]          = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -29,6 +145,24 @@ export default function Fleet() {
       setLocations(locRes.data || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  // Default camera vehicle to the first vehicle once fleet loads
+  useEffect(() => {
+    if (vehicles.length > 0 && camVehicleId === null) {
+      setCamVehicleId(vehicles[0].id);
+    }
+  }, [vehicles, camVehicleId]);
+
+  // Fetch camera data whenever selected vehicle changes
+  useEffect(() => {
+    if (!camVehicleId || !canViewCameras) return;
+    setCamLoading(true);
+    setCamError('');
+    api.get(`/fleet/cameras/${camVehicleId}`)
+      .then(r => setCamData(r.data))
+      .catch(err => setCamError(err.response?.data?.error || 'Could not load camera data.'))
+      .finally(() => setCamLoading(false));
+  }, [camVehicleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setField(f) {
     return e => setForm(prev => ({ ...prev, [f]: e.target.value }));
@@ -168,6 +302,81 @@ export default function Fleet() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ── Live Vehicle Cameras ──────────────────────────────────── */}
+      <div style={{ marginTop: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Camera size={18} style={{ color: 'var(--sand)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Live Vehicle Cameras</h2>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 16, marginTop: 4 }}>
+          Front, cab, and rear views via connected fleet camera provider. FieldCore does not host camera hardware.
+        </p>
+
+        {!canViewCameras ? (
+          <div style={{ padding: '16px 20px', background: 'var(--offwhite)', border: '1px solid var(--lightgray)', borderRadius: 10, fontSize: 13, color: 'var(--slate)' }}>
+            Camera access is restricted to owners and managers.{/* fleet.camera.view permission */}
+          </div>
+        ) : vehicles.length === 0 ? (
+          <div style={{ color: 'var(--steel)', fontSize: 13, padding: '12px 0' }}>
+            Add vehicles to your fleet before configuring cameras.
+          </div>
+        ) : (
+          <>
+            {/* Vehicle selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <select
+                value={camVehicleId || ''}
+                onChange={e => setCamVehicleId(e.target.value)}
+                style={{ padding: '7px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif', color: 'var(--navy)', background: 'var(--white)', cursor: 'pointer' }}
+              >
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unnamed Vehicle'}
+                    {v.plate ? ` · ${v.plate}` : ''}
+                  </option>
+                ))}
+              </select>
+              {camData.last_updated_at && !camLoading && (
+                <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
+                  Updated {formatDistanceToNow(new Date(camData.last_updated_at))} ago
+                </span>
+              )}
+            </div>
+
+            {/* Setup required notice */}
+            {!camLoading && !camData.provider_connected && !camError && (
+              <div style={{ padding: '14px 18px', background: 'var(--offwhite)', border: '1px dashed var(--lightgray)', borderRadius: 10, marginBottom: 16, fontSize: 13, color: 'var(--slate)', lineHeight: 1.7 }}>
+                <strong style={{ color: 'var(--navy)', display: 'block', marginBottom: 3 }}>
+                  No camera provider connected
+                </strong>
+                Live camera feeds require a connected fleet camera provider. Supported integrations: Samsara, Motive, Geotab, Verizon Connect, Azuga, Fleetio.
+                Stream URLs may require short-lived tokens from the provider — contact support to enable.
+              </div>
+            )}
+
+            {/* API error */}
+            {camError && (
+              <div style={{ padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)', marginBottom: 14 }}>
+                {camError}
+              </div>
+            )}
+
+            {/* Camera tiles — front / cab / rear */}
+            <div className="fleet-cam-grid">
+              {['front', 'cab', 'rear'].map(pos => (
+                <CameraTile
+                  key={pos}
+                  position={pos}
+                  camera={(camData.cameras || []).find(c => c.camera_position === pos) || null}
+                  providerConnected={camData.provider_connected}
+                  loading={camLoading}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 

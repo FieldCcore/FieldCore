@@ -1,6 +1,6 @@
 # FieldCore — Technical Debt Report
 
-**Last reconciled:** 2026-06-25 (UI layout sprint — sidebar reorganized, duplicate headers removed, Agenda borders fixed)  
+**Last reconciled:** 2026-07-01 (fleet camera foundation added)  
 **Source of truth:** Actual codebase scan
 
 Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (significant operational risk) | **MEDIUM** (quality or maintainability issue) | **LOW** (nice to have)
@@ -212,6 +212,16 @@ Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (signi
 ---
 
 ## LOW DEBT
+
+### TD-L0: Fleet Camera Stream URL Security
+**Severity:** Low (not exploitable until a provider is connected)  
+**Description:** The `fleet_vehicle_cameras.stream_url` column can store a raw stream URL. Most fleet camera providers (Samsara, Motive, etc.) issue short-lived signed stream URLs — if these are stored in the DB they expire and become useless, or worse, can leak access if the DB is read. The correct pattern is to store only `external_camera_id` and fetch a fresh signed URL from the provider API on each request.  
+**Risk:** Expired stream URLs if stored; potential credential leak if raw signed URLs are stored long-term  
+**Files:** `src/routes/fleet.js` (schema comment), `client/src/pages/Fleet.jsx`  
+**Fix:** When a provider is integrated, implement a token-refresh endpoint (`GET /fleet/cameras/:vehicleId/:position/stream-token`) that calls the provider API and returns a fresh short-lived URL. Do not cache stream URLs in the DB. `snapshot_url` is acceptable if the provider hosts stable thumbnails.  
+**Effort:** 1-2 hours per provider integration
+
+---
 
 ### TD-L1: No API Documentation
 **Severity:** Low  

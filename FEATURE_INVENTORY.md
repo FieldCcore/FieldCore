@@ -421,24 +421,32 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 
 ## Feature 18: Fleet Management
 
-**Description:** Company vehicle registry per account. Year, make, model, license plate.
+**Description:** Company vehicle registry per account. Year, make, model, license plate. Includes live location display (GPS check-ins) and live vehicle camera section (third-party provider integration foundation).
 
 **File Locations:**
 - Backend: `src/routes/fleet.js`
 - Frontend: `client/src/pages/Fleet.jsx`
-- DB: `fleet_vehicles`
+- DB: `fleet_vehicles`, `fleet_vehicle_cameras` (migration pending — see fleet.js header comment)
 
 | Layer | Status |
 |-------|--------|
-| Backend | Complete |
-| Frontend | Complete |
+| Backend | Complete — CRUD + tech-locations + camera endpoint (GET /fleet/cameras/:vehicleId) |
+| Frontend | Complete — vehicle list, live locations, Live Vehicle Cameras section (all tile states) |
 | Mobile | Referenced but not a dedicated screen |
-| Database | Complete |
-| Integration | N/A |
+| Database | fleet_vehicles complete; fleet_vehicle_cameras schema defined in code, table not yet created |
+| Integration | Foundation ready; no live provider connected yet |
 
-**Production Readiness:** High  
-**Missing Work:** Mobile view  
-**Recommended Next Action:** None critical for launch
+**Camera Sub-feature (added 2026-07-01):**
+- Permission: `fleet.camera.view` — owner/manager only (admin when role is formalized)
+- Provider support prepared: Samsara, Motive, Geotab, Verizon Connect, Azuga, Fleetio, Generic
+- Camera positions: front, cab, rear
+- Tile states: live, snapshot, offline, error, no_camera, setup_required, loading
+- IMPORTANT: stream_url values are short-lived; when a provider is connected, fetch fresh signed URLs via provider API rather than storing raw stream URLs long-term
+- `external_camera_id` + `external_vehicle_id` fields are the stable references to use for token refresh
+
+**Production Readiness:** High for vehicle registry; Low for cameras (no provider connected)  
+**Missing Work:** Mobile view; `fleet_vehicle_cameras` DB migration; actual provider API integration  
+**Recommended Next Action:** Run DB migration when first camera provider is configured; see fleet.js header comment for full schema
 
 ---
 

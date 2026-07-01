@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-06-25 (UI layout sprint: sidebar reorganized, duplicate headers removed, Communications tab cleaned, Agenda borders fixed; see DECISION-029)  
+**Last reconciled:** 2026-07-01 (Fleet camera section added: Live Vehicle Cameras UI, GET /fleet/cameras/:vehicleId backend endpoint, fleet_vehicle_cameras schema defined, 7 provider integrations scaffolded)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -14,7 +14,7 @@
 - **Technician Mobile App (M4)** — All 14 screens implemented: job queue, schedule, GPS check-in, photo capture, mark complete, messages, invoice view, signature
 - **Team Management** — Owner/manager/tech/staff roles, per-plan user limits enforced
 - **Business Settings** — Profile, operating hours, holiday closures, timezone, service vertical
-- **Fleet Management** — Vehicle registry CRUD
+- **Fleet Management** — Vehicle registry CRUD, live locations, Live Vehicle Cameras section (setup-required state; provider integration foundation in place)
 - **No-Show Tracking** — Grace period clock, auto-declare, deposit retention, SMS notifications, audit trail
 - **Estimates with E-Signature** — Create, send, sign digitally (web + mobile)
 - **Post-Job Reviews** — Submit and store 1-5 star ratings
@@ -61,6 +61,13 @@
 - **Post-Job Reviews**
   - Code and DB complete
   - Blocked by: SMTP for sending review request links
+
+- **Fleet Vehicle Cameras**
+  - UI complete: Live Vehicle Cameras section on /fleet, all tile states (live/snapshot/offline/error/no_camera/setup_required), vehicle selector, responsive grid
+  - Backend complete: `GET /api/fleet/cameras/:vehicleId` gracefully returns `provider_connected: false` when table doesn't exist
+  - DB schema defined in fleet.js header comment; `fleet_vehicle_cameras` table not yet created (no provider connected)
+  - Blocked by: no third-party camera provider (Samsara / Motive / Geotab / Verizon Connect / Azuga / Fleetio) configured
+  - Missing: `fleet_vehicle_cameras` DB migration; provider OAuth/API key storage; stream token refresh logic
 
 - **Beta Signup System**
   - 100-slot cap logic and DB complete

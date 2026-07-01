@@ -3,6 +3,70 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
+// ── GET /api/fleet/cameras/:vehicleId ────────────────────────────────────────
+// Returns camera records for a vehicle from fleet_vehicle_cameras.
+// If the table does not yet exist (pg error 42P01) returns empty provider_connected: false.
+//
+// fleet_vehicle_cameras schema (run this migration when a camera provider is connected):
+//
+//   CREATE TABLE fleet_vehicle_cameras (
+//     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+//     entity_id          UUID NOT NULL REFERENCES accounts(id),
+//     vehicle_id         UUID NOT NULL REFERENCES fleet_vehicles(id),
+//     integration_id     UUID,                   -- FK to future integrations table
+//     provider           TEXT,                   -- 'samsara' | 'motive' | 'geotab' | 'verizon_connect' | 'azuga' | 'fleetio' | 'generic'
+//     camera_position    TEXT NOT NULL,          -- 'front' | 'cab' | 'rear'
+//     external_camera_id TEXT,                   -- provider's camera ID (used to fetch fresh stream tokens)
+//     external_vehicle_id TEXT,                  -- provider's vehicle ID
+//     -- NOTE: Do NOT store raw stream_url long-term; many providers issue short-lived signed URLs.
+//     -- Instead, store external_camera_id and fetch a fresh URL from the provider API on each request.
+//     -- snapshot_url is acceptable if it is a stable provider-hosted thumbnail URL.
+//     snapshot_url       TEXT,
+//     stream_url         TEXT,                   -- short-lived; regenerate via provider API before use
+//     status             TEXT DEFAULT 'unknown', -- 'online' | 'offline' | 'error' | 'unknown'
+//     last_online_at     TIMESTAMPTZ,
+//     created_at         TIMESTAMPTZ DEFAULT NOW(),
+//     updated_at         TIMESTAMPTZ DEFAULT NOW(),
+//     UNIQUE (vehicle_id, camera_position)
+//   );
+//
+// Permission: fleet.camera.view — owner, manager only (admin when role is formalized).
+router.get('/cameras/:vehicleId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { vehicleId } = req.params;
+  try {
+    // Verify vehicle belongs to this account
+    const { rows: vRows } = await pool.query(
+      `SELECT id FROM fleet_vehicles WHERE id = $1 AND account_id = $2`,
+      [vehicleId, req.accountId]
+    );
+    if (!vRows.length) return res.status(404).json({ error: 'Vehicle not found.' });
+
+    let cameras = [];
+    let providerConnected = false;
+    let lastUpdatedAt = null;
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, vehicle_id, provider, camera_position, external_camera_id,
+                snapshot_url, stream_url, status, last_online_at, updated_at
+         FROM fleet_vehicle_cameras
+         WHERE vehicle_id = $1 AND entity_id = $2
+         ORDER BY CASE camera_position WHEN 'front' THEN 1 WHEN 'cab' THEN 2 WHEN 'rear' THEN 3 ELSE 4 END`,
+        [vehicleId, req.accountId]
+      );
+      cameras = rows;
+      providerConnected = rows.some(c => c.provider != null);
+      lastUpdatedAt = rows.length ? rows[0].updated_at : null;
+    } catch (tableErr) {
+      if (tableErr.code !== '42P01') throw tableErr; // 42P01 = table does not exist
+    }
+
+    res.json({ vehicle_id: vehicleId, cameras, provider_connected: providerConnected, last_updated_at: lastUpdatedAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/fleet/tech-locations — last GPS check-in per tech for today
 router.get('/tech-locations', requireAuth, async (req, res) => {
   try {
