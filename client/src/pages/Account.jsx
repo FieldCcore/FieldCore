@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Smartphone, Globe, Trash2, Shield, Lock, Clock, Bell, ArrowRight } from 'lucide-react';
+import { Monitor, Smartphone, Globe, Trash2, Shield, Lock, Clock, History, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import BusinessSettings from './BusinessSettings';
 
 const TABS = ['My Account', 'Business', 'Notifications', 'Billing'];
+
+const AUDIT_LABELS = {
+  login:               'Signed in',
+  logout_all_sessions: 'Signed out all devices',
+  account_locked:      'Account locked (failed logins)',
+  password_changed:    'Password changed',
+  password_reset:      'Password reset',
+  revoke_session:      'Session revoked',
+};
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -21,6 +30,9 @@ export default function Account() {
     payment: true,
     review: true,
   });
+  const [auditLogs,    setAuditLogs]    = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditLoaded,  setAuditLoaded]  = useState(false);
 
   function set(f) { return e => setForm(s => ({ ...s, [f]: e.target.value })); }
 
@@ -49,6 +61,16 @@ export default function Account() {
       await api.post('/auth/logout-all');
       logout();
     } catch {}
+  }
+
+  async function loadAudit() {
+    setAuditLoading(true);
+    try {
+      const res = await api.get('/auth/audit-log');
+      setAuditLogs(res.data);
+      setAuditLoaded(true);
+    } catch {}
+    setAuditLoading(false);
   }
 
   async function handleSubmit(e) {
@@ -323,14 +345,57 @@ export default function Account() {
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <div className="card">
                 <h3>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Clock size={11} color="var(--sand)" />Security Audit Log
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Clock size={11} color="var(--sand)" />Security Audit Log
+                    </span>
+                    {!auditLoaded && (
+                      <button
+                        onClick={loadAudit}
+                        disabled={auditLoading}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          height: 26, padding: '0 10px', borderRadius: 6,
+                          background: 'transparent', border: '1px solid var(--lightgray)',
+                          color: 'var(--slate)', fontFamily: 'Inter, sans-serif',
+                          fontSize: 11, fontWeight: 600, textTransform: 'none',
+                          letterSpacing: 0, cursor: 'pointer', outline: 'none',
+                          opacity: auditLoading ? .55 : 1,
+                          transition: 'border-color .15s, background .15s, color .15s',
+                        }}
+                      >
+                        <History size={11} />
+                        {auditLoading ? 'Loading…' : 'View Log'}
+                      </button>
+                    )}
                   </span>
                 </h3>
                 <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
                   View logins, password changes, session revocations, and admin actions.
                 </p>
-                <AuditLogSection />
+                {auditLoaded && (
+                  <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                    {auditLogs.length === 0 ? (
+                      <p style={{ display: 'block', color: 'var(--steel)', fontSize: 13, padding: '8px 0' }}>No audit events found.</p>
+                    ) : (
+                      auditLogs.map(log => (
+                        <div key={log.id} style={{ padding: '10px 12px', background: 'var(--off)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
+                              {AUDIT_LABELS[log.action] || log.action}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--steel)', flexShrink: 0 }}>
+                              {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                            {log.user_name || log.user_email || 'System'} · IP: {log.ip_address || '—'}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -341,66 +406,3 @@ export default function Account() {
   );
 }
 
-function AuditLogSection() {
-  const [logs,    setLogs]    = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded,  setLoaded]  = useState(false);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await api.get('/auth/audit-log');
-      setLogs(res.data);
-      setLoaded(true);
-    } catch {}
-    setLoading(false);
-  }
-
-  const ACTION_LABELS = {
-    login:               'Signed in',
-    logout_all_sessions: 'Signed out all devices',
-    account_locked:      'Account locked (failed logins)',
-    password_changed:    'Password changed',
-    password_reset:      'Password reset',
-    revoke_session:      'Session revoked',
-  };
-
-  if (!loaded) {
-    return (
-      <div style={{ paddingTop: 8 }}>
-        <button className="btn-ghost" onClick={load} disabled={loading} style={{ outline: 'none' }}>
-          {loading ? 'Loading…' : 'View Audit Log'}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 8 }}>
-      {logs.length === 0 ? (
-        <p style={{ display: 'block', color: 'var(--steel)', fontSize: 13, padding: '8px 0' }}>No audit events found.</p>
-      ) : (
-        logs.map(log => (
-          <div key={log.id} style={{
-            padding: '10px 12px',
-            background: 'var(--off)',
-            borderRadius: 8,
-            border: '1px solid var(--lightgray)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
-                {ACTION_LABELS[log.action] || log.action}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--steel)', flexShrink: 0 }}>
-                {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </span>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
-              {log.user_name || log.user_email || 'System'} · IP: {log.ip_address || '—'}
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
