@@ -1890,12 +1890,13 @@ body {
   .sb {
     position: fixed;
     top: 0; left: 0; bottom: 0;
-    width: 260px;
+    width: min(82vw, 300px);
     height: 100%;
     z-index: 300;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,.35);
+    overflow-y: auto;
   }
   .sb.sb-open { transform: translateX(0); }
 
@@ -2036,19 +2037,40 @@ body {
     min-height: 320px;
   }
 
-  /* ── Dispatch layout: stack vertically ── */
+  /* ── Dispatch layout: stack vertically on mobile ── */
+  /* Desktop uses margin:-22px -24px; mobile content padding is only 12px.
+     Override margin to match so the layout doesn't bleed above the topbar. */
   .dispatch-layout {
     flex-direction: column !important;
     height: auto !important;
+    margin: -12px -12px !important;
+    overflow: visible !important;
   }
-  .dispatch-sidebar {
+  /* The left panel (job list) goes full-width and scrolls naturally */
+  .dispatch-panel {
     width: 100% !important;
-    max-height: 45vh;
-    overflow-y: auto;
+    max-height: none !important;
+    overflow-y: visible !important;
     border-right: none !important;
     border-bottom: 1px solid var(--lightgray);
+    flex-shrink: 0;
   }
-  .dispatch-map { min-height: 320px; }
+  /* Map wrapper gets a fixed height so it doesn't collapse */
+  .dispatch-map-wrap {
+    height: 50vh !important;
+    min-height: 260px !important;
+    position: relative !important;
+  }
+  .dispatch-map { height: 100% !important; }
+  /* Legend: compact on mobile to avoid covering too much map */
+  .dispatch-legend {
+    bottom: 8px !important;
+    right: 8px !important;
+    padding: 6px 10px !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+  }
+  .dispatch-legend-item { font-size: 10px !important; }
 
   /* ── Revenue / Deposits / Team grid layouts ── */
   .rev-layout,
