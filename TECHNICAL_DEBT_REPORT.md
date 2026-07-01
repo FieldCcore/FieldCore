@@ -1,6 +1,6 @@
 # FieldCore — Technical Debt Report
 
-**Last reconciled:** 2026-07-01 (fleet camera foundation + Fleet UI redesign)  
+**Last reconciled:** 2026-07-01 (fleet camera foundation + Fleet UI redesign + Settings UI redesign)  
 **Source of truth:** Actual codebase scan
 
 Severity levels: **CRITICAL** (blocks launch or security risk) | **HIGH** (significant operational risk) | **MEDIUM** (quality or maintainability issue) | **LOW** (nice to have)

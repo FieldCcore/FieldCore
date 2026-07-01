@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Smartphone, Globe, Trash2, Shield, Lock, Clock } from 'lucide-react';
+import { Monitor, Smartphone, Globe, Trash2, Shield, Lock, Clock, Bell, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import BusinessSettings from './BusinessSettings';
+
+const TABS = ['My Account', 'Business', 'Notifications', 'Billing'];
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -66,9 +69,9 @@ export default function Account() {
   }
 
   function deviceIcon(info) {
-    if (!info) return <Globe size={16} />;
-    if (info === 'iPhone' || info === 'Android' || info === 'iPad') return <Smartphone size={16} />;
-    return <Monitor size={16} />;
+    if (!info) return <Globe size={15} />;
+    if (info === 'iPhone' || info === 'Android' || info === 'iPad') return <Smartphone size={15} />;
+    return <Monitor size={15} />;
   }
 
   function formatDate(d) {
@@ -77,120 +80,182 @@ export default function Account() {
   }
 
   return (
-    <div className="min-h-screen bg-offwhite">
-      <div className="bg-white border-b border-lightgray px-8 py-5">
-        <h1 className="text-2xl font-bold text-navy">Settings</h1>
+    <div>
+      {/* Page header */}
+      <div className="page-header">
+        <div>
+          <h1>Settings</h1>
+          <p style={{ fontSize: 13, color: 'var(--steel)', marginTop: 3 }}>
+            Manage account, business, notifications, and billing preferences.
+          </p>
+        </div>
       </div>
 
-      <div className="bg-white border-b border-lightgray px-8 flex">
-        {['My Account', 'Business', 'Notifications', 'Billing'].map(tab => (
+      {/* Tab bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--lightgray)', marginBottom: 22, overflowX: 'auto', gap: 0 }}>
+        {TABS.map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab
-                ? 'border-sand text-navy font-semibold'
-                : 'border-transparent text-slate hover:text-navy'
-            }`}
+            style={{
+              padding: '10px 20px',
+              fontSize: 13,
+              fontWeight: activeTab === tab ? 700 : 500,
+              color: activeTab === tab ? 'var(--navy)' : 'var(--steel)',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab ? '2px solid var(--navy)' : '2px solid transparent',
+              cursor: 'pointer',
+              outline: 'none',
+              whiteSpace: 'nowrap',
+              transition: 'color .15s',
+              marginBottom: -1,
+            }}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      {/* Tab content */}
+      <div style={{ maxWidth: 720 }}>
 
+        {/* ── Business ── */}
         {activeTab === 'Business' && <BusinessSettings />}
 
+        {/* ── Notifications ── */}
         {activeTab === 'Notifications' && (
-          <div style={{ maxWidth: 540 }}>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <h3 style={{ marginBottom: 16 }}>Email Notifications</h3>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-                Choose which events trigger an email to your account address.
+          <div>
+            <div className="card" style={{ marginBottom: 14 }}>
+              <h3>Email Notifications</h3>
+              <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', marginBottom: 4, padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
+                Choose which events trigger an email to {user?.email || 'your account address'}.
               </p>
               {[
-                { key: 'new_booking',  label: 'New booking received'           },
-                { key: 'job_complete', label: 'Job marked complete'            },
-                { key: 'no_show',      label: 'No-show declared'               },
-                { key: 'payment',      label: 'Payment collected or deposited' },
-                { key: 'review',       label: 'New client review submitted'    },
+                { key: 'new_booking',  label: 'New booking received',            desc: 'When a client completes a booking through your booking widget.' },
+                { key: 'job_complete', label: 'Job marked complete',             desc: 'When a technician marks a job as complete in the mobile app.' },
+                { key: 'no_show',      label: 'No-show declared',                desc: 'When a client is marked as a no-show and the deposit is retained.' },
+                { key: 'payment',      label: 'Payment collected or deposited',  desc: 'When an invoice is paid or a deposit is collected.' },
+                { key: 'review',       label: 'New client review submitted',     desc: 'When a client submits a star rating after a completed job.' },
               ].map(n => (
-                <div key={n.key} className="flex items-center justify-between py-4 border-b border-lightgray last:border-0">
-                  <span className="text-sm font-medium text-navy">{n.label}</span>
+                <div key={n.key} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '13px 0',
+                  borderBottom: '1px solid var(--off)',
+                  gap: 16,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>{n.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>{n.desc}</div>
+                  </div>
                   <button
                     onClick={() => setNotifPrefs(p => ({ ...p, [n.key]: !p[n.key] }))}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      notifPrefs[n.key] ? 'bg-sand' : 'bg-lightgray'
-                    }`}
+                    style={{
+                      position: 'relative',
+                      display: 'inline-flex',
+                      height: 22,
+                      width: 40,
+                      alignItems: 'center',
+                      borderRadius: 99,
+                      border: 'none',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      flexShrink: 0,
+                      background: notifPrefs[n.key] ? 'var(--sand)' : 'var(--lightgray)',
+                      transition: 'background .2s',
+                    }}
                   >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                        notifPrefs[n.key] ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
+                    <span style={{
+                      display: 'inline-block',
+                      height: 16,
+                      width: 16,
+                      borderRadius: '50%',
+                      background: 'var(--white)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,.18)',
+                      transform: notifPrefs[n.key] ? 'translateX(20px)' : 'translateX(3px)',
+                      transition: 'transform .2s',
+                    }} />
                   </button>
                 </div>
               ))}
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Notification preferences are sent to {user?.email || 'your account email'}.
-            </p>
-          </div>
-        )}
-
-        {activeTab === 'Billing' && (
-          <div style={{ maxWidth: 540 }}>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <h3 style={{ marginBottom: 16 }}>Plan & Billing</h3>
-              <p style={{ fontSize: 14, color: 'var(--navy)', marginBottom: 8 }}>
-                Current plan: <strong style={{ textTransform: 'capitalize' }}>{user?.plan || 'Starter'}</strong>
-              </p>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-                Manage your FieldCore subscription, upgrade your plan, and view payment history.
-              </p>
-              <a href="/billing" style={{ display: 'inline-block', padding: '9px 20px', background: '#1C2333', color: '#D6B58A', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
-                Manage Billing →
-              </a>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'My Account' && (
-          <div style={{ maxWidth: 540 }}>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <h3 style={{ marginBottom: 14 }}>Profile</h3>
-              <p style={{ marginBottom: 8 }}><label style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginRight: 12 }}>Name</label> {user?.name || '—'}</p>
-              <p style={{ marginBottom: 8 }}><label style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginRight: 12 }}>Email</label> {user?.email || '—'}</p>
-              <p><label style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginRight: 12 }}>Role</label> {user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '—'}</p>
-            </div>
-
-            <div className="card" style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <Lock size={16} color="var(--sand)" />
-                <h3 style={{ margin: 0 }}>Change Password</h3>
+              <div style={{ paddingTop: 12, fontSize: 12, color: 'var(--steel)' }}>
+                Notification preferences apply to the signed-in account only.
               </div>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                Must be 8+ characters with uppercase, lowercase, number, and special character.
-                Changing password signs out all other devices.
+            </div>
+          </div>
+        )}
+
+        {/* ── Billing ── */}
+        {activeTab === 'Billing' && (
+          <div>
+            <div className="card">
+              <h3>Plan &amp; Billing</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid var(--off)' }}>
+                <span style={{ fontSize: 12, color: 'var(--steel)', minWidth: 80 }}>Current plan</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', textTransform: 'capitalize' }}>
+                  {user?.plan || 'Starter'}
+                </span>
+              </div>
+              <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '12px 0 14px', borderBottom: 'none' }}>
+                Manage your FieldCore subscription, upgrade your plan, view invoices, and update your payment method.
               </p>
-              <form onSubmit={handleSubmit}>
-                <div className="form-group" style={{ marginBottom: 14 }}>
+              <Link
+                to="/billing"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '9px 18px',
+                  background: 'var(--navy)',
+                  color: 'var(--sand)',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                Manage Billing <ArrowRight size={13} />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ── My Account ── */}
+        {activeTab === 'My Account' && (
+          <div>
+            {/* Profile */}
+            <div className="card" style={{ marginBottom: 14 }}>
+              <h3>Profile</h3>
+              <p><label>Name</label>{user?.name || '—'}</p>
+              <p><label>Email</label>{user?.email || '—'}</p>
+              <p><label>Role</label>{user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '—'}</p>
+            </div>
+
+            {/* Change Password */}
+            <div className="card" style={{ marginBottom: 14 }}>
+              <h3><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Lock size={11} color="var(--sand)" />Change Password</span></h3>
+              <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
+                Must be 8+ characters with uppercase, lowercase, number, and special character. Changing your password signs out all other devices.
+              </p>
+              <form onSubmit={handleSubmit} style={{ paddingTop: 12 }}>
+                <div className="form-group" style={{ marginBottom: 12 }}>
                   <label>Current Password</label>
                   <input type="password" value={form.current} onChange={set('current')} required autoComplete="current-password" />
                 </div>
-                <div className="form-group" style={{ marginBottom: 14 }}>
+                <div className="form-group" style={{ marginBottom: 12 }}>
                   <label>New Password</label>
                   <input type="password" value={form.next} onChange={set('next')} required placeholder="Min. 8 chars, mixed case + special char" autoComplete="new-password" />
                 </div>
-                <div className="form-group" style={{ marginBottom: 18 }}>
+                <div className="form-group" style={{ marginBottom: 16 }}>
                   <label>Confirm New Password</label>
                   <input type="password" value={form.confirm} onChange={set('confirm')} required autoComplete="new-password" />
                 </div>
                 {msg && (
-                  <p style={{ fontSize: 13, color: msg.ok ? 'var(--green)' : 'var(--red)', marginBottom: 12, fontWeight: 600 }}>
+                  <div style={{ fontSize: 13, color: msg.ok ? 'var(--green)' : 'var(--red)', marginBottom: 14, fontWeight: 600 }}>
                     {msg.ok ? '✓ ' : ''}{msg.text}
-                  </p>
+                  </div>
                 )}
                 <button type="submit" className="btn-primary" disabled={saving}>
                   {saving ? 'Saving…' : 'Update Password'}
@@ -198,35 +263,47 @@ export default function Account() {
               </form>
             </div>
 
-            <div className="card" style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Shield size={16} color="var(--sand)" />
-                  <h3 style={{ margin: 0 }}>Active Sessions</h3>
-                </div>
-                {sessions.length > 1 && (
-                  <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--red)', padding: '4px 10px' }} onClick={revokeAll}>
-                    Sign out all devices
-                  </button>
-                )}
-              </div>
+            {/* Active Sessions */}
+            <div className="card" style={{ marginBottom: 14 }}>
+              <h3>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Shield size={11} color="var(--sand)" />Active Sessions
+                  </span>
+                  {sessions.length > 1 && (
+                    <button
+                      onClick={revokeAll}
+                      style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', outline: 'none', padding: 0 }}
+                    >
+                      Sign out all
+                    </button>
+                  )}
+                </span>
+              </h3>
 
               {sessions.length === 0 ? (
-                <p style={{ color: 'var(--steel)', fontSize: 13 }}>No active sessions found.</p>
+                <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '10px 0' }}>No active sessions found.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 }}>
                   {sessions.map((s, i) => (
                     <div key={s.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '12px 14px', borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '11px 13px',
+                      borderRadius: 10,
                       background: i === 0 ? 'var(--sand-lt)' : 'var(--off)',
-                      border: `1px solid ${i === 0 ? '#D6B58A55' : 'var(--lightgray)'}`,
+                      border: `1px solid ${i === 0 ? '#D6B58A44' : 'var(--lightgray)'}`,
                     }}>
-                      <div style={{ color: 'var(--slate)' }}>{deviceIcon(s.device_info)}</div>
+                      <div style={{ color: 'var(--slate)', flexShrink: 0 }}>{deviceIcon(s.device_info)}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 7 }}>
                           {s.device_info || 'Unknown device'}
-                          {i === 0 && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--sand)', padding: '2px 7px', borderRadius: 99 }}>Current</span>}
+                          {i === 0 && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--sand)', padding: '2px 7px', borderRadius: 99 }}>
+                              Current
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
                           {s.ip_address} · Last active {formatDate(s.last_active_at)}
@@ -235,10 +312,10 @@ export default function Account() {
                       {i !== 0 && (
                         <button
                           onClick={() => revokeSession(s.id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 4 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 4, outline: 'none' }}
                           title="Revoke session"
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={14} />
                         </button>
                       )}
                     </div>
@@ -247,14 +324,16 @@ export default function Account() {
               )}
             </div>
 
+            {/* Security Audit Log — owner/manager only */}
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <div className="card">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <Clock size={16} color="var(--sand)" />
-                  <h3 style={{ margin: 0 }}>Security Audit Log</h3>
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
-                  View all security events — logins, password changes, session revocations, and admin actions.
+                <h3>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={11} color="var(--sand)" />Security Audit Log
+                  </span>
+                </h3>
+                <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
+                  View logins, password changes, session revocations, and admin actions.
                 </p>
                 <AuditLogSection />
               </div>
@@ -283,45 +362,50 @@ function AuditLogSection() {
   }
 
   const ACTION_LABELS = {
-    login:              'Signed in',
-    logout_all_sessions:'Signed out all devices',
-    account_locked:     'Account locked (failed logins)',
-    password_changed:   'Password changed',
-    password_reset:     'Password reset',
-    revoke_session:     'Session revoked',
+    login:               'Signed in',
+    logout_all_sessions: 'Signed out all devices',
+    account_locked:      'Account locked (failed logins)',
+    password_changed:    'Password changed',
+    password_reset:      'Password reset',
+    revoke_session:      'Session revoked',
   };
 
   if (!loaded) {
     return (
-      <button className="btn-ghost" onClick={load} disabled={loading}>
-        {loading ? 'Loading…' : 'View Audit Log'}
-      </button>
+      <div style={{ paddingTop: 8 }}>
+        <button className="btn-ghost" onClick={load} disabled={loading} style={{ outline: 'none' }}>
+          {loading ? 'Loading…' : 'View Audit Log'}
+        </button>
+      </div>
     );
   }
 
   return (
-    <div>
-      <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {logs.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No audit events found.</p>
-        ) : (
-          logs.map(log => (
-            <div key={log.id} style={{ padding: '10px 12px', background: 'var(--off)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
-                  {ACTION_LABELS[log.action] || log.action}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--steel)' }}>
-                  {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
-                {log.user_name || log.user_email || 'System'} · IP: {log.ip_address || '—'}
-              </div>
+    <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 8 }}>
+      {logs.length === 0 ? (
+        <p style={{ display: 'block', color: 'var(--steel)', fontSize: 13, padding: '8px 0' }}>No audit events found.</p>
+      ) : (
+        logs.map(log => (
+          <div key={log.id} style={{
+            padding: '10px 12px',
+            background: 'var(--off)',
+            borderRadius: 8,
+            border: '1px solid var(--lightgray)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
+                {ACTION_LABELS[log.action] || log.action}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--steel)', flexShrink: 0 }}>
+                {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </span>
             </div>
-          ))
-        )}
-      </div>
+            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+              {log.user_name || log.user_email || 'System'} · IP: {log.ip_address || '—'}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }

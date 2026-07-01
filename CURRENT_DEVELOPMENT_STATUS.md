@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-07-01 (Fleet UI redesign: stat cards, two-column layout, polished empty states, Live Locations card, Fleet Tracking Integration card, cameras card; fleet-2col CSS class added)  
+**Last reconciled:** 2026-07-01 (Settings page UI redesign: page-header structure, clean tab nav, polished My Account/Business/Notifications/Billing tabs)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -95,7 +95,7 @@
 - **Create Client modal** — `.modal` CSS now has `max-height: 90vh; overflow-y: auto` to prevent overflow on desktop.
 - **Communications — `read_at` DB error fix** — `GET /api/phone/conversations` failed with `column m.read_at does not exist` on Railway. Fixed with try/catch fallback: falls back to a query without `read_at` and returns `unread_messages: 0`.
 - **Communications UI cleanup** — Loading states use styled cards. Fixed `var(--off-white)` → `var(--offwhite)`. Thread bubble background uses `var(--offwhite)`. Hardcoded colors replaced with CSS variables. Section separator uses `var(--lightgray)`.
-- **Settings page** — Active Sessions and Audit Log cards used undefined CSS variables (`--navy-3`, `--border`, `--text-muted`), causing dark broken styling. Fixed to `var(--sand-lt)`, `var(--off)`, `var(--lightgray)`, `var(--steel)`, `var(--navy)`.
+- **Settings page** — Full UI redesign 2026-07-01: removed awkward white header block, replaced with `.page-header` + subtitle. Tab bar rebuilt to match Communications pattern (navy underline, no harsh outlines, horizontal scroll on mobile). All 4 tabs polished: My Account (profile detail rows, password form, sessions, audit log), Business (BusinessSettings component, left-aligned), Notifications (toggle rows with descriptions), Billing (plan summary + Manage Billing link). Max-width 720px, left-aligned content.
 - **Entities page revenue typography** — Revenue figures use Cormorant Garamond at `fontSize: 28` (summary) and `fontSize: 16` (breakdown). Stat cards use `.stat-card` / `.stat-label` / `.stat-value` classes.
 - **Billing downgrade flow** — `DowngradeModal` now shows features at risk and routes user to support (email + phone) instead of triggering automatic plan change or Stripe checkout.
 - **StatusBadge design system** — Shared `StatusBadge` component (`client/src/components/StatusBadge.jsx`) replaces per-page badge logic across 15+ files. Auto-maps status strings to 5 color variants (blue/green/red/yellow/gray). Title Case labels. Pill design: no border, 2px 8px padding, borderRadius 99. Used in: Invoices, Deposits, Dashboard, ClientList, ClientProfile, Communications, Entities, Billing, Team, Estimates, JobDetail, InvoiceDetail.

@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-07-01 (Fleet UI redesign: stat cards, two-column layout, polished empty states, Live Locations card, Fleet Tracking Integration card, cameras card)  
+**Last reconciled:** 2026-07-01 (Settings UI redesign: clean tab nav, page-header, polished My Account / Business / Notifications / Billing tabs)  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---
@@ -44,7 +44,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | Client list with real invoice data | Complete | LTV, outstanding balance, last invoice date/status from DB (2026-06-24) |
 | Create Client modal overflow | Complete | `max-height: 90vh` + scroll on `.modal` (2026-06-24) |
 | Communications `read_at` error | Complete | Fallback query when column missing on Railway DB (2026-06-24) |
-| Settings page styling | Complete | CSS variable fixes; no more dark broken session cards (2026-06-24) |
+| Settings page styling | Complete | Full UI redesign 2026-07-01: page-header, clean tab nav (navy underline, no harsh outlines), polished My Account/Business/Notifications/Billing tabs, 720px left-aligned layout |
 | Entities revenue typography | Complete | Cormorant Garamond serif for revenue figures (2026-06-24) |
 | Billing downgrade flow | Complete | Routes to support contact instead of automatic change (2026-06-24) |
 | StatusBadge design system | Complete | Shared badge component across 15+ pages; auto color-mapped (2026-06-24) |

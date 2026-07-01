@@ -48,6 +48,23 @@
 
 ---
 
+### [DECISION-054] Settings page: no separate white header block; tab bar integrated into page flow
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The `/account` Settings page had a "huge awkward white header block" — a white `bg-white border-b` div for the title, followed by another white `bg-white border-b` div for the tabs, then the `bg-off` content area. This created a jarring two-tone split unlike every other page in FieldCore.
+
+**Decision:** The Settings page now uses `.page-header` (same as all other pages) for the title. The tab bar is a borderless horizontal div with per-button `borderBottom: 2px solid var(--navy)` for the active state (matching Communications pattern). The white background blocks are removed entirely; the `.content` div's `background: var(--off)` provides the page background as it does everywhere else. Content max-width is 720px, left-aligned.
+
+**Alternatives considered:** Keep separate white header, just shrink it. Rejected — root cause was the structural pattern, not the size. Centered layout for settings cards. Rejected — left-aligned content is consistent with the rest of the app.
+
+**Reasoning:** Every other page uses `.page-header` + `.content` background. Settings should use the same pattern, not a custom white-block structure that predates the design system.
+
+**Consequences:** Settings now visually matches all other FieldCore pages. The `Account.jsx` no longer has `min-h-screen bg-offwhite`, the white header div, or the white tab div. Future Settings UI work should use `.card` and `.dash-card` and not re-introduce white background wrappers.
+
+---
+
 ### [DECISION-053] Fleet page UI: Fleet Tracking Integration uses mailto CTA, not a dead button
 **Date:** 2026-07-01
 **Decided by:** Kevin + Claude
