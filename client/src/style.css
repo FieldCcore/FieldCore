@@ -684,6 +684,38 @@ body {
   font-weight: 400;
   color: var(--navy);
 }
+/* ── Invoice action bar (single compact row) ─────────────── */
+.invoice-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 20px;
+  max-width: 100%;
+}
+.invoice-action-bar .btn-primary,
+.invoice-action-bar .btn-secondary,
+.invoice-action-bar .btn-void,
+.invoice-action-bar a.btn-secondary {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  white-space: nowrap;
+  line-height: 1;
+}
+.invoice-action-bar .link-input {
+  flex: 1 1 120px;
+  height: 38px;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+/* legacy classes kept for Estimates.jsx */
 .invoice-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1898,7 +1930,12 @@ body {
   .form-row { grid-template-columns: 1fr !important; }
   .client-form .form-row { grid-template-columns: 1fr !important; }
 
-  /* Invoice / payment link: stack vertically on small screens */
+  /* Invoice action bar: link input goes full-width, buttons wrap */
+  .invoice-action-bar .link-input {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  /* Legacy stacking for Estimates payment-link-box */
   .payment-link-box {
     flex-direction: column;
     align-items: stretch;
@@ -1906,17 +1943,6 @@ body {
   .payment-link-box .btn-primary,
   .payment-link-box .btn-secondary,
   .payment-link-box a.btn-secondary {
-    width: 100%;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .invoice-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .invoice-actions .btn-primary,
-  .invoice-actions .btn-secondary,
-  .invoice-actions .btn-void {
     width: 100%;
     text-align: center;
     box-sizing: border-box;

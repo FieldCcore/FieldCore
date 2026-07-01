@@ -201,35 +201,32 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       </div>
 
       {isPending && (
-        <>
-          {invoice.payment_link && (
-            <div className="payment-link-box">
+        <div className="invoice-action-bar">
+          {invoice.card_on_file ? (
+            <button className="btn-primary" onClick={handleCharge} disabled={loading}>
+              {loading ? 'Charging…' : 'Charge Card on File'}
+            </button>
+          ) : (
+            <button className="btn-secondary" onClick={() => setShowCardSetup(s => !s)}>
+              {showCardSetup ? 'Cancel Setup' : 'Add Card on File'}
+            </button>
+          )}
+          {invoice.payment_link ? (
+            <>
               <input readOnly value={invoice.payment_link} className="link-input" />
-              <button className="btn-primary" style={{ flexShrink: 0 }} onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
-              <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary" style={{ flexShrink: 0 }}>Open</a>
-              <button className="btn-secondary" style={{ flexShrink: 0 }} onClick={handleSend} disabled={sending} title="Resend email to client">
+              <button className="btn-primary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
+              <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
+              <button className="btn-secondary" onClick={handleSend} disabled={sending} title="Resend email to client">
                 {sending ? '…' : 'Resend'}
               </button>
-            </div>
+            </>
+          ) : (
+            <button className="btn-secondary" onClick={handleSend} disabled={sending}>
+              {sending ? 'Sending…' : invoice.client_email ? 'Send Invoice' : 'Generate Link'}
+            </button>
           )}
-          <div className="invoice-actions">
-            {invoice.card_on_file ? (
-              <button className="btn-primary" onClick={handleCharge} disabled={loading}>
-                {loading ? 'Charging...' : 'Charge Card on File'}
-              </button>
-            ) : (
-              <button className="btn-secondary" onClick={() => setShowCardSetup(s => !s)}>
-                {showCardSetup ? 'Cancel Card Setup' : 'Add Card on File'}
-              </button>
-            )}
-            {!invoice.payment_link && (
-              <button className="btn-secondary" onClick={handleSend} disabled={sending}>
-                {sending ? 'Sending…' : invoice.client_email ? 'Send Invoice' : 'Generate Payment Link'}
-              </button>
-            )}
-            <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
-          </div>
-        </>
+          <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
+        </div>
       )}
 
       {showCardSetup && isPending && invoice.client_id && (
