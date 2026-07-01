@@ -324,7 +324,7 @@ function AppShell() {
                     {ni('/team',     false, IcoTeam,     'Team',     null)}
                     {ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
                     {ni('/entities', false, IcoTeam,     'Entities', null)}
-                    {ni('/booking',  false, IcoSettings, 'Settings', null)}
+                    {ni('/account',  false, IcoSettings, 'Settings', null)}
                   </>
                 )}
               </>
