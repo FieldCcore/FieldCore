@@ -301,7 +301,7 @@ export default function Entities() {
           ) : analytics ? (
             <>
               {/* MTD / YTD summary cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+              <div className="ent-analytics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
                 {[
                   { label: 'Month-to-Date Revenue', value: `$${parseFloat(analytics.total_mtd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isMoney: true },
                   { label: 'Year-to-Date Revenue',  value: `$${parseFloat(analytics.total_ytd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isMoney: true },
@@ -316,7 +316,7 @@ export default function Entities() {
 
               {/* Per-entity breakdown table */}
               {analytics.entities?.length > 0 && (
-                <div style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, overflow: 'hidden' }}>
+                <div className="ent-table-scroll"><div style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: 0, padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #e5e0d8' }}>
                     {['Entity', 'MTD Revenue', 'Jobs MTD'].map(h => (
                       <div key={h} style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af' }}>{h}</div>
@@ -329,7 +329,7 @@ export default function Entities() {
                       <div style={{ fontSize: 13, color: 'var(--slate)' }}>{ent.mtd_jobs ?? 0}</div>
                     </div>
                   ))}
-                </div>
+                </div></div>
               )}
             </>
           ) : null}

@@ -138,7 +138,7 @@ export default function Revenue() {
               {nsData.length === 0 ? (
                 <div style={{ color: 'var(--steel)', fontSize: 13, padding: '12px 0' }}>No no-show records yet.</div>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <div className="table-wrap"><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--lightgray)' }}>
                       {['Month', 'No-Shows', 'Deposits Retained', 'Avg'].map(h => (
@@ -156,7 +156,7 @@ export default function Revenue() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
 
@@ -272,7 +272,7 @@ export default function Revenue() {
                 No completed jobs yet.
               </div>
             ) : (
-              <table className="table">
+              <div className="table-wrap"><table className="table">
                 <thead>
                   <tr>
                     <th>Service</th>
@@ -297,7 +297,7 @@ export default function Revenue() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>

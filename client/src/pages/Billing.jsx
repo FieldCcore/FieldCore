@@ -588,7 +588,7 @@ export default function Billing() {
                 {upgradeError}
               </div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+            <div className="billing-plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
               {PLANS.map(plan => {
                 const planIdx     = PLAN_ORDER.indexOf(plan.key);
                 const isCurrent   = plan.key === currentPlan;
@@ -819,7 +819,7 @@ export default function Billing() {
                 Stripe Connect routes invoice payments and booking deposits directly to your bank account — no manual transfers.
                 FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
+              <div className="billing-steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
                 {[
                   { step: '1', label: 'Click Connect', desc: 'Stripe\'s secure onboarding loads right here — no redirect needed' },
                   { step: '2', label: 'Enter Bank Info', desc: 'Routing + account number entered on Stripe — FieldCore never sees it' },

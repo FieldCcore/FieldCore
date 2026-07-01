@@ -380,7 +380,7 @@ export default function Team() {
                   No team members yet. Add someone to get started.
                 </div>
               ) : (
-                <table className="table">
+                <div className="table-wrap"><table className="table">
                   <thead>
                     <tr>
                       <th>Member</th><th>Role</th><th>Jobs</th><th>Completed</th>
@@ -429,7 +429,7 @@ export default function Team() {
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -538,7 +538,7 @@ export default function Team() {
               No team members yet.
             </div>
           ) : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead>
                 <tr>
                   <th>Member</th><th>Role</th><th>Jobs</th><th>Revenue</th><th>Commission (5%)</th><th>Status</th>
@@ -574,7 +574,7 @@ export default function Team() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       )}

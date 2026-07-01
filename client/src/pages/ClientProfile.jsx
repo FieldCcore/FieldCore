@@ -171,7 +171,7 @@ export default function ClientProfile() {
         {!client.jobs?.length ? (
           <p className="muted">No jobs yet.</p>
         ) : (
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <thead>
               <tr>
                 <th>Service</th>
@@ -194,7 +194,7 @@ export default function ClientProfile() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 

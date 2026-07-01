@@ -64,7 +64,7 @@ export default function Invoices() {
       ) : filtered.length === 0 ? (
         <p className="muted">No {filter === 'all' ? '' : filter} invoices yet.</p>
       ) : (
-        <table className="table">
+        <div className="table-wrap"><table className="table">
           <thead>
             <tr>
               <th>Client</th>
@@ -85,7 +85,7 @@ export default function Invoices() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {selected && (

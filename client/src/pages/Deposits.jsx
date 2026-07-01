@@ -116,7 +116,7 @@ export default function Deposits() {
                 No deposits yet. Deposits are created automatically when clients book online and pay via Stripe.
               </div>
             ) : (
-              <table className="table">
+              <div className="table-wrap"><table className="table">
                 <thead>
                   <tr>
                     <th>Client · Service</th>
@@ -200,7 +200,7 @@ export default function Deposits() {
                     </React.Fragment>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>

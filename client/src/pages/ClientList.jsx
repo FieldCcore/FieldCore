@@ -89,6 +89,7 @@ export default function ClientList() {
         </div>
       ) : (
         <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
+          <div className="cl-scroll">
           {/* Table header */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px', gap: 0, padding: '9px 20px', background: 'var(--navy)', alignItems: 'center' }}>
             {['Name', 'Tier', 'Contact', 'LTV', 'Outstanding', 'Last Invoice', 'Client Since'].map(h => (
@@ -161,6 +162,7 @@ export default function ClientList() {
               </div>
             </div>
           ))}
+          </div>{/* end cl-scroll */}
         </div>
       )}
     </div>
