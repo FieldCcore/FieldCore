@@ -81,15 +81,10 @@ export default function Account() {
 
   return (
     <div>
-      {/* Page header */}
-      <div className="page-header">
-        <div>
-          <h1>Settings</h1>
-          <p style={{ fontSize: 13, color: 'var(--steel)', marginTop: 3 }}>
-            Manage account, business, notifications, and billing preferences.
-          </p>
-        </div>
-      </div>
+      {/* Subtitle only — topbar already renders "Settings" as page title */}
+      <p style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 16 }}>
+        Manage account, business, notifications, and billing preferences.
+      </p>
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--lightgray)', marginBottom: 22, overflowX: 'auto', gap: 0 }}>

@@ -6,32 +6,30 @@ const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
 const TIMEZONES = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu'];
 const VERTICALS = ['Auto Detailing','Pressure Washing','Landscaping','HVAC','Plumbing','Electrical','Pest Control','Pool Cleaning','Mobile Mechanic','Junk Removal','Window Tint / PPF','Appliance Repair','Garage Door','Flooring / Epoxy','Commercial Fleet Wash','Other'];
 
-const inputCls = 'w-full border border-lightgray rounded-md px-3 py-2 text-sm text-navy placeholder:text-steel focus:ring-2 focus:ring-sand focus:outline-none bg-white';
-const labelCls = 'block text-xs font-semibold text-slate uppercase tracking-wide mb-1 mt-4 first:mt-0';
-
 function Section({ title, children }) {
   return (
-    <div className="bg-white border border-lightgray rounded-lg p-6 mb-6">
-      <div className="text-sm font-bold text-navy mb-4 pb-2 border-b border-lightgray">{title}</div>
-      {children}
+    <div className="bss-section">
+      <div className="bss-section-head">{title}</div>
+      <div className="bss-section-body">{children}</div>
     </div>
   );
 }
 
 function SaveBar({ saving, saved, onSave, label = 'Save changes' }) {
   return (
-    <div className="flex items-center gap-3 mt-5">
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18 }}>
       <button
         onClick={onSave}
         disabled={saving}
-        className="bg-sand text-navy font-bold px-6 py-2.5 rounded-md hover:brightness-95 transition text-sm disabled:opacity-60 disabled:cursor-wait"
+        className="btn-primary"
+        style={{ opacity: saving ? .6 : 1 }}
       >
         {saving ? 'Saving…' : label}
       </button>
       {saved && (
-        <span className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#1E6B3C' }}>
-          <svg viewBox="0 0 16 16" fill="none" style={{ width: 14, height: 14 }}>
-            <path d="M3 8l3.5 3.5 6.5-7" stroke="#1E6B3C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13 }}>
+            <path d="M3 8l3.5 3.5 6.5-7" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Saved
         </span>
@@ -163,23 +161,24 @@ export default function BusinessSettings() {
   return (
     <div>
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-5">
+        <div style={{ background: 'var(--red-lt)', border: '1px solid #FFCDD2', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red)', marginBottom: 16 }}>
           {error}
         </div>
       )}
 
+      {/* ── Business Information ── */}
       <Section title="Business Information">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Business Name</label>
-            <input className={inputCls} value={profile.business_name || ''} onChange={e => setProfile(p => ({...p, business_name: e.target.value}))} placeholder="KMC Auto Spa" />
+        <div className="bss-grid-2">
+          <div className="bss-field">
+            <label className="bss-label mt0">Business Name</label>
+            <input className="bss-input" value={profile.business_name || ''} onChange={e => setProfile(p => ({...p, business_name: e.target.value}))} placeholder="KMC Auto Spa" />
           </div>
-          <div>
-            <label className={labelCls}>Business Phone</label>
-            <input className={inputCls} value={profile.phone || ''} onChange={e => setProfile(p => ({...p, phone: e.target.value}))} placeholder="(813) 555-0100" />
+          <div className="bss-field">
+            <label className="bss-label mt0">Business Phone</label>
+            <input className="bss-input" value={profile.phone || ''} onChange={e => setProfile(p => ({...p, phone: e.target.value}))} placeholder="(813) 555-0100" />
           </div>
-          <div className="col-span-full">
-            <label className={labelCls}>Street Address</label>
+          <div className="bss-field bss-span2">
+            <label className="bss-label">Street Address</label>
             <AddressAutocomplete
               value={profile.address || ''}
               onChange={v => setProfile(p => ({ ...p, address: v }))}
@@ -187,58 +186,61 @@ export default function BusinessSettings() {
                 setProfile(p => ({ ...p, address: street, city, state, zip, lat: lat || p.lat, lng: lng || p.lng }))
               }
               placeholder="123 Main St"
-              className={inputCls}
+              className="bss-input"
             />
           </div>
-          <div>
-            <label className={labelCls}>City</label>
-            <input className={inputCls} value={profile.city || ''} onChange={e => setProfile(p => ({...p, city: e.target.value}))} placeholder="Tampa" />
+          <div className="bss-field">
+            <label className="bss-label">City</label>
+            <input className="bss-input" value={profile.city || ''} onChange={e => setProfile(p => ({...p, city: e.target.value}))} placeholder="Tampa" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>State</label>
-              <input className={inputCls} value={profile.state || ''} onChange={e => setProfile(p => ({...p, state: e.target.value}))} placeholder="FL" maxLength={2} />
+          <div className="bss-field">
+            <div className="bss-grid-2-2">
+              <div>
+                <label className="bss-label">State</label>
+                <input className="bss-input" value={profile.state || ''} onChange={e => setProfile(p => ({...p, state: e.target.value}))} placeholder="FL" maxLength={2} />
+              </div>
+              <div>
+                <label className="bss-label">ZIP</label>
+                <input className="bss-input" value={profile.zip || ''} onChange={e => setProfile(p => ({...p, zip: e.target.value}))} placeholder="33601" />
+              </div>
             </div>
-            <div>
-              <label className={labelCls}>ZIP</label>
-              <input className={inputCls} value={profile.zip || ''} onChange={e => setProfile(p => ({...p, zip: e.target.value}))} placeholder="33601" />
-            </div>
           </div>
-          <div>
-            <label className={labelCls}>Website</label>
-            <input className={inputCls} value={profile.website || ''} onChange={e => setProfile(p => ({...p, website: e.target.value}))} placeholder="https://kmcautospa.com" />
+          <div className="bss-field">
+            <label className="bss-label">Website</label>
+            <input className="bss-input" value={profile.website || ''} onChange={e => setProfile(p => ({...p, website: e.target.value}))} placeholder="https://kmcautospa.com" />
           </div>
-          <div>
-            <label className={labelCls}>Service Vertical</label>
-            <select className={inputCls} value={profile.vertical || ''} onChange={e => setProfile(p => ({...p, vertical: e.target.value}))}>
+          <div className="bss-field">
+            <label className="bss-label">Service Vertical</label>
+            <select className="bss-input" value={profile.vertical || ''} onChange={e => setProfile(p => ({...p, vertical: e.target.value}))}>
               <option value="">Select vertical…</option>
               {VERTICALS.map(v => <option key={v}>{v}</option>)}
             </select>
           </div>
-          <div>
-            <label className={labelCls}>Timezone</label>
-            <select className={inputCls} value={profile.timezone || 'America/New_York'} onChange={e => setProfile(p => ({...p, timezone: e.target.value}))}>
+          <div className="bss-field">
+            <label className="bss-label">Timezone</label>
+            <select className="bss-input" value={profile.timezone || 'America/New_York'} onChange={e => setProfile(p => ({...p, timezone: e.target.value}))}>
               {TIMEZONES.map(tz => <option key={tz}>{tz}</option>)}
             </select>
           </div>
-          <div className="col-span-full">
-            <label className={labelCls}>Business Description (optional)</label>
-            <textarea className={inputCls + ' h-[90px] resize-y'} value={profile.description || ''} onChange={e => setProfile(p => ({...p, description: e.target.value}))} placeholder="Brief description for your booking page…" />
+          <div className="bss-field bss-span2">
+            <label className="bss-label">Business Description <span style={{ fontFamily: 'Inter', textTransform: 'none', letterSpacing: 0, fontSize: 11, color: 'var(--steel)' }}>(optional)</span></label>
+            <textarea className="bss-input" style={{ height: 84, resize: 'vertical' }} value={profile.description || ''} onChange={e => setProfile(p => ({...p, description: e.target.value}))} placeholder="Brief description for your booking page…" />
           </div>
         </div>
         <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} />
       </Section>
 
+      {/* ── Hours of Operation ── */}
       <Section title="Hours of Operation">
-        <div className="flex flex-col gap-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(hours.length ? hours : [0,1,2,3,4,5,6].map(d => ({ day_of_week:d, open_time:'08:00', close_time:'17:00', is_closed: d===0||d===6 }))).map((h, i) => (
-            <div key={h.day_of_week} className="grid gap-3 items-center" style={{ gridTemplateColumns: '100px 1fr 1fr 120px' }}>
-              <div className="text-sm font-semibold text-navy">{DAYS[h.day_of_week]}</div>
-              <input type="time" className={inputCls + (h.is_closed ? ' opacity-35' : '')} value={h.open_time || '08:00'} disabled={h.is_closed}
+            <div key={h.day_of_week} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 120px', gap: 10, alignItems: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{DAYS[h.day_of_week]}</div>
+              <input type="time" className="bss-input" style={{ opacity: h.is_closed ? .35 : 1 }} value={h.open_time || '08:00'} disabled={h.is_closed}
                 onChange={e => setHours(hs => hs.map((x,j) => j===i ? {...x, open_time: e.target.value} : x))} />
-              <input type="time" className={inputCls + (h.is_closed ? ' opacity-35' : '')} value={h.close_time || '17:00'} disabled={h.is_closed}
+              <input type="time" className="bss-input" style={{ opacity: h.is_closed ? .35 : 1 }} value={h.close_time || '17:00'} disabled={h.is_closed}
                 onChange={e => setHours(hs => hs.map((x,j) => j===i ? {...x, close_time: e.target.value} : x))} />
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--slate)' }}>
                 <input type="checkbox" checked={!!h.is_closed} onChange={e => setHours(hs => hs.map((x,j) => j===i ? {...x, is_closed: e.target.checked} : x))} />
                 Closed
               </label>
@@ -248,181 +250,197 @@ export default function BusinessSettings() {
         <SaveBar saving={saving} saved={saved === 'hours'} onSave={saveHours} />
       </Section>
 
-      <Section title="Closures & Holidays">
-        <div className="flex flex-col gap-2.5 mb-5">
-          {closures.length === 0 && <div className="text-sm text-steel">No closures added yet.</div>}
+      {/* ── Closures & Holidays ── */}
+      <Section title="Closures &amp; Holidays">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {closures.length === 0 && <div style={{ fontSize: 13, color: 'var(--steel)' }}>No closures added yet.</div>}
           {closures.map(c => (
-            <div key={c.id} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border ${c.is_emergency ? 'bg-red-50 border-red-200' : 'bg-offwhite border-lightgray'}`}>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-navy truncate">{c.name}</div>
-                <div className="text-xs text-steel">{c.closure_date}{c.is_emergency ? ' · Emergency closure' : ''}</div>
+            <div key={c.id} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 12px', borderRadius: 8,
+              background: c.is_emergency ? 'var(--red-lt)' : 'var(--off)',
+              border: `1px solid ${c.is_emergency ? '#FFCDD2' : 'var(--lightgray)'}`,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--steel)' }}>{c.closure_date}{c.is_emergency ? ' · Emergency closure' : ''}</div>
               </div>
-              <button onClick={() => deleteClosure(c.id)} className="text-red-600 hover:text-red-800 text-lg leading-none bg-transparent border-0 cursor-pointer flex-shrink-0">×</button>
+              <button onClick={() => deleteClosure(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
             </div>
           ))}
         </div>
-        <div className="grid gap-3 items-end" style={{ gridTemplateColumns: '1fr 2fr 1fr 120px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 100px', gap: 10, alignItems: 'end' }}>
           <div>
-            <label className={labelCls}>Date</label>
-            <input type="date" className={inputCls} value={newClosure.closure_date} onChange={e => setNewClosure(c => ({...c, closure_date: e.target.value}))} />
+            <label className="bss-label mt0">Date</label>
+            <input type="date" className="bss-input" value={newClosure.closure_date} onChange={e => setNewClosure(c => ({...c, closure_date: e.target.value}))} />
           </div>
           <div>
-            <label className={labelCls}>Name</label>
-            <input className={inputCls} value={newClosure.name} onChange={e => setNewClosure(c => ({...c, name: e.target.value}))} placeholder="Memorial Day" />
+            <label className="bss-label mt0">Name</label>
+            <input className="bss-input" value={newClosure.name} onChange={e => setNewClosure(c => ({...c, name: e.target.value}))} placeholder="Memorial Day" />
           </div>
-          <div className="pt-5">
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate">
+          <div style={{ paddingTop: 18 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--slate)' }}>
               <input type="checkbox" checked={newClosure.is_emergency} onChange={e => setNewClosure(c => ({...c, is_emergency: e.target.checked}))} />
               Emergency
             </label>
           </div>
-          <button onClick={addClosure} className="bg-navy text-sand font-bold px-4 py-2 rounded-lg text-sm cursor-pointer border-0">Add</button>
+          <button onClick={addClosure} className="btn-primary" style={{ padding: '9px 0' }}>Add</button>
         </div>
       </Section>
 
+      {/* ── Service Templates ── */}
       <Section title="Service Templates">
-        <div className="flex flex-col gap-2.5 mb-6">
-          {services.length === 0 && <div className="text-sm text-steel">No service templates yet. Add your first one below.</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {services.length === 0 && <div style={{ fontSize: 13, color: 'var(--steel)' }}>No service templates yet. Add your first one below.</div>}
           {services.map(svc => (
             <div key={svc.id}>
               {editingSvc?.id === svc.id ? (
-                <div className="bg-offwhite border border-lightgray rounded-xl p-4">
-                  <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+                <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
                     <div>
-                      <label className={labelCls}>Name</label>
-                      <input className={inputCls} value={editingSvc.name} onChange={e => setEditingSvc(s => ({...s, name: e.target.value}))} />
+                      <label className="bss-label mt0">Name</label>
+                      <input className="bss-input" value={editingSvc.name} onChange={e => setEditingSvc(s => ({...s, name: e.target.value}))} />
                     </div>
                     <div>
-                      <label className={labelCls}>Duration (min)</label>
-                      <input type="number" className={inputCls} value={editingSvc.duration_minutes} onChange={e => setEditingSvc(s => ({...s, duration_minutes: parseInt(e.target.value)||60}))} />
+                      <label className="bss-label mt0">Duration (min)</label>
+                      <input type="number" className="bss-input" value={editingSvc.duration_minutes} onChange={e => setEditingSvc(s => ({...s, duration_minutes: parseInt(e.target.value)||60}))} />
                     </div>
                     <div>
-                      <label className={labelCls}>Buffer (min)</label>
-                      <input type="number" className={inputCls} value={editingSvc.buffer_minutes} onChange={e => setEditingSvc(s => ({...s, buffer_minutes: parseInt(e.target.value)||0}))} />
+                      <label className="bss-label mt0">Buffer (min)</label>
+                      <input type="number" className="bss-input" value={editingSvc.buffer_minutes} onChange={e => setEditingSvc(s => ({...s, buffer_minutes: parseInt(e.target.value)||0}))} />
                     </div>
                     <div>
-                      <label className={labelCls}>Price ($)</label>
-                      <input type="number" className={inputCls} value={editingSvc.price || ''} onChange={e => setEditingSvc(s => ({...s, price: e.target.value}))} placeholder="0.00" />
+                      <label className="bss-label mt0">Price ($)</label>
+                      <input type="number" className="bss-input" value={editingSvc.price || ''} onChange={e => setEditingSvc(s => ({...s, price: e.target.value}))} placeholder="0.00" />
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => saveService(editingSvc)} className="px-4 py-2 bg-navy text-sand border-0 rounded-md text-xs font-bold cursor-pointer">Save</button>
-                    <button onClick={() => setEditingSvc(null)} className="px-4 py-2 bg-transparent border border-lightgray rounded-md text-xs cursor-pointer text-slate">Cancel</button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => saveService(editingSvc)} className="btn-primary" style={{ fontSize: 12, padding: '7px 14px' }}>Save</button>
+                    <button onClick={() => setEditingSvc(null)} className="btn-secondary" style={{ fontSize: 12, padding: '7px 14px' }}>Cancel</button>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-3 px-4 py-3 bg-offwhite border border-lightgray rounded-xl">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-navy truncate">{svc.name}</div>
-                    <div className="text-xs text-steel mt-0.5">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{svc.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
                       {svc.duration_minutes}min + {svc.buffer_minutes}min buffer
                       {svc.price ? ` · $${parseFloat(svc.price).toFixed(2)}` : ''}
                     </div>
                   </div>
-                  <button onClick={() => setEditingSvc({...svc})} className="bg-transparent border border-lightgray rounded-md px-3 py-1.5 text-xs cursor-pointer text-slate hover:border-slate transition-colors">Edit</button>
-                  <button onClick={() => deleteService(svc.id)} className="bg-transparent border-0 text-red-600 cursor-pointer text-lg leading-none">×</button>
+                  <button onClick={() => setEditingSvc({...svc})} className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }}>Edit</button>
+                  <button onClick={() => deleteService(svc.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
                 </div>
               )}
             </div>
           ))}
         </div>
-        <div className="bg-green-50 border border-green-600/20 rounded-xl p-4">
-          <div className="text-sm font-semibold text-navy mb-3">Add Service Template</div>
-          <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+
+        {/* Add service form */}
+        <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 12 }}>
+            Add Service Template
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
-              <label className={labelCls}>Name</label>
-              <input className={inputCls} value={newSvc.name} onChange={e => setNewSvc(s => ({...s, name: e.target.value}))} placeholder="Full Detail" />
+              <label className="bss-label mt0">Name</label>
+              <input className="bss-input" value={newSvc.name} onChange={e => setNewSvc(s => ({...s, name: e.target.value}))} placeholder="Full Detail" />
             </div>
             <div>
-              <label className={labelCls}>Duration (min)</label>
-              <input type="number" className={inputCls} value={newSvc.duration_minutes} onChange={e => setNewSvc(s => ({...s, duration_minutes: parseInt(e.target.value)||60}))} />
+              <label className="bss-label mt0">Duration (min)</label>
+              <input type="number" className="bss-input" value={newSvc.duration_minutes} onChange={e => setNewSvc(s => ({...s, duration_minutes: parseInt(e.target.value)||60}))} />
             </div>
             <div>
-              <label className={labelCls}>Buffer (min)</label>
-              <input type="number" className={inputCls} value={newSvc.buffer_minutes} onChange={e => setNewSvc(s => ({...s, buffer_minutes: parseInt(e.target.value)||0}))} />
+              <label className="bss-label mt0">Buffer (min)</label>
+              <input type="number" className="bss-input" value={newSvc.buffer_minutes} onChange={e => setNewSvc(s => ({...s, buffer_minutes: parseInt(e.target.value)||0}))} />
             </div>
             <div>
-              <label className={labelCls}>Price ($)</label>
-              <input type="number" className={inputCls} value={newSvc.price} onChange={e => setNewSvc(s => ({...s, price: e.target.value}))} placeholder="150.00" />
+              <label className="bss-label mt0">Price ($)</label>
+              <input type="number" className="bss-input" value={newSvc.price} onChange={e => setNewSvc(s => ({...s, price: e.target.value}))} placeholder="150.00" />
             </div>
           </div>
-          <button onClick={addService} className="px-5 py-2 bg-navy text-sand border-0 rounded-lg text-sm font-bold cursor-pointer">Add service</button>
+          <button onClick={addService} className="btn-primary" style={{ fontSize: 13 }}>Add service</button>
         </div>
       </Section>
 
-      <Section title="Tax & Legal">
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          <div>
-            <label className={labelCls}>EIN / Employer ID Number</label>
-            <input className={inputCls} value={profile.ein || ''} onChange={e => setProfile(p => ({...p, ein: e.target.value}))} placeholder="XX-XXXXXXX" />
-            <div className="text-xs text-steel mt-1">Used for 1099 reporting and payment processing setup.</div>
+      {/* ── Tax & Legal ── */}
+      <Section title="Tax &amp; Legal">
+        <div className="bss-grid-2">
+          <div className="bss-field">
+            <label className="bss-label mt0">EIN / Employer ID Number</label>
+            <input className="bss-input" value={profile.ein || ''} onChange={e => setProfile(p => ({...p, ein: e.target.value}))} placeholder="XX-XXXXXXX" />
+            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>Used for 1099 reporting and payment processing setup.</div>
           </div>
-          <div>
-            <label className={labelCls}>Business Legal Name</label>
-            <input className={inputCls} value={profile.business_name || ''} onChange={e => setProfile(p => ({...p, business_name: e.target.value}))} placeholder="KMC Auto Spa LLC" />
+          <div className="bss-field">
+            <label className="bss-label mt0">Business Legal Name</label>
+            <input className="bss-input" value={profile.business_name || ''} onChange={e => setProfile(p => ({...p, business_name: e.target.value}))} placeholder="KMC Auto Spa LLC" />
           </div>
-          <div>
-            <label className={labelCls}>State of Incorporation</label>
-            <input className={inputCls} value={profile.state || ''} onChange={e => setProfile(p => ({...p, state: e.target.value}))} placeholder="DE" maxLength={2} />
+          <div className="bss-field">
+            <label className="bss-label">State of Incorporation</label>
+            <input className="bss-input" value={profile.state || ''} onChange={e => setProfile(p => ({...p, state: e.target.value}))} placeholder="DE" maxLength={2} />
           </div>
         </div>
-        <div className="bg-amber-50 border border-sand/40 rounded-xl px-5 py-4 mb-4">
-          <div className="text-sm font-bold text-navy mb-1.5">1099 Contractor Settings</div>
-          <div className="text-sm text-slate leading-relaxed">
+
+        <div style={{ background: 'var(--sand-lt)', border: '1px solid #E8D5B8', borderRadius: 8, padding: '12px 14px', marginTop: 16, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>1099 Contractor Settings</div>
+          <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
             Contractor tax classification is managed per technician in the <strong>Team</strong> section. Mark each technician as Employee or 1099 Contractor and enter their Tax ID for year-end reporting.
           </div>
         </div>
-        <div className="bg-offwhite border border-lightgray rounded-xl px-5 py-4">
-          <div className="text-sm font-bold text-navy mb-1.5">Platform Fee</div>
-          <div className="text-sm text-slate leading-relaxed">
+        <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>Platform Fee</div>
+          <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
             FieldCore charges a <strong>1% platform fee</strong> on all payments processed through the platform. This is deducted before funds are transferred to your Stripe account. Standard Stripe fees (2.9% + 30¢) also apply.
           </div>
         </div>
         <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} label="Save tax settings" />
       </Section>
 
+      {/* ── No-Show Clock ── */}
       <Section title="No-Show Clock">
-        <div className="grid grid-cols-2 gap-5 mb-5">
-          <div>
-            <label className={labelCls}>Grace Period</label>
-            <select className={inputCls} value={nsSettings.grace_period_minutes}
+        <div className="bss-grid-2" style={{ marginBottom: 16 }}>
+          <div className="bss-field">
+            <label className="bss-label mt0">Grace Period</label>
+            <select className="bss-input" value={nsSettings.grace_period_minutes}
               onChange={e => setNsSettings(s => ({ ...s, grace_period_minutes: parseInt(e.target.value) }))}>
               {[5, 10, 15, 20, 30].map(m => <option key={m} value={m}>{m} minutes</option>)}
             </select>
-            <div className="text-xs text-steel mt-1">How long the tech waits before a no-show can be declared.</div>
+            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>How long the tech waits before a no-show can be declared.</div>
           </div>
-          <div className="flex flex-col gap-4 justify-center">
-            <label className="flex items-center gap-3 cursor-pointer text-sm text-navy">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center', paddingTop: 18 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
               <input type="checkbox" checked={nsSettings.auto_declare}
                 onChange={e => setNsSettings(s => ({ ...s, auto_declare: e.target.checked }))} />
               Auto-declare no-show when timer expires
             </label>
-            <label className="flex items-center gap-3 cursor-pointer text-sm text-navy">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
               <input type="checkbox" checked={nsSettings.require_arrival_photo}
                 onChange={e => setNsSettings(s => ({ ...s, require_arrival_photo: e.target.checked }))} />
               Require photo proof of arrival to start clock
             </label>
           </div>
         </div>
-        <div className="mb-5">
-          <label className={labelCls}>Custom Client SMS Template</label>
+        <div style={{ marginBottom: 14 }}>
+          <label className="bss-label mt0">Custom Client SMS Template</label>
           <textarea
-            className={inputCls + ' h-20 resize-y'}
+            className="bss-input"
+            style={{ height: 72, resize: 'vertical' }}
             value={nsSettings.client_sms_template}
             onChange={e => setNsSettings(s => ({ ...s, client_sms_template: e.target.value }))}
             placeholder="Leave blank to use default. Use {minutes} and {amount} as placeholders."
           />
-          <div className="text-xs text-steel mt-1">Variables: <code>{'{minutes}'}</code> = grace period, <code>{'{amount}'}</code> = deposit amount</div>
+          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>Variables: <code>{'{minutes}'}</code> = grace period, <code>{'{amount}'}</code> = deposit amount</div>
         </div>
-        <div className="mb-6">
-          <label className={labelCls}>Custom Technician SMS Template</label>
+        <div style={{ marginBottom: 4 }}>
+          <label className="bss-label mt0">Custom Technician SMS Template</label>
           <textarea
-            className={inputCls + ' h-20 resize-y'}
+            className="bss-input"
+            style={{ height: 72, resize: 'vertical' }}
             value={nsSettings.tech_sms_template}
             onChange={e => setNsSettings(s => ({ ...s, tech_sms_template: e.target.value }))}
             placeholder="Leave blank to use default. Use {client_name}, {address}, {amount} as placeholders."
           />
-          <div className="text-xs text-steel mt-1">Variables: <code>{'{client_name}'}</code>, <code>{'{address}'}</code>, <code>{'{amount}'}</code></div>
+          <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>Variables: <code>{'{client_name}'}</code>, <code>{'{address}'}</code>, <code>{'{amount}'}</code></div>
         </div>
         <SaveBar saving={saving} saved={saved === 'noshow'} onSave={saveNsSettings} label="Save no-show settings" />
       </Section>
