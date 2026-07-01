@@ -1911,8 +1911,17 @@ body {
   /* ── Main: full width (sidebar is out of flow) ── */
   .main { width: 100%; min-width: 0; }
 
-  /* ── Topbar: compact ── */
-  .topbar    { padding: 0 12px; gap: 8px; height: 50px; }
+  /* ── Topbar: compact + safe-area at top ── */
+  /* padding-top = env(safe-area-inset-top) so the topbar fills the iPhone
+     status bar area with white; items remain centered in the 50px below it. */
+  .topbar {
+    padding: env(safe-area-inset-top) 12px 0;
+    height: auto;
+    min-height: calc(50px + env(safe-area-inset-top));
+    gap: 8px;
+    align-items: flex-end;
+    padding-bottom: 8px;
+  }
   .tb-title  { font-size: 15px; }
   .tb-date   { display: none; }
   .tb-ghost  { display: none; }
@@ -1936,7 +1945,7 @@ body {
   .tb-hamburger svg { width: 18px; height: 18px; stroke: var(--navy); display: block; }
 
   /* ── Content ── */
-  .content { padding: 12px; padding-bottom: 76px; }
+  .content { padding: 12px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 
   /* ── NoShow strip: wrap on narrow screens ── */
   .ns-strip { padding: 6px 12px; flex-wrap: wrap; gap: 6px; }
@@ -1968,11 +1977,14 @@ body {
     display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    height: 62px;
+    min-height: 62px;
+    height: auto;
+    padding-bottom: env(safe-area-inset-bottom);
     background: var(--white);
     border-top: 1px solid var(--lightgray);
     z-index: 200;
     box-shadow: 0 -2px 12px rgba(0,0,0,.06);
+    align-items: flex-start;
   }
   .mbn-item {
     flex: 1;
@@ -2003,7 +2015,7 @@ body {
 @media (max-width: 390px) {
   .topbar           { padding: 0 10px; gap: 6px; }
   .tb-btn.tb-primary { font-size: 10.5px; padding: 5px 8px; }
-  .content          { padding: 10px; padding-bottom: 76px; }
+  .content          { padding: 10px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .dash-sc-v        { font-size: 18px; }
   .dash-stat-grid   { grid-template-columns: 1fr !important; }
 }
@@ -2037,38 +2049,45 @@ body {
     min-height: 320px;
   }
 
-  /* ── Dispatch layout: stack vertically on mobile ── */
-  /* Desktop uses margin:-22px -24px; mobile content padding is only 12px.
-     Override margin to match so the layout doesn't bleed above the topbar. */
+  /* ── Dispatch: full-viewport fixed panel between topbar and bottom nav ── */
+  /* position: fixed takes the layout out of the scroll container entirely.
+     The map stays in place; only the job panel scrolls internally. */
   .dispatch-layout {
-    flex-direction: column !important;
+    position: fixed !important;
+    top: calc(50px + env(safe-area-inset-top) + 8px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(62px + env(safe-area-inset-bottom)) !important;
     height: auto !important;
-    margin: -12px -12px !important;
-    overflow: visible !important;
+    margin: 0 !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    z-index: 1 !important;
   }
-  /* The left panel (job list) goes full-width and scrolls naturally */
+  /* Job list: scrolls internally, takes up to 45% of the panel */
   .dispatch-panel {
     width: 100% !important;
-    max-height: none !important;
-    overflow-y: visible !important;
+    flex: 0 0 auto !important;
+    max-height: 45% !important;
+    overflow-y: auto !important;
     border-right: none !important;
     border-bottom: 1px solid var(--lightgray);
-    flex-shrink: 0;
   }
-  /* Map wrapper gets a fixed height so it doesn't collapse */
+  /* Map: fills remaining vertical space */
   .dispatch-map-wrap {
-    height: 50vh !important;
-    min-height: 260px !important;
+    flex: 1 !important;
+    height: auto !important;
+    min-height: 0 !important;
     position: relative !important;
+    overflow: hidden !important;
   }
-  .dispatch-map { height: 100% !important; }
-  /* Legend: compact on mobile to avoid covering too much map */
+  .dispatch-map { width: 100% !important; height: 100% !important; }
+  /* Legend: compact in bottom-right corner of map */
   .dispatch-legend {
     bottom: 8px !important;
     right: 8px !important;
     padding: 6px 10px !important;
     gap: 4px !important;
-    font-size: 10px !important;
   }
   .dispatch-legend-item { font-size: 10px !important; }
 
