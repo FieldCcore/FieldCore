@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -29,7 +29,7 @@ const PLANS = [
   },
 ];
 
-const PLAN_ORDER = ['starter', 'solo', 'pro', 'scale'];
+const PLAN_ORDER = ['starter', 'solo', 'pro', 'scale', 'enterprise'];
 const PLAN_FEATURES = {
   solo:  ['Business phone','No-show clock + 3-layer deposits','Revenue analytics','Multi-entity access'],
   pro:   ['Multi-entity access','Priority support'],
@@ -299,6 +299,8 @@ export default function Billing() {
   const [history,      setHistory]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [busy,         setBusy]         = useState(false);
+  const [upgradingPlan, setUpgradingPlan] = useState(null);
+  const [upgradeError,  setUpgradeError]  = useState('');
   const [connectBusy,  setConnectBusy]  = useState(false);
   const [tab,          setTab]          = useState('plans');
   const [addCard,      setAddCard]      = useState(false);
@@ -309,6 +311,11 @@ export default function Billing() {
   const [payoutSchedule, setPayoutSchedule] = useState('daily');
   const [payoutScheduleSaving, setPayoutScheduleSaving] = useState(false);
   const [payoutScheduleSaved, setPayoutScheduleSaved] = useState(false);
+  const [connectEmbedActive, setConnectEmbedActive] = useState(false);
+  const [connectEmbedError,  setConnectEmbedError]  = useState('');
+  const [connectError,       setConnectError]        = useState('');
+  const connectInstanceRef  = useRef(null);
+  const connectContainerRef = useRef(null);
 
   const load = useCallback(async () => {
     const [billingRes, methodsRes, historyRes] = await Promise.allSettled([
@@ -331,14 +338,27 @@ export default function Billing() {
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
+  useEffect(() => {
+    if (!connectEmbedActive || !connectContainerRef.current || !connectInstanceRef.current) return;
+    const component = connectInstanceRef.current.create('account-onboarding');
+    component.setOnExit(() => {
+      setConnectEmbedActive(false);
+      connectInstanceRef.current = null;
+      load();
+    });
+    component.mount(connectContainerRef.current);
+    return () => { try { component.unmount(); } catch (e) {} };
+  }, [connectEmbedActive, load]);
+
   async function upgrade(plan) {
-    setBusy(true);
+    setUpgradingPlan(plan);
+    setUpgradeError('');
     try {
       const { data } = await api.post('/billing/checkout', { plan });
       window.location.href = data.url;
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not start checkout.');
-      setBusy(false);
+      setUpgradeError(err.response?.data?.error || 'Could not start checkout.');
+      setUpgradingPlan(null);
     }
   }
 
@@ -354,24 +374,47 @@ export default function Billing() {
     }
   }
 
-  async function connectStripe() {
+  async function startEmbeddedOnboarding() {
     setConnectBusy(true);
+    setConnectEmbedError('');
     try {
-      const { data } = await api.post('/billing/connect');
-      window.location.href = data.url;
+      // Pre-validate: ensures connected account exists and embedded components are available
+      const { data: initData } = await api.post('/billing/connect/account-session');
+      let cachedSecret = initData.client_secret;
+
+      const { loadConnectAndInitialize } = await import('@stripe/connect-js');
+      const instance = loadConnectAndInitialize({
+        publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '',
+        fetchClientSecret: async () => {
+          if (cachedSecret) {
+            const s = cachedSecret;
+            cachedSecret = null;
+            return s;
+          }
+          const { data } = await api.post('/billing/connect/account-session');
+          return data.client_secret;
+        },
+        appearance: {
+          variables: { fontFamily: 'Inter, sans-serif', colorPrimary: '#1C2333' },
+        },
+      });
+      connectInstanceRef.current = instance;
+      setConnectEmbedActive(true);
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not start Stripe onboarding.');
+      setConnectEmbedError(err.response?.data?.error || err.message || 'Could not start Stripe onboarding. Please try again.');
+    } finally {
       setConnectBusy(false);
     }
   }
 
   async function openStripeDashboard() {
     setConnectBusy(true);
+    setConnectError('');
     try {
       const { data } = await api.post('/billing/connect/login');
       window.open(data.url, '_blank');
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not open Stripe dashboard.');
+      setConnectError(err.response?.data?.error || 'Could not open Stripe dashboard.');
     } finally { setConnectBusy(false); }
   }
 
@@ -384,7 +427,7 @@ export default function Billing() {
       setPayoutScheduleSaved(true);
       setTimeout(() => setPayoutScheduleSaved(false), 3000);
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not update payout schedule.');
+      setConnectError(err.response?.data?.error || 'Could not update payout schedule.');
     } finally {
       setPayoutScheduleSaving(false);
     }
@@ -425,9 +468,18 @@ export default function Billing() {
   const currentPlan = billing?.plan || 'starter';
   const planStatus  = billing?.status || 'active';
   const currentIdx  = PLAN_ORDER.indexOf(currentPlan);
-  const currentName = { starter: 'Free Trial', solo: 'Solo', pro: 'Pro', scale: 'Scale' }[currentPlan] || currentPlan;
+  const currentName = { starter: 'Free Trial', solo: 'Solo', pro: 'Pro', scale: 'Scale', enterprise: 'Enterprise' }[currentPlan] || currentPlan;
   const sub         = billing?.subscription;
   const connect     = billing?.connect || { status: 'not_connected', account_id: null, platform_fee: 1 };
+
+  const isEnterpriseCurrentPlan = currentPlan === 'enterprise';
+
+  // Shared base style for all plan CTA buttons — only color/state properties differ
+  const planBtn = {
+    width: '100%', padding: '11px 0', borderRadius: 7,
+    fontSize: 13, fontWeight: 700, lineHeight: 1,
+    fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
+  };
 
   const upgraded       = searchParams.get('upgraded')  === '1';
   const connectSuccess = searchParams.get('connect')   === 'success';
@@ -531,20 +583,36 @@ export default function Billing() {
         {/* ── PLANS TAB ─────────────────────────────────────────────────────── */}
         {tab === 'plans' && (
           <>
+            {upgradeError && (
+              <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 6, fontSize: 13, color: 'var(--red)' }}>
+                {upgradeError}
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
               {PLANS.map(plan => {
                 const planIdx     = PLAN_ORDER.indexOf(plan.key);
-                const isCurrent   = plan.key === currentPlan && !!billing?.hasSubscription;
-                const isUpgrade   = !billing?.hasSubscription || planIdx > currentIdx;
-                const isDowngrade = !!billing?.hasSubscription && planIdx < currentIdx;
+                const isCurrent   = plan.key === currentPlan;
+                const isUpgrade   = !isCurrent && planIdx > currentIdx;
+                const isDowngrade = !isCurrent && planIdx < currentIdx;
+                const isUpgradingThis = upgradingPlan === plan.key;
 
                 return (
-                  <div key={plan.key} className="dash-card" style={{ position: 'relative', border: plan.highlight ? '2px solid var(--sand)' : '1px solid var(--lightgray)' }}>
-                    {plan.highlight && (
-                      <div style={{ position: 'absolute', top: -1, left: 20, background: 'var(--sand)', color: 'var(--navy)', fontSize: 9, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', padding: '2px 10px', borderRadius: '0 0 5px 5px' }}>Most Popular</div>
+                  <div key={plan.key} className="dash-card" style={{
+                    position: 'relative',
+                    border: isCurrent ? '2px solid var(--green)' : '1px solid var(--lightgray)',
+                    background: isCurrent ? 'rgba(46,125,50,.03)' : 'var(--white)',
+                    boxShadow: isCurrent ? '0 0 0 3px rgba(46,125,50,.08)' : undefined,
+                  }}>
+                    {plan.highlight && !isCurrent && (
+                      <div style={{ position: 'absolute', top: -1, left: 18, background: 'var(--sand)', color: 'var(--navy)', fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: '0 0 5px 5px' }}>Most Popular</div>
                     )}
-                    <div style={{ padding: '28px 20px 20px' }}>
-                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 10 }}>{plan.name}</div>
+                    <div style={{ padding: (isCurrent || plan.highlight) ? '28px 20px 20px' : '20px 20px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>{plan.name}</div>
+                        {isCurrent && (
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>Active</span>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
                         <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 38, color: 'var(--navy)', lineHeight: 1 }}>${plan.price}</span>
                         <span style={{ fontSize: 12, color: 'var(--steel)' }}>/mo</span>
@@ -556,30 +624,60 @@ export default function Billing() {
                       </div>
 
                       {isCurrent ? (
-                        <button disabled style={{ width: '100%', padding: '10px 0', borderRadius: 6, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--steel)', fontSize: 12 }}>Current Plan</button>
+                        <button disabled style={{ ...planBtn, border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85 }}>✓ Current Plan</button>
                       ) : isUpgrade ? (
-                        <button disabled={busy} onClick={() => upgrade(plan.key)} style={{ width: '100%', padding: '10px 0', borderRadius: 6, border: 'none', background: 'var(--navy)', color: plan.highlight ? 'var(--sand)' : 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                          {busy ? '…' : `Upgrade to ${plan.name} →`}
+                        <button
+                          disabled={upgradingPlan !== null}
+                          onClick={() => upgrade(plan.key)}
+                          style={{ ...planBtn, border: 'none', background: 'var(--navy)', color: 'white', cursor: upgradingPlan !== null ? 'wait' : 'pointer' }}
+                        >
+                          {isUpgradingThis ? '…' : `Upgrade to ${plan.name} →`}
                         </button>
-                      ) : (
-                        <button disabled={busy} onClick={() => setDowngradeModal({ from: currentPlan, to: plan })} style={{ width: '100%', padding: '10px 0', borderRadius: 6, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--slate)', fontSize: 12, cursor: 'pointer' }}>
-                          {busy ? '…' : `Downgrade to ${plan.name}`}
+                      ) : isDowngrade ? (
+                        <button
+                          onClick={() => setDowngradeModal({ from: currentPlan, to: plan })}
+                          style={{ ...planBtn, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--slate)', cursor: 'pointer' }}
+                        >
+                          Request Downgrade
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Enterprise */}
-            <div className="dash-card" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', gap: 20, flexWrap: 'wrap' }}>
+            {/* Enterprise / Custom */}
+            <div className="dash-card" style={{
+              marginBottom: 20,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '20px 24px', gap: 20, flexWrap: 'wrap',
+              border: isEnterpriseCurrentPlan ? '2px solid var(--green)' : '1px solid var(--lightgray)',
+              background: isEnterpriseCurrentPlan ? 'rgba(46,125,50,.03)' : undefined,
+              boxShadow: isEnterpriseCurrentPlan ? '0 0 0 3px rgba(46,125,50,.08)' : undefined,
+            }}>
               <div>
-                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 6 }}>Custom · Enterprise</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>Custom · Enterprise</div>
+                  {isEnterpriseCurrentPlan && (
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Active</span>
+                  )}
+                </div>
                 <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1, marginBottom: 4 }}>$300+<span style={{ fontSize: 14, color: 'var(--steel)' }}>/mo</span></div>
                 <div style={{ fontSize: 12, color: 'var(--slate)', lineHeight: 1.6 }}>Unlimited phone numbers · Dedicated CSM · 99.9% SLA · Custom feature development · Negotiated processing rate</div>
               </div>
-              <a href="mailto:info@getfieldcore.com?subject=Custom Plan Inquiry" style={{ flexShrink: 0, padding: '10px 24px', background: 'var(--navy)', color: 'var(--sand)', borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>Contact Sales →</a>
+              {isEnterpriseCurrentPlan ? (
+                <button disabled style={{ ...planBtn, width: 'auto', padding: '11px 24px', border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85, flexShrink: 0 }}>
+                  ✓ Current Plan
+                </button>
+              ) : (
+                <a
+                  href="mailto:info@getfieldcore.com?subject=Custom Plan Inquiry"
+                  style={{ ...planBtn, width: 'auto', padding: '11px 24px', border: 'none', background: 'var(--sand)', color: 'var(--navy)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  Contact Sales →
+                </a>
+              )}
             </div>
 
             {/* Downgrade / Cancel */}
@@ -723,7 +821,7 @@ export default function Billing() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
                 {[
-                  { step: '1', label: 'Click Connect', desc: 'Opens Stripe\'s secure onboarding page' },
+                  { step: '1', label: 'Click Connect', desc: 'Stripe\'s secure onboarding loads right here — no redirect needed' },
                   { step: '2', label: 'Enter Bank Info', desc: 'Routing + account number entered on Stripe — FieldCore never sees it' },
                   { step: '3', label: 'Payouts Go Live', desc: 'Stripe verifies your account, usually within minutes' },
                 ].map(s => (
@@ -739,26 +837,38 @@ export default function Billing() {
             {/* Status + actions */}
             <div className="dash-card" style={{ padding: '20px 24px' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Connection Status</div>
+
+              {connectEmbedError && (
+                <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                  {connectEmbedError}
+                </div>
+              )}
+              {connectError && (
+                <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                  {connectError}
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {connect.status === 'not_connected' && (
+                {!connectEmbedActive && connect.status === 'not_connected' && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <StatusBadge status="not connected" />
-                      <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 22px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
-                        {connectBusy ? 'Redirecting…' : 'Connect with Stripe →'}
+                      <button onClick={startEmbeddedOnboarding} disabled={connectBusy} style={{ padding: '10px 22px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
+                        {connectBusy ? 'Loading…' : 'Connect with Stripe →'}
                       </button>
                     </div>
                     <div style={{ padding: '10px 14px', background: 'var(--off)', borderRadius: 8, fontSize: 12, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 500 }}>
-                      Without Connect, payments must be transferred manually. Setup takes about 5 minutes on Stripe's hosted page.
+                      Without Connect, payments must be transferred manually. Setup takes about 5 minutes, completed right here in FieldCore.
                     </div>
                   </>
                 )}
-                {connect.status === 'pending' && (
+                {!connectEmbedActive && connect.status === 'pending' && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <StatusBadge status="verification pending" />
-                      <button onClick={connectStripe} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
-                        {connectBusy ? 'Redirecting…' : 'Continue Setup →'}
+                      <button onClick={startEmbeddedOnboarding} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
+                        {connectBusy ? 'Loading…' : 'Continue Setup →'}
                       </button>
                     </div>
                     <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.6, maxWidth: 500 }}>
@@ -773,6 +883,11 @@ export default function Billing() {
                   </div>
                 )}
               </div>
+
+              {/* Stripe embedded onboarding mounts here */}
+              {connectEmbedActive && (
+                <div ref={connectContainerRef} style={{ marginTop: 16 }} />
+              )}
             </div>
 
             {/* Payout Schedule — only when active */}

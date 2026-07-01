@@ -240,68 +240,105 @@ export default function EstimatesPage() {
     api.get('/estimates').then(r => setEstimates(r.data)).finally(() => setLoading(false));
   }, []);
 
-  function handleCreated(est) {
-    setEstimates(prev => [est, ...prev]);
-  }
+  function handleCreated(est) { setEstimates(prev => [est, ...prev]); }
   function handleUpdate(updated) {
     setEstimates(prev => prev.map(e => e.id === updated.id ? updated : e));
     if (selected?.id === updated.id) setSelected(updated);
   }
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading…</div>;
+
+  const countAccepted = estimates.filter(e => ['accepted','approved','signed'].includes(e.status)).length;
+  const countPending  = estimates.filter(e => ['draft','sent','pending'].includes(e.status)).length;
+  const countExpired  = estimates.filter(e => ['expired','declined','cancelled','canceled'].includes(e.status)).length;
 
   return (
     <div>
       <div className="page-header">
-        <p style={{ margin: 0, color: 'var(--steel)', fontSize: 13 }}>Send estimates with e-signature to clients</p>
+        <div>
+          <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 3 }}>Estimates</div>
+          <div style={{ fontSize: 13, color: 'var(--slate)' }}>Send estimates with e-signature to clients</div>
+        </div>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
       </div>
 
-      {estimates.length === 0 ? (
-        <div style={{ textAlign:'center',padding:'60px 24px',color:'var(--steel)' }}>
-          <div style={{ fontSize:16,fontWeight:600,marginBottom:8 }}>No estimates yet</div>
-          <div style={{ fontSize:14,marginBottom:20 }}>Create an estimate and send it to a client for digital signature.</div>
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead>
-              <tr style={{ borderBottom:'1.5px solid var(--lightgray)' }}>
-                {['Client','Title','Amount','Status','Created','Valid Until',''].map(h => (
-                  <th key={h} style={{ textAlign:'left',padding:'8px 12px',fontSize:11,fontWeight:700,color:'var(--steel)',textTransform:'uppercase',letterSpacing:'.04em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {estimates.map(est => {
-                return (
-                  <tr key={est.id} style={{ borderBottom:'1px solid var(--lightgray)',cursor:'pointer' }} onClick={() => setSelected(est)}>
-                    <td style={{ padding:'10px 12px',fontWeight:600 }}>{est.client_name}</td>
-                    <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{est.title}</td>
-                    <td style={{ padding:'10px 12px',fontFamily:'DM Mono, monospace' }}>{fmt$(est.amount)}</td>
-                    <td style={{ padding:'10px 12px' }}>
-                      <StatusBadge status={est.status} />
-                    </td>
-                    <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{fmtDt(est.created_at)}</td>
-                    <td style={{ padding:'10px 12px',color:'var(--steel)' }}>{est.valid_until ? fmtDt(est.valid_until) : '—'}</td>
-                    <td style={{ padding:'10px 12px' }}>
-                      <button className="btn-secondary" style={{ fontSize:11,padding:'4px 12px' }} onClick={e => { e.stopPropagation(); setSelected(est); }}>Open</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {estimates.length > 0 && (
+        <div className="dash-stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div className="dash-sc">
+            <div className="dash-sc-header"><div className="dash-sc-l">Total</div></div>
+            <div className="dash-sc-v">{estimates.length}</div>
+            <div className="dash-sc-s">All time</div>
+          </div>
+          <div className="dash-sc">
+            <div className="dash-sc-header"><div className="dash-sc-l">Accepted</div></div>
+            <div className="dash-sc-v" style={{ color: countAccepted > 0 ? 'var(--green)' : undefined }}>{countAccepted}</div>
+            <div className="dash-sc-s">Signed or approved</div>
+          </div>
+          <div className="dash-sc">
+            <div className="dash-sc-header"><div className="dash-sc-l">Pending</div></div>
+            <div className="dash-sc-v">{countPending}</div>
+            <div className="dash-sc-s">Draft or awaiting reply</div>
+          </div>
+          <div className="dash-sc">
+            <div className="dash-sc-header"><div className="dash-sc-l">Expired</div></div>
+            <div className="dash-sc-v" style={{ color: countExpired > 0 ? 'var(--red)' : undefined }}>{countExpired}</div>
+            <div className="dash-sc-s">Declined or expired</div>
+          </div>
         </div>
       )}
 
-      {showCreate && (
-        <CreateEstimateModal onCreated={handleCreated} onClose={() => setShowCreate(false)} />
-      )}
-      {selected && (
-        <EstimateDetail estimate={selected} onUpdate={handleUpdate} onClose={() => setSelected(null)} />
-      )}
+      <div className="dash-card">
+        <div className="dash-ch">
+          <span className="dash-cht">All Estimates</span>
+          {estimates.length > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--steel)' }}>{estimates.length} total</span>
+          )}
+        </div>
+
+        {estimates.length === 0 ? (
+          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>No estimates yet</div>
+            <div style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 20 }}>Create your first estimate and send it for digital signature.</div>
+            <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table" style={{ border: 'none', borderRadius: 0 }}>
+              <thead>
+                <tr>
+                  {['Client', 'Title', 'Amount', 'Status', 'Created', 'Valid Until', ''].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {estimates.map(est => (
+                  <tr key={est.id} className="clickable-row" onClick={() => setSelected(est)}>
+                    <td><strong>{est.client_name}</strong></td>
+                    <td>{est.title}</td>
+                    <td style={{ fontFamily: 'DM Mono, monospace', fontVariantNumeric: 'tabular-nums' }}>{fmt$(est.amount)}</td>
+                    <td><StatusBadge status={est.status} /></td>
+                    <td>{fmtDt(est.created_at)}</td>
+                    <td>{est.valid_until ? fmtDt(est.valid_until) : '—'}</td>
+                    <td>
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '4px 10px' }}
+                        onClick={e => { e.stopPropagation(); setSelected(est); }}
+                      >
+                        Open
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showCreate && <CreateEstimateModal onCreated={handleCreated} onClose={() => setShowCreate(false)} />}
+      {selected && <EstimateDetail estimate={selected} onUpdate={handleUpdate} onClose={() => setSelected(null)} />}
     </div>
   );
 }

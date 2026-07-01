@@ -30,6 +30,8 @@ const STATUS_TO_VARIANT = {
   verified:                'green',
   excellent:               'green',
   signed:                  'green',
+  accepted:                'green',
+  approved:                'green',
   collected:               'green',
   'payouts connected':     'green',
   'payouts active':        'green',
@@ -44,6 +46,7 @@ const STATUS_TO_VARIANT = {
   cancelled:               'red',
   canceled:                'red',
   declined:                'red',
+  expired:                 'red',
   error:                   'red',
   'no-show':               'red',
   noshow:                  'red',
@@ -63,14 +66,13 @@ const STATUS_TO_VARIANT = {
   'stripe pending':        'yellow',
   'most popular':          'yellow',
   sent:                    'yellow',
-  // gray — inactive/disabled/unknown/expired
+  // gray — inactive/disabled/unknown
   draft:                   'gray',
   disabled:                'gray',
   'not connected':         'gray',
   inactive:                'gray',
   unknown:                 'gray',
   void:                    'gray',
-  expired:                 'gray',
   refunded:                'gray',
   available:               'gray',
 };
