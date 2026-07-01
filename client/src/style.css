@@ -290,6 +290,8 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .page-header h1 {
   font-family: 'Cormorant Garamond', serif;
@@ -640,6 +642,28 @@ body {
 .filter-count { background: rgba(255,255,255,.15); border-radius: 999px; padding: 0 7px; font-size: 11px; }
 .filter-tab:not(.active) .filter-count { background: var(--lightgray); color: var(--slate); }
 
+/* ── Table wrap ──────────────────────────────────────────── */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Layout utilities ────────────────────────────────────── */
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* ── Invoice detail ──────────────────────────────────────── */
 .invoice-meta          { margin-bottom: 20px; }
 .invoice-amount-block  { background: var(--off); border-radius: var(--r-lg); padding: 24px; text-align: center; margin-bottom: 24px; border: 1px solid var(--lightgray); }
@@ -660,9 +684,36 @@ body {
   font-weight: 400;
   color: var(--navy);
 }
-.invoice-actions       { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
-.payment-link-box      { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 260px; }
-.link-input            { flex: 1; padding: 9px 12px; border: 1px solid var(--lightgray); border-radius: 6px; font-size: 12px; background: var(--off); color: var(--slate); outline: none; }
+.invoice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+.payment-link-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.link-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--lightgray);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--off);
+  color: var(--slate);
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ── Card setup ──────────────────────────────────────────── */
 .card-setup-section    { background: var(--off); border-radius: var(--r-lg); padding: 20px; margin-top: 8px; border: 1px solid var(--lightgray); }
@@ -1846,6 +1897,30 @@ body {
 @media (max-width: 600px) {
   .form-row { grid-template-columns: 1fr !important; }
   .client-form .form-row { grid-template-columns: 1fr !important; }
+
+  /* Invoice / payment link: stack vertically on small screens */
+  .payment-link-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .payment-link-box .btn-primary,
+  .payment-link-box .btn-secondary,
+  .payment-link-box a.btn-secondary {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .invoice-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .invoice-actions .btn-primary,
+  .invoice-actions .btn-secondary,
+  .invoice-actions .btn-void {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+  }
 }
 
 /* ── Tablet (769px–1024px): sidebar stays, content adjusts ── */
