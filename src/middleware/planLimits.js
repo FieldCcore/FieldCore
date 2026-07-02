@@ -1,9 +1,10 @@
 const pool = require('../db/pool');
 
 const LIMITS = {
-  starter: { users: 2,  jobsPerMonth: 50,  sms: false },
-  growth:  { users: 10, jobsPerMonth: null, sms: true  },
-  scale:   { users: null, jobsPerMonth: null, sms: true },
+  starter: { users: 2,    jobsPerMonth: 50,   sms: false },
+  solo:    { users: null, jobsPerMonth: null,  sms: false },
+  pro:     { users: null, jobsPerMonth: null,  sms: true  },
+  scale:   { users: null, jobsPerMonth: null,  sms: true  },
 };
 
 async function accountPlan(accountId) {
@@ -68,7 +69,7 @@ async function checkSmsAccess(req, res, next) {
     const limits = LIMITS[plan] || LIMITS.starter;
     if (!limits.sms) {
       return res.status(403).json({
-        error: `SMS is not available on the ${plan} plan. Upgrade to Growth or Scale.`,
+        error: `SMS is not available on the ${plan} plan. Upgrade to Pro or Scale.`,
         code:  'PLAN_LIMIT_SMS',
         plan,
       });
