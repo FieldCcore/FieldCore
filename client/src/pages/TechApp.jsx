@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Camera, Check, Timer, Clock, ChevronLeft, LogOut, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -64,6 +66,9 @@ function StatusPill({ status }) {
 function JobQueue({ user, onSelect, onLogout, onPwChange }) {
   const [jobs,    setJobs]    = useState([]);
   const [loading, setLoading] = useState(true);
+  const mapDivRef  = useRef(null);
+  const leafletRef = useRef(null);
+  const markersRef = useRef([]);
 
   function load() {
     api.get(`/mobile/jobs?tech_id=${user.id}`)
@@ -74,61 +79,96 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
 
   useEffect(() => { load(); }, [user.id]);
 
+  // Init Leaflet map and update pins whenever jobs change
+  useEffect(() => {
+    if (!mapDivRef.current) return;
+
+    if (!leafletRef.current) {
+      const map = L.map(mapDivRef.current, {
+        zoomControl: false,
+        attributionControl: true,
+        dragging: true,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+      });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" style="color:#D6B58A">OSM</a> &copy; <a href="https://carto.com/" style="color:#D6B58A">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19,
+      }).addTo(map);
+      leafletRef.current = map;
+    }
+
+    const map = leafletRef.current;
+
+    // Clear previous markers
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    const pinIcon = L.divIcon({
+      html: `<svg width="26" height="34" viewBox="0 0 26 34" fill="none">
+        <path d="M13 0C5.82 0 0 5.82 0 13c0 9 11.38 19.84 12.31 20.72a1 1 0 001.38 0C14.62 32.84 26 22 26 13 26 5.82 20.18 0 13 0z" fill="#D6B58A"/>
+        <circle cx="13" cy="13" r="4.5" fill="#1C2333"/>
+      </svg>`,
+      className: '',
+      iconSize: [26, 34],
+      iconAnchor: [13, 34],
+      popupAnchor: [0, -30],
+    });
+
+    const pins = jobs.filter(j => j.service_lat && j.service_lng);
+
+    pins.forEach(j => {
+      const m = L.marker([parseFloat(j.service_lat), parseFloat(j.service_lng)], { icon: pinIcon })
+        .bindPopup(`<strong style="color:#1C2333">${j.service_type}</strong><br>${j.client_name}`)
+        .addTo(map);
+      markersRef.current.push(m);
+    });
+
+    if (pins.length === 0) {
+      map.setView([39.5, -98.35], 4); // continental US fallback
+    } else if (pins.length === 1) {
+      map.setView([parseFloat(pins[0].service_lat), parseFloat(pins[0].service_lng)], 14);
+    } else {
+      map.fitBounds(
+        L.latLngBounds(pins.map(j => [parseFloat(j.service_lat), parseFloat(j.service_lng)])),
+        { padding: [40, 40] }
+      );
+    }
+  }, [jobs]);
+
+  // Destroy map on unmount
+  useEffect(() => {
+    return () => {
+      if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
+    };
+  }, []);
+
   const active = jobs.filter(j => j.status === 'in_progress').length;
+  const nextJob = jobs.find(j => j.status === 'in_progress' || j.status === 'scheduled');
+  const nextAddr = nextJob?.service_address
+    ? [nextJob.service_address, nextJob.service_city, nextJob.service_state].filter(Boolean).join(', ')
+    : nextJob?.client_address;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
-      <style>{`
-        @keyframes mapPulse {
-          0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.75; }
-          70%  { transform: translate(-50%, -50%) scale(2.8); opacity: 0;    }
-          100% { transform: translate(-50%, -50%) scale(1);   opacity: 0;    }
-        }
-      `}</style>
 
       {/* ── Map header zone ─────────────────────────────────────────────────── */}
       <div style={{ position: 'relative', height: 260, flexShrink: 0 }}>
 
-        {/* TODO: Replace with Mapbox or Google Maps embed */}
+        {/* Leaflet map fills the zone */}
+        <div ref={mapDivRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
+
+        {/* Gradient fade → app navy (sits above map tiles, below interactive content) */}
         <div style={{
-          position: 'absolute', inset: 0, overflow: 'hidden',
-          background: '#1A2236',
-          backgroundImage: [
-            'linear-gradient(rgba(255,255,255,.038) 1px, transparent 1px)',
-            'linear-gradient(90deg, rgba(255,255,255,.038) 1px, transparent 1px)',
-          ].join(', '),
-          backgroundSize: '28px 28px',
-        }}>
-          {/* Location pin — next scheduled job */}
-          <div style={{
-            position: 'absolute', top: 155, left: '50%',
-            transform: 'translateX(-50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-          }}>
-            <div style={{
-              position: 'absolute', top: '50%', left: '50%',
-              width: 54, height: 54, borderRadius: '50%',
-              background: 'rgba(214,181,138,.2)',
-              transform: 'translate(-50%, -50%)',
-              animation: 'mapPulse 2s ease-out infinite',
-            }} />
-            <svg width="26" height="34" viewBox="0 0 26 34" fill="none">
-              <path d="M13 0C5.82 0 0 5.82 0 13c0 9 11.38 19.84 12.31 20.72a1 1 0 001.38 0C14.62 32.84 26 22 26 13 26 5.82 20.18 0 13 0z" fill="#D6B58A"/>
-              <circle cx="13" cy="13" r="4.5" fill="#1C2333"/>
-            </svg>
-          </div>
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 130,
+          background: `linear-gradient(to bottom, transparent, ${C.navy})`,
+          pointerEvents: 'none', zIndex: 1,
+        }} />
 
-          {/* Gradient fade → app navy background */}
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, height: 130,
-            background: `linear-gradient(to bottom, transparent, ${C.navy})`,
-            pointerEvents: 'none',
-          }} />
-        </div>
-
-        {/* Header content floats on top of map */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
-          {/* Greeting row — transparent background so map shows through */}
+        {/* Header content floats on top */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 }}>
+          {/* Greeting row */}
           <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.white }}>
               Hi, {user.name.split(' ')[0]}
@@ -143,8 +183,8 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
             </div>
           </div>
 
-          {/* Stats chips */}
-          <div style={{ padding: '0 12px 4px', display: 'flex', gap: 8 }}>
+          {/* Stats + directions chips */}
+          <div style={{ padding: '0 12px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {active > 0 && (
               <div style={{ background: C.amberLt, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, color: C.amber }}>
                 {active} active
@@ -153,6 +193,15 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
             <div style={{ background: 'rgba(45,55,72,.75)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sub }}>
               {loading ? '…' : `${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`}
             </div>
+            {nextAddr && (
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(nextAddr)}`}
+                target="_blank" rel="noreferrer"
+                style={{ background: 'rgba(45,55,72,.75)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sand, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <MapPin size={11} /> Directions
+              </a>
+            )}
             <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 12 }}>
               ↻ Refresh
             </button>
@@ -237,8 +286,6 @@ function PhotosScreen({ job, onBack }) {
     }
   }
 
-  const backendUrl = import.meta.env.VITE_API_URL || '';
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
       <Topbar title="Job Photos" onBack={onBack} />
@@ -253,9 +300,9 @@ function PhotosScreen({ job, onBack }) {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 16 }}>
             {photos.map(p => (
-              <a key={p.id} href={`${backendUrl}${p.url}`} target="_blank" rel="noreferrer">
+              <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
                 <img
-                  src={`${backendUrl}${p.url}`}
+                  src={p.url}
                   alt="Job photo"
                   style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: `1px solid ${C.border}` }}
                 />
