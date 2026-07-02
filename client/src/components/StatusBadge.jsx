@@ -50,6 +50,7 @@ const STATUS_TO_VARIANT = {
   error:                   'red',
   'no-show':               'red',
   noshow:                  'red',
+  no_show:                 'red',
   past_due:                'red',
   'past due':              'red',
   collect:                 'red',

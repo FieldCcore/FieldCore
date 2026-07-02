@@ -188,7 +188,7 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
 router.patch('/:id/noshow', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `UPDATE jobs SET status = 'cancelled', noshow_declared_at = NOW()
+      `UPDATE jobs SET status = 'no_show', noshow_declared_at = NOW()
        WHERE id = $1 AND account_id = $2 RETURNING *`,
       [req.params.id, req.accountId]
     );
