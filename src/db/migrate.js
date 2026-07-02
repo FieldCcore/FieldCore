@@ -439,6 +439,21 @@ const MIGRATIONS = [
 
   // Expired token cleanup — indexes for cron DELETE performance
   `CREATE INDEX IF NOT EXISTS idx_portal_tokens_expires ON client_portal_tokens(expires_at)`,
+
+  // SMS opt-outs (TCPA/CTIA STOP compliance)
+  `CREATE TABLE IF NOT EXISTS sms_opt_outs (
+     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id            UUID REFERENCES accounts(id) ON DELETE CASCADE,
+     phone_number          TEXT NOT NULL,
+     normalized_phone      TEXT NOT NULL,
+     opt_out_keyword       TEXT NOT NULL DEFAULT 'STOP',
+     source                TEXT NOT NULL DEFAULT 'inbound_sms',
+     opted_out_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (normalized_phone)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_sms_opt_outs_phone ON sms_opt_outs(normalized_phone)`,
 ];
 
 async function runMigrations() {

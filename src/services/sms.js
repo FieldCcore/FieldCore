@@ -16,6 +16,20 @@ const FROM = process.env.TWILIO_PHONE_NUMBER;
 //   'twilio'   — Twilio SMS (default, active once SMS_ENABLED=true + A2P approved)
 //   'sendblue' — Sendblue iMessage/RCS/SMS (activate after app store approval + $100/mo plan)
 async function send(accountId, clientId, to, body) {
+  // Opt-out guard — check sms_opt_outs before any send path
+  const digits     = (to || '').replace(/\D/g, '');
+  const normalized = digits.length === 10 ? `+1${digits}`
+                   : digits.length === 11 && digits[0] === '1' ? `+${digits}`
+                   : to;
+  const { rows: optOutRows } = await pool.query(
+    `SELECT 1 FROM sms_opt_outs WHERE normalized_phone = $1`,
+    [normalized]
+  );
+  if (optOutRows.length > 0) {
+    console.log(`[SMS blocked — opt-out] To: ${to}`);
+    return { blocked: true };
+  }
+
   const provider = process.env.MESSAGING_PROVIDER || 'twilio';
 
   if (provider === 'sendblue') {

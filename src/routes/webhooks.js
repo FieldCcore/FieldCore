@@ -238,11 +238,46 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
   res.json({ received: true });
 });
 
+const STOP_KEYWORDS  = new Set(['STOP','STOPALL','UNSUBSCRIBE','CANCEL','END','QUIT']);
+const START_KEYWORDS = new Set(['START','UNSTOP']);
+
+function normalizePhone(raw) {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
+  return raw || '';
+}
+
 // POST /api/webhooks/twilio — incoming SMS
 router.post('/twilio', express.urlencoded({ extended: false }), async (req, res) => {
   const { From, Body, MessageSid } = req.body;
+  const keyword = (Body || '').trim().toUpperCase();
+  const twiml   = (xml) => { res.set('Content-Type', 'text/xml'); res.send(`<Response>${xml}</Response>`); };
 
-  // Find client by phone number across all accounts
+  // CTIA STOP keywords — insert or refresh opt-out record
+  if (STOP_KEYWORDS.has(keyword)) {
+    const normalized = normalizePhone(From);
+    await pool.query(
+      `INSERT INTO sms_opt_outs (phone_number, normalized_phone, opt_out_keyword, source)
+       VALUES ($1,$2,$3,'inbound_sms')
+       ON CONFLICT (normalized_phone) DO UPDATE
+       SET opt_out_keyword = $3, opted_out_at = NOW(), updated_at = NOW()`,
+      [From, normalized, keyword]
+    ).catch(err => console.error('[SMS opt-out]', err.message));
+    return twiml('<Message>You have been unsubscribed from all messages. Reply START to resubscribe.</Message>');
+  }
+
+  // CTIA START keywords — remove opt-out record
+  if (START_KEYWORDS.has(keyword)) {
+    const normalized = normalizePhone(From);
+    await pool.query(
+      `DELETE FROM sms_opt_outs WHERE normalized_phone = $1`,
+      [normalized]
+    ).catch(err => console.error('[SMS opt-in]', err.message));
+    return twiml('<Message>You have been resubscribed. Reply STOP at any time to opt out.</Message>');
+  }
+
+  // Regular inbound message — find client and store
   const clientResult = await pool.query(
     `SELECT * FROM clients WHERE phone = $1 LIMIT 1`,
     [From]
@@ -255,9 +290,7 @@ router.post('/twilio', express.urlencoded({ extended: false }), async (req, res)
     [client?.account_id ?? null, client?.id ?? null, Body, MessageSid]
   );
 
-  // Empty TwiML response (no auto-reply)
-  res.set('Content-Type', 'text/xml');
-  res.send('<Response></Response>');
+  twiml('');
 });
 
 // POST /api/webhooks/telnyx/voice — TeXML call control
