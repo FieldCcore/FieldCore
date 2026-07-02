@@ -105,9 +105,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         sms.send(
           req.accountId, client_id, client.phone,
           sms.confirmationBody(client.name, service_type, scheduled_at)
-        ).then(() =>
-          pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
-        ).catch(err => console.error('[SMS] Confirmation failed:', err.message));
+        ).then(result => {
+          if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
+        }).catch(err => console.error('[SMS] Confirmation failed:', err.message));
       }
     }
 

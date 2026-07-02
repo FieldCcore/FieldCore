@@ -209,9 +209,9 @@ router.post('/:accountId/submit', async (req, res) => {
       smsService.send(
         accountId, client.id, phone,
         smsService.confirmationBody(name, service, scheduled_at)
-      ).then(() =>
-        pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
-      ).catch(err => console.error('[Booking SMS]', err.message));
+      ).then(result => {
+        if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
+      }).catch(err => console.error('[Booking SMS]', err.message));
     }
     if (email) {
       emailService.send({

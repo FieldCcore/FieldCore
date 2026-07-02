@@ -111,9 +111,9 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
           smsService.send(
             job.account_id, job.client_id, job.client_phone,
             smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at)
-          ).then(() =>
-            pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id])
-          ).catch(err => console.error('[Deposit webhook SMS]', err.message));
+          ).then(result => {
+            if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
+          }).catch(err => console.error('[Deposit webhook SMS]', err.message));
         }
         if (job.client_email) {
           emailService.send({

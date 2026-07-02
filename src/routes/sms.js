@@ -46,6 +46,9 @@ router.post('/send', requireAuth, requireRole('owner', 'manager'), checkSmsAcces
     if (!client.phone) return res.status(400).json({ error: 'Client has no phone number' });
 
     const message = await smsService.send(req.accountId, client_id, client.phone, body);
+    if (message?.blocked) {
+      return res.status(409).json({ blocked: true, reason: 'recipient_opted_out' });
+    }
     if (!message) {
       return res.status(202).json({ warning: 'Twilio not configured — message logged only' });
     }
@@ -87,6 +90,9 @@ router.post('/send-template', requireAuth, requireRole('owner', 'manager'), asyn
     }
 
     const message = await smsService.send(req.accountId, client_id, client.phone, body);
+    if (message?.blocked) {
+      return res.status(409).json({ blocked: true, reason: 'recipient_opted_out' });
+    }
     if (!message) {
       return res.status(202).json({ warning: 'Twilio not configured — message logged only', body });
     }

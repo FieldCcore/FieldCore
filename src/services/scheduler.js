@@ -112,9 +112,9 @@ function startRecurringJobCreation() {
           sms.send(
             job.account_id, job.client_id, job.client_phone,
             sms.confirmationBody(job.client_name, job.service_type, nextDate)
-          ).then(() =>
-            pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [newJob.id])
-          ).catch(err => console.error('[Scheduler] Recurring confirmation SMS failed:', err.message));
+          ).then(result => {
+            if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [newJob.id]);
+          }).catch(err => console.error('[Scheduler] Recurring confirmation SMS failed:', err.message));
         }
 
         console.log(`[Scheduler] Created recurring job ${newJob.id} (${job.recurring}) for ${job.client_id}`);
@@ -283,7 +283,7 @@ function startNoShowClockJob() {
 
           if (job.client_phone) {
             sms.send(job.account_id, job.client_id, job.client_phone, clientSms)
-              .then(() => pool.query(`UPDATE no_show_records SET client_notified_at = NOW() WHERE id = $1`, [record.id]))
+              .then(result => { if (!result?.blocked) return pool.query(`UPDATE no_show_records SET client_notified_at = NOW() WHERE id = $1`, [record.id]); })
               .catch(e => console.error('[NoShow clock SMS client]', e.message));
           }
 
@@ -292,7 +292,7 @@ function startNoShowClockJob() {
               ? job.tech_sms_template.replace('{client_name}', job.client_name).replace('{amount}', depositRetained.toFixed(2))
               : sms.noShowTechBody(job.client_name, job.client_address, depositRetained);
             sms.send(job.account_id, null, job.tech_phone, techSms)
-              .then(() => pool.query(`UPDATE no_show_records SET tech_released_at = NOW() WHERE id = $1`, [record.id]))
+              .then(result => { if (!result?.blocked) return pool.query(`UPDATE no_show_records SET tech_released_at = NOW() WHERE id = $1`, [record.id]); })
               .catch(e => console.error('[NoShow clock SMS tech]', e.message));
           }
 

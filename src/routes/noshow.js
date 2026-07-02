@@ -143,9 +143,9 @@ router.post('/jobs/:jobId/declare', requireAuth, async (req, res) => {
 
     if (job.client_phone) {
       await sms.send(req.accountId, job.client_id, job.client_phone, clientSms)
-        .then(() => pool.query(
-          `UPDATE no_show_records SET client_notified_at = NOW() WHERE id = $1`, [record.id]
-        )).catch(err => console.error('[NoShow SMS client]', err.message));
+        .then(result => {
+          if (!result?.blocked) return pool.query(`UPDATE no_show_records SET client_notified_at = NOW() WHERE id = $1`, [record.id]);
+        }).catch(err => console.error('[NoShow SMS client]', err.message));
     }
 
     // SMS to tech
@@ -158,9 +158,9 @@ router.post('/jobs/:jobId/declare', requireAuth, async (req, res) => {
         : `No-show confirmed for ${job.client_name}${job.client_address ? ' at ' + job.client_address : ''}. Deposit of $${depositRetained.toFixed(2)} has been retained. You are now released. Please proceed to your next job or stand by.`;
 
       await sms.send(req.accountId, null, job.tech_phone, techSms)
-        .then(() => pool.query(
-          `UPDATE no_show_records SET tech_released_at = NOW() WHERE id = $1`, [record.id]
-        )).catch(err => console.error('[NoShow SMS tech]', err.message));
+        .then(result => {
+          if (!result?.blocked) return pool.query(`UPDATE no_show_records SET tech_released_at = NOW() WHERE id = $1`, [record.id]);
+        }).catch(err => console.error('[NoShow SMS tech]', err.message));
     }
 
     // Email to operator

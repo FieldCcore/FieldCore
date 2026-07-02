@@ -140,6 +140,9 @@ router.post('/jobs/:id/eta', requireAuth, async (req, res) => {
 
     const body = smsService.etaBody(job.client_name, minutes);
     const message = await smsService.send(req.accountId, job.client_id, job.client_phone, body);
+    if (message?.blocked) {
+      return res.status(409).json({ blocked: true, reason: 'recipient_opted_out' });
+    }
     if (!message) {
       return res.status(202).json({ warning: 'Twilio not configured' });
     }
