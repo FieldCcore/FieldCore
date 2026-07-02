@@ -79,7 +79,7 @@
 
 - **Billing & Subscription Management**
   - Code complete; Stripe Subscriptions + Connect wired
-  - Blocked by: real Stripe account, `STRIPE_PRICE_GROWTH`/`STRIPE_PRICE_SCALE` IDs not created, Stripe Connect not enabled
+  - Blocked by: real Stripe account, `STRIPE_PRICE_SOLO`/`STRIPE_PRICE_PRO`/`STRIPE_PRICE_SCALE` IDs not created in Stripe dashboard, Stripe Connect not enabled
 
 ---
 

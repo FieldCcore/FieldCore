@@ -216,8 +216,9 @@ SEED_PASSWORD               # initial admin password
 STRIPE_SECRET_KEY
 STRIPE_PUBLISHABLE_KEY
 STRIPE_WEBHOOK_SECRET
-STRIPE_PRICE_GROWTH         # Stripe price ID for Growth plan
-STRIPE_PRICE_SCALE          # Stripe price ID for Scale plan
+STRIPE_PRICE_SOLO           # Stripe price ID for Solo plan ($49/mo)
+STRIPE_PRICE_PRO            # Stripe price ID for Pro plan ($99/mo)
+STRIPE_PRICE_SCALE          # Stripe price ID for Scale plan ($199/mo)
 PLATFORM_FEE_PERCENT        # default 1
 
 # SMS / Messaging

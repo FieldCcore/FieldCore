@@ -343,7 +343,7 @@ Each feature is rated on: Backend / Frontend / Mobile / Database / Integration /
 | Database | Complete |
 | Integration | Stripe — needs real keys + Stripe Connect enabled on account |
 
-**Production Readiness:** Low — needs real Stripe account with Connect enabled; price IDs (`STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE`) must be created  
+**Production Readiness:** Low — needs real Stripe account with Connect enabled; price IDs (`STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE`) must be created in Stripe dashboard  
 **Missing Work:** Create Stripe products/prices; enable Stripe Connect; set all Stripe env vars  
 **UX Updates (2026-06-24):** "Request Downgrade" button added in Current Plan banner and Plans tab footer; opens modal with support contact info. Stripe Connect tab clarified — explains routing model; button calls real backend. Payout schedule selector (Daily/Weekly/Monthly/Manual) added; backend GET/POST `/billing/connect/payout-schedule` endpoints added.  
 **Recommended Next Action:** Create Stripe products and price IDs; test subscription creation

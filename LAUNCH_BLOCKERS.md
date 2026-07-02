@@ -17,8 +17,8 @@ Blockers are ranked within each tier by consequence severity.
 ### C-01 — No Stripe Account or Keys Configured
 **Impact:** Zero revenue can be collected. No invoice can be paid. No deposit can be charged. No subscription can be activated. No booking deposit can be taken. The platform's entire business model is non-functional.  
 **Affected features:** Invoicing, deposits, online booking (deposit step), subscription billing, card on file, public payment page, billing portal, Stripe Connect payouts  
-**Root cause:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE` are all placeholders in `.env`  
-**What must happen:** Create Stripe account → complete business verification → create Growth and Scale products/prices → register webhook endpoint → copy all keys to production `.env`  
+**Root cause:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` are all placeholders in `.env`  
+**What must happen:** Create Stripe account → complete business verification → create Solo, Pro, and Scale products/prices → register webhook endpoint → copy all keys to production `.env`  
 **Estimated resolution:** 2–3 days (bank verification wait) + 2 hours setup  
 **Blocking tasks in sprint:** Task 6 cannot be tested; I1 (Stripe end-to-end) cannot run
 
@@ -196,9 +196,9 @@ Blockers are ranked within each tier by consequence severity.
 ---
 
 ### H-09 — Subscription Billing Cannot Activate
-**Impact:** Even after Stripe keys are configured (C-01), subscriptions will not activate unless Stripe price IDs are created and set in `STRIPE_PRICE_GROWTH` and `STRIPE_PRICE_SCALE`. The billing page will show plans but the upgrade flow will fail because it references non-existent Stripe price objects.  
+**Impact:** Even after Stripe keys are configured (C-01), subscriptions will not activate unless Stripe price IDs are created and set in `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_SCALE`. The billing page will show plans but the upgrade flow will fail because it references non-existent Stripe price objects.  
 **Root cause:** Stripe products and prices have not been created in the Stripe dashboard. Price IDs are placeholders in `.env`.  
-**What must happen:** Log into Stripe → create two products (Growth, Scale) → create monthly prices for each → copy price IDs to env  
+**What must happen:** Log into Stripe → create three products (Solo $49, Pro $99, Scale $199) → create monthly prices for each → copy price IDs to `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` in env  
 **Estimated resolution:** 1 hour (after Stripe account is live)
 
 ---

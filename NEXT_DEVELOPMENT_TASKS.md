@@ -127,8 +127,8 @@ These are not optional. The app will not function correctly in production withou
 **Work:**
 1. Create Stripe account at stripe.com
 2. Complete business verification (bank account, EIN/SSN)
-3. Create two products: "FieldCore Growth" and "FieldCore Scale"
-4. Create monthly price for each; copy price IDs to `STRIPE_PRICE_GROWTH` / `STRIPE_PRICE_SCALE` in env
+3. Create three products: "FieldCore Solo" ($49/mo), "FieldCore Pro" ($99/mo), "FieldCore Scale" ($199/mo)
+4. Create monthly price for each; copy price IDs to `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` in env
 5. Enable Stripe Connect for contractor payout features
 6. Set up Stripe webhook endpoint → `https://your-domain.com/api/webhooks/stripe`
 7. Copy webhook signing secret to `STRIPE_WEBHOOK_SECRET`

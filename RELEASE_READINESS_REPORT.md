@@ -135,8 +135,8 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 ## WHAT NEEDS STRIPE
 
 1. Stripe account + business verification (1-3 days)
-2. Create Growth and Scale products + monthly prices in Stripe
-3. Copy price IDs → `STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE` in env
+2. Create Solo ($49), Pro ($99), and Scale ($199) products + monthly prices in Stripe
+3. Copy price IDs → `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` in env
 4. Enable Stripe Connect (additional verification, 2-5 days)
 5. Register webhook endpoint `/api/webhooks/stripe` in Stripe dashboard
 6. Copy webhook signing secret → `STRIPE_WEBHOOK_SECRET`

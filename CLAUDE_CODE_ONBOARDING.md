@@ -103,7 +103,7 @@ Every database record is scoped to `account_id`. All API routes extract `account
 | Service | Purpose | Env Keys |
 |---------|---------|----------|
 | Stripe | Subscriptions + payment processing | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` |
-| Stripe Connect | Contractor payouts | `STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE` |
+| Stripe Plans | Subscription price IDs | `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` |
 | Twilio | SMS + voice/phone system | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` |
 | Sendblue | iMessage/RCS (Phase 2) | `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET_KEY` |
 | Anthropic | AI chat widget | `ANTHROPIC_API_KEY` |
