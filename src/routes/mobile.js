@@ -1,16 +1,12 @@
-const express = require('express');
-const router  = express.Router();
-const path    = require('path');
-const multer  = require('multer');
-const pool    = require('../db/pool');
+const express         = require('express');
+const router          = express.Router();
+const multer          = require('multer');
+const pool            = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
-const smsService = require('../services/sms');
+const smsService      = require('../services/sms');
+const storageService  = require('../services/storage');
 
-const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../../uploads'),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // GET /api/mobile/jobs — jobs for this account; if tech_id supplied, filter to that tech
 router.get('/jobs', requireAuth, async (req, res) => {
@@ -91,14 +87,22 @@ router.post('/jobs/:id/complete', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/mobile/jobs/:id/photos — upload photo
+// POST /api/mobile/jobs/:id/photos — upload photo to R2/S3
 router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
+  if (!storageService.isConfigured()) {
+    return res.status(503).json({ error: 'Photo storage not configured. Set R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_PUBLIC_URL in environment.' });
+  }
   try {
-    const url = `/uploads/${req.file.filename}`;
+    const url = await storageService.upload(req.file.buffer, {
+      filename:    req.file.originalname || 'photo.jpg',
+      contentType: req.file.mimetype     || 'image/jpeg',
+      folder:      'job-photos',
+    });
+    if (!url) return res.status(503).json({ error: 'Photo upload failed.' });
     const { rows } = await pool.query(
       `INSERT INTO job_photos (job_id, account_id, url, filename) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, req.accountId, url, req.file.filename]
+      [req.params.id, req.accountId, url, req.file.originalname || '']
     );
     res.status(201).json({ ...rows[0], url });
   } catch (err) {

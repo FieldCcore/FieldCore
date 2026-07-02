@@ -1,12 +1,11 @@
-const express  = require('express');
-const router   = express.Router();
-const pool     = require('../db/pool');
-const PDFDoc   = require('pdfkit');
-const path     = require('path');
-const fs       = require('fs');
+const express          = require('express');
+const router           = express.Router();
+const pool             = require('../db/pool');
+const PDFDoc           = require('pdfkit');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const sms      = require('../services/sms');
-const email    = require('../services/email');
+const sms              = require('../services/sms');
+const email            = require('../services/email');
+const storageService   = require('../services/storage');
 
 // ── GET /api/no-show/settings ──────────────────────────────────────────────────
 router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -282,8 +281,8 @@ router.get('/jobs/:jobId/pdf', requireAuth, async (req, res) => {
     if (!record) return res.status(404).json({ error: 'No-show record not found.' });
 
     const pdfPath = record.pdf_path;
-    if (pdfPath && fs.existsSync(pdfPath)) {
-      return res.download(pdfPath, `noshow-${record.id}.pdf`);
+    if (pdfPath && pdfPath.startsWith('http')) {
+      return res.redirect(pdfPath);
     }
 
     // Regenerate on the fly
@@ -377,12 +376,13 @@ function generateNoShowPdfBuffer(record, job) {
 
 async function generateNoShowPdf(record, job) {
   try {
-    const dir = path.join(__dirname, '../../uploads/noshows');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, `noshow-${record.id}.pdf`);
     const buf = await generateNoShowPdfBuffer(record, job);
-    fs.writeFileSync(filePath, buf);
-    return filePath;
+    const url = await storageService.upload(buf, {
+      filename:    `noshow-${record.id}.pdf`,
+      contentType: 'application/pdf',
+      folder:      'noshows',
+    });
+    return url; // null if R2/S3 not configured
   } catch (err) {
     console.error('[NoShow PDF generation]', err.message);
     return null;
