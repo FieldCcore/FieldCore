@@ -9,18 +9,32 @@ const storageService  = require('../services/storage');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // GET /api/mobile/jobs — jobs for this account; if tech_id supplied, filter to that tech
+// ?view=today|tomorrow|week controls date range when tech_id is present
 router.get('/jobs', requireAuth, async (req, res) => {
-  const { tech_id } = req.query;
+  const { tech_id, view } = req.query;
+  const safeView = ['today', 'tomorrow', 'week'].includes(view) ? view : 'today';
   try {
     let query, values;
     if (tech_id) {
+      let startCond, endCond;
+      if (safeView === 'tomorrow') {
+        startCond = `j.scheduled_at >= CURRENT_DATE + INTERVAL '1 day'`;
+        endCond   = `j.scheduled_at <  CURRENT_DATE + INTERVAL '2 days'`;
+      } else if (safeView === 'week') {
+        startCond = `j.scheduled_at >= CURRENT_DATE`;
+        endCond   = `j.scheduled_at <  CURRENT_DATE + INTERVAL '7 days'`;
+      } else {
+        startCond = `j.scheduled_at >= NOW() - INTERVAL '2 hours'`;
+        endCond   = `j.scheduled_at <  CURRENT_DATE + INTERVAL '1 day'`;
+      }
       query = `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address
                FROM jobs j
                JOIN clients c ON c.id = j.client_id
                WHERE j.account_id = $1
                  AND j.tech_id = $2
                  AND j.status NOT IN ('cancelled')
-                 AND j.scheduled_at >= NOW() - INTERVAL '2 hours'
+                 AND ${startCond}
+                 AND ${endCond}
                ORDER BY j.scheduled_at`;
       values = [req.accountId, tech_id];
     } else {
