@@ -81,6 +81,20 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     );
     const job = rows[0];
 
+    // Auto-create deposit if account has a deposit amount configured
+    const depSettingsRes = await pool.query(
+      `SELECT deposit_amount FROM booking_settings WHERE account_id = $1`,
+      [req.accountId]
+    );
+    const depositAmount = parseFloat(depSettingsRes.rows[0]?.deposit_amount || 0);
+    if (depositAmount > 0) {
+      await pool.query(
+        `INSERT INTO deposits (account_id, job_id, client_id, amount)
+         VALUES ($1,$2,$3,$4)`,
+        [req.accountId, job.id, client_id, depositAmount]
+      ).catch(() => {}); // non-fatal if deposit already exists
+    }
+
     // Auto-send confirmation SMS if client has phone and job has a time
     if (scheduled_at) {
       const clientResult = await pool.query(
