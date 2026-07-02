@@ -165,15 +165,20 @@ All 5 tasks must show **Complete** before PR-001 is closed and P1 sprint begins.
 
 ---
 
-## Next Sprint Preview
+## PR-002 — Active Sprint
 
-After PR-001 is complete, open **PR-002** with the next P0 tasks:
+**Opened:** 2026-07-02
 
-- P0-006: Enable SMS (blocked by external A2P approval — may skip to next code task)
-- P0-007: Migrate photo storage to S3/R2
-- P0-008: Replace TechApp CSS map with real Leaflet
-- P0-009: Auto-create deposit on manual job booking
-- P0-010: Add backend plan gate for entities
+| Task | ID | Status |
+|---|---|---|
+| Enable SMS (blocked — A2P pending) | P0-006 | Blocked |
+| Migrate photo storage to S3/R2 | P0-007 | Complete |
+| Replace TechApp CSS map with Leaflet | P0-008 | Complete |
+| Auto-create deposit on manual job booking | P0-009 | Complete |
+| Add backend plan gate for entities | P0-010 | Complete (pre-existing) |
+
+**4/4 code tasks complete. P0-006 blocked on external Twilio A2P approval.**  
+PR-002 is effectively complete — P0-006 unblocks when A2P is approved (no code change needed).
 
 ---
 
@@ -182,3 +187,4 @@ After PR-001 is complete, open **PR-002** with the next P0 tasks:
 | Sprint | Tasks | Opened | Closed | Score at Close |
 |---|---|---|---|---|
 | PR-001 | 5 | 2026-07-01 | 2026-07-01 | 5/5 Complete |
+| PR-002 | 5 | 2026-07-02 | 2026-07-02 | 4/4 code tasks + 1 blocked |

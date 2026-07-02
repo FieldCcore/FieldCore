@@ -108,9 +108,10 @@
 ---
 
 ### P0-007 — Migrate photo storage from local disk to S3/R2
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P0  
-**Sprint:** Post PR-001  
+**Sprint:** PR-002  
+**Completed:** 2026-07-02 (commit ae1d6b5)  
 **Audit Finding:** `mobile.js:9-13` — multer stores uploads to local `../../uploads/`. Railway filesystem is ephemeral — all photos deleted on every deploy.  
 **Files:** `src/routes/mobile.js`, `src/routes/noshow.js`, `.env.example`  
 **Fix:**  
@@ -124,9 +125,10 @@
 ---
 
 ### P0-008 — Replace TechApp CSS map placeholder with real Leaflet map
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P0  
-**Sprint:** Post PR-001  
+**Sprint:** PR-002  
+**Completed:** 2026-07-02 (commit 9da1940)  
 **Audit Finding:** `TechApp.jsx:92` — explicit TODO comment. Renders CSS grid pattern with fake animated pulse and static SVG pin. No navigable map.  
 **Files:** `client/src/pages/TechApp.jsx`  
 **Fix:** Replace the CSS grid map header with a real Leaflet map (already bundled in `index.html`). Map must show the current job's `service_lat`/`service_lng` as a pin. Include a "Get Directions" link that opens Google Maps with the service address.  
@@ -136,9 +138,10 @@
 ---
 
 ### P0-009 — Auto-create deposit on manual job booking
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P0  
-**Sprint:** Post PR-001  
+**Sprint:** PR-002  
+**Completed:** 2026-07-02 (commit 3de4693)  
 **Audit Finding:** `POST /api/jobs` never creates a `deposits` record. Only the public booking widget creates deposits. Any job booked via the dashboard has no deposit record.  
 **Files:** `src/routes/jobs.js`  
 **Fix:** In `POST /api/jobs` handler, after the job is created: query `booking_settings.deposit_amount` for the account. If deposit is enabled and amount > 0, insert a record into `deposits` table linked to the new job.  
@@ -148,9 +151,10 @@
 ---
 
 ### P0-010 — Add backend plan gate for entities route
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P0  
-**Sprint:** Post PR-001  
+**Sprint:** PR-002  
+**Completed:** Pre-existing — entities.js:66-68 already has plan gate (`plan !== 'scale'` → 403). Audit finding was stale.  
 **Audit Finding:** `entities.js:24` — `GET/POST /api/entities` only checks `requireRole('owner')`. No plan check. Any owner on any plan can create unlimited entities (Scale-only feature).  
 **Files:** `src/routes/entities.js`  
 **Fix:** Add plan check to `POST /api/entities`: query `accounts.plan` for `req.accountId`; if plan is not `scale`, return 403 with message "Entity management requires Scale plan."  
