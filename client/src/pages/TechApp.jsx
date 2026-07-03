@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Camera, Check, Timer, Clock, ChevronLeft, LogOut, Lock } from 'lucide-react';
+import { MapPin, Camera, Check, Timer, Clock, ChevronLeft, LogOut, Lock, PenLine, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,7 @@ const STATUS_BG    = { scheduled: C.blueLt, in_progress: C.amberLt, complete: C.
 
 function fmtTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 function fmtDate(iso) { return new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }); }
+const cacheKey = (uid, v) => `fc_jobs_${v}_${uid}`;
 
 const btn = (extra = {}) => ({
   width: '100%', padding: '14px', background: C.sand, color: C.navy,
@@ -64,20 +65,85 @@ function StatusPill({ status }) {
 
 /* ── Job Queue ────────────────────────────────────────────────── */
 function JobQueue({ user, onSelect, onLogout, onPwChange }) {
-  const [jobs,    setJobs]    = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs,         setJobs]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadingMore,  setLoadingMore]  = useState(false);
+  const [hasMore,      setHasMore]      = useState(false);
+  const [offset,       setOffset]       = useState(0);
+  const [offline,      setOffline]      = useState(false);
+  const [cachedAt,     setCachedAt]     = useState(null);
+  const [avail,        setAvail]        = useState(user.is_available !== false);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availErr,     setAvailErr]     = useState(null);
+  const [view,         setView]         = useState('today');
   const mapDivRef  = useRef(null);
   const leafletRef = useRef(null);
   const markersRef = useRef([]);
 
+  async function handleAvail() {
+    if (availLoading) return;
+    setAvailLoading(true);
+    setAvailErr(null);
+    try {
+      const r = await api.patch('/users/me/availability', { available: !avail });
+      setAvail(r.data.available);
+    } catch (err) {
+      setAvailErr(err.response?.data?.error || 'Could not update availability.');
+    } finally {
+      setAvailLoading(false);
+    }
+  }
+
   function load() {
-    api.get(`/mobile/jobs?tech_id=${user.id}`)
-      .then(r => setJobs(r.data))
-      .catch(() => {})
+    setLoading(true);
+    setJobs([]);
+    setOffset(0);
+    setHasMore(false);
+    api.get(`/mobile/jobs?tech_id=${user.id}&view=${view}&limit=25&offset=0`)
+      .then(r => {
+        const { jobs: fetched, has_more } = r.data;
+        setJobs(fetched);
+        setHasMore(has_more);
+        setOffset(fetched.length);
+        setOffline(false);
+        setCachedAt(null);
+        try { localStorage.setItem(cacheKey(user.id, view), JSON.stringify({ jobs: fetched, has_more, ts: Date.now() })); } catch {}
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(cacheKey(user.id, view));
+          if (raw) {
+            const { jobs: cached, ts } = JSON.parse(raw);
+            setJobs(cached || []);
+            setCachedAt(ts || null);
+            setOffline(true);
+            return;
+          }
+        } catch {}
+        setJobs([]);
+        setOffline(true);
+      })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [user.id]);
+  async function loadMore() {
+    if (loadingMore || !hasMore || offline) return;
+    setLoadingMore(true);
+    try {
+      const r = await api.get(`/mobile/jobs?tech_id=${user.id}&view=${view}&limit=25&offset=${offset}`);
+      const { jobs: more, has_more } = r.data;
+      setJobs(prev => {
+        const next = [...prev, ...more];
+        try { localStorage.setItem(cacheKey(user.id, view), JSON.stringify({ jobs: next, has_more, ts: Date.now() })); } catch {}
+        return next;
+      });
+      setHasMore(has_more);
+      setOffset(o => o + more.length);
+    } catch {}
+    finally { setLoadingMore(false); }
+  }
+
+  useEffect(() => { load(); }, [user.id, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Init Leaflet map and update pins whenever jobs change
   useEffect(() => {
@@ -173,6 +239,24 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
             <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.white }}>
               Hi, {user.name.split(' ')[0]}
             </span>
+            <button
+              onClick={handleAvail}
+              disabled={availLoading}
+              style={{
+                background: avail ? 'rgba(46,125,50,.25)' : 'rgba(255,255,255,.08)',
+                border: `1px solid ${avail ? 'rgba(46,125,50,.45)' : C.border}`,
+                borderRadius: 99, padding: '6px 11px',
+                display: 'flex', alignItems: 'center', gap: 5,
+                cursor: availLoading ? 'default' : 'pointer',
+                opacity: availLoading ? 0.6 : 1,
+                fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                color: avail ? C.green : C.muted,
+                minHeight: 32,
+              }}
+            >
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: avail ? C.green : C.muted, flexShrink: 0 }} />
+              {availLoading ? '…' : avail ? 'Available' : 'Off Duty'}
+            </button>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Change password">
                 <Lock size={15} />
@@ -185,13 +269,18 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
 
           {/* Stats + directions chips */}
           <div style={{ padding: '0 12px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {availErr && (
+              <div style={{ width: '100%', fontSize: 11, color: '#fc8181', fontWeight: 600, paddingBottom: 4 }}>
+                {availErr}
+              </div>
+            )}
             {active > 0 && (
               <div style={{ background: C.amberLt, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, color: C.amber }}>
                 {active} active
               </div>
             )}
             <div style={{ background: 'rgba(45,55,72,.75)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sub }}>
-              {loading ? '…' : `${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`}
+              {loading ? '…' : `${jobs.length}${hasMore ? '+' : ''} job${(jobs.length !== 1 || hasMore) ? 's' : ''} ${view === 'week' ? 'this week' : view}`}
             </div>
             {nextAddr && (
               <a
@@ -209,6 +298,37 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
         </div>
       </div>
 
+      {/* ── View selector ───────────────────────────────────────────────────── */}
+      <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6, flexShrink: 0 }}>
+        {[['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'This Week']].map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            style={{
+              flex: 1, padding: '9px 4px', borderRadius: 10,
+              background: view === v ? C.sand : C.navy2,
+              color: view === v ? C.navy : C.sub,
+              border: `1px solid ${view === v ? 'transparent' : C.border}`,
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Offline banner ──────────────────────────────────────────────────── */}
+      {offline && (
+        <div style={{ margin: '0 12px 10px', background: C.amberLt, border: `1px solid ${C.amber}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: C.amber }}>
+            Offline{cachedAt ? ` — cached ${formatDistanceToNow(new Date(cachedAt), { addSuffix: true })}` : ' — no connection'}
+          </span>
+          <button onClick={load} style={{ background: 'none', border: `1px solid ${C.amber}`, borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: C.amber, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Job list ─────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
@@ -216,17 +336,43 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
         ) : jobs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 48, color: C.muted }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.sub }}>No jobs scheduled</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.sub }}>
+              {view === 'today' ? 'No jobs today' : view === 'tomorrow' ? 'No jobs tomorrow' : 'No jobs this week'}
+            </div>
             <div style={{ fontSize: 12, marginTop: 4 }}>Check back or contact your dispatcher</div>
           </div>
-        ) : (
-          jobs.map(job => {
-            const addr = job.service_address || job.client_address;
+        ) : (() => {
+          const items = [];
+          if (view === 'week') {
+            const groups = {};
+            const dayKeys = [];
+            jobs.forEach(j => {
+              const d = j.scheduled_at ? new Date(j.scheduled_at).toDateString() : '__none__';
+              if (!groups[d]) { groups[d] = []; dayKeys.push(d); }
+              groups[d].push(j);
+            });
+            dayKeys.forEach(d => {
+              items.push({ type: 'header', key: 'h:' + d, label: d === '__none__' ? 'Unscheduled' : new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) });
+              groups[d].forEach(j => items.push({ type: 'job', key: j.id, job: j }));
+            });
+          } else {
+            jobs.forEach(j => items.push({ type: 'job', key: j.id, job: j }));
+          }
+          return items.map(item => {
+            if (item.type === 'header') return (
+              <div key={item.key} style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 2px 2px' }}>
+                {item.label}
+              </div>
+            );
+            const job = item.job;
+            const addr = job.service_address
+              ? [job.service_address, job.service_city, job.service_state].filter(Boolean).join(', ')
+              : job.client_address;
             return (
               <div
-                key={job.id}
+                key={item.key}
                 onClick={() => onSelect(job)}
-                style={{ background: C.navy2, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, cursor: 'pointer', transition: 'border-color .15s' }}
+                style={{ background: C.navy2, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                   <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
@@ -241,12 +387,33 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                  <div style={{ fontSize: 12, color: C.sand }}>{job.scheduled_at ? `${fmtDate(job.scheduled_at)} · ${fmtTime(job.scheduled_at)}` : 'No time set'}</div>
-                  {job.amount && <div style={{ fontSize: 14, fontWeight: 700, color: C.white }}>${parseFloat(job.amount).toFixed(0)}</div>}
+                  <div style={{ fontSize: 12, color: C.sand }}>{job.scheduled_at ? fmtTime(job.scheduled_at) : 'No time set'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {addr && (
+                      <a
+                        href={`https://maps.google.com/?q=${encodeURIComponent(addr)}`}
+                        target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 11, color: C.sand, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
+                      >
+                        <MapPin size={10} /> Directions
+                      </a>
+                    )}
+                    {job.amount && <div style={{ fontSize: 14, fontWeight: 700, color: C.white }}>${parseFloat(job.amount).toFixed(0)}</div>}
+                  </div>
                 </div>
               </div>
             );
-          })
+          });
+        })()}
+        {hasMore && !offline && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            style={btnGhost({ opacity: loadingMore ? 0.65 : 1, marginTop: 4 })}
+          >
+            {loadingMore ? 'Loading…' : 'Load More'}
+          </button>
         )}
       </div>
     </div>
@@ -332,16 +499,29 @@ function EtaScreen({ job, onBack }) {
   const [minutes,  setMinutes]  = useState('20');
   const [sending,  setSending]  = useState(false);
   const [sent,     setSent]     = useState(false);
+  const [error,    setError]    = useState(null);
 
   async function handleSend() {
+    setError(null);
+    const mins = parseInt(minutes, 10);
+    if (isNaN(mins) || mins < 1 || mins > 240) {
+      setError('Enter a number between 1 and 240 minutes.');
+      return;
+    }
     setSending(true);
     try {
-      await api.post(`/mobile/jobs/${job.id}/eta`, { minutes });
+      await api.post(`/mobile/jobs/${job.id}/eta`, { minutes: mins });
       setSent(true);
       setTimeout(onBack, 1500);
-    } catch {
-      setSent(true);
-      setTimeout(onBack, 1500);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 409) {
+        setError('This client has opted out of SMS messages.');
+      } else if (status === 429) {
+        setError(err.response?.data?.error || 'ETA already sent recently. Please wait before sending again.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to send ETA. Please try again.');
+      }
     } finally {
       setSending(false);
     }
@@ -368,19 +548,26 @@ function EtaScreen({ job, onBack }) {
         <input
           type="number"
           min="1"
-          style={{ width: '100%', padding: '18px', background: C.navy3, border: `1px solid ${C.border}`, borderRadius: 12, fontSize: 36, fontWeight: 800, textAlign: 'center', color: C.white, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
+          max="240"
+          style={{ width: '100%', padding: '18px', background: C.navy3, border: `1px solid ${error ? C.red : C.border}`, borderRadius: 12, fontSize: 36, fontWeight: 800, textAlign: 'center', color: C.white, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
           value={minutes}
-          onChange={e => setMinutes(e.target.value)}
+          onChange={e => { setMinutes(e.target.value); setError(null); }}
         />
-        <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginBottom: 16 }}>
           "{job.client_name}, your tech is ~{minutes} min away"
         </div>
+
+        {error && (
+          <div style={{ background: C.redLt, border: `1px solid ${C.red}`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fc8181', marginBottom: 16 }}>
+            {error}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {['10', '20', '30', '45'].map(m => (
             <button
               key={m}
-              onClick={() => setMinutes(m)}
+              onClick={() => { setMinutes(m); setError(null); }}
               style={{ flex: 1, padding: '10px 0', background: minutes === m ? C.sand : C.navy3, color: minutes === m ? C.navy : C.white, border: `1px solid ${minutes === m ? C.sand : C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               {m}m
@@ -396,6 +583,303 @@ function EtaScreen({ job, onBack }) {
   );
 }
 
+/* ── Signature sub-screen ─────────────────────────────────────── */
+function SignatureScreen({ job, onBack, onSigned }) {
+  const canvasRef = useRef(null);
+  const isDrawing = useRef(false);
+  const dimRef    = useRef({ w: 0, h: 0 });
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState(null);
+  const [isEmpty, setIsEmpty] = useState(true);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr  = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.round(rect.width  * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    dimRef.current = { w: rect.width, h: rect.height };
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+  }, []);
+
+  function getPos(e) {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const src  = e.touches?.[0] ?? e.changedTouches?.[0] ?? e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function startDraw(e) {
+    e.preventDefault();
+    isDrawing.current = true;
+    setIsEmpty(false);
+    setError(null);
+    const ctx = canvasRef.current.getContext('2d');
+    const { x, y } = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
+
+  function draw(e) {
+    e.preventDefault();
+    if (!isDrawing.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    const { x, y } = getPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+  function endDraw(e) {
+    e?.preventDefault?.();
+    isDrawing.current = false;
+  }
+
+  function handleClear() {
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.clearRect(0, 0, dimRef.current.w, dimRef.current.h);
+    setIsEmpty(true);
+    setError(null);
+  }
+
+  async function handleSave() {
+    if (isEmpty) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const dataUrl = canvasRef.current.toDataURL('image/png');
+      await api.post(`/mobile/jobs/${job.id}/signature`, { svg: dataUrl });
+      onSigned();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
+      <Topbar title="Client Signature" onBack={onBack} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 16px calc(16px + env(safe-area-inset-bottom))', gap: 14 }}>
+
+        <p style={{ margin: 0, fontSize: 13, color: C.sub, textAlign: 'center' }}>
+          <strong style={{ color: C.white }}>{job.client_name}</strong> — sign below to confirm service completion
+        </p>
+
+        {/* Signature canvas area */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          background: C.navy3,
+          borderRadius: 16,
+          border: `2px dashed ${isEmpty ? C.border : C.sand}`,
+          overflow: 'hidden',
+          minHeight: 220,
+        }}>
+          {isEmpty && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, pointerEvents: 'none' }}>
+              <PenLine size={28} color={C.muted} />
+              <span style={{ fontSize: 13, color: C.muted }}>Sign here</span>
+            </div>
+          )}
+          <canvas
+            ref={canvasRef}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair', display: 'block' }}
+            onMouseDown={startDraw}
+            onMouseMove={draw}
+            onMouseUp={endDraw}
+            onMouseLeave={endDraw}
+            onTouchStart={startDraw}
+            onTouchMove={draw}
+            onTouchEnd={endDraw}
+          />
+        </div>
+
+        {/* Signature line */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px' }}>
+          <span style={{ fontSize: 20, color: C.muted, lineHeight: 1 }}>✕</span>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+          <span style={{ fontSize: 11, color: C.muted }}>Client signature</span>
+        </div>
+
+        {error && (
+          <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fc8181' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button style={btnGhost({ flex: 1, opacity: isEmpty ? 0.4 : 1 })} onClick={handleClear} disabled={isEmpty}>
+            Clear
+          </button>
+          <button style={btn({ flex: 2, opacity: (isEmpty || saving) ? 0.65 : 1 })} onClick={handleSave} disabled={isEmpty || saving}>
+            <Check size={15} strokeWidth={2.5} />
+            {saving ? 'Saving…' : 'Save Signature'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tip sub-screen ───────────────────────────────────────────── */
+const TIP_PRESETS = [5, 10, 20];
+
+function TipScreen({ job, onBack, onComplete }) {
+  const [selected, setSelected] = useState(null);   // number | 'custom' | null
+  const [custom,   setCustom]   = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState(null);
+
+  const customAmt   = parseFloat(custom);
+  const customValid = selected === 'custom' && custom !== '' && !isNaN(customAmt) && customAmt >= 0;
+  const customBad   = selected === 'custom' && custom !== '' && (isNaN(customAmt) || customAmt < 0);
+  const canConfirm  = (selected !== null && selected !== 'custom') || customValid;
+  const displayAmt  = selected === 'custom' ? (isNaN(customAmt) ? 0 : customAmt) : (selected || 0);
+
+  async function submit(amount) {
+    setSaving(true);
+    setError(null);
+    try {
+      if (amount > 0) {
+        await api.patch(`/mobile/jobs/${job.id}/tip`, { amount }).catch(e =>
+          console.warn('[Tip] save failed, continuing:', e.message)
+        );
+      }
+      const r = await api.post(`/mobile/jobs/${job.id}/complete`);
+      onComplete(r.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not complete job. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
+      <Topbar title="Add a Tip" onBack={onBack} />
+
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px 12px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 14, color: C.sub }}>
+            Would <strong style={{ color: C.white }}>{job.client_name}</strong> like to add a tip?
+          </div>
+          {job.amount && (
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              Service total: ${parseFloat(job.amount).toFixed(2)}
+            </div>
+          )}
+        </div>
+
+        {/* Quick-select presets */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {TIP_PRESETS.map(amt => {
+            const active = selected === amt;
+            return (
+              <button
+                key={amt}
+                onClick={() => setSelected(active ? null : amt)}
+                style={active
+                  ? btn({ padding: '20px 8px', fontSize: 22, fontWeight: 800, borderRadius: 14 })
+                  : btnGhost({ padding: '20px 8px', fontSize: 22, fontWeight: 800, borderRadius: 14 })
+                }
+              >
+                ${amt}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom amount */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            onClick={() => { setSelected(selected === 'custom' ? null : 'custom'); setCustom(''); }}
+            style={selected === 'custom'
+              ? btn({ background: C.navy3, color: C.sand, border: `1px solid ${C.sand}`, fontWeight: 700 })
+              : btnGhost({ fontWeight: 600 })
+            }
+          >
+            Custom Amount
+          </button>
+
+          {selected === 'custom' && (
+            <div>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 24, fontWeight: 700, color: C.white, pointerEvents: 'none' }}>$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={custom}
+                  onChange={e => setCustom(e.target.value)}
+                  autoFocus
+                  inputMode="decimal"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '18px 16px 18px 38px',
+                    background: C.navy3,
+                    border: `1.5px solid ${customBad ? '#fc8181' : C.sand}`,
+                    borderRadius: 12,
+                    fontSize: 30, fontWeight: 800, color: C.white,
+                    outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+              {customBad && (
+                <div style={{ fontSize: 12, color: '#fc8181', marginTop: 6, paddingLeft: 2 }}>
+                  Enter a valid amount ($0 or more)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Selected amount preview */}
+        {canConfirm && selected !== 'custom' && (
+          <div style={{ background: C.navy2, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: C.sub }}>Tip selected</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: C.sand }}>${Number(selected).toFixed(2)}</span>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fc8181' }}>
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Fixed bottom action zone */}
+      <div style={{ padding: '12px 16px calc(12px + env(safe-area-inset-bottom))', borderTop: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 8, background: C.navy, flexShrink: 0 }}>
+        {canConfirm && (
+          <button
+            style={btn({ background: C.green, opacity: saving ? 0.65 : 1 })}
+            onClick={() => submit(displayAmt)}
+            disabled={saving}
+          >
+            <Check size={16} strokeWidth={2.5} />
+            {saving ? 'Completing…' : `Tip $${displayAmt.toFixed(2)} · Complete Job`}
+          </button>
+        )}
+        <button
+          style={btnGhost({ color: C.sub, opacity: saving ? 0.65 : 1 })}
+          onClick={() => submit(0)}
+          disabled={saving}
+        >
+          No Tip — Complete Job
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ── Job Detail ───────────────────────────────────────────────── */
 function JobDetail({ job: initJob, onBack, onUpdate }) {
   const [job,         setJob]         = useState(initJob);
@@ -404,6 +888,10 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
   const [msg,         setMsg]         = useState(null);
   const [clockActive, setClockActive] = useState(!!initJob.no_show_clock_started_at);
   const [clockTime,   setClockTime]   = useState(initJob.no_show_clock_started_at);
+  const [localSigned,  setLocalSigned]  = useState(false);
+  const [graceMinutes, setGraceMinutes] = useState(15);
+  const [nowMs,        setNowMs]        = useState(() => Date.now());
+  const [declaring,    setDeclaring]    = useState(false);
 
   function update(updated) {
     setJob(updated);
@@ -466,12 +954,71 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
     }
   }
 
-  if (subscreen === 'photos') return <PhotosScreen job={job} onBack={() => setSubscreen(null)} />;
-  if (subscreen === 'eta')    return <EtaScreen    job={job} onBack={() => setSubscreen(null)} />;
+  useEffect(() => {
+    if (!clockActive) return;
+    api.get('/no-show/settings').then(r => {
+      setGraceMinutes(r.data.grace_period_minutes ?? 15);
+    }).catch(() => {});
+  }, [clockActive]);
 
+  useEffect(() => {
+    if (!clockActive) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [clockActive]);
+
+  async function handleDeclareNoShow() {
+    setDeclaring(true);
+    try {
+      await api.post(`/no-show/jobs/${job.id}/declare`);
+      update({ ...job, status: 'no_show' });
+      setClockActive(false);
+      setMsg({ type: 'err', text: 'No-show declared — deposit retained per policy' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.response?.data?.error || 'Could not declare no-show.' });
+    } finally {
+      setDeclaring(false);
+    }
+  }
+
+  if (subscreen === 'photos')    return <PhotosScreen    job={job} onBack={() => setSubscreen(null)} />;
+  if (subscreen === 'eta')       return <EtaScreen       job={job} onBack={() => setSubscreen(null)} />;
+  if (subscreen === 'signature') return (
+    <SignatureScreen
+      job={job}
+      onBack={() => setSubscreen(null)}
+      onSigned={() => {
+        setLocalSigned(true);
+        setSubscreen(null);
+        setMsg({ type: 'ok', text: 'Signature captured' });
+      }}
+    />
+  );
+  if (subscreen === 'tip') return (
+    <TipScreen
+      job={job}
+      onBack={() => setSubscreen(null)}
+      onComplete={updatedJob => {
+        update(updatedJob);
+        setSubscreen(null);
+        setMsg({ type: 'ok', text: 'Job complete — invoice generated' });
+      }}
+    />
+  );
+
+  const hasSigned    = !!job.signature_at || localSigned;
   const isScheduled  = job.status === 'scheduled';
   const isInProgress = job.status === 'in_progress';
   const isComplete   = job.status === 'complete';
+  const isNoShow     = job.status === 'no_show';
+
+  const elapsedMs    = clockActive && clockTime ? nowMs - new Date(clockTime).getTime() : 0;
+  const graceMs      = graceMinutes * 60 * 1000;
+  const remainingMs  = Math.max(0, graceMs - elapsedMs);
+  const graceExpired = clockActive && elapsedMs >= graceMs;
+  const remMin       = Math.floor(remainingMs / 60000);
+  const remSec       = Math.floor((remainingMs % 60000) / 1000);
+  const countdownStr = `${remMin}:${String(remSec).padStart(2, '0')}`;
   const addr = job.service_address
     ? [job.service_address, job.service_city, job.service_state].filter(Boolean).join(', ')
     : job.client_address;
@@ -521,14 +1068,23 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
         {msg?.type === 'err'  && <div style={{ background: C.redLt,   border: `1px solid rgba(181,42,42,.3)`,  borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#fc8181' }}>{msg.text}</div>}
 
         {/* No-show clock status */}
-        {clockActive && (
+        {clockActive && !graceExpired && (
           <div style={{ background: C.amberLt, border: `1px solid rgba(217,119,6,.35)`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Timer size={14} color={C.amber} />
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>No-show clock running</div>
-              {clockTime && <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>Started {formatDistanceToNow(new Date(clockTime), { addSuffix: true })}</div>}
+              <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>Declare available in {countdownStr}</div>
             </div>
           </div>
+        )}
+        {clockActive && graceExpired && (
+          <button
+            style={btn({ background: C.red, opacity: declaring ? 0.65 : 1 })}
+            onClick={handleDeclareNoShow}
+            disabled={declaring}
+          >
+            <AlertTriangle size={16} /> {declaring ? 'Declaring…' : 'Declare No-Show'}
+          </button>
         )}
 
         {/* Actions */}
@@ -547,15 +1103,42 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
             <button style={btnGhost()} onClick={() => setSubscreen('photos')}>
               <Camera size={16} /> Job Photos
             </button>
-            {isScheduled && !clockActive && (
+            {isScheduled && !clockActive && !isNoShow && (
               <button style={btnGhost({ color: C.amber, borderColor: 'rgba(217,119,6,.3)', opacity: loading ? 0.65 : 1 })} onClick={handleNoshowClock} disabled={loading}>
                 <Timer size={16} /> Start No-Show Clock
               </button>
             )}
+
+            {/* Signature — required before completion */}
             {(isScheduled || isInProgress) && (
-              <button style={btn({ background: C.green, opacity: loading ? 0.65 : 1 })} onClick={handleComplete} disabled={loading}>
-                <Check size={16} strokeWidth={2.5} /> Mark Job Complete
-              </button>
+              hasSigned ? (
+                <div style={{ background: C.greenLt, border: `1px solid rgba(46,125,50,.3)`, borderRadius: 12, padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} color={C.green} strokeWidth={2.5} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.green, flex: 1 }}>Signature captured</span>
+                  <button
+                    style={{ background: 'none', border: 'none', color: C.muted, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                    onClick={() => setSubscreen('signature')}
+                  >
+                    Re-sign
+                  </button>
+                </div>
+              ) : (
+                <button style={btnGhost()} onClick={() => setSubscreen('signature')}>
+                  <PenLine size={16} /> Get Client Signature
+                </button>
+              )
+            )}
+
+            {(isScheduled || isInProgress) && (
+              hasSigned ? (
+                <button style={btn({ background: C.green })} onClick={() => setSubscreen('tip')}>
+                  <Check size={16} strokeWidth={2.5} /> Mark Job Complete
+                </button>
+              ) : (
+                <button style={btn({ background: C.navy3, color: C.muted, cursor: 'not-allowed' })} disabled>
+                  <Lock size={15} /> Signature required
+                </button>
+              )
             )}
           </div>
         )}
@@ -569,6 +1152,15 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
             <button style={btnGhost({ width: 'auto', padding: '10px 20px' })} onClick={() => setSubscreen('photos')}>
               <Camera size={14} /> View / Add Photos
             </button>
+          </div>
+        )}
+
+        {isNoShow && (
+          <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 14, padding: 20, textAlign: 'center' }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: C.red, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <AlertTriangle size={18} /> No-Show Declared
+            </div>
+            <div style={{ fontSize: 12, color: C.sub }}>Deposit retained per policy. Operator has been notified.</div>
           </div>
         )}
       </div>

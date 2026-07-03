@@ -8,11 +8,22 @@ const storageService  = require('../services/storage');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+// Per-job ETA cooldown map — prevents rapid-fire SMS from the tech app.
+// Keyed by jobId, value is the timestamp of the last successful ETA send.
+// Per-process only (acceptable for single-instance Railway deployment).
+const etaLastSent = new Map();
+const ETA_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes between ETA messages per job
+
 // GET /api/mobile/jobs — jobs for this account; if tech_id supplied, filter to that tech
-// ?view=today|tomorrow|week controls date range when tech_id is present
+// ?view=today|tomorrow|week controls date range (tech_id path only)
+// ?limit=25&offset=0 for pagination (tech_id path only; default limit 25, max 100)
+// Response for tech_id path: { jobs: [...], has_more: bool, limit, offset }
+// Response for owner/manager path: bare array (unchanged)
 router.get('/jobs', requireAuth, async (req, res) => {
-  const { tech_id, view } = req.query;
+  const { tech_id, view, limit: rawLimit, offset: rawOffset } = req.query;
   const safeView = ['today', 'tomorrow', 'week'].includes(view) ? view : 'today';
+  const limit    = Math.min(Math.max(parseInt(rawLimit,  10) || 25, 1), 100);
+  const offset   = Math.max(parseInt(rawOffset, 10) || 0, 0);
   try {
     let query, values;
     if (tech_id) {
@@ -27,6 +38,7 @@ router.get('/jobs', requireAuth, async (req, res) => {
         startCond = `j.scheduled_at >= NOW() - INTERVAL '2 hours'`;
         endCond   = `j.scheduled_at <  CURRENT_DATE + INTERVAL '1 day'`;
       }
+      // Fetch limit+1 rows to detect has_more without a COUNT query
       query = `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address
                FROM jobs j
                JOIN clients c ON c.id = j.client_id
@@ -35,10 +47,15 @@ router.get('/jobs', requireAuth, async (req, res) => {
                  AND j.status NOT IN ('cancelled')
                  AND ${startCond}
                  AND ${endCond}
-               ORDER BY j.scheduled_at`;
-      values = [req.accountId, tech_id];
+               ORDER BY j.scheduled_at
+               LIMIT $3 OFFSET $4`;
+      values = [req.accountId, tech_id, limit + 1, offset];
+      const { rows } = await pool.query(query, values);
+      const has_more = rows.length > limit;
+      if (has_more) rows.pop();
+      return res.json({ jobs: rows, has_more, limit, offset });
     } else {
-      // owner/manager — all jobs today
+      // owner/manager — all jobs today (bare array, unchanged)
       query = `SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.address AS client_address,
                       u.name AS tech_name
                FROM jobs j
@@ -50,9 +67,9 @@ router.get('/jobs', requireAuth, async (req, res) => {
                  AND j.scheduled_at < CURRENT_DATE + INTERVAL '1 day'
                ORDER BY j.scheduled_at`;
       values = [req.accountId];
+      const { rows } = await pool.query(query, values);
+      return res.json(rows);
     }
-    const { rows } = await pool.query(query, values);
-    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -140,19 +157,30 @@ router.get('/jobs/:id/photos', requireAuth, async (req, res) => {
 // POST /api/mobile/jobs/:id/eta — send ETA SMS to client
 router.post('/jobs/:id/eta', requireAuth, async (req, res) => {
   const { minutes } = req.body;
-  if (!minutes) return res.status(400).json({ error: 'minutes is required' });
+  const mins = parseInt(minutes, 10);
+  if (isNaN(mins) || mins < 1 || mins > 240) {
+    return res.status(400).json({ error: 'minutes must be an integer between 1 and 240' });
+  }
+
+  const jobId = req.params.id;
+  const lastSent = etaLastSent.get(jobId);
+  if (lastSent && Date.now() - lastSent < ETA_COOLDOWN_MS) {
+    const waitSec = Math.ceil((ETA_COOLDOWN_MS - (Date.now() - lastSent)) / 1000);
+    return res.status(429).json({ error: `ETA already sent. Wait ${waitSec}s before sending again.` });
+  }
+
   try {
     const result = await pool.query(
       `SELECT j.*, c.name AS client_name, c.phone AS client_phone
        FROM jobs j JOIN clients c ON c.id = j.client_id
        WHERE j.id = $1 AND j.account_id = $2`,
-      [req.params.id, req.accountId]
+      [jobId, req.accountId]
     );
     const job = result.rows[0];
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (!job.client_phone) return res.status(400).json({ error: 'Client has no phone number' });
 
-    const body = smsService.etaBody(job.client_name, minutes);
+    const body = smsService.etaBody(job.client_name, mins);
     const message = await smsService.send(req.accountId, job.client_id, job.client_phone, body);
     if (message?.blocked) {
       return res.status(409).json({ blocked: true, reason: 'recipient_opted_out' });
@@ -160,6 +188,7 @@ router.post('/jobs/:id/eta', requireAuth, async (req, res) => {
     if (!message) {
       return res.status(202).json({ warning: 'Twilio not configured' });
     }
+    etaLastSent.set(jobId, Date.now());
     res.json({ sid: message.sid, status: message.status });
   } catch (err) {
     res.status(500).json({ error: err.message });
