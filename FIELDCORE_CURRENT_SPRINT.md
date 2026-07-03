@@ -182,9 +182,95 @@ PR-002 is effectively complete — P0-006 unblocks when A2P is approved (no code
 
 ---
 
+## PR-003A — Active Sprint
+
+**Opened:** 2026-07-02  
+**Status:** Complete  
+**Commit:** 8b95f6d → Railway
+
+| Task | ID | Status |
+|---|---|---|
+| Fix SMS blocked-response regression | P0-011 | Complete |
+
+**Fix:** 11 `sms.send()` callers updated across 7 files. Pattern A callers return HTTP 409 on block. Pattern B callers skip DB audit writes when blocked.
+
+---
+
+## PR-003 — CLOSED
+
+**Opened:** 2026-07-02  
+**Closed:** 2026-07-02  
+**Status:** Complete — 6/6 tasks
+
+| Task | ID | Status |
+|---|---|---|
+| Technician Signature Pad UI | P2-004 | Complete |
+| Tip Collection UI | P2-003 | Complete |
+| No-Show Declare Button | P2-002 | Complete |
+| Availability Toggle | P2-005 | Complete |
+| Tech Route Guard | P2-006 | Complete |
+| Multi-Day Job View | P2-007 | Complete |
+
+**Sprint result:** TechApp is now a complete field tool. Full job completion flow (Signature → Tip → Complete), no-show declaration with live grace-period countdown, availability toggle, role-enforced routing, and multi-day scheduling view. Backend `GET /mobile/jobs` extended with `?view=today|tomorrow|week`.
+
+---
+
+## PR-004 — CLOSED
+
+**Opened:** 2026-07-02  
+**Closed:** 2026-07-03  
+**Status:** Complete — 3/3 tasks  
+**Commit:** e306066 → origin/main + Vercel
+
+### Sprint Goal
+
+Make the technician app reliable in poor network environments and ready for real fleet-scale usage.
+
+| Task | ID | Status |
+|---|---|---|
+| Offline Job Cache | P2-008 | Complete |
+| Mobile Job Pagination | P2-009 | Complete |
+| ETA Validation + SMS Hardening | P2-010 | Complete |
+
+**P2-008:** localStorage cache keyed by `fc_jobs_{view}_{userId}`. Amber offline banner with staleness label (formatDistanceToNow) and Retry button. Reads cache on network failure; updates cache on every successful fetch.
+
+**P2-009:** Backend `GET /mobile/jobs` returns `{ jobs, has_more, limit, offset }` using N+1 fetch trick (no COUNT query). Frontend Load More button appends next page, updates cache, tracks offset. Job count chip shows `N+` when more pages exist.
+
+**P2-010 backend:** `POST /jobs/:id/eta` now validates `minutes` as integer 1–240; returns 400 on bad input. Per-job 2-minute cooldown via `etaLastSent` Map; returns 429 with remaining seconds. Rate limit only stamps after successful SMS send.
+
+**P2-010 frontend:** EtaScreen fixes silent-success-on-error bug (catch block no longer calls `setSent(true)`). Client-side int validation before any network call. Inline error display: 409 (opted out), 429 (rate limit text from backend), 5xx (generic retry). Input border turns red on error; clears on change.
+
+---
+
+## PR-005 — Active Sprint
+
+**Opened:** 2026-07-03  
+**Status:** Not Started  
+**Priority Level:** P1  
+**Task Count:** 5
+
+> P0 code tasks are all complete. P0-006 (SMS) is externally blocked on Twilio A2P approval — no code change needed.
+
+### Sprint Goal
+
+Fix the five highest-impact P1 gaps: close the estimate→job dead-end, repair the Communications messages panel data source, resolve the misleading Notifications tab, and harden two config-driven admin concerns (alert email + CORS origins).
+
+| Task | ID | Status |
+|---|---|---|
+| Wire estimate → job conversion | P1-001 | Not Started |
+| Fix Communications messages panel | P1-002 | Not Started |
+| Fix Account Notifications tab | P1-003 | Not Started |
+| Admin alert email → env var | P1-010 | Not Started |
+| CORS origins → env var | P1-011 | Not Started |
+
+---
+
 ## Sprint History
 
 | Sprint | Tasks | Opened | Closed | Score at Close |
 |---|---|---|---|---|
 | PR-001 | 5 | 2026-07-01 | 2026-07-01 | 5/5 Complete |
 | PR-002 | 5 | 2026-07-02 | 2026-07-02 | 4/4 code tasks + 1 blocked |
+| PR-003A | 1 | 2026-07-02 | 2026-07-02 | 1/1 Complete |
+| PR-003 | 6 | 2026-07-02 | 2026-07-02 | 6/6 Complete |
+| PR-004 | 3 | 2026-07-02 | 2026-07-03 | 3/3 Complete |

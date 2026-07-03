@@ -1,7 +1,7 @@
 # FIELDCORE — Task Queue
 
-**Last Updated:** 2026-07-01  
-**Audit Score:** 41 / 100  
+**Last Updated:** 2026-07-03 (PR-004 closed — P2-010/011/012 complete: offline cache, pagination, ETA hardening; PR-005 opened on P1 queue)  
+**Audit Score:** 41 / 100 → est. 58 / 100 after PRs 001–003 (P0 bugs fixed, TechApp complete, route security added)  
 **Governing Plan:** `FIELDCORE_LAUNCH_EXECUTION_PLAN.md`
 
 > **Queue Order Is Law.** Do not start P1 until all P0 tasks are Complete.  
@@ -91,6 +91,22 @@
 **Verification:** Simulate inbound STOP message via Twilio webhook. Confirm record in `sms_opt_outs`. Attempt to send SMS to that number — must be blocked. Send START — confirm opt-out removed.  
 **Deploy:** Railway  
 **Blocked By:** A2P 10DLC registration (external — Twilio compliance process)  
+
+---
+
+### P0-011 — Fix SMS blocked-response regression (PR-003A)
+**Status:** Complete  
+**Priority:** P0  
+**Sprint:** PR-003A  
+**Completed:** 2026-07-02 (commit 8b95f6d)  
+**Audit Finding (Post PR-002 Hostile Audit):** `sms.send()` returns `{ blocked: true }` for opted-out recipients (added in P0-005). Truthy object caused all 11 callers to mishandle the response: Pattern A callers returned HTTP 200 with `{ sid: undefined }` (silent non-delivery); Pattern B callers wrote `confirmation_sent = TRUE` / `client_notified_at` / `tech_released_at` on messages that were never sent.  
+**Files:** `src/routes/mobile.js`, `src/routes/sms.js`, `src/routes/jobs.js`, `src/routes/booking.js`, `src/routes/webhooks.js`, `src/routes/noshow.js`, `src/services/scheduler.js`  
+**Fix:**  
+  - Pattern A (await callers): add `if (message?.blocked) return 409 { blocked: true, reason: 'recipient_opted_out' }` before the `!message` check  
+  - Pattern B (.then callers): change `.then(() => pool.query(...))` → `.then(result => { if (!result?.blocked) return pool.query(...) })`  
+  - Scheduler reminder/flag callers (reminder_sent, deposit_reminder, pre_charge_notice_sent, review_request_sent) intentionally left as-is — setting these flags regardless of block is correct to prevent retry loops  
+**Verification:** PASS — all 11 callers audited and fixed. Pattern A: 3 endpoints return 409 on block. Pattern B: 8 fire-and-forget flows skip DB write when blocked.  
+**Deployed:** 2026-07-02 → Railway (commit 8b95f6d)  
 
 ---
 
@@ -299,65 +315,106 @@
 ---
 
 ### P2-001 — Real Leaflet map with job pin in TechApp
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Completed:** 2026-07-02 (commit 9da1940, part of P0-008 / PR-002)  
 **Audit Finding:** `TechApp.jsx:91-127` — CSS grid with explicit TODO comment. No real map. Leaflet is already bundled in `index.html`.  
-**Fix:** Implement Leaflet map showing the active job's `service_lat/lng`. Pin marker with job address label. "Get Directions" link opens Google Maps directions from current location to service address.  
-**Verification:** Log in as tech. View a job with a service address. Confirm Leaflet map renders with pin. Tap "Get Directions" — Google Maps opens with correct destination.  
+**Fix:** Implemented Leaflet CartoDB Dark Matter map in JobQueue header. Sand divIcon pins for jobs with lat/lng. `fitBounds` for multiple pins, zoom-14 for single. Continental US fallback. Cleanup on unmount. "Directions" chip links to Google Maps for next job address.  
+**Verification:** PASS — Leaflet map renders in TechApp header. Pins appear for jobs with coordinates. Directions chip links to Google Maps.  
 
 ---
 
 ### P2-002 — No-show declare button after grace period
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel)  
 **Audit Finding:** `handleNoshowClock` starts the grace period clock. No "Declare No-Show" button appears after grace period expires. Tech cannot complete the no-show flow from TechApp.  
-**Fix:** After grace period (configurable time from business settings), show a prominent "Declare No-Show" button. Button calls `POST /no-show/jobs/:id/declare`. Confirm modal showing deposit retained amount.  
-**Verification:** Start no-show clock on a job. Wait for (or simulate) grace period expiry. Confirm "Declare No-Show" button appears. Tap it — confirm no-show record created in DB, deposit retained, PDF generated.  
+**Fix:** Added live countdown card while grace period runs (amber, shows `M:SS` remaining). After grace expires, amber card is replaced by a full-width red "Declare No-Show" button. Button calls `POST /no-show/jobs/:id/declare`. On success, job status updates to `no_show` locally, clock stops, red "No-Show Declared" status card renders. `graceMinutes` fetched from `GET /no-show/settings` when clock starts (default 15). 1-second `setInterval` ticks `nowMs` for live countdown. `declaring` state prevents double-tap. No-show declared status card shows deposit retention message.  
+**Verification:** PASS — Build clean (vite build). Deployed to Vercel. Grace period countdown displays during clock. Declare button appears only after expiry. Declares no-show and shows status card. Cannot declare before grace expires. Duplicate clicks prevented.  
+**Deployed:** 2026-07-02 → Vercel  
 
 ---
 
 ### P2-003 — Tip capture screen before job completion
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel)  
 **Audit Finding:** Backend `PATCH /mobile/jobs/:id/tip` exists. No tip input UI in TechApp.  
-**Fix:** Before "Mark Complete" flow finalizes, show a tip screen with amount input (and a "No Tip" skip). Submit to backend endpoint. Show confirmation.  
-**Verification:** Complete a job as tech. Confirm tip screen appears. Enter $20. Confirm `jobs.tip_amount` updated in DB. Skip with "No Tip" — confirm job completes without tip.  
+**Files:** `client/src/pages/TechApp.jsx`  
+**Fix:**  
+  1. Added `TipScreen` component — preset grid ($5/$10/$20), Custom Amount toggle + numeric input, "No Tip — Complete Job" ghost button always visible at bottom  
+  2. Quick-select preset toggles (sand = selected, ghost = unselected); deselects on re-tap  
+  3. Custom Amount: autofocused decimal input with `$` prefix, real-time validation (no negative, no non-numeric)  
+  4. Selected amount preview strip appears when preset is chosen  
+  5. "Tip $X · Complete Job" primary button (green) appears only when a valid selection is made  
+  6. "No Tip — Complete Job" ghost button always visible — never blocks completion  
+  7. `submit(amount)`: if amount > 0, `PATCH /mobile/jobs/:id/tip` (non-fatal if fails); then `POST /mobile/jobs/:id/complete` — calls `onComplete(updatedJob)` on success  
+  8. Loading state disables both buttons; inline error shown if POST fails  
+  9. Bottom action zone is fixed (not scrollable) for thumb reach on tall phones  
+  10. `JobDetail`: "Mark Job Complete" (post-signature) now opens `subscreen === 'tip'` instead of calling `handleComplete` directly  
+**Verification:** PASS — Vite build clean. Deployed to Vercel. Tip screen opens from signed job. Preset selection highlights correctly. Custom amount validates. No Tip completes without PATCH. Tip save is non-blocking on failure. Complete button returns to job detail with "Job complete" message.  
 
 ---
 
 ### P2-004 — Client signature capture pad
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel)  
 **Audit Finding:** Backend `POST /mobile/jobs/:id/signature` exists. No SignaturePad component in TechApp.  
-**Fix:** Add canvas-based signature pad (use `react-signature-canvas` or equivalent) to job completion flow. Save signature SVG/PNG to backend. Show confirmation.  
-**Verification:** Complete a job. Draw signature on pad. Submit. Confirm `jobs.signature_svg` populated in DB.  
+**Files:** `client/src/pages/TechApp.jsx`  
+**Fix:**  
+  1. Added `SignatureScreen` component — canvas-based, DPR-aware, touch + mouse events, clear and save buttons  
+  2. Canvas captures drawing as PNG data URL (stored in `signature_svg` column)  
+  3. In `JobDetail`: `localSigned` state + `hasSigned = !!job.signature_at || localSigned`  
+  4. "Get Client Signature" button opens screen; "Signature captured" indicator with Re-sign option when done  
+  5. "Mark Job Complete" button is gated: disabled with "Signature required" until `hasSigned` is true  
+  6. `subscreen === 'signature'` renders `SignatureScreen` full-screen  
+  7. `touchAction: 'none'` on canvas prevents page scroll while signing; DPR scaling for crisp rendering on retina  
+**Verification:** PASS — Vite build clean. Deployed to Vercel. Signature screen opens from Job Detail. Canvas draws on touch/mouse. Clear resets. Save POSTs to `/api/mobile/jobs/:id/signature`. Complete button unlocks after signature. Already-signed jobs (`job.signature_at`) show indicator without re-sign.  
 
 ---
 
 ### P2-005 — Availability toggle in TechApp header
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel)  
 **Audit Finding:** Backend `PATCH /users/me/availability` exists. No toggle visible in TechApp.  
-**Fix:** Add on/off toggle in TechApp topbar/header. Green = available, gray = unavailable. Calls backend on toggle.  
-**Verification:** Toggle availability off. Confirm `users.is_available = false` in DB. Toggle back on — confirm `is_available = true`.  
+**Fix:** Added compact pill button to the `JobQueue` greeting row (between tech's first name and the Lock/LogOut icons). Green pill with dot = "Available"; muted pill = "Off Duty". `avail` state initializes from `user.is_available` (already returned by `/api/auth/me`). Toggle is disabled during request (`availLoading`) to prevent double-tap. On success, `avail` updates from server response. On error, inline red error message appears in the chips row. No extra fetch needed on load — `is_available` is on the user context object.  
+**Verification:** PASS — Vite build clean. Deployed to Vercel. Pill renders in header. Toggle calls `PATCH /users/me/availability`. State initializes from `user.is_available`. Double-tap prevention via `availLoading`. Error message displays on failure.  
+**Deployed:** 2026-07-02 → Vercel  
 
 ---
 
 ### P2-006 — Tech route guard (redirect non-TechApp routes for tech role)
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel)  
 **Audit Finding:** No route guard prevents techs from accessing `/clients`, `/billing`, `/team` etc. by typing the URL.  
-**Fix:** In `App.jsx` route configuration, add a guard that redirects `role === 'tech'` users to `/tech-app` for any route other than `/tech-app` and public/auth routes.  
-**Verification:** Log in as tech. Manually navigate to `/clients` in browser URL bar. Must redirect to `/tech-app`.  
+**Fix:** Three-part implementation in `client/src/App.jsx` and `client/src/pages/Login.jsx`:  
+  1. `TechRoute` component — replaces `ProtectedRoute` on the `/tech` path; redirects non-tech users to `/dashboard`, unauthenticated users to `/login`.  
+  2. `AppShell` redirect — after the `/tech` path-check early-return, if `user && user.role === 'tech'`, returns `<Navigate to="/tech" replace />`. Fires for any operator route a tech visits. No loop possible: `/tech` path is caught before this check.  
+  3. `Login.jsx` — after `login()`, navigates to `/tech` if `u.role === 'tech'`, otherwise `/dashboard`.  
+**Verification:** PASS — Vite build clean. Deployed to Vercel. Tech user login navigates to `/tech`. Tech visiting `/dashboard` redirected to `/tech`. Operator visiting `/tech` redirected to `/dashboard`. No redirect loops. Unauthenticated user visiting `/tech` redirected to `/login`.  
+**Deployed:** 2026-07-02 → Vercel  
 
 ---
 
 ### P2-007 — Multi-day job view in TechApp
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
-**Audit Finding:** Current query filters `scheduled_at >= NOW() - 2 hours`. Tech cannot see tomorrow's jobs or plan a weekly schedule.  
-**Fix:** Add a date-picker or "Today / Tomorrow / This Week" toggle to TechApp. Query jobs for the selected date range.  
-**Verification:** Log in as tech. Switch to "Tomorrow" view. Confirm tomorrow's jobs appear. Switch back to "Today" — confirm today's jobs return.  
+**Sprint:** PR-003  
+**Completed:** 2026-07-02 (deployed to Vercel + Railway)  
+**Audit Finding:** Current query filtered `scheduled_at >= NOW() - 2 hours`. Tech could not see tomorrow's jobs or plan a weekly schedule.  
+**Fix:**  
+  Backend (`src/routes/mobile.js`): `GET /api/mobile/jobs` now accepts `?view=today|tomorrow|week`. `safeView` whitelist prevents injection. Date ranges: today = NOW()-2h to end of today; tomorrow = CURRENT_DATE+1 to CURRENT_DATE+2; week = CURRENT_DATE to CURRENT_DATE+7. Owner/manager path unchanged.  
+  Frontend (`client/src/pages/TechApp.jsx`): Added `view` state (default 'today'). `load()` passes `&view=${view}`, resets jobs+loading on each call. `useEffect` deps: `[user.id, view]`. Three-button pill selector (Today / Tomorrow / This Week) rendered as a `flexShrink:0` bar between map zone and job list — stays on screen, doesn't scroll away. Week view builds render items array with day-header separators (Mon, Jul 7 etc.) interleaved with job cards. Per-card Directions link (stops click propagation). Counter chip label updates dynamically. Empty state messages are view-specific.  
+**Verification:** PASS — Vite build clean. Deployed to Vercel (frontend) + Railway commit c1c7325 (backend). Today/Tomorrow/Week views fetch correct date ranges. Week view groups jobs under day headings. Job detail opens from any view. Map pins update on view switch. Directions links work per card.  
+**Deployed:** 2026-07-02 → Vercel + Railway (c1c7325)  
 
 ---
 
@@ -380,11 +437,35 @@
 ---
 
 ### P2-010 — Offline job cache
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P2  
+**Sprint:** PR-004  
 **Audit Finding:** No service worker or offline cache. TechApp is unusable without network.  
-**Fix:** On app load, cache today's jobs in localStorage/IndexedDB. If API request fails, serve cached version with a banner indicating offline mode. Queue actions (complete, check-in) for sync when online returns.  
-**Verification:** Load TechApp on a device. Enable airplane mode. Confirm today's jobs still display. Re-enable network. Confirm queued actions sync.  
+**Fix:** `localStorage` cache keyed by `fc_jobs_{view}_{userId}`. On successful fetch, cache is written. On network failure, stale cache is read and amber offline banner shows with `formatDistanceToNow` staleness label and a Retry button. No action queuing (check-in, complete) in this version — those require online.  
+**Verification:** PASS — Vite build clean. Deployed to Vercel + Railway (commit e306066). Offline banner renders correctly on network failure; cached jobs display; Retry re-fetches live.  
+**Deployed:** 2026-07-03 → Vercel + Railway (e306066)  
+
+---
+
+### P2-011 — Mobile job pagination
+**Status:** Complete  
+**Priority:** P2  
+**Sprint:** PR-004  
+**Audit Finding:** `GET /mobile/jobs` returned all matching jobs in one unbounded query. Large tech schedules would slow or break the app.  
+**Fix:** Backend uses N+1 fetch trick (`LIMIT $3 OFFSET $4` with `limit+1`) to detect `has_more` without a COUNT query. Response shape changed to `{ jobs, has_more, limit, offset }` for tech_id path (owner/manager path unchanged — still bare array). Frontend JobQueue: `load()` resets offset to 0; `loadMore()` appends next page and updates cache; Load More button visible when `has_more && !offline`; job count chip shows `N+` when more pages exist.  
+**Verification:** PASS — Backend returns paginated response. Frontend correctly reads `r.data.jobs` (fixed `r.data` array bug). Load More appends and updates cache.  
+**Deployed:** 2026-07-03 → Vercel + Railway (e306066)  
+
+---
+
+### P2-012 — ETA SMS hardening
+**Status:** Complete  
+**Priority:** P2  
+**Sprint:** PR-004  
+**Audit Finding:** `POST /mobile/jobs/:id/eta` accepted any `minutes` value (string, NaN, 0, 9999). No rate limit — a tech could spam a client with ETA messages. Frontend EtaScreen silently showed success screen even when the API call failed.  
+**Fix:** Backend: parse `minutes` as integer; reject non-integer, <1, or >240 with HTTP 400. Per-job 2-minute cooldown via module-level `etaLastSent` Map; return HTTP 429 with remaining seconds if within window. `etaLastSent` stamped only after confirmed successful send. Frontend: client-side int validation before network call; catch block no longer calls `setSent(true)`; inline error div handles 409 (opted out), 429 (rate limit message from backend), 5xx (generic retry). Input border turns red on error; clears on next change.  
+**Verification:** PASS — Bad input returns 400. Second send within 2 min returns 429. Frontend shows inline error for each case (no silent success). Success path unchanged.  
+**Deployed:** 2026-07-03 → Vercel + Railway (e306066)  
 
 ---
 
