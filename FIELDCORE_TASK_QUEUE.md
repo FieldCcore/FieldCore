@@ -1,6 +1,6 @@
 # FIELDCORE — Task Queue
 
-**Last Updated:** 2026-07-03 (PR-004 closed — P2-010/011/012 complete: offline cache, pagination, ETA hardening; PR-005 opened on P1 queue)  
+**Last Updated:** 2026-07-03 (PR-005 closed — P1-001/002/003/005/010/011 complete; remaining P1: P1-004 verify, P1-006/007/008 Twilio-blocked, P1-009 investigate)  
 **Audit Score:** 41 / 100 → est. 58 / 100 after PRs 001–003 (P0 bugs fixed, TechApp complete, route security added)  
 **Governing Plan:** `FIELDCORE_LAUNCH_EXECUTION_PLAN.md`
 
@@ -186,57 +186,57 @@
 ---
 
 ### P1-001 — Wire estimate → job conversion endpoint
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** No endpoint to convert a signed estimate into a booked job. Estimates are signed and then orphaned.  
-**Files:** `src/routes/estimates.js`, `client/src/pages/Estimates.jsx`  
-**Fix:** Add `POST /api/estimates/:id/convert-to-job`. Copy service_type, client_id, amount, notes from estimate into a new job record. Mark estimate status as `converted`.  
-**Verification:** Sign an estimate. Click "Convert to Job". Confirm new job appears in jobs list with correct client and service. Confirm estimate status shows "Converted".  
-**Deploy:** Railway + Vercel  
+**Sprint:** PR-005  
+**Audit Finding:** No endpoint to convert a signed estimate into a booked job. Estimates were signed and then orphaned.  
+**Fix:** `POST /api/estimates/:id/convert-to-job` added to `estimates.js`. Joins clients table to pull address. Creates a `scheduled` job with service_type from estimate title, amount, notes, client address columns. `converted_job_id` UUID column added to estimates table via `migrate.js` — used to prevent duplicate conversions (returns 409 if already converted). Frontend `EstimateDetail` shows "Convert to Job" button on signed estimates only; on success shows "✓ Converted to Job" with View Jobs link; catches 409 and shows the already-converted state; shows inline error on failure.  
+**Verification:** PASS — Vite build clean. Deployed to Vercel + Railway (commit 0bc6464). Duplicate conversion returns 409. Signed estimates show button; non-signed do not.  
+**Deployed:** 2026-07-03 → Vercel + Railway (0bc6464)  
 
 ---
 
 ### P1-002 — Fix Communications messages panel data source
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** `Communications.jsx MessagesPanel` fetches `/clients` (all clients) as the left-panel list. Should fetch `/phone/conversations` (clients who have actual message history).  
-**Files:** `client/src/pages/Communications.jsx`  
-**Fix:** Replace `api.get('/clients')` in MessagesPanel with `api.get('/phone/conversations')`. Confirm the conversations endpoint exists and returns the correct shape.  
-**Verification:** Open Communications → Messages. Left panel must show only clients with message history, not every client in the account.  
-**Deploy:** Vercel  
+**Sprint:** PR-005  
+**Audit Finding:** `Communications.jsx MessagesPanel` fetched `/clients` (all clients) as the left-panel list.  
+**Fix:** Replaced `api.get('/clients')` with `api.get('/phone/conversations')`. The endpoint (`phone.js:241`) already existed and returns `{ id, name, phone, last_contact, unread_messages, last_message_body, last_message_dir }`. Left-panel list items updated: unread count badge (sand pill on avatar), last message body preview, last-contact timestamp top-right. Bold name + darker preview text when unread. Empty state updated to "No conversations yet".  
+**Verification:** PASS — Vite build clean. Deployed to Vercel (commit 0bc6464). Panel shows conversation-history contacts only; unread count and preview render from conversations response.  
+**Deployed:** 2026-07-03 → Vercel (0bc6464)  
 
 ---
 
 ### P1-003 — Fix Account Notifications tab (wire to API or remove)
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** `Account.jsx:26-31` — 5 notification toggles are local state only. No API endpoint saves or loads preferences. Changes are lost on refresh.  
-**Files:** `client/src/pages/Account.jsx`, `src/routes/users.js` or new route  
-**Fix:** Option A — build `GET/PATCH /api/users/me/notification-preferences` endpoint + `notification_preferences` table. Option B — remove the Notifications tab until ready.  
-**Verification:** Toggle a notification setting. Refresh page. Confirm setting persists (Option A) or tab is gone (Option B).  
-**Deploy:** Railway + Vercel  
+**Sprint:** PR-005  
+**Audit Finding:** 5 notification toggles were local state only — changes lost on refresh. Broken promise to users.  
+**Fix:** Option B — Removed the Notifications tab entirely. `TABS` array changed from `['My Account', 'Business', 'Notifications', 'Billing']` to `['My Account', 'Business', 'Billing']`. `notifPrefs` state variable and `setNotifPrefs` removed. Full toggle UI block deleted. Page subtitle updated to remove "notifications" reference. Backend not built — Option A deferred to a future sprint when API is ready.  
+**Verification:** PASS — Vite build clean. Settings page loads with 3 tabs. No broken navigation. No dead state.  
+**Deployed:** 2026-07-03 → Vercel (0bc6464)  
 
 ---
 
 ### P1-004 — Fix recurring job scheduler
-**Status:** Not Started  
+**Status:** Verification Required  
 **Priority:** P1  
-**Audit Finding:** `jobs.recurring` column exists and is stored, but no scheduler creates future job copies. Recurring bookings exist in DB but never spawn new jobs.  
-**Files:** `src/services/scheduler.js` (review first), `src/routes/jobs.js`  
-**Fix:** Audit `scheduler.js` to confirm what currently runs. Add cron to create next occurrence of recurring jobs (daily/weekly/monthly) using the stored recurrence rule.  
-**Verification:** Create a weekly recurring job. Advance system clock or manually trigger the cron. Confirm a new job appears in the next week's slot.  
-**Deploy:** Railway  
+**Audit Finding (stale):** Original finding said no scheduler existed. This is incorrect.  
+**Actual State:** `scheduler.js` has a running nightly cron (`0 1 * * *`) that queries completed recurring jobs, calculates the next occurrence (weekly/biweekly/monthly), checks the next date is in the future and within a 3-day lookahead window, and inserts the new job. Implementation exists.  
+**Verification Needed:** (1) Confirm the 3-day lookahead window prevents double-spawn for long-completed jobs. (2) Check whether a UNIQUE constraint or `next_job_created` flag prevents duplicate spawning if the cron runs twice against the same completed job. (3) End-to-end test: create a recurring job, mark complete, confirm next occurrence appears.  
+**Files:** `src/services/scheduler.js`  
+**Deploy:** No code change expected unless verification surfaces a real bug.  
 
 ---
 
 ### P1-005 — Add read_at column to messages table (Railway migration)
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** DECISION-021 — `messages` table missing `read_at` column. Communications page falls back to unread_messages: 0. Unread counts are always 0.  
-**Files:** Railway DB console (SQL migration), `src/db/migrate.js`  
-**Fix:** Run `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;` on Railway. Add to `migrate.js` for future fresh DBs.  
-**Verification:** Open Communications page. Confirm unread message counts are no longer all 0. Confirm no 500 errors in backend logs.  
-**Deploy:** Railway DB migration  
+**Sprint:** PR-005  
+**Audit Finding (stale):** Column was said to be missing from the messages table.  
+**Actual State:** `migrate.js` line 276 already contains `ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`. This runs on every Railway startup. Column is present in Railway DB. No additional migration required. The `phone/conversations` query (`phone.js:253`) correctly counts `unread_messages` using `m.read_at IS NULL`. Unread counts now flow correctly after P1-002 fix routes the frontend to the correct endpoint.  
+**No code change required.**  
+**Verified:** 2026-07-03 — confirmed in migrate.js source  
 
 ---
 
@@ -276,35 +276,33 @@
 ---
 
 ### P1-009 — Service templates sync with booking widget
-**Status:** Not Started  
+**Status:** Investigation Required  
 **Priority:** P1  
-**Audit Finding:** `service_templates` table and `booking_settings.services` JSONB are separate with no sync. Booking widget ignores service pricing from service templates.  
-**Files:** `src/routes/business-settings.js`, `src/routes/booking.js`  
-**Fix:** When booking widget fetches services, query `service_templates` (not only `booking_settings.services` JSONB) so pricing is authoritative from one source.  
-**Verification:** Create a service template with a price. Open booking widget. Confirm the service and price appear.  
-**Deploy:** Railway + Vercel  
+**Audit Finding (partially stale):** Original finding said booking widget ignores `service_templates`. Backend is already complete.  
+**Actual Backend State:** `booking.js` public GET endpoint already queries `service_templates WHERE is_active = true ORDER BY sort_order, name` and returns them as `service_templates[]` alongside the legacy `booking_settings.services` JSONB. Both are in the response.  
+**Investigation Needed:** Confirm whether the booking widget frontend reads `response.service_templates` (the structured array) or `response.services` (the legacy JSONB). If it reads the right field, mark Complete. If it reads the legacy field, the fix is a one-line change in the frontend widget.  
+**Files:** `client/src/pages/BookingWidget.jsx` or equivalent booking widget component  
+**Deploy:** Vercel only (if frontend fix needed)  
 
 ---
 
 ### P1-010 — Admin alert email: move from hardcoded to env var
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** DECISION-002 — `billing.js:497` has `['admin@getfieldcore.com', 'kevincaines925@gmail.com']` hardcoded. Change requires a code deploy.  
-**Files:** `src/routes/billing.js`, `.env.example`  
-**Fix:** Replace hardcoded emails with `process.env.ADMIN_ALERT_EMAILS` (comma-separated). Add to `.env.example`.  
-**Verification:** Change env var in Railway. Confirm alerts go to the new address without a code deploy.  
-**Deploy:** Railway  
+**Sprint:** PR-005  
+**Audit Finding:** `billing.js` had `'admin@getfieldcore.com'` hardcoded for cancellation notifications and `['admin@getfieldcore.com', 'kevincaines925@gmail.com']` hardcoded for the admin metrics access gate.  
+**Fix:** Both replaced with `process.env.ADMIN_EMAILS` (comma-separated). Cancellation notification uses `.split(',')[0].trim()` for the primary address. Admin metrics gate parses the full list and checks `.includes(acct?.email)`. `.env.example` updated with `ADMIN_EMAILS` entry and documentation. `audit.js` already used `ADMIN_ALERT_EMAIL` env var — left unchanged (different variable, different purpose).  
+**Verification:** PASS — No hardcoded admin emails remain in `src/`. Deployed to Railway (commit 0bc6464). Railway env var `ADMIN_EMAILS` must be set to preserve access to `/api/billing/admin-metrics`.  
+**Deployed:** 2026-07-03 → Railway (0bc6464)  
 
 ---
 
 ### P1-011 — CORS: make allowed origins env-driven
-**Status:** Not Started  
+**Status:** Complete  
 **Priority:** P1  
-**Audit Finding:** DECISION-005 — `src/app.js` has production URLs hardcoded in `ALLOWED_ORIGINS`. Domain change requires a code push.  
-**Files:** `src/app.js`  
-**Fix:** Replace hardcoded `ALLOWED_ORIGINS` array with `CORS_ORIGINS` env var (comma-separated). Add to `.env.example`.  
-**Verification:** Change env var in Railway without deploying code. Confirm CORS still works for production domain.  
-**Deploy:** Railway  
+**Audit Finding (stale):** Original finding said production URLs were hardcoded in `ALLOWED_ORIGINS`.  
+**Actual State:** `app.js` already has a `buildAllowedOrigins()` function that reads `APP_URL` env var, strips trailing slashes, and derives both the apex and `www` subdomain automatically. No production origins are hardcoded. A domain change requires only an env var update in Railway — no code deploy.  
+**No action required.**  
 
 ---
 

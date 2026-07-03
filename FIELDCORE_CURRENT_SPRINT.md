@@ -242,26 +242,51 @@ Make the technician app reliable in poor network environments and ready for real
 
 ---
 
-## PR-005 — Active Sprint
+## PR-005 — CLOSED
+
+**Opened:** 2026-07-03  
+**Closed:** 2026-07-03  
+**Status:** Complete — 5/5 tasks  
+**Commit:** 0bc6464 → origin/main + Vercel
+
+### Sprint Goal
+
+Close the highest-impact remaining operator workflow gaps that are fully unblocked and launch-relevant.
+
+| Task | ID | Status |
+|---|---|---|
+| Wire estimate → job conversion | P1-001 | Complete |
+| Fix Communications messages panel | P1-002 | Complete |
+| Fix Account Notifications tab | P1-003 | Complete |
+| Admin alert email → env var | P1-010 | Complete |
+| CORS origins → env var | P1-011 | Complete (stale — already done) |
+
+**P1-001:** `POST /api/estimates/:id/convert-to-job` added. Creates a `scheduled` job from the estimate's title, amount, notes, and client address. `converted_job_id` column added via migrate.js to prevent duplicate conversions — returns 409 if already converted. Frontend: "Convert to Job" button on signed estimates, success confirmation with View Jobs link.
+
+**P1-002:** `MessagesPanel` switched from `api.get('/clients')` to `api.get('/phone/conversations')`. Left panel now shows only contacts with actual message/call history, ordered by last contact. Added unread badge (sand circle), last message body preview, last-contact timestamp. Empty state updated.
+
+**P1-003:** Notifications tab removed from Settings. `TABS` array shortened, `notifPrefs` state removed, dead toggle UI deleted, subtitle text updated. Backend not built — removals only.
+
+**P1-005 (included):** `read_at` column already present in migrate.js line 276 (`ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`). No additional migration needed — confirmed present.
+
+**P1-010:** `ADMIN_EMAILS` env var added. `billing.js` cancellation notification and admin metrics gate both read from comma-separated `process.env.ADMIN_EMAILS`. `.env.example` updated with documentation. `audit.js` already uses `ADMIN_ALERT_EMAIL` — left unchanged (separate purpose).
+
+**P1-011:** Confirmed stale. `app.js` `buildAllowedOrigins()` already reads `APP_URL` env var. No code change needed — marked Complete.
+
+---
+
+## PR-006 — Next Sprint
 
 **Opened:** 2026-07-03  
 **Status:** Not Started  
 **Priority Level:** P1  
-**Task Count:** 5
+**Task Count:** TBD
 
-> P0 code tasks are all complete. P0-006 (SMS) is externally blocked on Twilio A2P approval — no code change needed.
-
-### Sprint Goal
-
-Fix the five highest-impact P1 gaps: close the estimate→job dead-end, repair the Communications messages panel data source, resolve the misleading Notifications tab, and harden two config-driven admin concerns (alert email + CORS origins).
-
-| Task | ID | Status |
-|---|---|---|
-| Wire estimate → job conversion | P1-001 | Not Started |
-| Fix Communications messages panel | P1-002 | Not Started |
-| Fix Account Notifications tab | P1-003 | Not Started |
-| Admin alert email → env var | P1-010 | Not Started |
-| CORS origins → env var | P1-011 | Not Started |
+Recommended scope (from remaining unblocked P1 queue):
+- P1-004: Verify recurring job scheduler (not a build — verification + potential bug fix)
+- P1-005: read_at confirmed present — can mark Complete
+- P1-009: Service templates — investigate frontend field usage first (30-min read)
+- Begin P1-006 voicemail transcription webhook (can be pre-written, tested after Twilio live)
 
 ---
 
@@ -274,3 +299,4 @@ Fix the five highest-impact P1 gaps: close the estimate→job dead-end, repair t
 | PR-003A | 1 | 2026-07-02 | 2026-07-02 | 1/1 Complete |
 | PR-003 | 6 | 2026-07-02 | 2026-07-02 | 6/6 Complete |
 | PR-004 | 3 | 2026-07-02 | 2026-07-03 | 3/3 Complete |
+| PR-005 | 5 | 2026-07-03 | 2026-07-03 | 5/5 Complete |
