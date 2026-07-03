@@ -440,6 +440,9 @@ const MIGRATIONS = [
   // Expired token cleanup — indexes for cron DELETE performance
   `CREATE INDEX IF NOT EXISTS idx_portal_tokens_expires ON client_portal_tokens(expires_at)`,
 
+  // Estimate → job conversion tracking
+  `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_job_id UUID REFERENCES jobs(id)`,
+
   // SMS opt-outs (TCPA/CTIA STOP compliance)
   `CREATE TABLE IF NOT EXISTS sms_opt_outs (
      id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

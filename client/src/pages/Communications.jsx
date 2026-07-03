@@ -220,7 +220,7 @@ function MessagesPanel() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    api.get('/clients').then(r => setClients(r.data));
+    api.get('/phone/conversations').then(r => setClients(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -303,7 +303,7 @@ function MessagesPanel() {
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {filteredClients.length === 0 && (
-            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No clients found</div>
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>No conversations yet</div>
           )}
           {filteredClients.map(c => (
             <div
@@ -319,12 +319,22 @@ function MessagesPanel() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, position: 'relative' }}>
                   {(c.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+                  {c.unread_messages > 0 && (
+                    <div style={{ position: 'absolute', top: -3, right: -3, minWidth: 14, height: 14, borderRadius: 99, background: 'var(--sand)', color: 'var(--navy)', fontSize: 8, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                      {c.unread_messages > 9 ? '9+' : c.unread_messages}
+                    </div>
+                  )}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{c.phone || 'No phone'}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
+                    <div style={{ fontWeight: c.unread_messages > 0 ? 700 : 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                    {c.last_contact && <div style={{ fontSize: 10, color: 'var(--steel)', flexShrink: 0 }}>{fmtTime(c.last_contact)}</div>}
+                  </div>
+                  <div style={{ fontSize: 11, color: c.unread_messages > 0 ? 'var(--navy)' : 'var(--steel)', fontWeight: c.unread_messages > 0 ? 600 : 400, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {c.last_message_body || c.phone || 'No messages'}
+                  </div>
                 </div>
               </div>
             </div>

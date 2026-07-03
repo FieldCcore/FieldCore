@@ -5,7 +5,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import BusinessSettings from './BusinessSettings';
 
-const TABS = ['My Account', 'Business', 'Notifications', 'Billing'];
+const TABS = ['My Account', 'Business', 'Billing'];
 
 const AUDIT_LABELS = {
   login:               'Signed in',
@@ -23,13 +23,6 @@ export default function Account() {
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [notifPrefs, setNotifPrefs] = useState({
-    new_booking: true,
-    job_complete: true,
-    no_show: true,
-    payment: true,
-    review: true,
-  });
   const [auditLogs,    setAuditLogs]    = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditLoaded,  setAuditLoaded]  = useState(false);
@@ -105,7 +98,7 @@ export default function Account() {
     <div>
       {/* Subtitle only — topbar already renders "Settings" as page title */}
       <p style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 16 }}>
-        Manage account, business, notifications, and billing preferences.
+        Manage account, business, and billing preferences.
       </p>
 
       {/* Tab bar */}
@@ -139,70 +132,6 @@ export default function Account() {
 
         {/* ── Business ── */}
         {activeTab === 'Business' && <BusinessSettings />}
-
-        {/* ── Notifications ── */}
-        {activeTab === 'Notifications' && (
-          <div>
-            <div className="card" style={{ marginBottom: 14 }}>
-              <h3>Email Notifications</h3>
-              <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', marginBottom: 4, padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
-                Choose which events trigger an email to {user?.email || 'your account address'}.
-              </p>
-              {[
-                { key: 'new_booking',  label: 'New booking received',            desc: 'When a client completes a booking through your booking widget.' },
-                { key: 'job_complete', label: 'Job marked complete',             desc: 'When a technician marks a job as complete in the mobile app.' },
-                { key: 'no_show',      label: 'No-show declared',                desc: 'When a client is marked as a no-show and the deposit is retained.' },
-                { key: 'payment',      label: 'Payment collected or deposited',  desc: 'When an invoice is paid or a deposit is collected.' },
-                { key: 'review',       label: 'New client review submitted',     desc: 'When a client submits a star rating after a completed job.' },
-              ].map(n => (
-                <div key={n.key} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '13px 0',
-                  borderBottom: '1px solid var(--off)',
-                  gap: 16,
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>{n.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--steel)' }}>{n.desc}</div>
-                  </div>
-                  <button
-                    onClick={() => setNotifPrefs(p => ({ ...p, [n.key]: !p[n.key] }))}
-                    style={{
-                      position: 'relative',
-                      display: 'inline-flex',
-                      height: 22,
-                      width: 40,
-                      alignItems: 'center',
-                      borderRadius: 99,
-                      border: 'none',
-                      cursor: 'pointer',
-                      outline: 'none',
-                      flexShrink: 0,
-                      background: notifPrefs[n.key] ? 'var(--sand)' : 'var(--lightgray)',
-                      transition: 'background .2s',
-                    }}
-                  >
-                    <span style={{
-                      display: 'inline-block',
-                      height: 16,
-                      width: 16,
-                      borderRadius: '50%',
-                      background: 'var(--white)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,.18)',
-                      transform: notifPrefs[n.key] ? 'translateX(20px)' : 'translateX(3px)',
-                      transition: 'transform .2s',
-                    }} />
-                  </button>
-                </div>
-              ))}
-              <div style={{ paddingTop: 12, fontSize: 12, color: 'var(--steel)' }}>
-                Notification preferences apply to the signed-in account only.
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* ── Billing ── */}
         {activeTab === 'Billing' && (

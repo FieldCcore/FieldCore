@@ -120,9 +120,34 @@ function CreateEstimateModal({ onCreated, onClose }) {
 
 // ─── Estimate Detail Modal ──────────────────────────────────────────────────
 function EstimateDetail({ estimate: init, onUpdate, onClose }) {
-  const [estimate, setEstimate] = useState(init);
-  const [sending, setSending] = useState(false);
-  const [copied, setCopied]   = useState(false);
+  const [estimate,     setEstimate]     = useState(init);
+  const [sending,      setSending]      = useState(false);
+  const [copied,       setCopied]       = useState(false);
+  const [converting,   setConverting]   = useState(false);
+  const [convertedJobId, setConvertedJobId] = useState(init.converted_job_id || null);
+  const [convertError, setConvertError] = useState('');
+
+  async function convertToJob() {
+    if (!confirm('Convert this estimate into a new scheduled job?')) return;
+    setConverting(true);
+    setConvertError('');
+    try {
+      const r = await api.post(`/estimates/${estimate.id}/convert-to-job`);
+      const jobId = r.data.job.id;
+      setConvertedJobId(jobId);
+      const updated = { ...estimate, converted_job_id: jobId };
+      setEstimate(updated);
+      onUpdate(updated);
+    } catch (err) {
+      if (err.response?.status === 409) {
+        setConvertedJobId(err.response.data.job_id);
+      } else {
+        setConvertError(err.response?.data?.error || 'Conversion failed. Please try again.');
+      }
+    } finally {
+      setConverting(false);
+    }
+  }
 
   async function send() {
     setSending(true);
@@ -221,6 +246,20 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           )}
           {['draft','sent'].includes(estimate.status) && (
             <button className="btn-void" onClick={voidEst}>Expire</button>
+          )}
+          {estimate.status === 'signed' && !convertedJobId && (
+            <button className="btn-primary" onClick={convertToJob} disabled={converting}>
+              {converting ? 'Converting…' : 'Convert to Job'}
+            </button>
+          )}
+          {convertedJobId && (
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>✓ Converted to Job</span>
+              <a href={`/jobs`} style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Jobs →</a>
+            </div>
+          )}
+          {convertError && (
+            <p style={{ fontSize:12, color:'var(--red)', margin:0 }}>{convertError}</p>
           )}
         </div>
         </div>

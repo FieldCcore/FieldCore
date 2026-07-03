@@ -249,4 +249,42 @@ router.post('/:id/void', requireAuth, requireRole('owner', 'manager'), async (re
   }
 });
 
+// POST /api/estimates/:id/convert-to-job
+router.post('/:id/convert-to-job', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const estRes = await pool.query(
+      `SELECT e.*, c.address AS client_address, c.city AS client_city, c.state AS client_state
+       FROM estimates e
+       JOIN clients c ON c.id = e.client_id
+       WHERE e.id = $1 AND e.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    const est = estRes.rows[0];
+    if (!est) return res.status(404).json({ error: 'Estimate not found' });
+    if (est.status !== 'signed') {
+      return res.status(400).json({ error: 'Only signed estimates can be converted to jobs' });
+    }
+    if (est.converted_job_id) {
+      return res.status(409).json({ error: 'This estimate has already been converted to a job', job_id: est.converted_job_id });
+    }
+
+    const { rows: [job] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, amount, notes,
+                         service_address, service_city, service_state, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'scheduled') RETURNING *`,
+      [req.accountId, est.client_id, est.title, est.amount, est.notes || null,
+       est.client_address || null, est.client_city || null, est.client_state || null]
+    );
+
+    await pool.query(
+      `UPDATE estimates SET converted_job_id = $1 WHERE id = $2`,
+      [job.id, est.id]
+    );
+
+    res.status(201).json({ job, estimate_id: est.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

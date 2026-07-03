@@ -400,7 +400,7 @@ router.post('/cancel', requireAuth, requireRole('owner'), async (req, res) => {
 
     // Notify admin
     email.send({
-      to:      'admin@getfieldcore.com',
+      to:      (process.env.ADMIN_EMAILS || 'admin@getfieldcore.com').split(',')[0].trim(),
       subject: `Operator cancelled — ${acct.name}`,
       html:    email.wrap(`
         <p><strong>${acct.name}</strong> (${acct.owner_email}) has cancelled their FieldCore subscription.</p>
@@ -568,7 +568,8 @@ router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res)
     const { rows: [acct] } = await pool.query(
       `SELECT u.email FROM users u WHERE u.id = $1`, [req.userId]
     );
-    if (!['admin@getfieldcore.com', 'kevincaines925@gmail.com'].includes(acct?.email)) {
+    const adminEmails = (process.env.ADMIN_EMAILS || 'admin@getfieldcore.com').split(',').map(e => e.trim());
+    if (!adminEmails.includes(acct?.email)) {
       return res.status(403).json({ error: 'Admin access only.' });
     }
 
