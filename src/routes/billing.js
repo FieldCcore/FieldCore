@@ -471,34 +471,67 @@ router.post('/connect', requireAuth, requireRole('owner'), async (req, res) => {
 
 // ── POST /api/billing/connect/account-session ─────────────────────────────────
 router.post('/connect/account-session', requireAuth, requireRole('owner'), async (req, res) => {
+  const secretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
+  console.log('=== CONNECT ACCOUNT-SESSION START ===');
+  console.log('  STRIPE_SECRET_KEY present:', !!secretKey);
+  console.log('  STRIPE_SECRET_KEY prefix:  ', secretKey ? secretKey.slice(0, 7) : 'MISSING');
+  console.log('  stripe API version:        ', stripe.VERSION || '(not pinned)');
+  console.log('  req.accountId:             ', req.accountId);
+
   try {
     const { rows } = await pool.query(
       `SELECT stripe_connect_account_id FROM accounts WHERE id = $1`, [req.accountId]
     );
     let connectId = rows[0]?.stripe_connect_account_id;
+    console.log('  existing connect account:  ', connectId || 'NONE — will create');
 
     if (!connectId) {
-      const account = await stripe.accounts.create({
+      const createParams = {
         type:     'express',
         metadata: { account_id: req.accountId },
-      });
+      };
+      console.log('  stripe.accounts.create params:', JSON.stringify(createParams));
+      const account = await stripe.accounts.create(createParams);
       connectId = account.id;
+      console.log('  created connect account:   ', connectId);
       await pool.query(
         `UPDATE accounts SET stripe_connect_account_id = $1, stripe_connect_status = 'pending' WHERE id = $2`,
         [connectId, req.accountId]
       );
     }
 
-    const accountSession = await stripe.accountSessions.create({
+    const sessionParams = {
       account: connectId,
       components: {
         account_onboarding: { enabled: true },
       },
-    });
+    };
+    console.log('  stripe.accountSessions.create params:', JSON.stringify(sessionParams));
+
+    const accountSession = await stripe.accountSessions.create(sessionParams);
+
+    const hasSecret = !!accountSession.client_secret;
+    console.log('  accountSession.id:         ', accountSession.id);
+    console.log('  client_secret present:     ', hasSecret);
+    console.log('=== CONNECT ACCOUNT-SESSION OK ===');
+
+    if (!hasSecret) {
+      console.error('=== STRIPE CONNECT ERROR: client_secret missing from accountSessions.create response ===');
+      return res.status(500).json({ error: 'Stripe did not return a client_secret.' });
+    }
 
     res.json({ client_secret: accountSession.client_secret });
   } catch (err) {
-    console.error('[connect/account-session]', err.message);
+    console.error('=== STRIPE CONNECT ERROR ===');
+    console.error({
+      type:       err.type,
+      code:       err.code,
+      message:    err.message,
+      statusCode: err.statusCode,
+      requestId:  err.requestId,
+      raw:        err.raw,
+      stack:      err.stack,
+    });
     res.status(500).json({ error: err.message });
   }
 });
