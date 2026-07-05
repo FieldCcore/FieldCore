@@ -346,8 +346,8 @@ export default function Billing() {
       connectInstanceRef.current = null;
       load();
     });
-    component.mount(connectContainerRef.current);
-    return () => { try { component.unmount(); } catch (e) {} };
+    connectContainerRef.current.appendChild(component);
+    return () => { try { component.remove(); } catch (e) {} };
   }, [connectEmbedActive, load]);
 
   async function upgrade(plan) {
@@ -476,9 +476,11 @@ export default function Billing() {
 
   // Shared base style for all plan CTA buttons — only color/state properties differ
   const planBtn = {
-    width: '100%', padding: '11px 0', borderRadius: 7,
-    fontSize: 13, fontWeight: 700, lineHeight: 1,
-    fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
+    width: '100%', height: '44px', minHeight: '44px',
+    padding: '0 20px', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, lineHeight: 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    gap: 8, fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
   };
 
   const upgraded       = searchParams.get('upgraded')  === '1';
@@ -588,7 +590,7 @@ export default function Billing() {
                 {upgradeError}
               </div>
             )}
-            <div className="billing-plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+            <div className="billing-plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
               {PLANS.map(plan => {
                 const planIdx     = PLAN_ORDER.indexOf(plan.key);
                 const isCurrent   = plan.key === currentPlan;
@@ -599,6 +601,7 @@ export default function Billing() {
                 return (
                   <div key={plan.key} className="dash-card" style={{
                     position: 'relative',
+                    display: 'flex', flexDirection: 'column',
                     border: isCurrent ? '2px solid var(--green)' : '1px solid var(--lightgray)',
                     background: isCurrent ? 'rgba(46,125,50,.03)' : 'var(--white)',
                     boxShadow: isCurrent ? '0 0 0 3px rgba(46,125,50,.08)' : undefined,
@@ -606,7 +609,7 @@ export default function Billing() {
                     {plan.highlight && !isCurrent && (
                       <div style={{ position: 'absolute', top: -1, left: 18, background: 'var(--sand)', color: 'var(--navy)', fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: '0 0 5px 5px' }}>Most Popular</div>
                     )}
-                    <div style={{ padding: (isCurrent || plan.highlight) ? '28px 20px 20px' : '20px 20px 20px' }}>
+                    <div style={{ padding: (isCurrent || plan.highlight) ? '28px 20px 20px' : '20px 20px 20px', display: 'flex', flexDirection: 'column', flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                         <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>{plan.name}</div>
                         {isCurrent && (
@@ -618,29 +621,31 @@ export default function Billing() {
                         <span style={{ fontSize: 12, color: 'var(--steel)' }}>/mo</span>
                       </div>
                       <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'var(--steel)', opacity: .7, marginBottom: 16, letterSpacing: '.04em' }}>{plan.target}</div>
-                      <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>
+                      <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {plan.features.map(f => <div key={f} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--slate)' }}><span style={{ color: 'var(--green)', fontWeight: 700, flexShrink: 0 }}>✓</span>{f}</div>)}
                         {plan.missing.map(f => <div key={f} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--lightgray)' }}><span style={{ flexShrink: 0 }}>—</span>{f}</div>)}
                       </div>
 
-                      {isCurrent ? (
-                        <button disabled style={{ ...planBtn, border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85 }}>✓ Current Plan</button>
-                      ) : isUpgrade ? (
-                        <button
-                          disabled={upgradingPlan !== null}
-                          onClick={() => upgrade(plan.key)}
-                          style={{ ...planBtn, border: 'none', background: 'var(--navy)', color: 'white', cursor: upgradingPlan !== null ? 'wait' : 'pointer' }}
-                        >
-                          {isUpgradingThis ? '…' : `Upgrade to ${plan.name} →`}
-                        </button>
-                      ) : isDowngrade ? (
-                        <button
-                          onClick={() => setDowngradeModal({ from: currentPlan, to: plan })}
-                          style={{ ...planBtn, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--slate)', cursor: 'pointer' }}
-                        >
-                          Request Downgrade
-                        </button>
-                      ) : null}
+                      <div style={{ marginTop: 'auto', paddingTop: 20 }}>
+                        {isCurrent ? (
+                          <button disabled style={{ ...planBtn, border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85 }}>✓ Current Plan</button>
+                        ) : isUpgrade ? (
+                          <button
+                            disabled={upgradingPlan !== null}
+                            onClick={() => upgrade(plan.key)}
+                            style={{ ...planBtn, border: 'none', background: 'var(--navy)', color: 'white', cursor: upgradingPlan !== null ? 'wait' : 'pointer' }}
+                          >
+                            {isUpgradingThis ? '…' : `Upgrade to ${plan.name} →`}
+                          </button>
+                        ) : isDowngrade ? (
+                          <button
+                            onClick={() => setDowngradeModal({ from: currentPlan, to: plan })}
+                            style={{ ...planBtn, border: '1px solid var(--lightgray)', background: 'none', color: 'var(--slate)', cursor: 'pointer' }}
+                          >
+                            Request Downgrade
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
@@ -667,13 +672,13 @@ export default function Billing() {
                 <div style={{ fontSize: 12, color: 'var(--slate)', lineHeight: 1.6 }}>Unlimited phone numbers · Dedicated CSM · 99.9% SLA · Custom feature development · Negotiated processing rate</div>
               </div>
               {isEnterpriseCurrentPlan ? (
-                <button disabled style={{ ...planBtn, width: 'auto', padding: '11px 24px', border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85, flexShrink: 0 }}>
+                <button disabled style={{ ...planBtn, width: 'auto', border: 'none', background: 'var(--green)', color: 'white', cursor: 'default', opacity: .85, flexShrink: 0 }}>
                   ✓ Current Plan
                 </button>
               ) : (
                 <a
                   href="mailto:info@getfieldcore.com?subject=Custom Plan Inquiry"
-                  style={{ ...planBtn, width: 'auto', padding: '11px 24px', border: 'none', background: 'var(--sand)', color: 'var(--navy)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                  style={{ ...planBtn, width: 'auto', border: 'none', background: 'var(--sand)', color: 'var(--navy)', textDecoration: 'none', flexShrink: 0 }}
                 >
                   Contact Sales →
                 </a>
