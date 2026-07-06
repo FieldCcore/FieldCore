@@ -4,7 +4,7 @@ import { FIELDCORE_MAP_ID } from './mapStyles';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
-// ── Global error listeners — wired once at module evaluation ──────────────────
+// ── Global diagnostics — wired once at module evaluation ──────────────────────
 if (typeof window !== 'undefined') {
   const hasKey = API_KEY.length > 0;
   console.log(
@@ -13,46 +13,37 @@ if (typeof window !== 'undefined') {
     '| mapId:', FIELDCORE_MAP_ID,
   );
 
-  // Catch Google Maps script-load errors via window.onerror
-  const _prevOnerror = window.onerror;
-  window.onerror = function(msg, src, line, col, err) {
-    const m = String(msg || '').toLowerCase();
-    const s = String(src  || '').toLowerCase();
-    if (m.includes('google') || s.includes('maps.googleapis') || s.includes('maps/api')) {
-      console.error('[MapProvider][onerror]', { msg, src, line, col, err });
-    }
-    return typeof _prevOnerror === 'function' ? _prevOnerror(msg, src, line, col, err) : false;
+  // Google's auth-failure hook — fires when the API key is invalid/unauthorized
+  window.gm_authFailure = function() {
+    console.error('[MapProvider] gm_authFailure — API key rejected by Google');
   };
 
-  // Catch unhandled promise rejections from Maps async operations
+  // All JS errors
+  window.addEventListener('error', function(e) {
+    console.error('[MapProvider][window.error]', e.message, e.filename, e.lineno);
+  });
+
+  // All unhandled promise rejections
   window.addEventListener('unhandledrejection', function(e) {
-    const r   = e.reason;
-    const str = String(r?.message || r || '').toLowerCase();
-    if (str.includes('google') || str.includes('maps') || str.includes('importlibrary')) {
-      console.error('[MapProvider][unhandledrejection]', r);
-    }
+    console.error('[MapProvider][unhandledrejection]', e.reason);
   });
 }
 
-// ── Internal diagnostics component — runs inside APIProvider context ──────────
+// ── APIProvider status — runs inside APIProvider context ──────────────────────
 function MapsDiagnostics() {
   const isLoaded = useApiIsLoaded();
   const status   = useApiLoadingStatus();
 
-  // Log every status transition
   useEffect(() => {
     console.log('[MapProvider] APIProvider status:', status, '| isLoaded:', isLoaded);
   }, [status, isLoaded]);
 
-  // After load: probe each library individually via importLibrary
   useEffect(() => {
     if (!isLoaded) return;
-
     const probe = (lib) =>
       window.google?.maps?.importLibrary?.(lib)
         .then(ns => console.log('[MapProvider] importLibrary("' + lib + '") OK | keys:', Object.keys(ns).slice(0, 6).join(', ')))
         .catch(err => console.error('[MapProvider] importLibrary("' + lib + '") FAILED:', err));
-
     probe('maps');
     probe('places');
     probe('marker');
@@ -62,7 +53,6 @@ function MapsDiagnostics() {
   return null;
 }
 
-// ── Guard — replaces Google's generic error banner with an actionable message ─
 function MissingKeyBanner() {
   return (
     <div style={{
@@ -81,14 +71,6 @@ function MissingKeyBanner() {
   );
 }
 
-// ── MapProvider ───────────────────────────────────────────────────────────────
-// Exact JSX rendered when key is present:
-//   <APIProvider
-//     apiKey={API_KEY}            ← VITE_GOOGLE_MAPS_API_KEY baked at build time
-//     libraries={['places','marker','geocoding']}
-//     language="en"
-//     region="US"
-//   >
 export function MapProvider({ children }) {
   if (!API_KEY) return <MissingKeyBanner />;
 
