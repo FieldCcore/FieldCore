@@ -16,7 +16,7 @@ export const FIELDCORE_MAP_STYLES = [
   { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#1c2333' }] },
 ];
 
-// Map ID for AdvancedMarker support.
-// Production: set VITE_GOOGLE_MAPS_MAP_ID to your Cloud Map ID.
-// Development / staging: DEMO_MAP_ID works without Cloud Console config.
-export const FIELDCORE_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+// Cloud Map ID — required for AdvancedMarker in production.
+// Set VITE_GOOGLE_MAPS_MAP_ID in Vercel to your Cloud Console Map ID.
+// When null, GoogleMap falls back to legacy styles (no AdvancedMarker).
+export const FIELDCORE_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || null;
