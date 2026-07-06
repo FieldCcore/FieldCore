@@ -49,6 +49,16 @@ function fmt$(n) { return `$${parseFloat(n || 0).toFixed(2)}`; }
 function fmtCents(n, currency = 'usd') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format((n || 0) / 100);
 }
+function payoutStatusVariant(status) {
+  if (status === 'paid') return 'green';
+  if (status === 'pending' || status === 'in_transit') return 'yellow';
+  if (status === 'failed' || status === 'canceled') return 'red';
+  return 'gray';
+}
+function payoutStatusLabel(status) {
+  const map = { paid: 'Paid', pending: 'Pending', in_transit: 'In Transit', failed: 'Failed', canceled: 'Canceled' };
+  return map[status] || String(status).replace(/_/g, ' ');
+}
 function fmtDate(ts) {
   if (!ts) return '—';
   return new Date(typeof ts === 'number' ? ts * 1000 : ts)
@@ -492,11 +502,13 @@ export default function Billing() {
   async function savePayoutSchedule(interval) {
     setPayoutScheduleSaving(true);
     setPayoutScheduleSaved(false);
+    setConnectError('');
     try {
       await api.post('/billing/connect/payout-schedule', { interval });
       setPayoutSchedule(interval);
       setPayoutScheduleSaved(true);
       setTimeout(() => setPayoutScheduleSaved(false), 3000);
+      loadConnectDash();
     } catch (err) {
       setConnectError(err.response?.data?.error || 'Could not update payout schedule.');
     } finally {
@@ -993,7 +1005,7 @@ export default function Billing() {
             {connectIsActive && connectDash?.balance && (() => {
               const avail = connectDash.balance.available?.find(b => b.currency === 'usd') || connectDash.balance.available?.[0];
               const pend  = connectDash.balance.pending?.find(b => b.currency === 'usd')   || connectDash.balance.pending?.[0];
-              const next  = connectDash.payouts?.[0];
+              const next  = connectDash.pending_payouts?.[0];
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {[
@@ -1011,31 +1023,69 @@ export default function Billing() {
               );
             })()}
 
-            {/* 3 — Recent payouts table (active + has payouts) */}
-            {connectIsActive && connectDash?.payouts?.length > 0 && (
-              <div className="dash-card" style={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Recent Payouts</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
-                      {['Date', 'Amount', 'Status', 'Arrival'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '0 12px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+            {/* 3 — Recent + Pending payouts (active only) */}
+            {connectIsActive && (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+
+                {/* Recent Payouts */}
+                <div className="dash-card" style={{ flex: '1 1 320px', padding: '20px 24px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Recent Payouts</div>
+                  {(!connectDash?.recent_payouts?.length) ? (
+                    <div style={{ padding: '20px 0', color: 'var(--steel)', fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
+                      Recent payouts will appear here after your first payout.
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
+                          {['Arrival', 'Amount', 'Status', 'Method'].map(h => (
+                            <th key={h} style={{ textAlign: 'left', padding: '0 10px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connectDash.recent_payouts.map(p => (
+                          <tr key={p.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12 }}>{fmtDate(p.arrival_date)}</td>
+                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--navy)', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtCents(p.amount, p.currency)}</td>
+                            <td style={{ padding: '9px 10px 9px 0' }}>
+                              <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
+                            </td>
+                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12, textTransform: 'capitalize' }}>{p.method || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Pending Payouts */}
+                <div className="dash-card" style={{ flex: '1 1 240px', padding: '20px 24px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Pending Payouts</div>
+                  {(!connectDash?.pending_payouts?.length) ? (
+                    <div style={{ padding: '20px 0', color: 'var(--steel)', fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
+                      No pending payouts right now.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {connectDash.pending_payouts.map(p => (
+                        <div key={p.id} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{fmtCents(p.amount, p.currency)}</div>
+                            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                              Arrives {fmtDate(p.arrival_date)} · {p.method || 'standard'}
+                            </div>
+                            {p.description && (
+                              <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</div>
+                            )}
+                          </div>
+                          <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
+                        </div>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {connectDash.payouts.map(p => (
-                      <tr key={p.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
-                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--slate)', fontSize: 13 }}>{fmtDate(p.created)}</td>
-                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--navy)', fontWeight: 700, fontSize: 13 }}>{fmtCents(p.amount, p.currency)}</td>
-                        <td style={{ padding: '10px 12px 10px 0' }}>
-                          <StatusBadge status={p.status}>{p.status === 'paid' ? 'Paid' : p.status === 'in_transit' ? 'In Transit' : p.status}</StatusBadge>
-                        </td>
-                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--slate)', fontSize: 13 }}>{fmtDate(p.arrival_date)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 

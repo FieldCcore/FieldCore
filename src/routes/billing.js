@@ -605,12 +605,13 @@ router.post('/connect/payout-schedule', requireAuth, requireRole('owner'), async
     const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
     if (!connectId) return res.status(400).json({ error: 'No connected Stripe account.' });
     if (status !== 'active') return res.status(400).json({ error: 'Stripe account not yet verified.' });
-    await stripe.accounts.update(connectId, {
-      settings: { payouts: { schedule: { interval } } },
-    });
+    const schedule = { interval };
+    if (interval === 'weekly')  schedule.weekly_anchor  = 'monday';
+    if (interval === 'monthly') schedule.monthly_anchor = 1;
+    await stripe.accounts.update(connectId, { settings: { payouts: { schedule } } });
     res.json({ ok: true, interval });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -646,21 +647,32 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
       );
     }
 
-    let balance = null;
-    let payouts = [];
-    let bankAccount = null;
+    let balance       = null;
+    let recentPayouts = [];
+    let pendingPayouts = [];
+    let bankAccount   = null;
 
     if (liveStatus === 'active') {
       const [balRes, payRes, extRes] = await Promise.all([
         stripe.balance.retrieve({ stripeAccount: connectId }),
-        stripe.payouts.list({ limit: 5 }, { stripeAccount: connectId }),
+        stripe.payouts.list({ limit: 10 }, { stripeAccount: connectId }),
         stripe.accounts.listExternalAccounts(connectId, { object: 'bank_account', limit: 1 }),
       ]);
       balance = { available: balRes.available, pending: balRes.pending };
-      payouts = payRes.data.map(p => ({
-        id: p.id, amount: p.amount, currency: p.currency,
-        arrival_date: p.arrival_date, status: p.status, created: p.created,
-      }));
+
+      const mapPayout = p => ({
+        id:           p.id,
+        amount:       p.amount,
+        currency:     p.currency,
+        arrival_date: p.arrival_date,
+        created:      p.created,
+        status:       p.status,
+        method:       p.method,
+        description:  p.description,
+      });
+      recentPayouts  = payRes.data.map(mapPayout);
+      pendingPayouts = recentPayouts.filter(p => p.status === 'pending' || p.status === 'in_transit');
+
       const ba = extRes.data[0];
       if (ba) bankAccount = { bank_name: ba.bank_name, last4: ba.last4, routing_number: ba.routing_number, currency: ba.currency };
     }
@@ -670,11 +682,11 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
       status: liveStatus,
       account_id: connectId,
       details_submitted: account.details_submitted ?? false,
-      charges_enabled: account.charges_enabled ?? false,
-      payouts_enabled: account.payouts_enabled ?? false,
+      charges_enabled:   account.charges_enabled   ?? false,
+      payouts_enabled:   account.payouts_enabled    ?? false,
       display_name: account.business_profile?.name || account.settings?.dashboard?.display_name || null,
       country: account.country,
-      email: account.email,
+      email:   account.email,
       capabilities,
       requirements: {
         currently_due:        requirements.currently_due        || [],
@@ -685,8 +697,9 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
         errors:               requirements.errors               || [],
       },
       balance,
-      payouts,
-      bank_account: bankAccount,
+      recent_payouts:  recentPayouts,
+      pending_payouts: pendingPayouts,
+      bank_account:    bankAccount,
       payout_schedule: payoutSchedule,
     });
   } catch (err) {
