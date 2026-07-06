@@ -346,6 +346,7 @@ export default function Billing() {
     || (testToolsStatus?.enabled && testToolsStatus?.isOwner);
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
+  const [sessionStatus, setSessionStatus] = useState(null);
 
   const loadConnectDash = useCallback(async () => {
     setConnectDashLoading(true);
@@ -399,6 +400,13 @@ export default function Billing() {
     connectContainerRef.current.appendChild(component);
     return () => { try { component.remove(); } catch (e) {} };
   }, [connectEmbedActive, load, loadConnectDash]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    api.get(`/billing/checkout-session/${sessionId}`)
+      .then(({ data }) => setSessionStatus(data.status))
+      .catch(() => setSessionStatus('unknown'));
+  }, [sessionId]);
 
   async function upgrade(plan) {
     setUpgradingPlan(plan);
@@ -619,14 +627,6 @@ export default function Billing() {
   const sessionId      = searchParams.get('session_id');
   const connectSuccess = searchParams.get('connect')   === 'success';
   const connectRefresh = searchParams.get('connect')   === 'refresh';
-  const [sessionStatus, setSessionStatus] = useState(null);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    api.get(`/billing/checkout-session/${sessionId}`)
-      .then(({ data }) => setSessionStatus(data.status))
-      .catch(() => setSessionStatus('unknown'));
-  }, [sessionId]);
 
   const statusLabel = planStatus === 'trialing'  ? 'Trial'
                     : planStatus === 'past_due'   ? 'Past Due'
