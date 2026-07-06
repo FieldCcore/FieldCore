@@ -614,6 +614,88 @@ router.post('/connect/payout-schedule', requireAuth, requireRole('owner'), async
   }
 });
 
+// ── GET /api/billing/connect/dashboard ───────────────────────────────────────
+router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
+
+    if (!connectId) {
+      return res.json({ connected: false, status: 'not_connected' });
+    }
+
+    const account = await stripe.accounts.retrieve(connectId);
+    const capabilities = account.capabilities || {};
+    const requirements = account.requirements || {};
+    const payoutSchedule = account.settings?.payouts?.schedule || {};
+
+    let balance = null;
+    let payouts = [];
+    let bankAccount = null;
+
+    if (status === 'active') {
+      const [balRes, payRes, extRes] = await Promise.all([
+        stripe.balance.retrieve({ stripeAccount: connectId }),
+        stripe.payouts.list({ limit: 5 }, { stripeAccount: connectId }),
+        stripe.accounts.listExternalAccounts(connectId, { object: 'bank_account', limit: 1 }),
+      ]);
+      balance = { available: balRes.available, pending: balRes.pending };
+      payouts = payRes.data.map(p => ({
+        id: p.id, amount: p.amount, currency: p.currency,
+        arrival_date: p.arrival_date, status: p.status, created: p.created,
+      }));
+      const ba = extRes.data[0];
+      if (ba) bankAccount = { bank_name: ba.bank_name, last4: ba.last4, routing_number: ba.routing_number, currency: ba.currency };
+    }
+
+    res.json({
+      connected: true,
+      status,
+      account_id: connectId,
+      display_name: account.business_profile?.name || account.settings?.dashboard?.display_name || null,
+      country: account.country,
+      email: account.email,
+      capabilities,
+      requirements: {
+        currently_due: requirements.currently_due || [],
+        past_due: requirements.past_due || [],
+        errors: requirements.errors || [],
+      },
+      balance,
+      payouts,
+      bank_account: bankAccount,
+      payout_schedule: payoutSchedule,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/connect/login-link ─────────────────────────────────────
+router.post('/connect/login-link', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    const { stripe_connect_account_id: connectId } = rows[0] || {};
+    if (!connectId) return res.status(400).json({ error: 'No connected Stripe account.' });
+
+    const secretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
+    if (secretKey.startsWith('sk_test')) {
+      return res.json({ url: null, test_mode: true });
+    }
+
+    const link = await stripe.accounts.createLoginLink(connectId);
+    res.json({ url: link.url, test_mode: false });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/billing/admin-metrics ───────────────────────────────────────────
 router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res) => {
   try {

@@ -46,6 +46,9 @@ const CANCEL_REASONS = [
 ];
 
 function fmt$(n) { return `$${parseFloat(n || 0).toFixed(2)}`; }
+function fmtCents(n, currency = 'usd') {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format((n || 0) / 100);
+}
 function fmtDate(ts) {
   if (!ts) return '—';
   return new Date(typeof ts === 'number' ? ts * 1000 : ts)
@@ -314,8 +317,24 @@ export default function Billing() {
   const [connectEmbedActive, setConnectEmbedActive] = useState(false);
   const [connectEmbedError,  setConnectEmbedError]  = useState('');
   const [connectError,       setConnectError]        = useState('');
+  const [connectDash,        setConnectDash]        = useState(null);
+  const [connectDashLoading, setConnectDashLoading] = useState(false);
+  const [connectDashError,   setConnectDashError]   = useState('');
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
+
+  const loadConnectDash = useCallback(async () => {
+    setConnectDashLoading(true);
+    setConnectDashError('');
+    try {
+      const { data } = await api.get('/billing/connect/dashboard');
+      setConnectDash(data);
+    } catch (err) {
+      setConnectDashError(err.response?.data?.error || 'Could not load payout dashboard.');
+    } finally {
+      setConnectDashLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const [billingRes, methodsRes, historyRes] = await Promise.allSettled([
@@ -339,16 +358,21 @@ export default function Billing() {
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
   useEffect(() => {
+    if (tab === 'connect') loadConnectDash();
+  }, [tab, loadConnectDash]);
+
+  useEffect(() => {
     if (!connectEmbedActive || !connectContainerRef.current || !connectInstanceRef.current) return;
     const component = connectInstanceRef.current.create('account-onboarding');
     component.setOnExit(() => {
       setConnectEmbedActive(false);
       connectInstanceRef.current = null;
       load();
+      loadConnectDash();
     });
     connectContainerRef.current.appendChild(component);
     return () => { try { component.remove(); } catch (e) {} };
-  }, [connectEmbedActive, load]);
+  }, [connectEmbedActive, load, loadConnectDash]);
 
   async function upgrade(plan) {
     setUpgradingPlan(plan);
@@ -450,6 +474,21 @@ export default function Billing() {
     } finally { setConnectBusy(false); }
   }
 
+  async function openLoginLink() {
+    setConnectBusy(true);
+    setConnectError('');
+    try {
+      const { data } = await api.post('/billing/connect/login-link');
+      if (data.test_mode) {
+        alert('Login links are not available in Stripe test mode. Use dashboard.stripe.com directly.');
+        return;
+      }
+      window.open(data.url, '_blank');
+    } catch (err) {
+      setConnectError(err.response?.data?.error || 'Could not open Stripe dashboard.');
+    } finally { setConnectBusy(false); }
+  }
+
   async function savePayoutSchedule(interval) {
     setPayoutScheduleSaving(true);
     setPayoutScheduleSaved(false);
@@ -503,6 +542,11 @@ export default function Billing() {
   const currentName = { starter: 'Free Trial', solo: 'Solo', pro: 'Pro', scale: 'Scale', enterprise: 'Enterprise' }[currentPlan] || currentPlan;
   const sub         = billing?.subscription;
   const connect     = billing?.connect || { status: 'not_connected', account_id: null, platform_fee: 1 };
+
+  const connectStatus       = connectDash?.status || connect.status || 'not_connected';
+  const connectIsActive     = connectStatus === 'active';
+  const connectIsPending    = connectStatus === 'pending';
+  const connectIsConnected  = connectDash?.connected ?? false;
 
   const isEnterpriseCurrentPlan = currentPlan === 'enterprise';
 
@@ -849,111 +893,205 @@ export default function Billing() {
         {/* ── STRIPE CONNECT TAB ────────────────────────────────────────────── */}
         {tab === 'connect' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Explainer */}
+
+            {/* 1 — Header card: title, status badge, primary action */}
             <div className="dash-card" style={{ padding: '20px 24px' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Direct Payout Setup</div>
-              <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.7, maxWidth: 600 }}>
-                Stripe Connect routes invoice payments and booking deposits directly to your bank account — no manual transfers.
-                FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
-              </div>
-              <div className="billing-steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
-                {[
-                  { step: '1', label: 'Click Connect', desc: 'Stripe\'s secure onboarding loads right here — no redirect needed' },
-                  { step: '2', label: 'Enter Bank Info', desc: 'Routing + account number entered on Stripe — FieldCore never sees it' },
-                  { step: '3', label: 'Payouts Go Live', desc: 'Stripe verifies your account, usually within minutes' },
-                ].map(s => (
-                  <div key={s.step} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8 }}>
-                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Step {s.step}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{s.label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--steel)', lineHeight: 1.5 }}>{s.desc}</div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>Direct Payouts</div>
+                  <div style={{ fontSize: 13, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 520 }}>
+                    Invoice payments and booking deposits route directly to your bank via Stripe Connect.{' '}
+                    FieldCore collects a <strong style={{ color: 'var(--navy)' }}>{connect.platform_fee}% platform fee</strong> per transaction.
                   </div>
-                ))}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+                  <StatusBadge status={connectIsActive ? 'active' : connectIsPending ? 'verification pending' : 'not connected'} />
+                  {!connectEmbedActive && !connectIsActive && (
+                    <button onClick={startEmbeddedOnboarding} disabled={connectBusy}
+                      style={{ background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, height: 44, padding: '0 20px', fontSize: 14, fontWeight: 600, cursor: connectBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                      {connectBusy ? 'Loading…' : connectIsPending ? 'Continue Setup →' : 'Connect with Stripe →'}
+                    </button>
+                  )}
+                  {connectIsActive && !connectEmbedActive && (
+                    <button onClick={openLoginLink} disabled={connectBusy}
+                      style={{ background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, height: 44, padding: '0 20px', fontSize: 14, fontWeight: 600, cursor: connectBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                      {connectBusy ? '…' : 'Stripe Dashboard →'}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Status + actions */}
-            <div className="dash-card" style={{ padding: '20px 24px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Connection Status</div>
-
-              {connectEmbedError && (
-                <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
-                  {connectEmbedError}
+              {(connectEmbedError || connectError) && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                  {connectEmbedError || connectError}
                 </div>
               )}
-              {connectError && (
-                <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
-                  {connectError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {!connectEmbedActive && connect.status === 'not_connected' && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <StatusBadge status="not connected" />
-                      <button onClick={startEmbeddedOnboarding} disabled={connectBusy} style={{ padding: '10px 22px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
-                        {connectBusy ? 'Loading…' : 'Connect with Stripe →'}
-                      </button>
-                    </div>
-                    <div style={{ padding: '10px 14px', background: 'var(--off)', borderRadius: 8, fontSize: 12, color: 'var(--steel)', lineHeight: 1.6, maxWidth: 500 }}>
-                      Without Connect, payments must be transferred manually. Setup takes about 5 minutes, completed right here in FieldCore.
-                    </div>
-                  </>
-                )}
-                {!connectEmbedActive && connect.status === 'pending' && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <StatusBadge status="verification pending" />
-                      <button onClick={startEmbeddedOnboarding} disabled={connectBusy} style={{ padding: '10px 20px', background: 'var(--navy)', color: 'var(--sand)', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: connectBusy ? 'wait' : 'pointer' }}>
-                        {connectBusy ? 'Loading…' : 'Continue Setup →'}
-                      </button>
-                    </div>
-                    <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.6, maxWidth: 500 }}>
-                      Stripe is reviewing your account. Payouts activate automatically once verified — usually within minutes. If more info is required, Stripe will email you.
-                    </div>
-                  </>
-                )}
-                {connect.status === 'active' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <StatusBadge status="active" />
-                    <button onClick={openStripeDashboard} disabled={connectBusy} className="btn-secondary">{connectBusy ? '…' : 'Stripe Dashboard →'}</button>
-                  </div>
-                )}
-              </div>
 
               {/* Stripe embedded onboarding mounts here */}
               {connectEmbedActive && (
                 <div ref={connectContainerRef} style={{ marginTop: 16 }} />
               )}
+
+              {/* Not-connected explainer steps */}
+              {!connectIsConnected && !connectEmbedActive && (
+                <div className="billing-steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 18 }}>
+                  {[
+                    { step: '1', label: 'Click Connect', desc: "Stripe's secure onboarding loads right here — no redirect needed" },
+                    { step: '2', label: 'Enter Bank Info', desc: 'Routing + account number entered on Stripe — FieldCore never sees it' },
+                    { step: '3', label: 'Payouts Go Live', desc: 'Stripe verifies your account, usually within minutes' },
+                  ].map(s => (
+                    <div key={s.step} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8 }}>
+                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Step {s.step}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{s.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--steel)', lineHeight: 1.5 }}>{s.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Payout Schedule — only when active */}
-            {connect.status === 'active' && (
+            {/* Dashboard loading / error */}
+            {connectDashLoading && (
+              <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>Loading payout dashboard…</div>
+            )}
+            {connectDashError && !connectDashLoading && (
+              <div style={{ padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                {connectDashError}
+              </div>
+            )}
+
+            {/* 2 — Balance summary (active only) */}
+            {connectIsActive && connectDash?.balance && (() => {
+              const avail = connectDash.balance.available?.find(b => b.currency === 'usd') || connectDash.balance.available?.[0];
+              const pend  = connectDash.balance.pending?.find(b => b.currency === 'usd')   || connectDash.balance.pending?.[0];
+              const next  = connectDash.payouts?.[0];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  {[
+                    { label: 'Available Balance', value: avail ? fmtCents(avail.amount, avail.currency) : '—', sub: 'Ready to pay out' },
+                    { label: 'Pending Balance',   value: pend  ? fmtCents(pend.amount,  pend.currency)  : '—', sub: 'Processing' },
+                    { label: 'Next Payout',       value: next  ? fmtCents(next.amount,  next.currency)  : '—', sub: next ? fmtDate(next.arrival_date) : 'No upcoming payouts' },
+                  ].map(card => (
+                    <div key={card.label} className="dash-card" style={{ padding: '16px 20px' }}>
+                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 8 }}>{card.label}</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>{card.value}</div>
+                      <div style={{ fontSize: 11, color: 'var(--steel)' }}>{card.sub}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* 3 — Recent payouts table (active + has payouts) */}
+            {connectIsActive && connectDash?.payouts?.length > 0 && (
+              <div className="dash-card" style={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Recent Payouts</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
+                      {['Date', 'Amount', 'Status', 'Arrival'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '0 12px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {connectDash.payouts.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--slate)', fontSize: 13 }}>{fmtDate(p.created)}</td>
+                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--navy)', fontWeight: 700, fontSize: 13 }}>{fmtCents(p.amount, p.currency)}</td>
+                        <td style={{ padding: '10px 12px 10px 0' }}>
+                          <StatusBadge status={p.status}>{p.status === 'paid' ? 'Paid' : p.status === 'in_transit' ? 'In Transit' : p.status}</StatusBadge>
+                        </td>
+                        <td style={{ padding: '10px 12px 10px 0', color: 'var(--slate)', fontSize: 13 }}>{fmtDate(p.arrival_date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 4 — Connected bank account (active + has bank) */}
+            {connectIsActive && connectDash?.bank_account && (
+              <div className="dash-card" style={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Connected Bank Account</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--off)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <BankIco />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{connectDash.bank_account.bank_name || 'Bank Account'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>
+                      •••• {connectDash.bank_account.last4} · {(connectDash.bank_account.currency || 'usd').toUpperCase()}
+                    </div>
+                  </div>
+                  <button onClick={openLoginLink} disabled={connectBusy}
+                    style={{ marginLeft: 'auto', padding: '8px 16px', background: 'transparent', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--navy)', cursor: 'pointer' }}>
+                    Update in Stripe →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 5 — Verification requirements (when there are items due) */}
+            {connectDash?.requirements && (
+              (connectDash.requirements.past_due?.length > 0 || connectDash.requirements.currently_due?.length > 0)
+            ) && (
+              <div className="dash-card" style={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 12 }}>Verification Required</div>
+                {connectDash.requirements.past_due?.length > 0 && (
+                  <div style={{ padding: '12px 14px', background: 'rgba(198,40,40,.05)', border: '1px solid rgba(198,40,40,.15)', borderRadius: 8, marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#C62828', marginBottom: 6 }}>Past Due</div>
+                    {connectDash.requirements.past_due.map(r => (
+                      <div key={r} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#C62828', marginTop: 4 }}>
+                        <span>•</span><span style={{ fontFamily: 'DM Mono, monospace' }}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {connectDash.requirements.currently_due?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', marginBottom: 8 }}>Currently Due</div>
+                    {connectDash.requirements.currently_due.map(r => (
+                      <div key={r} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--slate)', marginTop: 4 }}>
+                        <span>•</span><span style={{ fontFamily: 'DM Mono, monospace' }}>{r}</span>
+                      </div>
+                    ))}
+                    <button onClick={startEmbeddedOnboarding} disabled={connectBusy}
+                      style={{ marginTop: 14, background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, height: 44, padding: '0 20px', fontSize: 14, fontWeight: 600, cursor: connectBusy ? 'wait' : 'pointer' }}>
+                      {connectBusy ? 'Loading…' : 'Complete Verification →'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 6 — Payout schedule + connection health (active only) */}
+            {connectIsActive && (
               <div className="dash-card" style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>Payout Schedule</div>
                 <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.6 }}>
-                  How often Stripe sends your available balance to your bank account. Daily is the fastest; Manual means you initiate each payout from the Stripe Dashboard.
+                  How often Stripe sends your available balance to your bank. Daily is fastest; Manual means you initiate each payout from Stripe.
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <select
-                    value={payoutSchedule}
-                    onChange={e => setPayoutSchedule(e.target.value)}
-                    style={{ padding: '9px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, color: 'var(--navy)', background: 'white', fontFamily: 'Inter, sans-serif', cursor: 'pointer' }}
-                  >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <select value={payoutSchedule} onChange={e => setPayoutSchedule(e.target.value)}
+                    style={{ padding: '9px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, color: 'var(--navy)', background: 'white', fontFamily: 'Inter, sans-serif', cursor: 'pointer' }}>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                     <option value="manual">Manual</option>
                   </select>
-                  <button
-                    onClick={() => savePayoutSchedule(payoutSchedule)}
-                    disabled={payoutScheduleSaving}
-                    className="btn-secondary"
-                    style={{ fontSize: 13 }}
-                  >
-                    {payoutScheduleSaving ? 'Saving…' : 'Save Schedule'}
+                  <button onClick={() => savePayoutSchedule(payoutSchedule)} disabled={payoutScheduleSaving}
+                    style={{ padding: '9px 18px', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: payoutScheduleSaving ? 'wait' : 'pointer' }}>
+                    {payoutScheduleSaving ? 'Saving…' : 'Save'}
                   </button>
                   {payoutScheduleSaved && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>✓ Saved</span>}
+                </div>
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: 'var(--slate)' }}>Stripe Connect active</span>
+                  {connectDash?.account_id && (
+                    <span style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--steel)' }}>{connectDash.account_id}</span>
+                  )}
                 </div>
               </div>
             )}
