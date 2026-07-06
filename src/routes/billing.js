@@ -75,6 +75,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
         status:       acct.stripe_connect_status     || 'not_connected',
         platform_fee: parseFloat(process.env.PLATFORM_FEE_PERCENT || '1'),
       },
+      testCheckout: process.env.ENABLE_STRIPE_TEST_TOOLS === 'true',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -755,6 +756,61 @@ router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res)
     `);
 
     res.json(metrics[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/billing/test-checkout — internal test tool only ────────────────
+router.post('/test-checkout', requireAuth, requireRole('owner'), async (req, res) => {
+  if (process.env.ENABLE_STRIPE_TEST_TOOLS !== 'true') {
+    return res.status(403).json({ error: 'Test tools are not enabled.' });
+  }
+
+  const { plan } = req.body;
+  if (plan !== 'pro' && plan !== 'scale') {
+    return res.status(400).json({ error: 'Test checkout only supports pro or scale.' });
+  }
+
+  const priceId = PRICE_IDS[plan];
+  if (!priceId) {
+    return res.status(400).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} is not configured.` });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.stripe_customer_id, a.name AS account_name, u.email, u.name AS user_name
+       FROM accounts a JOIN users u ON u.id = $1
+       WHERE a.id = $2`,
+      [req.userId, req.accountId]
+    );
+    const row = rows[0];
+
+    let customerId = row?.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email:    row.email,
+        name:     row.account_name,
+        metadata: { account_id: req.accountId },
+      });
+      customerId = customer.id;
+      await pool.query(`UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`, [customerId, req.accountId]);
+    }
+
+    console.log(`[test-checkout] account_id=${req.accountId} plan=${plan}`);
+
+    const appUrl  = process.env.APP_URL || 'http://localhost:5173';
+    const session = await stripe.checkout.sessions.create({
+      mode:     'subscription',
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      subscription_data: { metadata: { account_id: req.accountId } },
+      metadata: { account_id: req.accountId, plan },
+      success_url: `${appUrl}/billing?upgraded=1`,
+      cancel_url:  `${appUrl}/billing`,
+    });
+
+    res.json({ url: session.url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

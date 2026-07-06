@@ -339,6 +339,7 @@ export default function Billing() {
   const [connectDashLoading, setConnectDashLoading] = useState(false);
   const [connectDashError,   setConnectDashError]   = useState('');
   const [payoutScheduleError, setPayoutScheduleError] = useState('');
+  const [testBusy,           setTestBusy]           = useState(false);
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
 
@@ -506,6 +507,18 @@ export default function Billing() {
     } catch (err) {
       setConnectError(err.response?.data?.error || 'Could not open Stripe dashboard.');
     } finally { setConnectBusy(false); }
+  }
+
+  async function runTestCheckout(plan) {
+    setTestBusy(true);
+    try {
+      const { data } = await api.post('/billing/test-checkout', { plan });
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      alert(err.response?.data?.error || 'Test checkout failed.');
+    } finally {
+      setTestBusy(false);
+    }
   }
 
   async function savePayoutSchedule(interval) {
@@ -805,6 +818,28 @@ export default function Billing() {
                     Cancel my subscription
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* ── Internal test tools — only shown when ENABLE_STRIPE_TEST_TOOLS=true ── */}
+            {billing?.testCheckout && (
+              <div style={{ marginTop: 24, padding: '14px 18px', background: '#fffbe6', border: '1.5px dashed #e6c800', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', letterSpacing: '.05em', flexShrink: 0 }}>⚙ TEST TOOLS</span>
+                <span style={{ fontSize: 12, color: '#92400e', flex: 1 }}>Internal only — opens Stripe test checkout.</span>
+                <button
+                  disabled={testBusy}
+                  onClick={() => runTestCheckout('pro')}
+                  style={{ height: 34, padding: '0 14px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {testBusy ? '…' : 'Test → Pro'}
+                </button>
+                <button
+                  disabled={testBusy}
+                  onClick={() => runTestCheckout('scale')}
+                  style={{ height: 34, padding: '0 14px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {testBusy ? '…' : 'Test → Scale'}
+                </button>
               </div>
             )}
           </>
