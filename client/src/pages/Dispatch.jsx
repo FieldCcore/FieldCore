@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { InfoWindow } from '@vis.gl/react-google-maps';
+import { Map } from '@vis.gl/react-google-maps';
 import api from '../api';
-import { GoogleMap, Marker, useGeocoder } from '../maps';
+import { useGeocoder } from '../maps';
 
 const CENTER = { lat: 27.9506, lng: -82.4572 }; // Tampa, FL
 
@@ -49,12 +49,33 @@ export default function Dispatch() {
   const [techs,      setTechs]      = useState([]);
   const [selected,   setSelected]   = useState(null);
   const [loading,    setLoading]    = useState(true);
-  const [activeInfo, setActiveInfo] = useState(null); // { pos, job? | tech? + hasGps + jobCount }
   const [, forceUpdate]             = useState(0);
 
   // Geocode cache: address → { lat, lng } | null (null = failed/in-flight, don't retry)
   const geocacheRef = useRef({});
   const { geocode, isReady: geocoderReady } = useGeocoder();
+
+  // DIAGNOSTIC: inspect the .dispatch-map-wrap container dimensions
+  const mapWrapRef = useRef(null);
+  useEffect(() => {
+    const el = mapWrapRef.current;
+    if (!el) { console.log('[Dispatch] mapWrapRef null'); return; }
+    const cs = getComputedStyle(el);
+    console.log('[Dispatch] .dispatch-map-wrap DOM', {
+      offsetWidth:  el.offsetWidth,
+      offsetHeight: el.offsetHeight,
+      clientWidth:  el.clientWidth,
+      clientHeight: el.clientHeight,
+      computed: {
+        width:    cs.width,
+        height:   cs.height,
+        position: cs.position,
+        display:  cs.display,
+        flex:     cs.flex,
+        overflow: cs.overflow,
+      },
+    });
+  });
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -79,13 +100,13 @@ export default function Dispatch() {
     if (!pending.length) return;
 
     pending.forEach(j => {
-      cache[j.service_address] = null; // mark in-flight; prevents re-attempt
+      cache[j.service_address] = null;
       geocode(j.service_address)
         .then(r => {
           cache[j.service_address] = { lat: r.lat, lng: r.lng };
           forceUpdate(n => n + 1);
         })
-        .catch(() => {}); // null stays — no retry, no crash
+        .catch(() => {});
     });
   }, [geocoderReady, jobs, geocode]);
 
@@ -167,96 +188,19 @@ export default function Dispatch() {
       </div>
 
       {/* ── Map area ── */}
-      <div className="dispatch-map-wrap">
-        <GoogleMap className="dispatch-map" center={CENTER}>
+      <div className="dispatch-map-wrap" ref={mapWrapRef}>
 
-          {/* Job markers */}
-          {!loading && jobs.map(j => {
-            const pos   = jobPos(j);
-            if (!pos) return null;
-            const isLive = !!(j.checkin_lat && j.checkin_lng);
-            const color  = JOB_COLORS[j.status] || '#8A90A2';
-            return (
-              <Marker
-                key={`job-${j.id}`}
-                position={pos}
-                title={`${j.client_name} — ${j.service_type}`}
-                onClick={() => setActiveInfo({ pos, job: j })}
-              >
-                <div style={{
-                  width: 12, height: 12, borderRadius: '50%',
-                  background: color,
-                  border: `2px solid ${isLive ? '#2E7D32' : 'white'}`,
-                  boxShadow: '0 1px 4px rgba(0,0,0,.3)',
-                  cursor: 'pointer',
-                }} />
-              </Marker>
-            );
-          })}
-
-          {/* Tech markers */}
-          {!loading && techs.map((t, i) => {
-            const pos      = techPos(t, i);
-            const live     = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
-            const hasGps   = !!live;
-            const jobCount = jobs.filter(j => j.tech_id === t.id).length;
-            const color    = AVATAR_COLORS[i % AVATAR_COLORS.length];
-            return (
-              <Marker
-                key={`tech-${t.id}`}
-                position={pos}
-                title={t.name}
-                onClick={() => setActiveInfo({ pos, tech: t, hasGps, jobCount })}
-              >
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: color,
-                  border: `3px solid ${hasGps ? '#2E7D32' : 'white'}`,
-                  boxShadow: '0 2px 8px rgba(0,0,0,.35)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 800, color: 'white',
-                  fontFamily: "'Bricolage Grotesque', sans-serif",
-                  cursor: 'pointer',
-                }}>
-                  {initials(t.name)}
-                </div>
-              </Marker>
-            );
-          })}
-
-          {/* InfoWindow for clicked marker */}
-          {activeInfo && (
-            <InfoWindow
-              position={activeInfo.pos}
-              onCloseClick={() => setActiveInfo(null)}
-            >
-              {activeInfo.job && (() => {
-                const j = activeInfo.job;
-                return (
-                  <div style={{ fontFamily: 'sans-serif', fontSize: 12, minWidth: 160 }}>
-                    <strong style={{ fontSize: 13 }}>{j.client_name} — {j.service_type}</strong><br />
-                    <span style={{ color: '#5F667A' }}>Tech: {j.tech_name || 'Unassigned'} · {j.amount ? '$' + j.amount : 'No amount'}</span><br />
-                    <span style={{ color: '#8A90A2', textTransform: 'capitalize' }}>Status: {j.status.replace('_', ' ')}</span>
-                    {j.service_address && <><br /><span style={{ color: '#64748b', fontSize: 11 }}>{j.service_address}</span></>}
-                  </div>
-                );
-              })()}
-              {activeInfo.tech && (() => {
-                const t = activeInfo.tech;
-                return (
-                  <div style={{ fontFamily: 'sans-serif', fontSize: 12 }}>
-                    <strong style={{ fontSize: 13 }}>{t.name}</strong><br />
-                    <span style={{ color: '#5F667A' }}>{activeInfo.jobCount} job{activeInfo.jobCount !== 1 ? 's' : ''} today</span><br />
-                    {activeInfo.hasGps
-                      ? <span style={{ color: '#2E7D32' }}>● Live GPS</span>
-                      : <span style={{ color: '#8A90A2' }}>No GPS yet</span>}
-                  </div>
-                );
-              })()}
-            </InfoWindow>
-          )}
-
-        </GoogleMap>
+        {/* DIAGNOSTIC: bare Map with inline style only — no className, no GoogleMap wrapper */}
+        <Map
+          defaultCenter={CENTER}
+          defaultZoom={10}
+          style={{ width: '100%', height: '100%' }}
+          mapTypeControl={false}
+          streetViewControl={false}
+          fullscreenControl={false}
+          zoomControl={true}
+          gestureHandling="greedy"
+        />
 
         {/* Legend */}
         <div className="dispatch-legend">
