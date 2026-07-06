@@ -378,19 +378,46 @@ export default function Billing() {
     setConnectBusy(true);
     setConnectEmbedError('');
     try {
-      // Pre-validate: ensures connected account exists and embedded components are available
       const { data: initData } = await api.post('/billing/connect/account-session');
-      let cachedSecret = initData.client_secret;
+      const clientSecret = initData.client_secret;
+      const backendKeyMode = initData.key_mode;
+
+      const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+      const frontendKeyMode = pk.startsWith('pk_test') ? 'test'
+                            : pk.startsWith('pk_live') ? 'live'
+                            : 'unknown';
+
+      console.log('=== CONNECT FRONTEND START ===');
+      console.log({
+        hasPublishableKey: !!pk,
+        publishableKeyMode: frontendKeyMode,
+        backendKeyMode,
+        hasClientSecret: !!clientSecret,
+      });
+
+      if (!pk) {
+        const msg = 'VITE_STRIPE_PUBLISHABLE_KEY is not set in Vercel environment variables.';
+        console.error(msg);
+        setConnectEmbedError(msg);
+        return;
+      }
+
+      if (backendKeyMode !== 'unknown' && frontendKeyMode !== 'unknown' && backendKeyMode !== frontendKeyMode) {
+        const mismatch = `Stripe key mode mismatch: backend is ${backendKeyMode}, frontend is ${frontendKeyMode}. Both must be test or both must be live.`;
+        console.error(mismatch);
+        setConnectEmbedError(mismatch);
+        return;
+      }
+
+      if (!clientSecret) {
+        setConnectEmbedError('Stripe did not return a session secret. Check Railway logs.');
+        return;
+      }
 
       const { loadConnectAndInitialize } = await import('@stripe/connect-js');
       const instance = loadConnectAndInitialize({
-        publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '',
+        publishableKey: pk,
         fetchClientSecret: async () => {
-          if (cachedSecret) {
-            const s = cachedSecret;
-            cachedSecret = null;
-            return s;
-          }
           const { data } = await api.post('/billing/connect/account-session');
           return data.client_secret;
         },
@@ -401,7 +428,12 @@ export default function Billing() {
       connectInstanceRef.current = instance;
       setConnectEmbedActive(true);
     } catch (err) {
-      setConnectEmbedError(err.response?.data?.error || err.message || 'Could not start Stripe onboarding. Please try again.');
+      const backendMsg = err.response?.data?.error;
+      const backendCode = err.response?.data?.code;
+      const backendType = err.response?.data?.type;
+      const display = [backendMsg, backendCode, backendType].filter(Boolean).join(' — ') || err.message || 'Could not start Stripe onboarding.';
+      console.error('=== CONNECT FRONTEND ERROR ===', { backendMsg, backendCode, backendType, httpStatus: err.response?.status });
+      setConnectEmbedError(display);
     } finally {
       setConnectBusy(false);
     }
