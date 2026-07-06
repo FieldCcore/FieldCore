@@ -19,8 +19,8 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      await login(email, password);
-      nav('/dashboard', { replace: true });
+      const u = await login(email, password);
+      nav(u.role === 'tech' ? '/tech' : '/dashboard', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Sign in failed. Check your credentials.');
     } finally {

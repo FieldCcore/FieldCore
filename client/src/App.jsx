@@ -79,6 +79,18 @@ import CallerID         from './components/CallerID';
 import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
+function TechRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return (
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1C2333', fontFamily: "'Bricolage Grotesque', sans-serif", color: 'rgba(255,255,255,.4)', fontSize: 14 }}>
+      Loading…
+    </div>
+  );
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'tech') return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 const PAGE_TITLES = {
   '/dashboard':          'Dashboard',
   '/dispatch':           'Dispatch',
@@ -190,9 +202,14 @@ function AppShell() {
   if (pathname === '/tech') {
     return (
       <Routes>
-        <Route path="/tech" element={<ProtectedRoute><TechApp /></ProtectedRoute>} />
+        <Route path="/tech" element={<TechRoute><TechApp /></TechRoute>} />
       </Routes>
     );
+  }
+
+  // Tech users on operator routes → send them to their app
+  if (user && user.role === 'tech') {
+    return <Navigate to="/tech" replace />;
   }
 
   // Demo — full-screen mobile UI prototype, no auth required

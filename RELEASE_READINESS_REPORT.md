@@ -1,6 +1,6 @@
 # FieldCore — Release Readiness Report
 
-**Last reconciled:** 2026-07-01 (Settings UI redesign: clean tab nav, page-header, polished My Account / Business / Notifications / Billing tabs)  
+**Last reconciled:** 2026-07-06 (PR-005 closed; PR-006 opened — Embedded Stripe Payments sprint planned; DECISION-059 recorded)  
 **Verdict: NOT READY FOR PRODUCTION** — Code is substantially complete but all third-party integrations are unconfigured.
 
 ---
@@ -20,7 +20,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 | User authentication (login/signup/roles) | Complete | Needs strong `JWT_SECRET` in prod |
 | Client database (CRUD, search, profile) | Complete | — |
 | Job scheduling + calendar | Complete | — |
-| Technician mobile app (14 screens) | Complete | Needs `BASE_URL` update + EAS build |
+| Technician mobile app — full field flow | Complete | Signature pad → Tip → Complete; no-show declare with countdown; availability toggle; multi-day view (Today/Tomorrow/Week); role-enforced routing (tech → /tech, operator → /dashboard); Needs EAS build for device distribution |
 | Team management + role enforcement | Complete | — |
 | Business settings + hours | Complete | Logo storage destination TBD |
 | Fleet management | Complete | UI redesigned 2026-07-01: stat cards, two-column layout, provider grid, camera tiles. Shows setup-required until provider connected. |
@@ -57,15 +57,31 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 
 ---
 
+## IN PROGRESS — Embedded Stripe Payments Sprint
+
+**Decision:** DECISION-059 (2026-07-06) — Stripe stays as processor; redirect-based flows replaced with embedded UI.
+
+| Sprint | Task | Scope | Status |
+|--------|------|-------|--------|
+| PR-006 | P1-012 | Embedded SaaS subscription checkout (`ui_mode: 'embedded'` on `/billing`) | Not Started |
+| PR-007 | P1-013 | Public invoice Payment Element (`/pay/:invoiceId` stays on FieldCore domain) | Not Started |
+| PR-008 | P1-014 | Client portal invoice Payment Element (inline in portal) | Not Started |
+| PR-009 | P1-015 | Booking deposit Payment Element (inline in booking widget) | Not Started |
+| PR-010 | P1-016 | Save card modernization: `CardElement` → `PaymentElement` (setup mode) | Not Started |
+
+These sprints are unblocked by Stripe credentials being configured. P1-012 can run immediately once Stripe price IDs are set in Railway.
+
+---
+
 ## NOT READY FOR LAUNCH
 
 ### Blocked by Missing Credentials
 
 | Feature | Blocked By | User Impact |
 |---------|-----------|-------------|
-| Invoice payment + card charge | Stripe keys | Core revenue — no money collected |
-| Booking deposit collection | Stripe keys + APP_URL | Public booking unusable |
-| Subscription billing | Stripe account + price IDs | Can't charge customers |
+| Invoice payment + card charge | Stripe keys + embedded UI (PR-007, P1-013) | Core revenue — redirect-based; embedded sprint planned |
+| Booking deposit collection | Stripe keys + APP_URL + embedded UI (PR-009, P1-015) | Public booking unusable; embedded sprint planned |
+| Subscription billing | Stripe price IDs + embedded checkout (PR-006, P1-012) | Redirect-based today; embedded sprint in progress |
 | Stripe Connect payouts | Stripe Connect approval | Contractor payouts unavailable |
 | Job confirmation SMS | Twilio + A2P approval | No automated confirmations |
 | 24h reminder SMS | Twilio + A2P approval | No automated reminders |
@@ -117,7 +133,7 @@ The FieldCore codebase is feature-complete beyond its original 6-module MVP scop
 - [ ] Job confirmation SMS sent within 1 minute of job creation
 - [ ] 24h reminder SMS sent by scheduler
 - [ ] Password reset: email received → link works → new password accepted
-- [ ] Mobile: login → jobs visible → GPS check-in → photo upload → mark complete
+- [ ] Mobile: login → jobs visible (Today/Tomorrow/Week) → GPS check-in → photo upload → get signature → select tip → mark complete
 - [ ] Plan limit: try to exceed Starter (3rd user should fail, 51st job should fail)
 - [x] Multi-tenant isolation: code verified 2026-06-09. Full two-account test still recommended before first real user.
 

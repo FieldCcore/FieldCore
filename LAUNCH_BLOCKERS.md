@@ -407,9 +407,9 @@ Update this table as blockers are resolved.
 | C-03 | Multi-tenant not audited | RESOLVED | 2026-06-09 | Sprint Task 1 complete; 5 files fixed |
 | C-04 | No production domain | OPEN | — | — |
 | C-05 | CORS not env-driven | RESOLVED | 2026-06-09 | Sprint Task 2 complete |
-| C-06 | Mobile BASE_URL hardcoded | OPEN | — | Sprint Task 4 |
-| C-07 | File upload storage unknown | OPEN | — | Sprint Task 3 |
-| C-08 | Stripe webhook raw body | OPEN | — | Sprint Task 6 |
+| C-06 | Mobile BASE_URL hardcoded | RESOLVED | 2026-06-10 | BASE_URL reads from EXPO_PUBLIC_API_URL |
+| C-07 | File upload storage unknown | RESOLVED | 2026-07-02 | P0-007: migrated to R2/S3 memoryStorage |
+| C-08 | Stripe webhook raw body | RESOLVED | 2026-06-10 | webhooksRouter moved before body parsers |
 | C-09 | No production database | OPEN | — | — |
 | C-10 | Twilio A2P not registered | OPEN | — | — |
 | C-11 | JWT_SECRET not set | OPEN | — | — |

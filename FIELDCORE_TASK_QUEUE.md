@@ -1,6 +1,6 @@
 # FIELDCORE — Task Queue
 
-**Last Updated:** 2026-07-03 (PR-005 closed — P1-001/002/003/005/010/011 complete; remaining P1: P1-004 verify, P1-006/007/008 Twilio-blocked, P1-009 investigate)  
+**Last Updated:** 2026-07-06 (PR-006 opened — Embedded Stripe Payments sprint planned; P1-012–P1-016 added; DECISION-059 recorded)  
 **Audit Score:** 41 / 100 → est. 58 / 100 after PRs 001–003 (P0 bugs fixed, TechApp complete, route security added)  
 **Governing Plan:** `FIELDCORE_LAUNCH_EXECUTION_PLAN.md`
 
@@ -272,6 +272,113 @@
 **Blocked By:** P0-006 (SMS must be enabled)  
 **Verification:** Create a job with pre-charge enabled. Trigger cron. Confirm notice sent and flag set.  
 **Deploy:** Railway  
+
+---
+
+### P1-012 — Embedded SaaS Subscription Checkout
+**Status:** Not Started
+**Priority:** P1
+**Sprint:** PR-006
+**Decision:** DECISION-059
+
+**Context:** Clicking "Upgrade to Pro/Scale" on `/billing` currently redirects the operator to `checkout.stripe.com`. This breaks app context, feels unpolished, and breaks the in-app flow. Stripe supports `ui_mode: 'embedded'` for Checkout Sessions — same backend, no redirect.
+
+**Scope:**
+- Add `ui_mode: 'embedded'` and `return_url` to `stripe.checkout.sessions.create()` in `POST /api/billing/checkout`
+- Remove `success_url` / `cancel_url` (replaced by `return_url`)
+- Add `GET /api/billing/checkout-session/:sessionId` to retrieve session status after return (required by embedded mode — do not trust frontend success signal)
+- Frontend: on "Upgrade to Pro/Scale" click, call backend → get `clientSecret` → open a modal with `<EmbeddedCheckout>` from `@stripe/react-stripe-js`
+- Remove `window.location.href = data.url` redirect from `upgrade()` function
+- Modal closes on complete/cancel, calls `load()` to refresh billing state
+- Webhook processing unchanged (`customer.subscription.created/updated` events)
+
+**Files:** `src/routes/billing.js`, `client/src/pages/Billing.jsx`
+**Deploy:** Railway + Vercel
+
+---
+
+### P1-013 — Public Invoice Payment Element
+**Status:** Not Started
+**Priority:** P1
+**Sprint:** PR-007
+**Decision:** DECISION-059
+**Depends on:** P1-012 shared infrastructure (reusable `<PaymentForm>` component)
+
+**Context:** `POST /api/payments/payment-link` creates a Stripe Checkout Session and returns a `checkout.stripe.com` URL that operators send to clients. Client clicks → leaves FieldCore domain → pays on Stripe-hosted page. Replace with an embedded Payment Element on FieldCore's own `/pay/:invoiceId` page.
+
+**Scope:**
+- New `POST /api/pay/:invoiceId/payment-intent` — creates PaymentIntent server-side; handles Connect routing (`application_fee_amount` + `transfer_data.destination`) if `stripe_connect_status = 'active'`; stores `stripe_payment_intent_id` on invoice; uses `invoiceId` as idempotency key
+- Existing `GET /api/pay/:invoiceId` (invoice details, no auth) unchanged
+- Frontend `/pay/:invoiceId` page: on mount, fetch invoice + create PaymentIntent → render `<Elements>` provider + `<PaymentElement>` + invoice summary above form
+- On submit: `stripe.confirmPayment()` with `return_url` (Stripe handles 3DS redirect if needed)
+- Webhook `payment_intent.succeeded` already marks invoice paid — no change needed
+- Deprecate `POST /api/payments/payment-link` (Checkout Session redirect)
+- Build reusable `<PaymentForm>` component (used again in P1-014 and P1-015)
+
+**Files:** `src/routes/pay.js`, `src/routes/payments.js`, `client/src/pages/` (new pay page), new `client/src/components/PaymentForm.jsx`
+**Deploy:** Railway + Vercel
+
+---
+
+### P1-014 — Client Portal Invoice Payment Element
+**Status:** Not Started
+**Priority:** P1
+**Sprint:** PR-008
+**Decision:** DECISION-059
+**Depends on:** P1-013 (`<PaymentForm>` component + PaymentIntent pattern)
+
+**Context:** `POST /api/portal/invoices/:id/pay` creates a Checkout Session and redirects the authenticated portal client to `checkout.stripe.com`. Replace with inline Payment Element inside the portal invoice detail view.
+
+**Scope:**
+- New `POST /api/portal/invoices/:id/payment-intent` — creates/retrieves PaymentIntent for the invoice, scoped to the portal session's authenticated client; validates invoice belongs to the correct account before creating intent
+- Frontend portal invoice detail: replace "Pay Invoice" button with `<PaymentForm>` inline
+- On payment success: refresh invoice status without full page reload
+- Deprecate `POST /api/portal/invoices/:id/pay`
+
+**Files:** `src/routes/portal.js`, portal invoice detail component
+**Deploy:** Railway + Vercel
+
+---
+
+### P1-015 — Booking Deposit Payment Element
+**Status:** Not Started
+**Priority:** P1
+**Sprint:** PR-009
+**Decision:** DECISION-059
+**Depends on:** P1-013 (`<PaymentForm>` component)
+
+**Context:** Booking deposits use `stripe.checkout.sessions.create()` with `job_id` metadata; webhook `checkout.session.completed` confirms them. Replace with Payment Element embedded in the booking widget. Client pays without leaving the booking flow.
+
+**Scope:**
+- New `POST /api/deposits/:bookingId/payment-intent` — creates PaymentIntent with `job_id` in metadata; applies Connect routing if `stripe_connect_status = 'active'`
+- Update webhook handler: add `payment_intent.succeeded` handling for deposit confirmation (currently done via `checkout.session.completed` — must be migrated; keep old handler until all deposits are on new path)
+- Frontend booking widget: replace Checkout redirect button with `<PaymentForm>` inline after service selection + deposit amount display
+- Keep existing refund endpoint (`PATCH /api/deposits/:id/refund`) unchanged
+
+**Files:** `src/routes/deposits.js`, `src/routes/webhooks.js`, booking widget component
+**Deploy:** Railway + Vercel
+
+---
+
+### P1-016 — Save Card Modernization: CardElement → Payment Element
+**Status:** Not Started
+**Priority:** P1
+**Sprint:** PR-010
+**Decision:** DECISION-059
+**Depends on:** P1-013 (shared pattern; can be done independently)
+
+**Context:** `CardSetupForm.jsx` uses the legacy `CardElement` from `@stripe/react-stripe-js`. `CardElement` is a single-field card input. `PaymentElement` in `setup` mode supports more card networks, Link autofill, Apple Pay, and Google Pay for card setup — better experience with no backend change.
+
+**Scope:**
+- In `CardSetupForm.jsx`: swap `<CardElement>` for `<PaymentElement>` inside the existing `<Elements>` provider
+- Change `stripe.confirmCardSetup()` → `stripe.confirmSetup()` (Payment Element's setup-mode API)
+- Elements provider needs `mode: 'setup'` and `currency` set when initializing without a client secret
+- Backend `POST /api/payments/setup-intent` unchanged — still returns SetupIntent `clientSecret`
+- Backend `POST /api/payments/save-card` unchanged — still stores `stripe_payment_method_id`
+- Validate resulting payment method ID server-side before saving (already done)
+
+**Files:** `client/src/components/CardSetupForm.jsx`
+**Deploy:** Vercel only
 
 ---
 

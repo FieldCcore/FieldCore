@@ -1,6 +1,6 @@
 # FieldCore — Current Development Status
 
-**Last reconciled:** 2026-07-01 (Settings page UI redesign: page-header structure, clean tab nav, polished My Account/Business/Notifications/Billing tabs)  
+**Last reconciled:** 2026-07-02 (PR-003: Signature pad + Tip collection UI added to TechApp — full Signature→Tip→Complete flow)  
 **Source of truth:** Actual codebase scan + Sprint Task 1 audit
 
 ---
@@ -8,10 +8,10 @@
 ## FULLY WORKING
 *(Code complete, logic sound, no external blockers)*
 
-- **Authentication** — JWT login/signup/refresh/logout, password reset, brute-force protection, role-based access
+- **Authentication** — JWT login/signup/refresh/logout, password reset, brute-force protection, role-based access, tech route guard (login → `/tech`; tech blocked from operator routes; non-tech blocked from `/tech`)
 - **Client Database (M1)** — Full CRUD, search, profile, job/SMS history, Stripe customer ID linking
 - **Job Scheduling & Dispatch (M2)** — Create/edit/delete jobs, calendar views (Month/Week/Day/Agenda all styled to FieldCore design system; Agenda table borders fully cleaned up as of 2026-06-25), technician assignment, recurring jobs, GPS check-in, status tracking
-- **Technician Mobile App (M4)** — All 14 screens implemented: job queue, schedule, GPS check-in, photo capture, mark complete, messages, invoice view, signature
+- **Technician Mobile App (M4)** — Job queue (Leaflet map), multi-day view (Today/Tomorrow/This Week tabs; week view groups by day heading), GPS check-in, photo capture (R2/S3), ETA SMS, availability toggle (Available/Off Duty in header), no-show clock with live countdown + declare button (after grace expires), canvas signature pad (gates completion), tip collection ($5/$10/$20/Custom/No Tip), mark complete. Full flow: Signature → Tip → Complete. No-show flow: Start Clock → countdown → Declare No-Show (after grace). Backend `GET /mobile/jobs` supports `?view=today|tomorrow|week`.
 - **Team Management** — Owner/manager/tech/staff roles, per-plan user limits enforced
 - **Business Settings** — Profile, operating hours, holiday closures, timezone, service vertical
 - **Fleet Management** — Vehicle registry CRUD, live locations, Live Vehicle Cameras section (setup-required state; provider integration foundation in place). Full UI redesign 2026-07-01: stat cards, two-column desktop layout, polished empty states, Fleet Tracking Integration card with provider grid and mailto CTA.

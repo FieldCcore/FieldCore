@@ -88,82 +88,113 @@ export default function ClientList() {
           )}
         </div>
       ) : (
-        <div style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
-          <div className="cl-scroll">
-          {/* Table header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px', gap: 0, padding: '9px 20px', background: 'var(--navy)', alignItems: 'center' }}>
-            {['Name', 'Tier', 'Contact', 'LTV', 'Outstanding', 'Last Invoice', 'Client Since'].map(h => (
-              <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
+        <>
+          {/* Desktop table */}
+          <div className="cl-desktop" style={{ background: 'var(--white)', borderRadius: 12, border: '1px solid var(--lightgray)', overflow: 'hidden' }}>
+            <div className="cl-scroll">
+            {/* Table header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px', gap: 0, padding: '9px 20px', background: 'var(--navy)', alignItems: 'center' }}>
+              {['Name', 'Tier', 'Contact', 'LTV', 'Outstanding', 'Last Invoice', 'Client Since'].map(h => (
+                <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
+              ))}
+            </div>
+
+            {filtered.map((c, i) => (
+              <div
+                key={c.id}
+                onClick={() => navigate(`/clients/${c.id}`)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px',
+                  gap: 0,
+                  padding: '13px 20px',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)',
+                  cursor: 'pointer',
+                  alignItems: 'center',
+                  transition: 'background .1s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--sand-lt)'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{c.name}</div>
+                  {c.notes && (
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{c.notes}</div>
+                  )}
+                </div>
+                <div>
+                  <span className={`badge badge-${c.tier}`}>{c.tier}</span>
+                </div>
+                <div>
+                  {c.phone && <div style={{ fontSize: 13, color: 'var(--slate)' }}>{c.phone}</div>}
+                  {c.email && <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{c.email}</div>}
+                  {!c.phone && !c.email && <span style={{ color: 'var(--steel)', fontSize: 13 }}>—</span>}
+                </div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 600, color: parseFloat(c.ltv || 0) > 0 ? 'var(--navy)' : 'var(--steel)' }}>
+                  {fmt$(c.ltv)}
+                </div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? 'var(--red)' : 'var(--steel)' }}>
+                  {parseFloat(c.outstanding_balance || 0) > 0 ? fmt$(c.outstanding_balance) : '—'}
+                </div>
+                <div>
+                  {c.last_invoice_at ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--slate)' }}>{fmtDate(c.last_invoice_at)}</div>
+                      {c.last_invoice_status && (
+                        <StatusBadge status={c.last_invoice_status} style={{ fontSize: 9, marginTop: 2 }} />
+                      )}
+                    </div>
+                  ) : <span style={{ color: 'var(--steel)', fontSize: 13 }}>—</span>}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--steel)' }}>
+                  {c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
+                </div>
+              </div>
             ))}
+            </div>
           </div>
 
-          {filtered.map((c, i) => (
-            <div
-              key={c.id}
-              onClick={() => navigate(`/clients/${c.id}`)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px',
-                gap: 0,
-                padding: '13px 20px',
-                borderTop: i === 0 ? 'none' : '1px solid var(--lightgray)',
-                cursor: 'pointer',
-                alignItems: 'center',
-                transition: 'background .1s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--sand-lt)'}
-              onMouseLeave={e => e.currentTarget.style.background = ''}
-            >
-              {/* Name */}
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{c.name}</div>
-                {c.notes && (
-                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{c.notes}</div>
-                )}
-              </div>
-
-              {/* Tier */}
-              <div>
-                <span className={`badge badge-${c.tier}`}>{c.tier}</span>
-              </div>
-
-              {/* Contact */}
-              <div>
-                {c.phone && <div style={{ fontSize: 13, color: 'var(--slate)' }}>{c.phone}</div>}
-                {c.email && <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>{c.email}</div>}
-                {!c.phone && !c.email && <span style={{ color: 'var(--steel)', fontSize: 13 }}>—</span>}
-              </div>
-
-              {/* LTV */}
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 600, color: parseFloat(c.ltv || 0) > 0 ? 'var(--navy)' : 'var(--steel)' }}>
-                {fmt$(c.ltv)}
-              </div>
-
-              {/* Outstanding */}
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: parseFloat(c.outstanding_balance || 0) > 0 ? 700 : 400, color: parseFloat(c.outstanding_balance || 0) > 0 ? 'var(--red)' : 'var(--steel)' }}>
-                {parseFloat(c.outstanding_balance || 0) > 0 ? fmt$(c.outstanding_balance) : '—'}
-              </div>
-
-              {/* Last Invoice */}
-              <div>
-                {c.last_invoice_at ? (
+          {/* Mobile cards */}
+          <div className="cl-mobile-cards">
+            {filtered.map(c => (
+              <div key={c.id} className="cl-card" onClick={() => navigate(`/clients/${c.id}`)}>
+                <div className="cl-card-head">
                   <div>
-                    <div style={{ fontSize: 12, color: 'var(--slate)' }}>{fmtDate(c.last_invoice_at)}</div>
-                    {c.last_invoice_status && (
-                      <StatusBadge status={c.last_invoice_status} style={{ fontSize: 9, marginTop: 2 }} />
-                    )}
+                    <div className="cl-card-name">{c.name}</div>
+                    <span className={`badge badge-${c.tier}`}>{c.tier}</span>
                   </div>
-                ) : <span style={{ color: 'var(--steel)', fontSize: 13 }}>—</span>}
+                  <div className="cl-card-since">
+                    {c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
+                  </div>
+                </div>
+                {(c.phone || c.email) && (
+                  <div className="cl-card-contact">
+                    {c.phone && <span>{c.phone}</span>}
+                    {c.email && <span>{c.email}</span>}
+                  </div>
+                )}
+                <div className="cl-card-footer">
+                  <div>
+                    <div className="cl-card-lbl">LTV</div>
+                    <div className="cl-card-val">{fmt$(c.ltv)}</div>
+                  </div>
+                  {parseFloat(c.outstanding_balance || 0) > 0 && (
+                    <div>
+                      <div className="cl-card-lbl">Outstanding</div>
+                      <div className="cl-card-val" style={{ color: 'var(--red)' }}>{fmt$(c.outstanding_balance)}</div>
+                    </div>
+                  )}
+                  {c.last_invoice_at && (
+                    <div>
+                      <div className="cl-card-lbl">Last Invoice</div>
+                      <div className="cl-card-val cl-card-date">{fmtDate(c.last_invoice_at)}</div>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Client Since */}
-              <div style={{ fontSize: 12, color: 'var(--steel)' }}>
-                {c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
-              </div>
-            </div>
-          ))}
-          </div>{/* end cl-scroll */}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

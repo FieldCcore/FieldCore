@@ -31,6 +31,113 @@
 
 ---
 
+### [DECISION-059] Embedded Stripe payments: Payment Element + Embedded Checkout replace redirect flows
+**Date:** 2026-07-06
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** FieldCore currently redirects users to Stripe-hosted pages for subscription upgrades, invoice payments, booking deposits, and card setup. These redirects break app context, reduce conversion, prevent FieldCore branding on payment pages, and limit UX control. Stripe now offers `ui_mode: 'embedded'` for Checkout Sessions and a `PaymentElement` component that renders inside the host app in a PCI-compliant iframe.
+
+**Decision:** FieldCore will keep Stripe as the payment processor but move key payment experiences inside the app using Embedded Checkout and Payment Element. Implementation in this priority order:
+1. **PR-006 (P1-012)** — Embedded SaaS subscription checkout: `ui_mode: 'embedded'` on existing Checkout Sessions; no redirect from `/billing`
+2. **PR-007 (P1-013)** — Public invoice Payment Element: `/pay/:invoiceId` renders `<PaymentElement>` inline; clients never leave FieldCore domain
+3. **PR-008 (P1-014)** — Client portal invoice Payment Element: same infrastructure as #2, scoped to authenticated portal session
+4. **PR-009 (P1-015)** — Booking deposit Payment Element: deposit collected inline in booking widget
+5. **PR-010 (P1-016)** — Save card modernization: `CardElement` → `PaymentElement` in `setup` mode
+
+**Alternatives considered:**
+- Full custom payment UI (no Stripe-hosted components) — rejected: PCI SAQ A compliance would be lost; card data would touch FieldCore's JavaScript; out of scope for current team size
+- Keep all redirects — rejected: known UX friction; clients leave FieldCore domain for every payment; unbranded experience
+- Replace Stripe with a different processor — rejected: no basis for switching; Stripe Connect, existing webhook logic, and customer data all remain on Stripe
+
+**Reasoning:** Embedded Checkout and Payment Element are both PCI SAQ A compliant (Stripe-hosted iframes). The backend changes are minimal — Checkout Sessions just add `ui_mode: 'embedded'`; invoice/deposit payments switch from Sessions to PaymentIntents. The reusable `<PaymentForm>` component (built in P1-013) is shared across P1-013, P1-014, and P1-015. Webhook processing is unchanged throughout.
+
+**Consequences:**
+- All subscription and payment flows keep Stripe as processor — no new vendor
+- `window.location.href = url` redirect pattern removed from all payment flows
+- Stripe Connect routing (`application_fee_amount` + `transfer_data`) moves from Checkout Sessions to PaymentIntents for invoice/deposit flows
+- `checkout.session.completed` webhook event is superseded by `payment_intent.succeeded` for invoice/deposit flows after migration (keep old handler until transition is complete)
+- PCI scope: SAQ A throughout — no raw card data ever touches FieldCore servers or JavaScript
+
+---
+
+### [DECISION-058] Tech route guard: TechRoute component + AppShell redirect, not ProtectedRoute extension
+**Date:** 2026-07-02
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Role-based routing was needed: tech users should only access `/tech`; operators/managers should not access `/tech`. The existing `ProtectedRoute` only checks authentication, not role.
+
+**Decision:** Two-layer approach: (1) A new `TechRoute` component wraps `/tech` — redirects unauthenticated to `/login`, non-tech roles to `/dashboard`. (2) A single redirect in `AppShell` (after the `/tech` early-return) sends any authenticated tech user on an operator route to `/tech`. Login page redirects tech users to `/tech` immediately after auth. `ProtectedRoute` is unchanged.
+
+**Alternatives considered:**
+- Extend `ProtectedRoute` to accept a `requiredRole` prop — rejected: would require updating every operator `<Route>` to explicitly exclude techs, fragile as new routes are added.
+- Middleware-style HOC wrapping every operator route — rejected: more files to touch, same fragility.
+- AppShell-only redirect (no TechRoute) — rejected: leaves `/tech` accessible to non-tech users with valid sessions.
+
+**Reasoning:** The `/tech` path-check in AppShell fires before the redirect, so there is no redirect loop. The two-layer design means: visiting `/tech` as a non-tech is caught by `TechRoute`; visiting any operator route as a tech is caught by the AppShell redirect. New operator routes added to AppShell's `<Routes>` are automatically protected with no extra work.
+
+**Consequences:** Any future role (e.g., `staff`) that should access operator routes works automatically. A future tech-facing route other than `/tech` would need its own `TechRoute` wrapper. The AppShell redirect fires after auth resolves, so there is a brief moment during loading where the operator shell renders before redirecting — acceptable on a web app of this type.
+
+---
+
+### [DECISION-057] planLimits.js: solo has no SMS; all paid plans get unlimited users/jobs
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Fixing P0-002 required adding `solo` as a new plan key and renaming `growth` to `pro`. Specific limit values had to be chosen for `solo`. Three questions: (1) Should solo have a user cap? (2) Should solo have a job cap? (3) Should solo have SMS access?
+
+**Decision:**
+- `solo`:  `{ users: null, jobsPerMonth: null, sms: false }` — unlimited users and jobs, no SMS
+- `pro`:   `{ users: null, jobsPerMonth: null, sms: true }` — unlimited everything + SMS
+- `scale`: `{ users: null, jobsPerMonth: null, sms: true }` — unchanged
+
+**Reasoning:**
+1. **No user cap on paid plans** — product description says "No per-user fees ever." Capping users on a paid plan contradicts this promise. Only `starter` (free trial) has a user cap.
+2. **No job cap on paid plans** — all paid plans get unlimited jobs. The per-month cap (50) is a trial-only restriction.
+3. **SMS: solo=false, pro+=true** — `chat.js` system prompt explicitly states "Business phone line (included — not an add-on)" as a Pro feature ("Everything in Solo, plus: Business phone line"). Solo description lists no phone/SMS feature. This is the correct product boundary.
+
+**Alternatives considered:** Give solo 3 users and 200 jobs/month cap. Rejected — contradicts "no per-user fees" and creates friction for a $49 paying customer. Give solo SMS access. Rejected — the system prompt is explicit that business phone is a Pro+ feature.
+
+**Consequences:** Solo subscribers can add unlimited team members and create unlimited jobs. They cannot send SMS (business phone requires Pro upgrade). The error message was updated from "Upgrade to Growth or Scale" to "Upgrade to Pro or Scale."
+
+---
+
+### [DECISION-056] "Book New Job" button uses nav('/jobs?new=1') — not a duplicate modal
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** The dead "Book New Job" button on Dashboard.jsx:241 needed an onClick handler. Two options: (1) navigate to /jobs, or (2) duplicate the JobForm modal logic inside Dashboard.jsx.
+
+**Decision:** Navigate to `/jobs?new=1`. The Jobs page already watches for `?new=1` via `useSearchParams` (Jobs.jsx:167-172) and opens the New Job modal automatically, then clears the param. No new modal logic needed in Dashboard.
+
+**Alternatives considered:** Importing and rendering JobForm directly in Dashboard.jsx. Rejected — duplicates modal management logic and creates two codepaths for the same action.
+
+**Reasoning:** Reusing the existing `?new=1` param handler is zero-duplication and keeps job creation logic in one place (Jobs.jsx). The navigation is instant and the modal opens without a visible page flash.
+
+**Consequences:** Clicking "Book New Job" from the dashboard navigates to the Calendar page and opens the modal. If a user wants to return to the dashboard after creating a job, they use the sidebar nav. This is acceptable — the Calendar is where job management lives.
+
+---
+
+### [DECISION-055] Launch execution system created; PR-001 sprint opened
+**Date:** 2026-07-01
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** A full codebase audit (July 1, 2026) returned a launch readiness score of 41/100 and identified 10 P0 launch blockers, 11 P1 critical core gaps, and 10 P2 technician app gaps. To prevent unordered ad-hoc fixes and ensure every change is verified before being marked complete, a formal execution system was needed.
+
+**Decision:** Created four new tracking files: `FIELDCORE_LAUNCH_EXECUTION_PLAN.md` (master rules and phase overview), `FIELDCORE_TASK_QUEUE.md` (full ordered task list across P0/P1/P2/P3), `FIELDCORE_CURRENT_SPRINT.md` (active sprint with sub-tasks and verification steps), and `FIELDCORE_COMPLETION_CHECKLIST.md` (per-task completion gate checklists). Sprint PR-001 opened immediately with the 5 fastest critical fixes: dead button, plan name mismatch, Stripe env var mismatch, no-show status bug, SMS opt-out handler.
+
+**Alternatives considered:** Continue ad-hoc fixes without formal queue. Rejected — audit score is 41/100 and without a queue, P3 polish tends to get prioritized over P0 blockers.
+
+**Reasoning:** A written queue with strict gate rules (no P1 until all P0 Complete; PASS/FAIL required) creates accountability and prevents the recurring pattern of partially-completed features.
+
+**Consequences:** All future Claude Code tasks on FieldCore must reference a task ID from `FIELDCORE_TASK_QUEUE.md`. Tasks without a queue ID are out-of-scope scope creep. Every session must update `FIELDCORE_CURRENT_SPRINT.md` before closing.
+
+---
+
 ### [DECISION-030] FIELDCORE_DEVELOPMENT_STANDARD.md adopted as mandatory development process
 **Date:** 2026-06-25
 **Decided by:** Kevin + Claude
@@ -578,4 +685,4 @@ A paying Pro customer gets Starter-tier limits because the middleware doesn't re
 
 *Add new entries at the top, not the bottom.*  
 *Use DECISION-NNN numbering, incrementing by 1.*  
-*Next entry should be DECISION-013.*
+*Next entry should be DECISION-056.*

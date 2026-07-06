@@ -128,7 +128,7 @@ export default function Dashboard() {
       </div>
 
       {beta && (
-        <div style={{ background: '#1C2333', borderRadius: 12, padding: '18px 22px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
+        <div className="dash-beta-banner" style={{ background: '#1C2333', borderRadius: 12, padding: '18px 22px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Beta Spots</div>
@@ -238,7 +238,7 @@ export default function Dashboard() {
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/communications')}>Business Phone</button>
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/revenue')}>Revenue Analytics</button>
               <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/team')}>Team Report</button>
-              <button className="tb-btn tb-primary dash-act-btn">+ Book New Job</button>
+              <button className="tb-btn tb-primary dash-act-btn" onClick={() => nav('/jobs?new=1')}>+ Book New Job</button>
             </div>
           </div>
 

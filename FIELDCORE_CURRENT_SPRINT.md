@@ -275,18 +275,86 @@ Close the highest-impact remaining operator workflow gaps that are fully unblock
 
 ---
 
-## PR-006 — Next Sprint
+## PR-006 — Embedded SaaS Subscription Checkout
 
-**Opened:** 2026-07-03  
+**Opened:** 2026-07-06  
 **Status:** Not Started  
 **Priority Level:** P1  
-**Task Count:** TBD
+**Task Count:** 1  
+**Decision:** DECISION-059
 
-Recommended scope (from remaining unblocked P1 queue):
-- P1-004: Verify recurring job scheduler (not a build — verification + potential bug fix)
-- P1-005: read_at confirmed present — can mark Complete
-- P1-009: Service templates — investigate frontend field usage first (30-min read)
-- Begin P1-006 voicemail transcription webhook (can be pre-written, tested after Twilio live)
+### Sprint Goal
+
+Replace the redirect-based Stripe Checkout on `/billing` with an embedded checkout modal. Operator clicks "Upgrade to Pro/Scale" → a modal opens inside FieldCore → they complete payment without leaving the app → modal closes → billing state refreshes. No redirect to `checkout.stripe.com`.
+
+Webhook processing is unchanged. The backend still uses Stripe Checkout Sessions — only the delivery mode changes from redirect to embedded.
+
+### Sprint Tasks
+
+| Task | ID | Status |
+|---|---|---|
+| Embedded SaaS Subscription Checkout | P1-012 | Complete |
+
+---
+
+### Task Detail — P1-012
+
+**Backend changes (`src/routes/billing.js`):**
+1. `POST /api/billing/checkout` — add `ui_mode: 'embedded'`, add `return_url: ${appUrl}/billing`, remove `success_url` / `cancel_url`, return `{ clientSecret: session.client_secret }` instead of `{ url: session.url }`
+2. New `GET /api/billing/checkout-session/:sessionId` — retrieve session status after `return_url` fires; used to confirm success server-side without trusting the frontend; requires `requireAuth`
+
+**Frontend changes (`client/src/pages/Billing.jsx`):**
+1. `upgrade(plan)` function — call backend → get `clientSecret` → open checkout modal instead of `window.location.href = data.url`
+2. Add `checkoutClientSecret` state
+3. Add checkout modal — full-screen overlay or centered modal; renders `<EmbeddedCheckout>` from `@stripe/react-stripe-js`
+4. On `onComplete` callback: close modal, call `load()` to refresh billing state, show "Plan upgraded!" success message
+5. Modal has close/cancel button — sets `checkoutClientSecret` to null, clears `upgradingPlan`
+6. Keep `finally { setUpgradingPlan(null) }` pattern (already in place from last fix)
+
+**Shared infrastructure to build:**
+- None for this sprint. P1-013 will build the reusable `<PaymentForm>` component.
+
+**Security:**
+- `clientSecret` is scoped to one Checkout Session — safe to pass to frontend
+- Never log `clientSecret`
+- Validate upgrade outcome via `GET /api/billing/checkout-session/:sessionId` server-side, not by trusting the `onComplete` callback alone
+- Webhook events (`customer.subscription.created/updated`) remain the authoritative plan update path
+
+**Verification gate:**
+- Click "Upgrade to Pro" → modal opens with Stripe Checkout embedded (no redirect)
+- Complete test payment with Stripe test card → modal closes → plan shows "Pro" without page reload
+- Click cancel → modal closes → plan unchanged → no loading state stuck
+- Webhook still fires and updates plan in DB
+
+---
+
+### Implementation Prompt (ready to run)
+
+```
+CLAUDE CODE TASK
+
+Implement PR-006: Embedded SaaS Subscription Checkout.
+
+Replace redirect-based Stripe Checkout on /billing with embedded checkout modal.
+
+Backend (src/routes/billing.js):
+1. POST /api/billing/checkout — add ui_mode: 'embedded', return_url: `${appUrl}/billing`,
+   remove success_url/cancel_url, return { clientSecret: session.client_secret }
+2. Add GET /api/billing/checkout-session/:sessionId — requireAuth, retrieve session,
+   return { status: session.status, customerEmail: session.customer_details?.email }
+
+Frontend (client/src/pages/Billing.jsx):
+1. Add checkoutClientSecret state
+2. upgrade(plan) — call backend, get clientSecret, set checkoutClientSecret (open modal)
+3. Add checkout modal: full-screen overlay, <EmbeddedCheckout clientSecret={...} onComplete={...} />
+   from @stripe/react-stripe-js
+4. onComplete: close modal, call load(), show success banner
+5. Cancel button: clear checkoutClientSecret, clear upgradingPlan
+
+Do not change webhook processing.
+Do not change subscription logic.
+Build, deploy, verify.
+```
 
 ---
 
@@ -300,3 +368,4 @@ Recommended scope (from remaining unblocked P1 queue):
 | PR-003 | 6 | 2026-07-02 | 2026-07-02 | 6/6 Complete |
 | PR-004 | 3 | 2026-07-02 | 2026-07-03 | 3/3 Complete |
 | PR-005 | 5 | 2026-07-03 | 2026-07-03 | 5/5 Complete |
+| PR-006 | 1 | 2026-07-06 | 2026-07-06 | 1/1 Complete |
