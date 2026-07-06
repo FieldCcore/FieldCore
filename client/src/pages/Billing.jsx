@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, CardElement, useStripe, useElements, EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { Mail, Phone } from 'lucide-react';
 import api from '../api';
 import StatusBadge from '../components/StatusBadge';
@@ -341,6 +341,7 @@ export default function Billing() {
   const [payoutScheduleError, setPayoutScheduleError] = useState('');
   const [testBusy,           setTestBusy]           = useState(false);
   const [testToolsStatus,    setTestToolsStatus]    = useState(null);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState(null);
   const showTestTools = import.meta.env.VITE_ENABLE_TEST_TOOLS === 'true'
     || (testToolsStatus?.enabled && testToolsStatus?.isOwner);
   const connectInstanceRef  = useRef(null);
@@ -405,13 +406,17 @@ export default function Billing() {
     try {
       console.log('checkout plan payload', plan);
       const { data } = await api.post('/billing/checkout', { plan });
-      if (!data?.url) throw new Error('Stripe did not return a checkout URL.');
-      window.location.href = data.url;
+      if (!data?.clientSecret) throw new Error('Stripe did not return a checkout client secret.');
+      setCheckoutClientSecret(data.clientSecret);
     } catch (err) {
       setUpgradeError(err.response?.data?.error || err.message || 'Could not start checkout.');
     } finally {
       setUpgradingPlan(null);
     }
+  }
+
+  function closeCheckoutModal() {
+    setCheckoutClientSecret(null);
   }
 
   async function doDowngrade(targetPlan) {
@@ -611,8 +616,17 @@ export default function Billing() {
   };
 
   const upgraded       = searchParams.get('upgraded')  === '1';
+  const sessionId      = searchParams.get('session_id');
   const connectSuccess = searchParams.get('connect')   === 'success';
   const connectRefresh = searchParams.get('connect')   === 'refresh';
+  const [sessionStatus, setSessionStatus] = useState(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    api.get(`/billing/checkout-session/${sessionId}`)
+      .then(({ data }) => setSessionStatus(data.status))
+      .catch(() => setSessionStatus('unknown'));
+  }, [sessionId]);
 
   const statusLabel = planStatus === 'trialing'  ? 'Trial'
                     : planStatus === 'past_due'   ? 'Past Due'
@@ -634,6 +648,8 @@ export default function Billing() {
       <div>
         {/* Alerts */}
         {upgraded && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>Plan upgraded successfully!</div>}
+        {sessionId && sessionStatus === 'complete' && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>Payment complete — your plan has been upgraded!</div>}
+        {sessionId && sessionStatus === 'open' && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>Checkout was not completed. Click Upgrade to try again.</div>}
         {connectSuccess && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>Stripe onboarding submitted — verification takes a few minutes.</div>}
         {connectRefresh && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>Stripe onboarding link expired. Click "Continue Setup" to get a fresh link.</div>}
         {cancelledUntil && <div style={{ marginBottom: 16, padding: '12px 18px', background: 'rgba(46,160,67,.08)', border: '1px solid rgba(46,160,67,.25)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>Subscription cancelled. You retain access until {fmtDate(cancelledUntil)}.</div>}
@@ -1264,6 +1280,50 @@ export default function Billing() {
             onClose={() => setDowngradeModal(null)}
             onConfirm={() => doDowngrade(downgradeModal.to.key)}
           />
+        )}
+
+        {/* ── Embedded Checkout Modal ───────────────────────────────────────── */}
+        {checkoutClientSecret && (
+          <div
+            onClick={closeCheckoutModal}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1200,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 24,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: 16,
+                width: '100%', maxWidth: 520,
+                maxHeight: '90vh', overflowY: 'auto',
+                position: 'relative',
+                boxShadow: '0 24px 80px rgba(0,0,0,0.2)',
+              }}
+            >
+              <button
+                onClick={closeCheckoutModal}
+                style={{
+                  position: 'absolute', top: 12, right: 12, zIndex: 1,
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'var(--off)', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', fontSize: 16, color: 'var(--slate)',
+                }}
+                aria-label="Close checkout"
+              >
+                ✕
+              </button>
+              <EmbeddedCheckoutProvider
+                stripe={stripePromise}
+                options={{ fetchClientSecret: async () => checkoutClientSecret }}
+              >
+                <EmbeddedCheckout />
+              </EmbeddedCheckoutProvider>
+            </div>
+          </div>
         )}
       </div>
     </Elements>

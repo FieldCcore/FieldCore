@@ -350,26 +350,39 @@ router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => 
 
     const appUrl  = process.env.APP_URL || 'http://localhost:5173';
     const session = await stripe.checkout.sessions.create({
-      mode:     'subscription',
-      customer: customerId,
+      mode:       'subscription',
+      ui_mode:    'embedded',
+      customer:   customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: { metadata: { account_id: req.accountId } },
-      metadata: { account_id: req.accountId, plan },
-      success_url: `${appUrl}/billing?upgraded=1`,
-      cancel_url:  `${appUrl}/billing`,
+      metadata:   { account_id: req.accountId, plan },
+      return_url: `${appUrl}/billing?session_id={CHECKOUT_SESSION_ID}`,
     });
 
     console.log('=== STRIPE CHECKOUT OK ===');
-    console.log({ plan, hasUrl: !!session.url });
+    console.log({ plan, hasClientSecret: !!session.client_secret });
 
-    if (!session.url) {
-      return res.status(500).json({ error: 'Stripe session created but no checkout URL was returned.' });
+    if (!session.client_secret) {
+      return res.status(500).json({ error: 'Stripe session created but no client secret was returned.' });
     }
 
-    res.json({ url: session.url });
+    res.json({ clientSecret: session.client_secret });
   } catch (err) {
     console.error('=== STRIPE CHECKOUT ERROR ===');
     console.error({ type: err.type, code: err.code, message: err.message, statusCode: err.statusCode, param: err.param });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/billing/checkout-session/:sessionId — verify embedded checkout ───
+router.get('/checkout-session/:sessionId', requireAuth, async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    res.json({
+      status:        session.status,
+      customerEmail: session.customer_details?.email,
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
