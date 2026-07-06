@@ -761,6 +761,23 @@ router.get('/admin-metrics', requireAuth, requireRole('owner'), async (req, res)
   }
 });
 
+// ── GET /api/billing/test-tools-status ───────────────────────────────────────
+router.get('/test-tools-status', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT plan FROM accounts WHERE id = $1`,
+      [req.accountId]
+    );
+    res.json({
+      enabled:     process.env.ENABLE_STRIPE_TEST_TOOLS === 'true',
+      isOwner:     req.userRole === 'owner',
+      accountPlan: rows[0]?.plan || 'starter',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/billing/test-checkout — internal test tool only ────────────────
 router.post('/test-checkout', requireAuth, requireRole('owner'), async (req, res) => {
   if (process.env.ENABLE_STRIPE_TEST_TOOLS !== 'true') {

@@ -340,6 +340,7 @@ export default function Billing() {
   const [connectDashError,   setConnectDashError]   = useState('');
   const [payoutScheduleError, setPayoutScheduleError] = useState('');
   const [testBusy,           setTestBusy]           = useState(false);
+  const [testToolsStatus,    setTestToolsStatus]    = useState(null);
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
 
@@ -357,10 +358,11 @@ export default function Billing() {
   }, []);
 
   const load = useCallback(async () => {
-    const [billingRes, methodsRes, historyRes] = await Promise.allSettled([
+    const [billingRes, methodsRes, historyRes, testToolsRes] = await Promise.allSettled([
       api.get('/billing'),
       api.get('/billing/payment-methods'),
       api.get('/billing/history'),
+      api.get('/billing/test-tools-status'),
     ]);
     if (billingRes.status === 'fulfilled') {
       const d = billingRes.value.data;
@@ -373,6 +375,7 @@ export default function Billing() {
     }
     if (methodsRes.status === 'fulfilled') setPayMethods(methodsRes.value.data);
     if (historyRes.status === 'fulfilled') setHistory(historyRes.value.data);
+    if (testToolsRes.status === 'fulfilled') setTestToolsStatus(testToolsRes.value.data);
   }, []);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
@@ -691,28 +694,6 @@ export default function Billing() {
           )}
         </div>
 
-        {/* ── Stripe test tools — visible on all tabs when ENABLE_STRIPE_TEST_TOOLS=true ── */}
-        {billing?.testCheckout && (
-          <div style={{ marginBottom: 16, padding: '14px 18px', background: '#fffbe6', border: '1.5px dashed #e6c800', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', letterSpacing: '.05em', flexShrink: 0 }}>⚙ STRIPE TEST TOOLS</span>
-            <span style={{ fontSize: 12, color: '#92400e', flex: 1 }}>Internal only — opens Stripe Checkout in test mode.</span>
-            <button
-              disabled={testBusy}
-              onClick={() => runTestCheckout('pro')}
-              style={{ height: 34, padding: '0 16px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
-            >
-              {testBusy ? '…' : 'Test Upgrade to Pro'}
-            </button>
-            <button
-              disabled={testBusy}
-              onClick={() => runTestCheckout('scale')}
-              style={{ height: 34, padding: '0 16px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
-            >
-              {testBusy ? '…' : 'Test Upgrade to Scale'}
-            </button>
-          </div>
-        )}
-
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--lightgray)' }}>
           {tabs.map(t => (
@@ -726,6 +707,38 @@ export default function Billing() {
         {/* ── PLANS TAB ─────────────────────────────────────────────────────── */}
         {tab === 'plans' && (
           <>
+            {/* ── Stripe Test Tools card — shown only when ENABLE_STRIPE_TEST_TOOLS=true ── */}
+            {testToolsStatus?.enabled && testToolsStatus?.isOwner && (
+              <div className="dash-card" style={{ marginBottom: 20, padding: '18px 22px', background: '#fffbe6', border: '2px dashed #e6c800' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>⚙ Stripe Test Tools</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: '#fde68a', color: '#92400e', textTransform: 'uppercase', letterSpacing: '.06em' }}>Internal</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#92400e', marginBottom: 14 }}>
+                  Internal checkout testing. Hidden when ENABLE_STRIPE_TEST_TOOLS is false.
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <button
+                    disabled={testBusy}
+                    onClick={() => runTestCheckout('pro')}
+                    style={{ height: 38, padding: '0 18px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    {testBusy ? '…' : 'Test Checkout: Pro'}
+                  </button>
+                  <button
+                    disabled={testBusy}
+                    onClick={() => runTestCheckout('scale')}
+                    style={{ height: 38, padding: '0 18px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    {testBusy ? '…' : 'Test Checkout: Scale'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: '#b45309', fontFamily: 'DM Mono, monospace' }}>
+                  Current plan: {testToolsStatus.accountPlan} · Test tools: enabled
+                </div>
+              </div>
+            )}
+
             {upgradeError && (
               <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 6, fontSize: 13, color: 'var(--red)' }}>
                 {upgradeError}
