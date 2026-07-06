@@ -48,6 +48,40 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Global scrollbar reset ──────────────────────────────── */
+/* Firefox: thin track, invisible thumb until hover */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+/* Chrome / Edge / Safari: reset all scrollbars to thin + invisible */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: transparent; border-radius: 10px; }
+
+/* Hover-reveal for named scroll containers */
+.content,
+.client-list-scroll,
+.chat-messages,
+.dispatch-panel,
+.modal-overlay {
+  scrollbar-color: transparent transparent;
+}
+.content:hover,
+.client-list-scroll:hover,
+.chat-messages:hover,
+.dispatch-panel:hover,
+.modal-overlay:hover {
+  scrollbar-color: rgba(95,102,122,.28) transparent;
+}
+.content:hover::-webkit-scrollbar-thumb,
+.client-list-scroll:hover::-webkit-scrollbar-thumb,
+.chat-messages:hover::-webkit-scrollbar-thumb,
+.dispatch-panel:hover::-webkit-scrollbar-thumb,
+.modal-overlay:hover::-webkit-scrollbar-thumb {
+  background: rgba(95,102,122,.28);
+}
+
 /* ── Layout ─────────────────────────────────────────────── */
 .app { display: flex; height: 100vh; overflow: hidden; }
 
@@ -2177,11 +2211,13 @@ body {
     display: block !important;
     overflow-y: auto !important;
     scrollbar-width: thin;
-    scrollbar-color: var(--lightgray) transparent;
+    scrollbar-color: transparent transparent;
   }
+  .modal:hover { scrollbar-color: var(--lightgray) transparent; }
   .modal::-webkit-scrollbar { width: 3px; }
   .modal::-webkit-scrollbar-track { background: transparent; }
-  .modal::-webkit-scrollbar-thumb { background: var(--lightgray); border-radius: 4px; }
+  .modal::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  .modal:hover::-webkit-scrollbar-thumb { background: var(--lightgray); }
   .modal-lg { width: 100% !important; }
   .modal-header { padding: 24px 20px 14px; }
   .modal-body { overflow: visible; padding: 0 20px 24px; flex: none; }
@@ -2565,16 +2601,20 @@ body {
   }
 }
 
-/* Thin, hover-reveal scrollbar — used in Connect payout history */
+/* ── .soft-scrollbar — reusable hover-reveal utility ─────── */
+.soft-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.soft-scrollbar:hover                         { scrollbar-color: rgba(95,102,122,.28) transparent; }
+.soft-scrollbar::-webkit-scrollbar            { width: 5px; height: 5px; }
+.soft-scrollbar::-webkit-scrollbar-track      { background: transparent; }
+.soft-scrollbar::-webkit-scrollbar-thumb      { background: transparent; border-radius: 10px; }
+.soft-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(95,102,122,.28); }
+
+/* Connect payout history scroll area */
 .connect-scroll {
   max-height: 320px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color .2s;
 }
-.connect-scroll:hover { scrollbar-color: var(--lightgray) transparent; }
-.connect-scroll::-webkit-scrollbar       { width: 4px; }
-.connect-scroll::-webkit-scrollbar-track { background: transparent; }
-.connect-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; transition: background .2s; }
-.connect-scroll:hover::-webkit-scrollbar-thumb { background: var(--lightgray); }
+.connect-scroll:hover::-webkit-scrollbar-thumb { background: rgba(95,102,122,.28); }
