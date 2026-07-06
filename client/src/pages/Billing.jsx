@@ -315,6 +315,10 @@ function DowngradeModal({ from, to, onClose }) {
 // ── Main Billing Page ─────────────────────────────────────────────────────────
 export default function Billing() {
   const [searchParams] = useSearchParams();
+  const upgraded       = searchParams.get('upgraded')  === '1';
+  const sessionId      = searchParams.get('session_id');
+  const connectSuccess = searchParams.get('connect')   === 'success';
+  const connectRefresh = searchParams.get('connect')   === 'refresh';
   const [billing,      setBilling]      = useState(null);
   const [payMethods,   setPayMethods]   = useState([]);
   const [history,      setHistory]      = useState([]);
@@ -622,11 +626,6 @@ export default function Billing() {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     gap: 8, fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
   };
-
-  const upgraded       = searchParams.get('upgraded')  === '1';
-  const sessionId      = searchParams.get('session_id');
-  const connectSuccess = searchParams.get('connect')   === 'success';
-  const connectRefresh = searchParams.get('connect')   === 'refresh';
 
   const statusLabel = planStatus === 'trialing'  ? 'Trial'
                     : planStatus === 'past_due'   ? 'Past Due'
