@@ -315,11 +315,14 @@ router.delete('/payment-methods/:id', requireAuth, requireRole('owner'), async (
 // ── POST /api/billing/checkout — Stripe Checkout session (subscription) ────────
 router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => {
   const { plan } = req.body;
-  console.log('billing checkout plan', req.body.plan);
+  const priceId  = PRICE_IDS[plan];
+
+  console.log('=== STRIPE CHECKOUT START ===');
+  console.log({ plan, accountId: req.accountId, hasPriceId: !!priceId });
+
   if (!['solo', 'pro', 'scale'].includes(plan)) {
     return res.status(400).json({ error: 'Invalid plan. Must be solo, pro, or scale.' });
   }
-  const priceId = PRICE_IDS[plan];
   if (!priceId) {
     return res.status(500).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} is not configured on the server.` });
   }
@@ -343,6 +346,7 @@ router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => 
       customerId = customer.id;
       await pool.query(`UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2`, [customerId, req.accountId]);
     }
+    console.log({ customerId, isNew: !row.stripe_customer_id });
 
     const appUrl  = process.env.APP_URL || 'http://localhost:5173';
     const session = await stripe.checkout.sessions.create({
@@ -355,8 +359,17 @@ router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => 
       cancel_url:  `${appUrl}/billing`,
     });
 
+    console.log('=== STRIPE CHECKOUT OK ===');
+    console.log({ plan, hasUrl: !!session.url });
+
+    if (!session.url) {
+      return res.status(500).json({ error: 'Stripe session created but no checkout URL was returned.' });
+    }
+
     res.json({ url: session.url });
   } catch (err) {
+    console.error('=== STRIPE CHECKOUT ERROR ===');
+    console.error({ type: err.type, code: err.code, message: err.message, statusCode: err.statusCode, param: err.param });
     res.status(500).json({ error: err.message });
   }
 });

@@ -405,9 +405,11 @@ export default function Billing() {
     try {
       console.log('checkout plan payload', plan);
       const { data } = await api.post('/billing/checkout', { plan });
+      if (!data?.url) throw new Error('Stripe did not return a checkout URL.');
       window.location.href = data.url;
     } catch (err) {
-      setUpgradeError(err.response?.data?.error || 'Could not start checkout.');
+      setUpgradeError(err.response?.data?.error || err.message || 'Could not start checkout.');
+    } finally {
       setUpgradingPlan(null);
     }
   }
