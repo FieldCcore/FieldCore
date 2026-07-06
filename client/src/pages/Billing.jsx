@@ -922,7 +922,7 @@ export default function Billing() {
 
         {/* ── STRIPE CONNECT TAB ────────────────────────────────────────────── */}
         {tab === 'connect' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 180 }}>
 
             {/* 1 — Header card: title, status badge, primary action */}
             <div className="dash-card" style={{ padding: '20px 24px' }}>
@@ -1170,6 +1170,7 @@ export default function Billing() {
                     onChange={setPayoutSchedule}
                     options={PAYOUT_SCHEDULE_OPTIONS}
                     minWidth={160}
+                    forceDown
                   />
                   <button onClick={() => savePayoutSchedule(payoutSchedule)} disabled={payoutScheduleSaving}
                     style={{ height: 44, padding: '0 20px', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: payoutScheduleSaving ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>

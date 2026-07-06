@@ -13,7 +13,7 @@ import { ChevronDown } from 'lucide-react';
  *   options    [{value, label}]
  *   minWidth   number (px)      defaults to 160
  */
-export default function SelectDropdown({ value, onChange, options, minWidth = 160 }) {
+export default function SelectDropdown({ value, onChange, options, minWidth = 160, forceDown = false }) {
   const [open,    setOpen]    = useState(false);
   const [hovered, setHovered] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0, openUp: false });
@@ -29,14 +29,14 @@ export default function SelectDropdown({ value, onChange, options, minWidth = 16
     const itemHeight = 40;
     const menuHeight = options.length * itemHeight + 8; // padding 4px top+bottom
     const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp     = spaceBelow < menuHeight + 16 && rect.top > menuHeight + 16;
+    const openUp     = !forceDown && spaceBelow < menuHeight + 16 && rect.top > menuHeight + 16;
     setMenuPos({
-      top:    openUp ? rect.top - menuHeight - 6 : rect.bottom + 6,
+      top:    openUp ? rect.top - menuHeight - 6 : rect.bottom + 8,
       left:   rect.left,
       width:  Math.max(rect.width, minWidth),
       openUp,
     });
-  }, [options.length, minWidth]);
+  }, [options.length, minWidth, forceDown]);
 
   useEffect(() => {
     if (!open) return;
