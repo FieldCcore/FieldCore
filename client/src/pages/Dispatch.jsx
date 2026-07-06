@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { InfoWindow } from '@vis.gl/react-google-maps';
 import api from '../api';
+import { GoogleMap, Marker, useGeocoder } from '../maps';
 
-const CENTER = [27.9506, -82.4572]; // Tampa, FL
+const CENTER = { lat: 27.9506, lng: -82.4572 }; // Tampa, FL
 
-// Approximate coords for map markers (used until GPS check-in data is available)
+// Fallback positions for techs with no live GPS
 const TAMPA_SPREAD = [
-  [27.9400, -82.4600],
-  [27.9720, -82.5140],
-  [27.9330, -82.4820],
-  [27.9560, -82.4750],
-  [27.9630, -82.4420],
-  [27.9270, -82.5010],
+  { lat: 27.9400, lng: -82.4600 },
+  { lat: 27.9720, lng: -82.5140 },
+  { lat: 27.9330, lng: -82.4820 },
+  { lat: 27.9560, lng: -82.4750 },
+  { lat: 27.9630, lng: -82.4420 },
+  { lat: 27.9270, lng: -82.5010 },
 ];
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
@@ -43,12 +45,16 @@ function fmtTime(iso) {
 }
 
 export default function Dispatch() {
-  const mapRef  = useRef(null);
-  const mapInst = useRef(null);
-  const [jobs,     setJobs]     = useState([]);
-  const [techs,    setTechs]    = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [loading,  setLoading]  = useState(true);
+  const [jobs,       setJobs]       = useState([]);
+  const [techs,      setTechs]      = useState([]);
+  const [selected,   setSelected]   = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [activeInfo, setActiveInfo] = useState(null); // { pos, job? | tech? + hasGps + jobCount }
+  const [, forceUpdate]             = useState(0);
+
+  // Geocode cache: address → { lat, lng } | null (null = failed/in-flight, don't retry)
+  const geocacheRef = useRef({});
+  const { geocode, isReady: geocoderReady } = useGeocoder();
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -61,86 +67,44 @@ export default function Dispatch() {
     }).finally(() => setLoading(false));
   }, []);
 
+  // Geocode job addresses that have no stored coords
   useEffect(() => {
-    if (loading || mapInst.current || !mapRef.current) return;
-    const L = window.L;
-    if (!L) return;
+    if (!geocoderReady || !jobs.length) return;
+    const cache = geocacheRef.current;
+    const pending = jobs.filter(j =>
+      !j.service_lat && !j.service_lng &&
+      j.service_address &&
+      !(j.service_address in cache)
+    );
+    if (!pending.length) return;
 
-    const map = L.map(mapRef.current, { center: CENTER, zoom: 13 });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map);
-
-    // Job markers — prefer GPS check-in coords, fall back to service address coords
-    const plottedJobs = new Set();
-    jobs.forEach((j) => {
-      const lat = j.checkin_lat || j.service_lat;
-      const lng = j.checkin_lng || j.service_lng;
-      if (!lat || !lng) return;
-      const pos      = [parseFloat(lat), parseFloat(lng)];
-      const isLive   = !!(j.checkin_lat && j.checkin_lng);
-      const color    = JOB_COLORS[j.status] || '#8A90A2';
-      const icon     = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:12px;height:12px;border-radius:50%;
-          background:${color};border:2px solid ${isLive ? '#2E7D32' : 'white'};
-          box-shadow:0 1px 4px rgba(0,0,0,.3);
-        "></div>`,
-        iconSize: [12, 12], iconAnchor: [6, 6],
-      });
-      const addrLine = j.service_address ? `<br><span style="font-size:11px;color:#64748b">${j.service_address}</span>` : '';
-      L.marker(pos, { icon })
-        .addTo(map)
-        .bindPopup(`
-          <strong style="font-family:sans-serif;font-size:12px">${j.client_name} — ${j.service_type}</strong><br>
-          <span style="font-size:11px;color:#5F667A">Tech: ${j.tech_name || 'Unassigned'} · ${j.amount ? '$' + j.amount : 'No amount'}</span><br>
-          <span style="font-size:11px;color:#8A90A2;text-transform:capitalize">Status: ${j.status.replace('_', ' ')}</span>${addrLine}
-        `);
-      plottedJobs.add(j.id);
+    pending.forEach(j => {
+      cache[j.service_address] = null; // mark in-flight; prevents re-attempt
+      geocode(j.service_address)
+        .then(r => {
+          cache[j.service_address] = { lat: r.lat, lng: r.lng };
+          forceUpdate(n => n + 1);
+        })
+        .catch(() => {}); // null stays — no retry, no crash
     });
+  }, [geocoderReady, jobs, geocode]);
 
-    // Tech markers — use checkin coords from their active job, else use Tampa spread
-    techs.forEach((t, i) => {
-      const activeJob = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
-      const hasGps    = !!activeJob;
-      const pos       = hasGps
-        ? [parseFloat(activeJob.checkin_lat), parseFloat(activeJob.checkin_lng)]
-        : TAMPA_SPREAD[i % TAMPA_SPREAD.length];
-      const color     = AVATAR_COLORS[i % AVATAR_COLORS.length];
+  function jobPos(j) {
+    if (j.checkin_lat && j.checkin_lng) return { lat: parseFloat(j.checkin_lat), lng: parseFloat(j.checkin_lng) };
+    if (j.service_lat && j.service_lng) return { lat: parseFloat(j.service_lat), lng: parseFloat(j.service_lng) };
+    return geocacheRef.current[j.service_address] || null;
+  }
 
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:36px;height:36px;border-radius:50%;
-          background:${color};border:3px solid ${hasGps ? '#2E7D32' : 'white'};
-          box-shadow:0 2px 8px rgba(0,0,0,.35);
-          display:flex;align-items:center;justify-content:center;
-          font-size:11px;font-weight:800;color:white;
-          font-family:'Bricolage Grotesque',sans-serif;
-        ">${initials(t.name)}</div>`,
-        iconSize: [36, 36], iconAnchor: [18, 18],
-      });
-
-      const jobCount = jobs.filter(j => j.tech_id === t.id).length;
-      L.marker(pos, { icon })
-        .addTo(map)
-        .bindPopup(`
-          <strong style="font-family:sans-serif;font-size:13px">${t.name}</strong><br>
-          <span style="font-size:12px;color:#5F667A">${jobCount} job${jobCount !== 1 ? 's' : ''} today</span>
-          ${hasGps ? '<br><span style="font-size:11px;color:#2E7D32">● Live GPS</span>' : '<br><span style="font-size:11px;color:#8A90A2">No GPS yet</span>'}
-        `);
-    });
-
-    mapInst.current = map;
-    return () => {
-      if (mapInst.current) { mapInst.current.remove(); mapInst.current = null; }
-    };
-  }, [loading, jobs, techs]);
+  function techPos(t, i) {
+    const live = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
+    if (live) return { lat: parseFloat(live.checkin_lat), lng: parseFloat(live.checkin_lng) };
+    return TAMPA_SPREAD[i % TAMPA_SPREAD.length];
+  }
 
   return (
     <div className="dispatch-layout">
+
+      {/* ── Sidebar ── */}
       <div className="dispatch-panel">
         <div className="dispatch-panel-hdr">
           <div className="dispatch-panel-title">Live Dispatch</div>
@@ -153,12 +117,12 @@ export default function Dispatch() {
         {techs.length === 0 && !loading ? (
           <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--steel)' }}>No techs on team yet.</div>
         ) : techs.map((t, i) => {
-          const techJobs = jobs.filter(j => j.tech_id === t.id);
+          const techJobs  = jobs.filter(j => j.tech_id === t.id);
           const activeJob = techJobs.find(j => j.status === 'in_progress');
-          const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+          const color     = AVATAR_COLORS[i % AVATAR_COLORS.length];
           return (
             <div
-              key={i}
+              key={t.id}
               className={`dispatch-tech-row${selected === t.id ? ' sel' : ''}`}
               onClick={() => setSelected(selected === t.id ? null : t.id)}
             >
@@ -166,14 +130,18 @@ export default function Dispatch() {
               <div className="dispatch-tech-info">
                 <div className="dispatch-tech-name">{t.name}</div>
                 <div className="dispatch-tech-job">
-                  {activeJob ? `${activeJob.service_type} · ${activeJob.client_name}` : techJobs.length > 0 ? `${techJobs.length} job${techJobs.length > 1 ? 's' : ''} today` : 'No jobs today'}
+                  {activeJob
+                    ? `${activeJob.service_type} · ${activeJob.client_name}`
+                    : techJobs.length > 0
+                      ? `${techJobs.length} job${techJobs.length > 1 ? 's' : ''} today`
+                      : 'No jobs today'}
                 </div>
               </div>
               <span
                 className="dispatch-tech-badge"
                 style={activeJob
                   ? { background: 'var(--green-lt)', color: 'var(--green)' }
-                  : { background: 'var(--offwhite)', color: 'var(--slate)' }}
+                  : { background: 'var(--offwhite)',  color: 'var(--slate)' }}
               >
                 {activeJob ? 'active' : 'available'}
               </span>
@@ -185,7 +153,7 @@ export default function Dispatch() {
         {jobs.length === 0 && !loading ? (
           <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--steel)' }}>No jobs scheduled for today.</div>
         ) : jobs.map((j, i) => (
-          <div key={i} className="dispatch-job-row">
+          <div key={j.id || i} className="dispatch-job-row">
             <div className="dispatch-job-dot" style={{ background: JOB_COLORS[j.status] }} />
             <div className="dispatch-job-info">
               <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>
@@ -198,16 +166,107 @@ export default function Dispatch() {
         ))}
       </div>
 
+      {/* ── Map area ── */}
       <div className="dispatch-map-wrap">
-        <div ref={mapRef} className="dispatch-map" />
+        <GoogleMap className="dispatch-map" center={CENTER}>
+
+          {/* Job markers */}
+          {!loading && jobs.map(j => {
+            const pos   = jobPos(j);
+            if (!pos) return null;
+            const isLive = !!(j.checkin_lat && j.checkin_lng);
+            const color  = JOB_COLORS[j.status] || '#8A90A2';
+            return (
+              <Marker
+                key={`job-${j.id}`}
+                position={pos}
+                title={`${j.client_name} — ${j.service_type}`}
+                onClick={() => setActiveInfo({ pos, job: j })}
+              >
+                <div style={{
+                  width: 12, height: 12, borderRadius: '50%',
+                  background: color,
+                  border: `2px solid ${isLive ? '#2E7D32' : 'white'}`,
+                  boxShadow: '0 1px 4px rgba(0,0,0,.3)',
+                  cursor: 'pointer',
+                }} />
+              </Marker>
+            );
+          })}
+
+          {/* Tech markers */}
+          {!loading && techs.map((t, i) => {
+            const pos      = techPos(t, i);
+            const live     = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
+            const hasGps   = !!live;
+            const jobCount = jobs.filter(j => j.tech_id === t.id).length;
+            const color    = AVATAR_COLORS[i % AVATAR_COLORS.length];
+            return (
+              <Marker
+                key={`tech-${t.id}`}
+                position={pos}
+                title={t.name}
+                onClick={() => setActiveInfo({ pos, tech: t, hasGps, jobCount })}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: color,
+                  border: `3px solid ${hasGps ? '#2E7D32' : 'white'}`,
+                  boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 800, color: 'white',
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  cursor: 'pointer',
+                }}>
+                  {initials(t.name)}
+                </div>
+              </Marker>
+            );
+          })}
+
+          {/* InfoWindow for clicked marker */}
+          {activeInfo && (
+            <InfoWindow
+              position={activeInfo.pos}
+              onCloseClick={() => setActiveInfo(null)}
+            >
+              {activeInfo.job && (() => {
+                const j = activeInfo.job;
+                return (
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 12, minWidth: 160 }}>
+                    <strong style={{ fontSize: 13 }}>{j.client_name} — {j.service_type}</strong><br />
+                    <span style={{ color: '#5F667A' }}>Tech: {j.tech_name || 'Unassigned'} · {j.amount ? '$' + j.amount : 'No amount'}</span><br />
+                    <span style={{ color: '#8A90A2', textTransform: 'capitalize' }}>Status: {j.status.replace('_', ' ')}</span>
+                    {j.service_address && <><br /><span style={{ color: '#64748b', fontSize: 11 }}>{j.service_address}</span></>}
+                  </div>
+                );
+              })()}
+              {activeInfo.tech && (() => {
+                const t = activeInfo.tech;
+                return (
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 12 }}>
+                    <strong style={{ fontSize: 13 }}>{t.name}</strong><br />
+                    <span style={{ color: '#5F667A' }}>{activeInfo.jobCount} job{activeInfo.jobCount !== 1 ? 's' : ''} today</span><br />
+                    {activeInfo.hasGps
+                      ? <span style={{ color: '#2E7D32' }}>● Live GPS</span>
+                      : <span style={{ color: '#8A90A2' }}>No GPS yet</span>}
+                  </div>
+                );
+              })()}
+            </InfoWindow>
+          )}
+
+        </GoogleMap>
+
+        {/* Legend */}
         <div className="dispatch-legend">
           {[
-            { color: '#2E7D32', label: 'Tech — live GPS'  },
-            { color: '#8A90A2', label: 'Tech — no GPS yet'},
-            { color: '#1565C0', label: 'Job — active'     },
-            { color: '#2E7D32', label: 'Job — complete'   },
-            { color: 'var(--red)', label: 'Job — cancelled'  },
-            { color: '#8A90A2', label: 'Job — scheduled'  },
+            { color: '#2E7D32',    label: 'Tech — live GPS'   },
+            { color: '#8A90A2',    label: 'Tech — no GPS yet' },
+            { color: '#1565C0',    label: 'Job — active'      },
+            { color: '#2E7D32',    label: 'Job — complete'    },
+            { color: 'var(--red)', label: 'Job — cancelled'   },
+            { color: '#8A90A2',    label: 'Job — scheduled'   },
           ].map((l, i) => (
             <div key={i} className="dispatch-legend-item">
               <div className="dispatch-legend-dot" style={{ background: l.color }} />
@@ -216,6 +275,7 @@ export default function Dispatch() {
           ))}
         </div>
       </div>
+
     </div>
   );
 }
