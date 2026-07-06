@@ -341,6 +341,8 @@ export default function Billing() {
   const [payoutScheduleError, setPayoutScheduleError] = useState('');
   const [testBusy,           setTestBusy]           = useState(false);
   const [testToolsStatus,    setTestToolsStatus]    = useState(null);
+  const showTestTools = import.meta.env.VITE_ENABLE_TEST_TOOLS === 'true'
+    || (testToolsStatus?.enabled && testToolsStatus?.isOwner);
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
 
@@ -708,7 +710,7 @@ export default function Billing() {
         {tab === 'plans' && (
           <>
             {/* ── Stripe Test Tools card — shown only when ENABLE_STRIPE_TEST_TOOLS=true ── */}
-            {testToolsStatus?.enabled && testToolsStatus?.isOwner && (
+            {showTestTools && (
               <div className="dash-card" style={{ marginBottom: 20, padding: '18px 22px', background: '#fffbe6', border: '2px dashed #e6c800' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>⚙ Stripe Test Tools</span>
@@ -734,7 +736,7 @@ export default function Billing() {
                   </button>
                 </div>
                 <div style={{ fontSize: 11, color: '#b45309', fontFamily: 'DM Mono, monospace' }}>
-                  Current plan: {testToolsStatus.accountPlan} · Test tools: enabled
+                  Current plan: {testToolsStatus?.accountPlan || billing?.plan || '?'} · Test tools: {import.meta.env.VITE_ENABLE_TEST_TOOLS === 'true' ? 'enabled (Vite)' : 'enabled (Railway)'}
                 </div>
               </div>
             )}
