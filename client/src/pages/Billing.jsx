@@ -691,6 +691,28 @@ export default function Billing() {
           )}
         </div>
 
+        {/* ── Stripe test tools — visible on all tabs when ENABLE_STRIPE_TEST_TOOLS=true ── */}
+        {billing?.testCheckout && (
+          <div style={{ marginBottom: 16, padding: '14px 18px', background: '#fffbe6', border: '1.5px dashed #e6c800', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', letterSpacing: '.05em', flexShrink: 0 }}>⚙ STRIPE TEST TOOLS</span>
+            <span style={{ fontSize: 12, color: '#92400e', flex: 1 }}>Internal only — opens Stripe Checkout in test mode.</span>
+            <button
+              disabled={testBusy}
+              onClick={() => runTestCheckout('pro')}
+              style={{ height: 34, padding: '0 16px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {testBusy ? '…' : 'Test Upgrade to Pro'}
+            </button>
+            <button
+              disabled={testBusy}
+              onClick={() => runTestCheckout('scale')}
+              style={{ height: 34, padding: '0 16px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {testBusy ? '…' : 'Test Upgrade to Scale'}
+            </button>
+          </div>
+        )}
+
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--lightgray)' }}>
           {tabs.map(t => (
@@ -821,27 +843,6 @@ export default function Billing() {
               </div>
             )}
 
-            {/* ── Internal test tools — only shown when ENABLE_STRIPE_TEST_TOOLS=true ── */}
-            {billing?.testCheckout && (
-              <div style={{ marginTop: 24, padding: '14px 18px', background: '#fffbe6', border: '1.5px dashed #e6c800', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', letterSpacing: '.05em', flexShrink: 0 }}>⚙ TEST TOOLS</span>
-                <span style={{ fontSize: 12, color: '#92400e', flex: 1 }}>Internal only — opens Stripe test checkout.</span>
-                <button
-                  disabled={testBusy}
-                  onClick={() => runTestCheckout('pro')}
-                  style={{ height: 34, padding: '0 14px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
-                >
-                  {testBusy ? '…' : 'Test → Pro'}
-                </button>
-                <button
-                  disabled={testBusy}
-                  onClick={() => runTestCheckout('scale')}
-                  style={{ height: 34, padding: '0 14px', background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: testBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
-                >
-                  {testBusy ? '…' : 'Test → Scale'}
-                </button>
-              </div>
-            )}
           </>
         )}
 
