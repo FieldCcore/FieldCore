@@ -21,6 +21,45 @@ if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', function(e) {
     console.error('[MapProvider][unhandledrejection]', e.reason);
   });
+
+  // Intercept the Maps JS script tag the instant APIProvider injects it.
+  // Logs the full URL and every query parameter so we can see exactly what
+  // the browser is asking Google for — key, libraries, version, loading mode.
+  const scriptObserver = new MutationObserver(function(mutations) {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeName !== 'SCRIPT') continue;
+        const src = node.src || '';
+        if (!src.includes('maps.googleapis.com/maps/api/js')) continue;
+
+        scriptObserver.disconnect();
+
+        let url;
+        try { url = new URL(src); } catch { console.error('[MapProvider][script] bad URL:', src); continue; }
+
+        const p = url.searchParams;
+        const allParams = {};
+        p.forEach((v, k) => { allParams[k] = v; });
+
+        console.log('[MapProvider][script] FULL URL:', src);
+        console.table({
+          key:       { value: p.get('key')      ? p.get('key').slice(0, 8) + '…'  : '(none)', note: 'first 8 chars only' },
+          libraries: { value: p.get('libraries') || '(none)',  note: 'APIs requested at load time' },
+          v:         { value: p.get('v')         || '(none)',  note: 'Maps JS version' },
+          loading:   { value: p.get('loading')   || '(none)',  note: 'async/defer mode' },
+          callback:  { value: p.get('callback')  || '(none)',  note: 'internal bootstrap fn' },
+          language:  { value: p.get('language')  || '(none)',  note: '' },
+          region:    { value: p.get('region')    || '(none)',  note: '' },
+        });
+
+        // Also log any parameters not in the known list
+        const known = new Set(['key','libraries','v','loading','callback','language','region']);
+        const extra = Object.fromEntries(Object.entries(allParams).filter(([k]) => !known.has(k)));
+        if (Object.keys(extra).length) console.log('[MapProvider][script] extra params:', extra);
+      }
+    }
+  });
+  scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
 }
 
 function MapsDiagnostics() {
