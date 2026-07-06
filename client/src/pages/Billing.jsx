@@ -543,10 +543,19 @@ export default function Billing() {
   const sub         = billing?.subscription;
   const connect     = billing?.connect || { status: 'not_connected', account_id: null, platform_fee: 1 };
 
-  const connectStatus       = connectDash?.status || connect.status || 'not_connected';
-  const connectIsActive     = connectStatus === 'active';
-  const connectIsPending    = connectStatus === 'pending';
-  const connectIsConnected  = connectDash?.connected ?? false;
+  const connectStatus              = connectDash?.status || connect.status || 'not_connected';
+  const connectIsActive            = connectStatus === 'active';
+  const connectIsConnected         = connectDash?.connected ?? false;
+  const connectDetailsSubmitted    = connectDash?.details_submitted ?? false;
+  const connectCurrentlyDue        = connectDash?.requirements?.currently_due || [];
+  const connectPastDue             = connectDash?.requirements?.past_due || [];
+  const connectDisabledReason      = connectDash?.requirements?.disabled_reason || null;
+  // User needs to take action: not yet submitted, or has requirements blocking them
+  const connectNeedsUserAction     = !connectIsConnected || !connectDetailsSubmitted
+    || connectCurrentlyDue.length > 0 || connectPastDue.length > 0;
+  // Submitted and waiting — user can't do anything more
+  const connectAwaitingVerification = connectIsConnected && connectDetailsSubmitted
+    && !connectIsActive && !connectNeedsUserAction;
 
   const isEnterpriseCurrentPlan = currentPlan === 'enterprise';
 
@@ -905,11 +914,17 @@ export default function Billing() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-                  <StatusBadge status={connectIsActive ? 'active' : connectIsPending ? 'verification pending' : 'not connected'} />
-                  {!connectEmbedActive && !connectIsActive && (
+                  <StatusBadge status={
+                    connectIsActive ? 'active'
+                    : connectAwaitingVerification ? 'verification pending'
+                    : connectIsConnected ? 'incomplete'
+                    : 'not connected'
+                  } />
+                  {/* Only show Setup button when user actually has action to take */}
+                  {!connectEmbedActive && !connectIsActive && !connectAwaitingVerification && (
                     <button onClick={startEmbeddedOnboarding} disabled={connectBusy}
                       style={{ background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, height: 44, padding: '0 20px', fontSize: 14, fontWeight: 600, cursor: connectBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
-                      {connectBusy ? 'Loading…' : connectIsPending ? 'Continue Setup →' : 'Connect with Stripe →'}
+                      {connectBusy ? 'Loading…' : connectIsConnected ? 'Continue Setup →' : 'Connect with Stripe →'}
                     </button>
                   )}
                   {connectIsActive && !connectEmbedActive && (
@@ -920,6 +935,20 @@ export default function Billing() {
                   )}
                 </div>
               </div>
+
+              {/* Awaiting verification — user done, Stripe reviewing */}
+              {connectAwaitingVerification && !connectEmbedActive && (
+                <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, fontSize: 13, color: '#92400e', lineHeight: 1.6 }}>
+                  Your information has been submitted. Stripe is reviewing your account — payouts activate automatically once verified, usually within minutes. No further action needed.
+                </div>
+              )}
+
+              {/* disabled_reason if Stripe blocked the account */}
+              {connectDisabledReason && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                  <strong>Stripe disabled reason:</strong> {connectDisabledReason}
+                </div>
+              )}
 
               {(connectEmbedError || connectError) && (
                 <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
@@ -1034,24 +1063,24 @@ export default function Billing() {
 
             {/* 5 — Verification requirements (when there are items due) */}
             {connectDash?.requirements && (
-              (connectDash.requirements.past_due?.length > 0 || connectDash.requirements.currently_due?.length > 0)
+              connectPastDue.length > 0 || connectCurrentlyDue.length > 0
             ) && (
               <div className="dash-card" style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 12 }}>Verification Required</div>
-                {connectDash.requirements.past_due?.length > 0 && (
+                {connectPastDue.length > 0 && (
                   <div style={{ padding: '12px 14px', background: 'rgba(198,40,40,.05)', border: '1px solid rgba(198,40,40,.15)', borderRadius: 8, marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#C62828', marginBottom: 6 }}>Past Due</div>
-                    {connectDash.requirements.past_due.map(r => (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#C62828', marginBottom: 6 }}>Past Due — Payouts Blocked</div>
+                    {connectPastDue.map(r => (
                       <div key={r} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#C62828', marginTop: 4 }}>
                         <span>•</span><span style={{ fontFamily: 'DM Mono, monospace' }}>{r}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                {connectDash.requirements.currently_due?.length > 0 && (
+                {connectCurrentlyDue.length > 0 && (
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', marginBottom: 8 }}>Currently Due</div>
-                    {connectDash.requirements.currently_due.map(r => (
+                    {connectCurrentlyDue.map(r => (
                       <div key={r} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--slate)', marginTop: 4 }}>
                         <span>•</span><span style={{ fontFamily: 'DM Mono, monospace' }}>{r}</span>
                       </div>

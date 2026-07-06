@@ -227,8 +227,11 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 
   // ── Connect account verification ──────────────────────────
   if (event.type === 'account.updated') {
-    const acct   = event.data.object;
-    const status = acct.charges_enabled ? 'active' : 'pending';
+    const acct    = event.data.object;
+    const reqs    = acct.requirements || {};
+    const hasPastDue = (reqs.past_due || []).length > 0;
+    const status  = (acct.details_submitted && acct.charges_enabled && !hasPastDue)
+      ? 'active' : 'pending';
     await pool.query(
       `UPDATE accounts SET stripe_connect_status = $1 WHERE stripe_connect_account_id = $2`,
       [status, acct.id]

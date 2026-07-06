@@ -621,7 +621,7 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
       `SELECT stripe_connect_account_id, stripe_connect_status FROM accounts WHERE id = $1`,
       [req.accountId]
     );
-    const { stripe_connect_account_id: connectId, stripe_connect_status: status } = rows[0] || {};
+    const { stripe_connect_account_id: connectId, stripe_connect_status: dbStatus } = rows[0] || {};
 
     if (!connectId) {
       return res.json({ connected: false, status: 'not_connected' });
@@ -632,11 +632,25 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
     const requirements = account.requirements || {};
     const payoutSchedule = account.settings?.payouts?.schedule || {};
 
+    // Derive live status from Stripe — never trust the stale DB column alone.
+    // active = Stripe has submitted details AND enabled charges (no past-due blocks).
+    const pastDue = requirements.past_due || [];
+    const liveStatus = (account.details_submitted && account.charges_enabled && pastDue.length === 0)
+      ? 'active' : 'pending';
+
+    // Auto-heal the DB if webhook missed or fired with wrong logic.
+    if (liveStatus !== dbStatus) {
+      await pool.query(
+        `UPDATE accounts SET stripe_connect_status = $1 WHERE stripe_connect_account_id = $2`,
+        [liveStatus, connectId]
+      );
+    }
+
     let balance = null;
     let payouts = [];
     let bankAccount = null;
 
-    if (status === 'active') {
+    if (liveStatus === 'active') {
       const [balRes, payRes, extRes] = await Promise.all([
         stripe.balance.retrieve({ stripeAccount: connectId }),
         stripe.payouts.list({ limit: 5 }, { stripeAccount: connectId }),
@@ -653,16 +667,22 @@ router.get('/connect/dashboard', requireAuth, requireRole('owner'), async (req, 
 
     res.json({
       connected: true,
-      status,
+      status: liveStatus,
       account_id: connectId,
+      details_submitted: account.details_submitted ?? false,
+      charges_enabled: account.charges_enabled ?? false,
+      payouts_enabled: account.payouts_enabled ?? false,
       display_name: account.business_profile?.name || account.settings?.dashboard?.display_name || null,
       country: account.country,
       email: account.email,
       capabilities,
       requirements: {
-        currently_due: requirements.currently_due || [],
-        past_due: requirements.past_due || [],
-        errors: requirements.errors || [],
+        currently_due:        requirements.currently_due        || [],
+        eventually_due:       requirements.eventually_due       || [],
+        past_due:             requirements.past_due             || [],
+        pending_verification: requirements.pending_verification || [],
+        disabled_reason:      requirements.disabled_reason      || null,
+        errors:               requirements.errors               || [],
       },
       balance,
       payouts,
