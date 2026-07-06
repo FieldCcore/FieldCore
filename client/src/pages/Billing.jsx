@@ -59,12 +59,12 @@ function fmtCents(n, currency = 'usd') {
 }
 function payoutStatusVariant(status) {
   if (status === 'paid') return 'green';
-  if (status === 'pending' || status === 'in_transit') return 'yellow';
+  if (status === 'in_transit') return 'yellow';
   if (status === 'failed' || status === 'canceled') return 'red';
   return 'gray';
 }
 function payoutStatusLabel(status) {
-  const map = { paid: 'Paid', pending: 'Pending', in_transit: 'In Transit', failed: 'Failed', canceled: 'Canceled' };
+  const map = { paid: 'Paid', pending: 'Pending / Next Up', in_transit: 'Payment in Transit', failed: 'Failed', canceled: 'Canceled' };
   return map[status] || String(status).replace(/_/g, ' ');
 }
 function fmtDate(ts) {
@@ -1102,16 +1102,45 @@ export default function Billing() {
               );
             })()}
 
-            {/* 3 — Recent + Pending payouts (active only) */}
+            {/* 3 — Next Up + Payout History (active only) */}
             {connectIsActive && (
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-                {/* Recent Payouts */}
+                {/* Next Up */}
+                <div className="dash-card" style={{ flex: '1 1 240px', padding: '20px 24px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Next Up</div>
+                  {(!connectDash?.pending_payouts?.length) ? (
+                    <div style={{ padding: '20px 0', color: 'var(--steel)', fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
+                      No upcoming payouts right now.
+                    </div>
+                  ) : (
+                    <div className="connect-scroll">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {connectDash.pending_payouts.map(p => (
+                          <div key={p.id} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{fmtCents(p.amount, p.currency)}</div>
+                              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                                Arrives {fmtDate(p.arrival_date)} · {p.method || 'standard'}
+                              </div>
+                              {p.description && (
+                                <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</div>
+                              )}
+                            </div>
+                            <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payout History */}
                 <div className="dash-card" style={{ flex: '1 1 320px', padding: '20px 24px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Recent Payouts</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Payout History</div>
                   {(!connectDash?.recent_payouts?.length) ? (
                     <div style={{ padding: '20px 0', color: 'var(--steel)', fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
-                      Recent payouts will appear here after your first payout.
+                      Completed payouts will appear here after your first payout.
                     </div>
                   ) : (
                     <div className="connect-scroll">
@@ -1136,35 +1165,6 @@ export default function Billing() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* Pending Payouts */}
-                <div className="dash-card" style={{ flex: '1 1 240px', padding: '20px 24px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>Pending Payouts</div>
-                  {(!connectDash?.pending_payouts?.length) ? (
-                    <div style={{ padding: '20px 0', color: 'var(--steel)', fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
-                      No pending payouts right now.
-                    </div>
-                  ) : (
-                    <div className="connect-scroll">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {connectDash.pending_payouts.map(p => (
-                          <div key={p.id} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{fmtCents(p.amount, p.currency)}</div>
-                              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
-                                Arrives {fmtDate(p.arrival_date)} · {p.method || 'standard'}
-                              </div>
-                              {p.description && (
-                                <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</div>
-                              )}
-                            </div>
-                            <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   )}
                 </div>
