@@ -315,8 +315,14 @@ router.delete('/payment-methods/:id', requireAuth, requireRole('owner'), async (
 // ── POST /api/billing/checkout — Stripe Checkout session (subscription) ────────
 router.post('/checkout', requireAuth, requireRole('owner'), async (req, res) => {
   const { plan } = req.body;
-  const priceId  = PRICE_IDS[plan];
-  if (!priceId) return res.status(400).json({ error: 'Invalid plan. Must be solo, pro, or scale.' });
+  console.log('billing checkout plan', req.body.plan);
+  if (!['solo', 'pro', 'scale'].includes(plan)) {
+    return res.status(400).json({ error: 'Invalid plan. Must be solo, pro, or scale.' });
+  }
+  const priceId = PRICE_IDS[plan];
+  if (!priceId) {
+    return res.status(500).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} is not configured on the server.` });
+  }
 
   try {
     const { rows } = await pool.query(

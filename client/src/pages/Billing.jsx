@@ -403,6 +403,7 @@ export default function Billing() {
     setUpgradingPlan(plan);
     setUpgradeError('');
     try {
+      console.log('checkout plan payload', plan);
       const { data } = await api.post('/billing/checkout', { plan });
       window.location.href = data.url;
     } catch (err) {
