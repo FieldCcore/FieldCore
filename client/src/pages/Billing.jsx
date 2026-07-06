@@ -330,6 +330,7 @@ export default function Billing() {
   const [connectDash,        setConnectDash]        = useState(null);
   const [connectDashLoading, setConnectDashLoading] = useState(false);
   const [connectDashError,   setConnectDashError]   = useState('');
+  const [payoutScheduleError, setPayoutScheduleError] = useState('');
   const connectInstanceRef  = useRef(null);
   const connectContainerRef = useRef(null);
 
@@ -502,7 +503,7 @@ export default function Billing() {
   async function savePayoutSchedule(interval) {
     setPayoutScheduleSaving(true);
     setPayoutScheduleSaved(false);
-    setConnectError('');
+    setPayoutScheduleError('');
     try {
       await api.post('/billing/connect/payout-schedule', { interval });
       setPayoutSchedule(interval);
@@ -510,7 +511,7 @@ export default function Billing() {
       setTimeout(() => setPayoutScheduleSaved(false), 3000);
       loadConnectDash();
     } catch (err) {
-      setConnectError(err.response?.data?.error || 'Could not update payout schedule.');
+      setPayoutScheduleError(err.response?.data?.error || 'Could not update payout schedule.');
     } finally {
       setPayoutScheduleSaving(false);
     }
@@ -1035,27 +1036,29 @@ export default function Billing() {
                       Recent payouts will appear here after your first payout.
                     </div>
                   ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
-                          {['Arrival', 'Amount', 'Status', 'Method'].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '0 10px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {connectDash.recent_payouts.map(p => (
-                          <tr key={p.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
-                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12 }}>{fmtDate(p.arrival_date)}</td>
-                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--navy)', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtCents(p.amount, p.currency)}</td>
-                            <td style={{ padding: '9px 10px 9px 0' }}>
-                              <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
-                            </td>
-                            <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12, textTransform: 'capitalize' }}>{p.method || '—'}</td>
+                    <div className="connect-scroll">
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
+                            {['Arrival', 'Amount', 'Status', 'Method'].map(h => (
+                              <th key={h} style={{ textAlign: 'left', padding: '0 10px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {connectDash.recent_payouts.map(p => (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                              <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12 }}>{fmtDate(p.arrival_date)}</td>
+                              <td style={{ padding: '9px 10px 9px 0', color: 'var(--navy)', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtCents(p.amount, p.currency)}</td>
+                              <td style={{ padding: '9px 10px 9px 0' }}>
+                                <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
+                              </td>
+                              <td style={{ padding: '9px 10px 9px 0', color: 'var(--slate)', fontSize: 12, textTransform: 'capitalize' }}>{p.method || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
 
@@ -1067,21 +1070,23 @@ export default function Billing() {
                       No pending payouts right now.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {connectDash.pending_payouts.map(p => (
-                        <div key={p.id} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{fmtCents(p.amount, p.currency)}</div>
-                            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
-                              Arrives {fmtDate(p.arrival_date)} · {p.method || 'standard'}
+                    <div className="connect-scroll">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {connectDash.pending_payouts.map(p => (
+                          <div key={p.id} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{fmtCents(p.amount, p.currency)}</div>
+                              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
+                                Arrives {fmtDate(p.arrival_date)} · {p.method || 'standard'}
+                              </div>
+                              {p.description && (
+                                <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</div>
+                              )}
                             </div>
-                            {p.description && (
-                              <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</div>
-                            )}
+                            <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
                           </div>
-                          <StatusBadge variant={payoutStatusVariant(p.status)}>{payoutStatusLabel(p.status)}</StatusBadge>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1152,19 +1157,23 @@ export default function Billing() {
                   How often Stripe sends your available balance to your bank. Daily is fastest; Manual means you initiate each payout from Stripe.
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <select value={payoutSchedule} onChange={e => setPayoutSchedule(e.target.value)}
-                    style={{ padding: '9px 12px', border: '1.5px solid var(--lightgray)', borderRadius: 8, fontSize: 13, color: 'var(--navy)', background: 'white', fontFamily: 'Inter, sans-serif', cursor: 'pointer' }}>
+                  <select className="fc-select" value={payoutSchedule} onChange={e => setPayoutSchedule(e.target.value)}>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                     <option value="manual">Manual</option>
                   </select>
                   <button onClick={() => savePayoutSchedule(payoutSchedule)} disabled={payoutScheduleSaving}
-                    style={{ padding: '9px 18px', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: payoutScheduleSaving ? 'wait' : 'pointer' }}>
-                    {payoutScheduleSaving ? 'Saving…' : 'Save'}
+                    style={{ height: 44, padding: '0 20px', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: payoutScheduleSaving ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                    {payoutScheduleSaving ? 'Saving…' : 'Save Schedule'}
                   </button>
                   {payoutScheduleSaved && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>✓ Saved</span>}
                 </div>
+                {payoutScheduleError && (
+                  <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 8, fontSize: 12, color: 'var(--red)' }}>
+                    {payoutScheduleError}
+                  </div>
+                )}
                 <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E', flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: 'var(--slate)' }}>Stripe Connect active</span>

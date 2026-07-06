@@ -2467,3 +2467,138 @@ body {
     padding: 2px 6px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CLIENT LIST — Desktop table / Mobile card swap
+   ═══════════════════════════════════════════════════════════ */
+.cl-desktop { display: block; }
+.cl-mobile-cards { display: none; flex-direction: column; gap: 8px; }
+
+@media (max-width: 768px) {
+  .cl-desktop { display: none !important; }
+  .cl-mobile-cards { display: flex; }
+
+  .cl-card {
+    background: var(--white);
+    border: 1px solid var(--lightgray);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .1s;
+  }
+  .cl-card:active { background: var(--sand-lt); }
+
+  .cl-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+  .cl-card-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--navy);
+    margin-bottom: 5px;
+  }
+  .cl-card-since {
+    font-size: 11px;
+    color: var(--steel);
+    flex-shrink: 0;
+    padding-top: 3px;
+  }
+  .cl-card-contact {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    color: var(--slate);
+    margin-bottom: 10px;
+  }
+  .cl-card-footer {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    border-top: 1px solid var(--lightgray);
+  }
+  .cl-card-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--steel);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin-bottom: 2px;
+  }
+  .cl-card-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+  .cl-card-date {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--slate);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD — Beta banner mobile wrap
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .dash-beta-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+    padding: 14px 16px !important;
+  }
+  .dash-beta-banner > div:first-child {
+    gap: 14px !important;
+    flex-wrap: wrap;
+  }
+  .dash-beta-banner > div:last-child {
+    max-width: 100% !important;
+    font-size: 12px;
+  }
+}
+
+/* ── Stripe Connect — styled select + scrollable areas ──────── */
+.fc-select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 44px;
+  padding: 0 40px 0 14px;
+  border: 1.5px solid var(--lightgray);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  color: var(--navy);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231C2333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  cursor: pointer;
+  min-width: 160px;
+  transition: border-color .15s;
+}
+.fc-select:hover  { border-color: var(--slate); }
+.fc-select:focus  { outline: none; border-color: var(--navy); }
+
+/* Thin, hover-reveal scrollbar — used in Connect payout history */
+.connect-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .2s;
+}
+.connect-scroll:hover { scrollbar-color: var(--lightgray) transparent; }
+.connect-scroll::-webkit-scrollbar       { width: 4px; }
+.connect-scroll::-webkit-scrollbar-track { background: transparent; }
+.connect-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; transition: background .2s; }
+.connect-scroll:hover::-webkit-scrollbar-thumb { background: var(--lightgray); }
