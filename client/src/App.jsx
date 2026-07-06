@@ -78,6 +78,7 @@ import NotificationBell from './components/NotificationBell';
 import CallerID         from './components/CallerID';
 import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { MapProvider } from './maps';
 
 function TechRoute({ children }) {
   const { user, loading } = useAuth();
@@ -461,9 +462,11 @@ function AppShell() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <AppShell />
-      </AuthProvider>
+      <MapProvider>
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
+      </MapProvider>
     </ErrorBoundary>
   );
 }

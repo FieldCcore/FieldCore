@@ -1,60 +1,42 @@
 import { useEffect, useRef } from 'react';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
-const SCRIPT_ID = 'gm-places-script';
-
-function loadScript(apiKey, cb) {
-  if (window.google?.maps?.places) { cb(); return; }
-  if (document.getElementById(SCRIPT_ID)) {
-    document.getElementById(SCRIPT_ID).addEventListener('load', cb, { once: true });
-    return;
-  }
-  const s = document.createElement('script');
-  s.id = SCRIPT_ID;
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-  s.async = true;
-  s.defer = true;
-  s.addEventListener('load', cb, { once: true });
-  document.head.appendChild(s);
-}
-
+// Uses the Places library loaded by MapProvider (App.jsx root).
+// Gracefully no-ops when the API key is absent or the library hasn't loaded yet.
 export default function AddressAutocomplete({ value, onChange, onPlace, placeholder, style, className }) {
-  const inputRef = useRef(null);
-  const acRef    = useRef(null);
-  const apiKey   = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const inputRef  = useRef(null);
+  const acRef     = useRef(null);
+  const placesLib = useMapsLibrary('places');
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!placesLib || !inputRef.current || acRef.current) return;
 
-    function attach() {
-      if (!inputRef.current || acRef.current) return;
-      acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-        types:                ['address'],
-        componentRestrictions: { country: 'us' },
-        fields:               ['address_components', 'geometry'],
-      });
-      acRef.current.addListener('place_changed', () => {
-        const place = acRef.current.getPlace();
-        if (!place.address_components) return;
+    acRef.current = new placesLib.Autocomplete(inputRef.current, {
+      types:                ['address'],
+      componentRestrictions: { country: 'us' },
+      fields:               ['address_components', 'geometry'],
+    });
 
-        let streetNum = '', route = '', city = '', state = '', zip = '';
-        for (const c of place.address_components) {
-          const t = c.types[0];
-          if (t === 'street_number')              streetNum = c.long_name;
-          if (t === 'route')                      route     = c.long_name;
-          if (t === 'locality')                   city      = c.long_name;
-          if (t === 'administrative_area_level_1') state    = c.short_name;
-          if (t === 'postal_code')                zip       = c.long_name;
-        }
-        const street = [streetNum, route].filter(Boolean).join(' ');
-        const lat    = place.geometry?.location?.lat();
-        const lng    = place.geometry?.location?.lng();
+    acRef.current.addListener('place_changed', () => {
+      const place = acRef.current.getPlace();
+      if (!place.address_components) return;
 
-        onChange?.(street);
-        onPlace?.({ street, city, state, zip, lat, lng });
-      });
-    }
+      let streetNum = '', route = '', city = '', state = '', zip = '';
+      for (const c of place.address_components) {
+        const t = c.types[0];
+        if (t === 'street_number')               streetNum = c.long_name;
+        if (t === 'route')                       route     = c.long_name;
+        if (t === 'locality')                    city      = c.long_name;
+        if (t === 'administrative_area_level_1') state     = c.short_name;
+        if (t === 'postal_code')                 zip       = c.long_name;
+      }
+      const street = [streetNum, route].filter(Boolean).join(' ');
+      const lat = place.geometry?.location?.lat();
+      const lng = place.geometry?.location?.lng();
 
-    loadScript(apiKey, attach);
+      onChange?.(street);
+      onPlace?.({ street, city, state, zip, lat, lng });
+    });
 
     return () => {
       if (acRef.current) {
@@ -62,7 +44,7 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
         acRef.current = null;
       }
     };
-  }, [apiKey]);
+  }, [placesLib]);
 
   return (
     <input
