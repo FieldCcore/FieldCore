@@ -5,6 +5,7 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 import { Mail, Phone } from 'lucide-react';
 import api from '../api';
 import StatusBadge from '../components/StatusBadge';
+import SelectDropdown from '../components/SelectDropdown';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
@@ -30,6 +31,13 @@ const PLANS = [
 ];
 
 const PLAN_ORDER = ['starter', 'solo', 'pro', 'scale', 'enterprise'];
+
+const PAYOUT_SCHEDULE_OPTIONS = [
+  { value: 'daily',   label: 'Daily' },
+  { value: 'weekly',  label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'manual',  label: 'Manual' },
+];
 const PLAN_FEATURES = {
   solo:  ['Business phone','No-show clock + 3-layer deposits','Revenue analytics','Multi-entity access'],
   pro:   ['Multi-entity access','Priority support'],
@@ -1157,12 +1165,12 @@ export default function Billing() {
                   How often Stripe sends your available balance to your bank. Daily is fastest; Manual means you initiate each payout from Stripe.
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <select className="fc-select" value={payoutSchedule} onChange={e => setPayoutSchedule(e.target.value)}>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="manual">Manual</option>
-                  </select>
+                  <SelectDropdown
+                    value={payoutSchedule}
+                    onChange={setPayoutSchedule}
+                    options={PAYOUT_SCHEDULE_OPTIONS}
+                    minWidth={160}
+                  />
                   <button onClick={() => savePayoutSchedule(payoutSchedule)} disabled={payoutScheduleSaving}
                     style={{ height: 44, padding: '0 20px', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: payoutScheduleSaving ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
                     {payoutScheduleSaving ? 'Saving…' : 'Save Schedule'}
