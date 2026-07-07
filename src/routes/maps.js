@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 
 // GET /api/maps/autocomplete?input=...
-// Server-side Places Autocomplete proxy — keeps the API key off the client.
+// Server-side Places Autocomplete proxy using Places API (New).
 // Returns { predictions: [{description, place_id, structured_formatting}] }
 router.get('/autocomplete', requireAuth, async (req, res) => {
   const { input } = req.query;
@@ -15,20 +15,41 @@ router.get('/autocomplete', requireAuth, async (req, res) => {
   }
 
   try {
-    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
-    url.searchParams.set('input',      input.trim());
-    url.searchParams.set('types',      'address');
-    url.searchParams.set('components', 'country:us');
-    url.searchParams.set('key',        key);
+    const r = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: {
+        'Content-Type':     'application/json',
+        'X-Goog-Api-Key':   key,
+        'X-Goog-FieldMask': 'suggestions.placePrediction.text,suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat',
+      },
+      body: JSON.stringify({
+        input:                input.trim(),
+        includedPrimaryTypes: ['address'],
+        includedRegionCodes:  ['US'],
+      }),
+    });
 
-    const r    = await fetch(url.toString());
     const body = await r.json();
 
-    if (body.status !== 'OK' && body.status !== 'ZERO_RESULTS') {
-      console.error('[maps/autocomplete] status:', body.status, body.error_message || '');
+    if (body.error) {
+      console.error('[maps/autocomplete] error:', body.error.status, body.error.message || '');
+      return res.json({ predictions: [] });
     }
 
-    res.json({ predictions: body.predictions || [] });
+    // Map Places API (New) shape → legacy shape expected by the frontend
+    const predictions = (body.suggestions || []).map(s => {
+      const p = s.placePrediction;
+      return {
+        description:           p.text?.text || '',
+        place_id:              p.placeId    || '',
+        structured_formatting: {
+          main_text:      p.structuredFormat?.mainText?.text      || p.text?.text || '',
+          secondary_text: p.structuredFormat?.secondaryText?.text || '',
+        },
+      };
+    });
+
+    res.json({ predictions });
   } catch (err) {
     console.error('[maps/autocomplete]', err.message);
     res.json({ predictions: [] });
