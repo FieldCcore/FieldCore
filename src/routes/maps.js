@@ -23,9 +23,8 @@ router.get('/autocomplete', requireAuth, async (req, res) => {
         'X-Goog-FieldMask': 'suggestions.placePrediction.text,suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat',
       },
       body: JSON.stringify({
-        input:                input.trim(),
-        includedPrimaryTypes: ['address'],
-        includedRegionCodes:  ['US'],
+        input:              input.trim(),
+        includedRegionCodes: ['US'],
       }),
     });
 
