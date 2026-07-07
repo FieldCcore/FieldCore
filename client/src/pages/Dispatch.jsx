@@ -218,18 +218,29 @@ export default function Dispatch() {
         <div className="dispatch-section-lbl" style={{ marginTop: 8 }}>Job Queue</div>
         {jobs.length === 0 && !loading ? (
           <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--steel)' }}>No jobs scheduled for today.</div>
-        ) : jobs.map((j, i) => (
-          <div key={j.id || i} className="dispatch-job-row">
-            <div className="dispatch-job-dot" style={{ background: JOB_COLORS[j.status] }} />
-            <div className="dispatch-job-info">
-              <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>
-              <div className="dispatch-job-meta">{j.tech_name || 'Unassigned'} · {fmtTime(j.scheduled_at)}</div>
+        ) : jobs.map((j, i) => {
+          const pos       = jobPos(j);
+          const notMapped = j.service_address && !pos;
+          return (
+            <div key={j.id || i} className="dispatch-job-row">
+              <div className="dispatch-job-dot" style={{ background: JOB_COLORS[j.status] }} />
+              <div className="dispatch-job-info">
+                <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>
+                <div className="dispatch-job-meta">
+                  {j.tech_name || 'Unassigned'} · {fmtTime(j.scheduled_at)}
+                  {notMapped && (
+                    <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: 11, fontWeight: 500 }}>
+                      ⚠ Address not mapped
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span className="dispatch-job-badge" style={STATUS_STYLES[j.status]}>
+                {STATUS_LABELS[j.status]}
+              </span>
             </div>
-            <span className="dispatch-job-badge" style={STATUS_STYLES[j.status]}>
-              {STATUS_LABELS[j.status]}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Map area ── */}

@@ -79,7 +79,37 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
        travelFee, service_address || null, service_city || null, service_state || null, service_zip || null,
        service_lat || null, service_lng || null]
     );
-    const job = rows[0];
+    let job = rows[0];
+
+    // Geocode service address when coordinates weren't supplied by the client
+    let geocodeWarning = null;
+    if (service_address && !service_lat && !service_lng) {
+      const mapsKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (mapsKey) {
+        try {
+          const addrParts = [service_address, service_city, service_state, service_zip].filter(Boolean);
+          const geoUrl = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+          geoUrl.searchParams.set('address', addrParts.join(', '));
+          geoUrl.searchParams.set('key', mapsKey);
+          const geoRes  = await fetch(geoUrl.toString());
+          const geoBody = await geoRes.json();
+          if (geoBody.status === 'OK') {
+            const loc = geoBody.results[0].geometry.location;
+            await pool.query(
+              `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
+              [loc.lat, loc.lng, job.id]
+            );
+            job = { ...job, service_lat: loc.lat, service_lng: loc.lng };
+          } else {
+            geocodeWarning = `Geocode status: ${geoBody.status}`;
+            console.warn('[jobs POST] geocode warning for job', job.id, geocodeWarning);
+          }
+        } catch (geoErr) {
+          geocodeWarning = 'Geocoding failed';
+          console.error('[jobs POST] geocode error for job', job.id, geoErr.message);
+        }
+      }
+    }
 
     // Auto-create deposit if account has a deposit amount configured
     const depSettingsRes = await pool.query(
@@ -111,7 +141,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       }
     }
 
-    res.status(201).json(job);
+    res.status(201).json(geocodeWarning ? { ...job, geocode_warning: geocodeWarning } : job);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
