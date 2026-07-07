@@ -73,6 +73,7 @@ router.get('/geocode', requireAuth, async (req, res) => {
     const body = await r.json();
 
     if (body.status !== 'OK') {
+      console.error('[maps/geocode] failed:', body.status, body.error_message || '');
       return res.status(422).json({ error: `Geocode failed: ${body.status}` });
     }
 
