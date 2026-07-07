@@ -1,18 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { InfoWindow } from '@vis.gl/react-google-maps';
+import { InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import api from '../api';
 import { GoogleMap, Marker, useGeocoder } from '../maps';
 
-const CENTER = { lat: 27.9506, lng: -82.4572 }; // Tampa, FL
-
-const TAMPA_SPREAD = [
-  { lat: 27.9400, lng: -82.4600 },
-  { lat: 27.9720, lng: -82.5140 },
-  { lat: 27.9330, lng: -82.4820 },
-  { lat: 27.9560, lng: -82.4750 },
-  { lat: 27.9630, lng: -82.4420 },
-  { lat: 27.9270, lng: -82.5010 },
-];
+const CONTINENTAL_US = { lat: 39.5, lng: -98.35 };
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -55,6 +46,28 @@ function avatarIcon(fill, stroke, text) {
   )}`;
 }
 
+// Fits the map to all known marker positions, or pans to the fallback center.
+// Re-runs when the marker count changes or the fallback location resolves.
+function MapAutoCenter({ positions, fallbackCenter, fallbackZoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map) return;
+    if (positions.length > 1) {
+      if (!window.google?.maps?.LatLngBounds) return;
+      const bounds = new window.google.maps.LatLngBounds();
+      positions.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds, 48);
+    } else if (positions.length === 1) {
+      map.panTo(positions[0]);
+      map.setZoom(14);
+    } else {
+      map.panTo(fallbackCenter);
+      map.setZoom(fallbackZoom);
+    }
+  }, [map, positions.length, fallbackCenter.lat, fallbackCenter.lng, fallbackZoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 export default function Dispatch() {
   const [jobs,       setJobs]       = useState([]);
   const [techs,      setTechs]      = useState([]);
@@ -62,6 +75,8 @@ export default function Dispatch() {
   const [loading,    setLoading]    = useState(true);
   const [activeInfo, setActiveInfo] = useState(null);
   const [, forceUpdate]             = useState(0);
+  const [geoCenter,  setGeoCenter]  = useState(null);
+  const [hqAddress,  setHqAddress]  = useState(null);
 
   const geocacheRef = useRef({});
   const { geocode } = useGeocoder();
@@ -71,10 +86,24 @@ export default function Dispatch() {
     Promise.all([
       api.get(`/jobs?date=${today}`),
       api.get('/users'),
-    ]).then(([jobsRes, usersRes]) => {
+      api.get('/business-settings').catch(() => null),
+    ]).then(([jobsRes, usersRes, settingsRes]) => {
       setJobs(jobsRes.data);
       setTechs(usersRes.data.filter(u => u.role === 'tech'));
+      const p = settingsRes?.data?.profile;
+      if (p) {
+        const parts = [p.address, p.city, p.state, p.zip].filter(Boolean);
+        if (parts.length) setHqAddress(parts.join(', '));
+      }
     }).finally(() => setLoading(false));
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => setGeoCenter({ lat: coords.latitude, lng: coords.longitude }),
+        () => {},
+        { timeout: 8000 },
+      );
+    }
   }, []);
 
   // Geocode job addresses that have no stored coords
@@ -99,17 +128,44 @@ export default function Dispatch() {
     });
   }, [jobs, geocode]);
 
+  // Geocode business HQ address when it becomes available
+  useEffect(() => {
+    if (!hqAddress || hqAddress in geocacheRef.current) return;
+    geocacheRef.current[hqAddress] = null;
+    geocode(hqAddress)
+      .then(r => {
+        geocacheRef.current[hqAddress] = { lat: r.lat, lng: r.lng };
+        forceUpdate(n => n + 1);
+      })
+      .catch(() => {});
+  }, [hqAddress, geocode]);
+
   function jobPos(j) {
     if (j.checkin_lat && j.checkin_lng) return { lat: parseFloat(j.checkin_lat), lng: parseFloat(j.checkin_lng) };
     if (j.service_lat && j.service_lng) return { lat: parseFloat(j.service_lat), lng: parseFloat(j.service_lng) };
     return geocacheRef.current[j.service_address] || null;
   }
 
-  function techPos(t, i) {
+  // Returns live GPS position only — no fallback coords for offline techs
+  function techPos(t) {
     const live = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
     if (live) return { lat: parseFloat(live.checkin_lat), lng: parseFloat(live.checkin_lng) };
-    return TAMPA_SPREAD[i % TAMPA_SPREAD.length];
+    return null;
   }
+
+  // Deduplicated set of all known positions for this session
+  const allPositions = [
+    ...jobs.map(jobPos).filter(Boolean),
+    ...techs.map(techPos).filter(Boolean),
+  ].filter((p, i, arr) => arr.findIndex(q => q.lat === p.lat && q.lng === p.lng) === i);
+
+  // Zero-marker fallback: browser geo → business HQ → continental US
+  const fallback = (() => {
+    if (geoCenter) return { center: geoCenter, zoom: 12 };
+    const hqPos = hqAddress && geocacheRef.current[hqAddress];
+    if (hqPos) return { center: hqPos, zoom: 12 };
+    return { center: CONTINENTAL_US, zoom: 4 };
+  })();
 
   return (
     <div className="dispatch-layout">
@@ -178,7 +234,13 @@ export default function Dispatch() {
 
       {/* ── Map area ── */}
       <div className="dispatch-map-wrap">
-        <GoogleMap className="dispatch-map" center={CENTER}>
+        <GoogleMap className="dispatch-map" center={CONTINENTAL_US} zoom={4}>
+
+          <MapAutoCenter
+            positions={allPositions}
+            fallbackCenter={fallback.center}
+            fallbackZoom={fallback.zoom}
+          />
 
           {/* Job markers */}
           {!loading && jobs.map(j => {
@@ -197,11 +259,10 @@ export default function Dispatch() {
             );
           })}
 
-          {/* Tech markers */}
+          {/* Tech markers — only shown when live GPS is available */}
           {!loading && techs.map((t, i) => {
-            const pos      = techPos(t, i);
-            const live     = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress' && j.checkin_lat);
-            const hasGps   = !!live;
+            const pos      = techPos(t);
+            if (!pos) return null;
             const jobCount = jobs.filter(j => j.tech_id === t.id).length;
             const color    = AVATAR_COLORS[i % AVATAR_COLORS.length];
             return (
@@ -209,8 +270,8 @@ export default function Dispatch() {
                 key={`tech-${t.id}`}
                 position={pos}
                 title={t.name}
-                icon={avatarIcon(color, hasGps ? '#2E7D32' : 'white', initials(t.name))}
-                onClick={() => setActiveInfo({ pos, tech: t, hasGps, jobCount })}
+                icon={avatarIcon(color, '#2E7D32', initials(t.name))}
+                onClick={() => setActiveInfo({ pos, tech: t, hasGps: true, jobCount })}
               />
             );
           })}
@@ -238,9 +299,7 @@ export default function Dispatch() {
                   <div style={{ fontFamily: 'sans-serif', fontSize: 12 }}>
                     <strong style={{ fontSize: 13 }}>{t.name}</strong><br />
                     <span style={{ color: '#5F667A' }}>{activeInfo.jobCount} job{activeInfo.jobCount !== 1 ? 's' : ''} today</span><br />
-                    {activeInfo.hasGps
-                      ? <span style={{ color: '#2E7D32' }}>● Live GPS</span>
-                      : <span style={{ color: '#8A90A2' }}>No GPS yet</span>}
+                    <span style={{ color: '#2E7D32' }}>● Live GPS</span>
                   </div>
                 );
               })()}
@@ -253,7 +312,6 @@ export default function Dispatch() {
         <div className="dispatch-legend">
           {[
             { color: '#2E7D32',    label: 'Tech — live GPS'   },
-            { color: '#8A90A2',    label: 'Tech — no GPS yet' },
             { color: '#1565C0',    label: 'Job — active'      },
             { color: '#2E7D32',    label: 'Job — complete'    },
             { color: 'var(--red)', label: 'Job — cancelled'   },
