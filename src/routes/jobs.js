@@ -178,7 +178,36 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
       values
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
+    let job = rows[0];
+
+    // Geocode when address was updated but coordinates weren't supplied
+    if (job.service_address && !job.service_lat && !job.service_lng) {
+      const mapsKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (mapsKey) {
+        try {
+          const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
+          const geoUrl = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+          geoUrl.searchParams.set('address', addrParts.join(', '));
+          geoUrl.searchParams.set('key', mapsKey);
+          const geoRes  = await fetch(geoUrl.toString());
+          const geoBody = await geoRes.json();
+          if (geoBody.status === 'OK') {
+            const loc = geoBody.results[0].geometry.location;
+            await pool.query(
+              `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
+              [loc.lat, loc.lng, job.id]
+            );
+            job = { ...job, service_lat: loc.lat, service_lng: loc.lng };
+          } else {
+            console.warn('[jobs PATCH] geocode warning for job', job.id, geoBody.status);
+          }
+        } catch (geoErr) {
+          console.error('[jobs PATCH] geocode error for job', job.id, geoErr.message);
+        }
+      }
+    }
+
+    res.json(job);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
