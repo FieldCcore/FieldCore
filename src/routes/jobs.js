@@ -4,6 +4,7 @@ const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { checkJobLimit } = require('../middleware/planLimits');
 const sms     = require('../services/sms');
+const { geocodeAddress } = require('../services/geocode');
 
 // GET /api/jobs?date=&tech_id=&status=&client_id=
 router.get('/', requireAuth, async (req, res) => {
@@ -84,30 +85,16 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     // Geocode service address when coordinates weren't supplied by the client
     let geocodeWarning = null;
     if (service_address && !service_lat && !service_lng) {
-      const mapsKey = process.env.GOOGLE_MAPS_API_KEY;
-      if (mapsKey) {
-        try {
-          const addrParts = [service_address, service_city, service_state, service_zip].filter(Boolean);
-          const geoUrl = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-          geoUrl.searchParams.set('address', addrParts.join(', '));
-          geoUrl.searchParams.set('key', mapsKey);
-          const geoRes  = await fetch(geoUrl.toString());
-          const geoBody = await geoRes.json();
-          if (geoBody.status === 'OK') {
-            const loc = geoBody.results[0].geometry.location;
-            await pool.query(
-              `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
-              [loc.lat, loc.lng, job.id]
-            );
-            job = { ...job, service_lat: loc.lat, service_lng: loc.lng };
-          } else {
-            geocodeWarning = `Geocode status: ${geoBody.status}`;
-            console.warn('[jobs POST] geocode warning for job', job.id, geocodeWarning);
-          }
-        } catch (geoErr) {
-          geocodeWarning = 'Geocoding failed';
-          console.error('[jobs POST] geocode error for job', job.id, geoErr.message);
-        }
+      const addrParts = [service_address, service_city, service_state, service_zip].filter(Boolean);
+      const geo = await geocodeAddress(addrParts.join(', '));
+      if (geo) {
+        await pool.query(
+          `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
+          [geo.lat, geo.lng, job.id]
+        );
+        job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
+      } else {
+        geocodeWarning = 'Job saved, but address could not be mapped.';
       }
     }
 
@@ -182,28 +169,14 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
 
     // Geocode when address was updated but coordinates weren't supplied
     if (job.service_address && !job.service_lat && !job.service_lng) {
-      const mapsKey = process.env.GOOGLE_MAPS_API_KEY;
-      if (mapsKey) {
-        try {
-          const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
-          const geoUrl = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-          geoUrl.searchParams.set('address', addrParts.join(', '));
-          geoUrl.searchParams.set('key', mapsKey);
-          const geoRes  = await fetch(geoUrl.toString());
-          const geoBody = await geoRes.json();
-          if (geoBody.status === 'OK') {
-            const loc = geoBody.results[0].geometry.location;
-            await pool.query(
-              `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
-              [loc.lat, loc.lng, job.id]
-            );
-            job = { ...job, service_lat: loc.lat, service_lng: loc.lng };
-          } else {
-            console.warn('[jobs PATCH] geocode warning for job', job.id, geoBody.status);
-          }
-        } catch (geoErr) {
-          console.error('[jobs PATCH] geocode error for job', job.id, geoErr.message);
-        }
+      const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
+      const geo = await geocodeAddress(addrParts.join(', '));
+      if (geo) {
+        await pool.query(
+          `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
+          [geo.lat, geo.lng, job.id]
+        );
+        job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
       }
     }
 
