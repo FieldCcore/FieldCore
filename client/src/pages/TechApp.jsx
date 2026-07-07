@@ -64,7 +64,7 @@ function StatusPill({ status }) {
 }
 
 /* ── Job Queue ────────────────────────────────────────────────── */
-function JobQueue({ user, onSelect, onLogout, onPwChange }) {
+function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, availLoading, availErr, gpsStatus, gpsLastAt }) {
   const [jobs,         setJobs]         = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [loadingMore,  setLoadingMore]  = useState(false);
@@ -72,27 +72,10 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
   const [offset,       setOffset]       = useState(0);
   const [offline,      setOffline]      = useState(false);
   const [cachedAt,     setCachedAt]     = useState(null);
-  const [avail,        setAvail]        = useState(user.is_available !== false);
-  const [availLoading, setAvailLoading] = useState(false);
-  const [availErr,     setAvailErr]     = useState(null);
   const [view,         setView]         = useState('today');
   const mapDivRef  = useRef(null);
   const leafletRef = useRef(null);
   const markersRef = useRef([]);
-
-  async function handleAvail() {
-    if (availLoading) return;
-    setAvailLoading(true);
-    setAvailErr(null);
-    try {
-      const r = await api.patch('/users/me/availability', { available: !avail });
-      setAvail(r.data.available);
-    } catch (err) {
-      setAvailErr(err.response?.data?.error || 'Could not update availability.');
-    } finally {
-      setAvailLoading(false);
-    }
-  }
 
   function load() {
     setLoading(true);
@@ -240,7 +223,7 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
               Hi, {user.name.split(' ')[0]}
             </span>
             <button
-              onClick={handleAvail}
+              onClick={onAvailChange}
               disabled={availLoading}
               style={{
                 background: avail ? 'rgba(46,125,50,.25)' : 'rgba(255,255,255,.08)',
@@ -272,6 +255,19 @@ function JobQueue({ user, onSelect, onLogout, onPwChange }) {
             {availErr && (
               <div style={{ width: '100%', fontSize: 11, color: '#fc8181', fontWeight: 600, paddingBottom: 4 }}>
                 {availErr}
+              </div>
+            )}
+            {avail && gpsStatus && (
+              <div style={{
+                background: gpsStatus === 'active' ? C.greenLt : gpsStatus === 'blocked' ? C.amberLt : 'rgba(255,255,255,.06)',
+                borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700,
+                color: gpsStatus === 'active' ? C.green : gpsStatus === 'blocked' ? C.amber : C.muted,
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                {gpsStatus === 'active' ? '●' : gpsStatus === 'blocked' ? '⚠' : '○'}
+                {gpsStatus === 'active'
+                  ? `GPS${gpsLastAt ? ` · ${Math.round((Date.now() - gpsLastAt) / 1000)}s` : ''}`
+                  : gpsStatus === 'blocked' ? 'GPS Blocked' : 'No GPS'}
               </div>
             )}
             {active > 0 && (
@@ -1172,11 +1168,67 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
 export default function TechApp() {
   const { user, logout } = useAuth();
   const navigate         = useNavigate();
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [pwModal,  setPwModal]  = useState(false);
-  const [pwForm,   setPwForm]   = useState({ current: '', next: '', confirm: '' });
-  const [pwSaving, setPwSaving] = useState(false);
-  const [pwMsg,    setPwMsg]    = useState(null);
+  const [selectedJob,  setSelectedJob]  = useState(null);
+  const [pwModal,      setPwModal]      = useState(false);
+  const [pwForm,       setPwForm]       = useState({ current: '', next: '', confirm: '' });
+  const [pwSaving,     setPwSaving]     = useState(false);
+  const [pwMsg,        setPwMsg]        = useState(null);
+
+  // Availability + GPS — lifted here so GPS loop can react to availability changes
+  const [avail,        setAvail]        = useState(user.is_available !== false);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availErr,     setAvailErr]     = useState(null);
+  const [gpsStatus,    setGpsStatus]    = useState(null); // 'active' | 'blocked' | 'unavailable' | null
+  const [gpsLastAt,    setGpsLastAt]    = useState(null);
+  const gpsTimerRef = useRef(null);
+
+  async function handleAvail() {
+    if (availLoading) return;
+    setAvailLoading(true);
+    setAvailErr(null);
+    try {
+      const r = await api.patch('/users/me/availability', { available: !avail });
+      setAvail(r.data.available);
+    } catch (err) {
+      setAvailErr(err.response?.data?.error || 'Could not update availability.');
+    } finally {
+      setAvailLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!avail) {
+      if (gpsTimerRef.current) { clearInterval(gpsTimerRef.current); gpsTimerRef.current = null; }
+      setGpsStatus(null);
+      setGpsLastAt(null);
+      return;
+    }
+
+    async function sendGps() {
+      if (!navigator.geolocation) { setGpsStatus('unavailable'); return; }
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: 30000 })
+        );
+        await api.post('/mobile/location', {
+          lat:      pos.coords.latitude,
+          lng:      pos.coords.longitude,
+          accuracy: pos.coords.accuracy  ?? null,
+          heading:  pos.coords.heading   ?? null,
+          speed:    pos.coords.speed     ?? null,
+        });
+        setGpsStatus('active');
+        setGpsLastAt(Date.now());
+      } catch (err) {
+        if (err.code === 1) setGpsStatus('blocked'); // PERMISSION_DENIED
+        // network errors or position timeout — keep last status, retry next interval
+      }
+    }
+
+    sendGps();
+    gpsTimerRef.current = setInterval(sendGps, 20 * 1000);
+    return () => { clearInterval(gpsTimerRef.current); gpsTimerRef.current = null; };
+  }, [avail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleLogout() {
     logout();
@@ -1249,7 +1301,18 @@ export default function TechApp() {
 
       <div style={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {!selectedJob ? (
-          <JobQueue user={user} onSelect={setSelectedJob} onLogout={handleLogout} onPwChange={() => { setPwModal(true); setPwMsg(null); }} />
+          <JobQueue
+            user={user}
+            onSelect={setSelectedJob}
+            onLogout={handleLogout}
+            onPwChange={() => { setPwModal(true); setPwMsg(null); }}
+            avail={avail}
+            onAvailChange={handleAvail}
+            availLoading={availLoading}
+            availErr={availErr}
+            gpsStatus={gpsStatus}
+            gpsLastAt={gpsLastAt}
+          />
         ) : (
           <JobDetail
             job={selectedJob}

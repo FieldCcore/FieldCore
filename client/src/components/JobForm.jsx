@@ -171,7 +171,7 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
         <label>Service Location <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— where the work happens (optional)</span></label>
         <AddressAutocomplete
           value={form.service_address}
-          onChange={v => setForm(prev => ({ ...prev, service_address: v }))}
+          onChange={v => setForm(prev => ({ ...prev, service_address: v, service_lat: '', service_lng: '' }))}
           onPlace={({ street, city, state, zip, lat, lng }) =>
             setForm(prev => ({
               ...prev,

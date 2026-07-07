@@ -2,7 +2,7 @@ const express         = require('express');
 const router          = express.Router();
 const multer          = require('multer');
 const pool            = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const smsService      = require('../services/sms');
 const storageService  = require('../services/storage');
 
@@ -221,6 +221,60 @@ router.post('/jobs/:id/signature', requireAuth, async (req, res) => {
       [svg, req.params.id, req.accountId]
     );
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/location — tech pushes live GPS position (~every 20 s while available)
+router.post('/location', requireAuth, async (req, res) => {
+  const { lat, lng, accuracy, heading, speed, battery_level } = req.body;
+  const nlat = parseFloat(lat);
+  const nlng = parseFloat(lng);
+  if (!isFinite(nlat) || !isFinite(nlng)) {
+    return res.status(400).json({ error: 'lat and lng must be valid numbers' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO tech_locations
+         (account_id, user_id, lat, lng, accuracy, heading, speed, battery_level, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (account_id, user_id) DO UPDATE SET
+         lat           = EXCLUDED.lat,
+         lng           = EXCLUDED.lng,
+         accuracy      = EXCLUDED.accuracy,
+         heading       = EXCLUDED.heading,
+         speed         = EXCLUDED.speed,
+         battery_level = EXCLUDED.battery_level,
+         updated_at    = NOW()`,
+      [
+        req.accountId, req.userId, nlat, nlng,
+        accuracy      != null ? parseFloat(accuracy)         : null,
+        heading       != null ? parseFloat(heading)          : null,
+        speed         != null ? parseFloat(speed)            : null,
+        battery_level != null ? parseInt(battery_level, 10)  : null,
+      ]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/mobile/locations — all tech live GPS for this account (owner/manager only)
+router.get('/locations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT tl.user_id, tl.lat, tl.lng, tl.accuracy, tl.heading,
+              tl.speed, tl.battery_level, tl.updated_at,
+              u.name, u.is_available
+       FROM tech_locations tl
+       JOIN users u ON u.id = tl.user_id
+       WHERE tl.account_id = $1
+       ORDER BY u.name`,
+      [req.accountId]
+    );
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

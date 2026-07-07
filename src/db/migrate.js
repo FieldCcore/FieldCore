@@ -443,6 +443,23 @@ const MIGRATIONS = [
   // Estimate → job conversion tracking
   `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_job_id UUID REFERENCES jobs(id)`,
 
+  // Tech live GPS locations — upserted by TechApp every ~20 seconds while available
+  `CREATE TABLE IF NOT EXISTS tech_locations (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     user_id        UUID NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+     lat            NUMERIC(9,6) NOT NULL,
+     lng            NUMERIC(9,6) NOT NULL,
+     accuracy       NUMERIC(8,2),
+     heading        NUMERIC(5,1),
+     speed          NUMERIC(8,2),
+     battery_level  INTEGER,
+     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, user_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_tech_locations_account ON tech_locations(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_tech_locations_user    ON tech_locations(user_id)`,
+
   // SMS opt-outs (TCPA/CTIA STOP compliance)
   `CREATE TABLE IF NOT EXISTS sms_opt_outs (
      id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

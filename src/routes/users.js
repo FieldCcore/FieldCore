@@ -9,7 +9,7 @@ const { checkUserLimit } = require('../middleware/planLimits');
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, role, phone, email, is_contractor, tax_classification, created_at
+      `SELECT id, name, role, phone, email, is_available, is_contractor, tax_classification, created_at
        FROM users WHERE account_id = $1 ORDER BY name`,
       [req.accountId]
     );

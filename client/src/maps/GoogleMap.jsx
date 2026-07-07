@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Map, useMap } from '@vis.gl/react-google-maps';
 import { FIELDCORE_MAP_STYLES, FIELDCORE_MAP_ID } from './mapStyles';
 
+const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
 const DEFAULT_CENTER = { lat: 27.9506, lng: -82.4572 };
 
 function resolveMapOptions(branded) {
@@ -86,6 +88,25 @@ export function GoogleMap({
   branded = true,
   ...props
 }) {
+  if (!API_KEY) {
+    return (
+      <div
+        className={className}
+        style={{
+          width: '100%', height: '100%',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#f5f3ef', color: '#5F667A',
+          fontFamily: 'system-ui, sans-serif', fontSize: 13,
+          gap: 6, ...style,
+        }}
+      >
+        <strong style={{ color: '#1C2333' }}>Map unavailable</strong>
+        <span>Set <code>VITE_GOOGLE_MAPS_API_KEY</code> to enable maps.</span>
+      </div>
+    );
+  }
+
   const mapOptions = resolveMapOptions(branded);
 
   // DIAGNOSTIC NOTE:

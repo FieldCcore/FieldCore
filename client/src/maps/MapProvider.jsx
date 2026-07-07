@@ -94,7 +94,12 @@ function MissingKeyBanner() {
 // No global `libraries` prop — the core Maps JS API only.
 // Individual components lazy-load what they need via useMapsLibrary().
 export function MapProvider({ children }) {
-  if (!API_KEY) return <MissingKeyBanner />;
+  if (!API_KEY) {
+    // Render the full app normally — map components show a localized placeholder.
+    // This keeps non-map pages (dashboard, billing, etc.) working without the key.
+    console.warn('[MapProvider] VITE_GOOGLE_MAPS_API_KEY not set — map features disabled');
+    return <>{children}</>;
+  }
 
   return (
     <APIProvider apiKey={API_KEY} language="en" region="US">
