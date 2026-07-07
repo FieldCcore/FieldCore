@@ -62,6 +62,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
   try {
+    console.log('[Jobs API] location input', { service_address, service_lat, service_lng });
+
     // Auto-populate travel_fee from account settings if not supplied
     let travelFee = travel_fee !== undefined ? parseFloat(travel_fee) || 0 : null;
     if (travelFee === null) {
@@ -93,6 +95,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
           [geo.lat, geo.lng, job.id]
         );
         job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
+        console.log('[Jobs API] geocode saved', { jobId: job.id, service_lat: geo.lat, service_lng: geo.lng });
       } else {
         geocodeWarning = 'Job saved, but address could not be mapped.';
       }
@@ -168,6 +171,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     let job = rows[0];
 
     // Geocode when address was updated but coordinates weren't supplied
+    console.log('[Jobs API] location input', { service_address: job.service_address, service_lat: job.service_lat, service_lng: job.service_lng });
     if (job.service_address && !job.service_lat && !job.service_lng) {
       const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
       const geo = await geocodeAddress(addrParts.join(', '));
@@ -177,6 +181,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
           [geo.lat, geo.lng, job.id]
         );
         job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
+        console.log('[Jobs API] geocode saved', { jobId: job.id, service_lat: geo.lat, service_lng: geo.lng });
       }
     }
 

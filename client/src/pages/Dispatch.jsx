@@ -34,6 +34,14 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+// Safely converts a DB coordinate value to a finite number, or null.
+// Number(null) = 0 and isFinite(0) = true, so we must guard null/empty explicitly.
+function toCoord(val) {
+  if (val == null || val === '') return null;
+  const n = Number(val);
+  return isFinite(n) ? n : null;
+}
+
 function dotIcon(fill, stroke) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5" fill="${fill}" stroke="${stroke}" stroke-width="2"/></svg>`
@@ -141,8 +149,15 @@ export default function Dispatch() {
   }, [hqAddress, geocode]);
 
   function jobPos(j) {
-    if (j.checkin_lat && j.checkin_lng) return { lat: parseFloat(j.checkin_lat), lng: parseFloat(j.checkin_lng) };
-    if (j.service_lat && j.service_lng) return { lat: parseFloat(j.service_lat), lng: parseFloat(j.service_lng) };
+    // Checkin GPS (tech at site) takes priority
+    const clat = toCoord(j.checkin_lat);
+    const clng = toCoord(j.checkin_lng);
+    if (clat !== null && clng !== null) return { lat: clat, lng: clng };
+    // Stored service coordinates from DB (accept service_lat, or lat/latitude aliases)
+    const slat = toCoord(j.service_lat ?? j.lat ?? j.latitude);
+    const slng = toCoord(j.service_lng ?? j.lng ?? j.longitude);
+    if (slat !== null && slng !== null) return { lat: slat, lng: slng };
+    // Client-side geocode cache fallback
     return geocacheRef.current[j.service_address] || null;
   }
 

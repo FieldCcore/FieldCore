@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
 // Address autocomplete backed by AutocompleteService (programmatic — no DOM widget, no auth overlay).
-// Falls back to plain text input if the service is unavailable.
-// Backend geocodes on save, so lat/lng from onPlace are optional — the map will still work.
+// Autocomplete is UX-only. Backend geocodes on save, so lat/lng from onPlace are optional.
+// If PlacesService.getDetails is unavailable, the form still works and the backend geocodes.
 export default function AddressAutocomplete({ value, onChange, onPlace, placeholder, style, className }) {
-  const inputRef    = useRef(null);
-  const serviceRef  = useRef(null);
+  const inputRef       = useRef(null);
+  const attributionRef = useRef(null); // PlacesService needs an HTMLDivElement, not an <input>
+  const serviceRef     = useRef(null);
   const [preds, setPreds] = useState([]);
   const [open,  setOpen]  = useState(false);
 
@@ -18,7 +19,7 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
     try {
       serviceRef.current = new placesLib.AutocompleteService();
     } catch {
-      // library loaded but service unavailable — plain-text fallback
+      // service unavailable — plain-text input still works; backend geocodes on save
     }
   }, [placesLib]);
 
@@ -36,40 +37,44 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
         }
       }
     );
-  }, []);
+  }, []); // stable — reads serviceRef.current at call time (ref, not value)
 
-  async function selectPred(pred) {
+  function selectPred(pred) {
     setPreds([]); setOpen(false);
     const description = pred.description || '';
-    onChange?.(description);
 
-    // Try to resolve structured components + lat/lng via PlacesService
-    if (!placesLib || !inputRef.current) {
-      onPlace?.({ street: description, city: '', state: '', zip: '', lat: null, lng: null, place_id: pred.place_id ?? null });
-      return;
-    }
-    try {
-      const svc = new placesLib.PlacesService(inputRef.current);
-      svc.getDetails(
-        { placeId: pred.place_id, fields: ['address_components', 'geometry'] },
-        (place, status) => {
-          if (status === 'OK' && place) {
-            const parsed = parseComponents(place.address_components || []);
-            onPlace?.({
-              ...parsed,
-              lat:      place.geometry?.location?.lat() ?? null,
-              lng:      place.geometry?.location?.lng() ?? null,
-              place_id: pred.place_id ?? null,
-            });
-            onChange?.(parsed.street || description);
-          } else {
-            onPlace?.({ street: description, city: '', state: '', zip: '', lat: null, lng: null, place_id: pred.place_id ?? null });
+    // Try PlacesService.getDetails using the hidden attribution div (not the input element)
+    if (placesLib && attributionRef.current) {
+      try {
+        const svc = new placesLib.PlacesService(attributionRef.current);
+        svc.getDetails(
+          { placeId: pred.place_id, fields: ['address_components', 'geometry'] },
+          (place, status) => {
+            if (status === 'OK' && place) {
+              const parsed = parseComponents(place.address_components || []);
+              onChange?.(parsed.street || description);
+              onPlace?.({
+                ...parsed,
+                lat:      place.geometry?.location?.lat() ?? null,
+                lng:      place.geometry?.location?.lng() ?? null,
+                place_id: pred.place_id ?? null,
+              });
+            } else {
+              // getDetails failed — use prediction text; backend geocodes on save
+              onChange?.(description);
+              onPlace?.({ street: description, city: '', state: '', zip: '', lat: null, lng: null, place_id: pred.place_id ?? null });
+            }
           }
-        }
-      );
-    } catch {
-      onPlace?.({ street: description, city: '', state: '', zip: '', lat: null, lng: null, place_id: pred.place_id ?? null });
+        );
+        return;
+      } catch {
+        // PlacesService unavailable — fall through to text fallback
+      }
     }
+
+    // Fallback: populate address text; backend geocodes on save
+    onChange?.(description);
+    onPlace?.({ street: description, city: '', state: '', zip: '', lat: null, lng: null, place_id: pred.place_id ?? null });
   }
 
   function handleChange(e) {
@@ -89,6 +94,8 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
+      {/* Hidden div for PlacesService attribution — must be HTMLDivElement, not the input */}
+      <div ref={attributionRef} style={{ display: 'none' }} aria-hidden="true" />
       <input
         ref={inputRef}
         value={value}
