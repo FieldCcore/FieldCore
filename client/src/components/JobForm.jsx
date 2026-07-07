@@ -190,6 +190,9 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
             {[form.service_city, form.service_state, form.service_zip].filter(Boolean).join(', ')}
           </div>
         )}
+        <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+          Enter the full service address. FieldCore will map it after saving.
+        </div>
       </div>
 
       <div className="form-group">

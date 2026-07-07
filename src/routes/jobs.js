@@ -57,12 +57,37 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/jobs
 router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, async (req, res) => {
   const { client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee,
-          service_address, service_city, service_state, service_zip, service_lat, service_lng } = req.body;
+          service_address, service_location, address,
+          service_city, service_state, service_zip, service_lat, service_lng } = req.body;
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
   try {
-    console.log('[Jobs API] location input', { service_address, service_lat, service_lng });
+    const addressToGeocode  = service_address || service_location || address || null;
+    let finalServiceAddress = addressToGeocode;
+    let finalServiceLat     = service_lat  || null;
+    let finalServiceLng     = service_lng  || null;
+    let mappingWarning      = null;
+
+    console.log('[Jobs API] location input', { service_address, service_location, address, service_lat, service_lng });
+
+    if (addressToGeocode && (!finalServiceLat || !finalServiceLng)) {
+      const geo = await geocodeAddress(addressToGeocode);
+      if (geo) {
+        finalServiceAddress = geo.formatted_address || finalServiceAddress;
+        finalServiceLat     = geo.lat;
+        finalServiceLng     = geo.lng;
+      } else {
+        mappingWarning = 'Job saved, but address could not be mapped.';
+      }
+    }
+
+    console.log('[Jobs API] final mapping', {
+      hasAddress: !!finalServiceAddress,
+      service_lat: finalServiceLat,
+      service_lng: finalServiceLng,
+      warning: mappingWarning,
+    });
 
     // Auto-populate travel_fee from account settings if not supplied
     let travelFee = travel_fee !== undefined ? parseFloat(travel_fee) || 0 : null;
@@ -79,27 +104,10 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
           travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [req.accountId, client_id, tech_id || null, service_type, scheduled_at, amount || null, notes, recurring || 'none',
-       travelFee, service_address || null, service_city || null, service_state || null, service_zip || null,
-       service_lat || null, service_lng || null]
+       travelFee, finalServiceAddress || null, service_city || null, service_state || null, service_zip || null,
+       finalServiceLat, finalServiceLng]
     );
-    let job = rows[0];
-
-    // Geocode service address when coordinates weren't supplied by the client
-    let geocodeWarning = null;
-    if (service_address && !service_lat && !service_lng) {
-      const addrParts = [service_address, service_city, service_state, service_zip].filter(Boolean);
-      const geo = await geocodeAddress(addrParts.join(', '));
-      if (geo) {
-        await pool.query(
-          `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
-          [geo.lat, geo.lng, job.id]
-        );
-        job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
-        console.log('[Jobs API] geocode saved', { jobId: job.id, service_lat: geo.lat, service_lng: geo.lng });
-      } else {
-        geocodeWarning = 'Job saved, but address could not be mapped.';
-      }
-    }
+    const job = rows[0];
 
     // Auto-create deposit if account has a deposit amount configured
     const depSettingsRes = await pool.query(
@@ -131,7 +139,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       }
     }
 
-    res.status(201).json(geocodeWarning ? { ...job, geocode_warning: geocodeWarning } : job);
+    res.status(201).json(mappingWarning ? { ...job, geocode_warning: mappingWarning } : job);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -170,17 +178,17 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     let job = rows[0];
 
-    // Geocode when address was updated but coordinates weren't supplied
+    // Geocode when address is present but coordinates are missing (either coord absent triggers it)
     console.log('[Jobs API] location input', { service_address: job.service_address, service_lat: job.service_lat, service_lng: job.service_lng });
-    if (job.service_address && !job.service_lat && !job.service_lng) {
+    if (job.service_address && (!job.service_lat || !job.service_lng)) {
       const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
       const geo = await geocodeAddress(addrParts.join(', '));
       if (geo) {
         await pool.query(
-          `UPDATE jobs SET service_lat = $1, service_lng = $2 WHERE id = $3`,
-          [geo.lat, geo.lng, job.id]
+          `UPDATE jobs SET service_lat = $1, service_lng = $2, service_address = COALESCE($3, service_address) WHERE id = $4`,
+          [geo.lat, geo.lng, geo.formatted_address || null, job.id]
         );
-        job = { ...job, service_lat: geo.lat, service_lng: geo.lng };
+        job = { ...job, service_lat: geo.lat, service_lng: geo.lng, service_address: geo.formatted_address || job.service_address };
         console.log('[Jobs API] geocode saved', { jobId: job.id, service_lat: geo.lat, service_lng: geo.lng });
       }
     }
