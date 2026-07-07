@@ -1,6 +1,40 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 
+// GET /api/maps/autocomplete?input=...
+// Server-side Places Autocomplete proxy — keeps the API key off the client.
+// Returns { predictions: [{description, place_id, structured_formatting}] }
+router.get('/autocomplete', requireAuth, async (req, res) => {
+  const { input } = req.query;
+  if (!input?.trim() || input.trim().length < 3) return res.json({ predictions: [] });
+
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) {
+    console.warn('[maps/autocomplete] GOOGLE_MAPS_API_KEY not set — returning empty predictions');
+    return res.json({ predictions: [] });
+  }
+
+  try {
+    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+    url.searchParams.set('input',      input.trim());
+    url.searchParams.set('types',      'address');
+    url.searchParams.set('components', 'country:us');
+    url.searchParams.set('key',        key);
+
+    const r    = await fetch(url.toString());
+    const body = await r.json();
+
+    if (body.status !== 'OK' && body.status !== 'ZERO_RESULTS') {
+      console.error('[maps/autocomplete] status:', body.status, body.error_message || '');
+    }
+
+    res.json({ predictions: body.predictions || [] });
+  } catch (err) {
+    console.error('[maps/autocomplete]', err.message);
+    res.json({ predictions: [] });
+  }
+});
+
 // GET /api/maps/geocode?address=...
 // Server-side geocoding proxy — keeps the API key off the client.
 router.get('/geocode', requireAuth, async (req, res) => {
