@@ -37,6 +37,7 @@ api.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('fc_token');
+      localStorage.removeItem('fc_refresh');
       window.history.replaceState(null, '', '/login');
       window.dispatchEvent(new PopStateEvent('popstate'));
     }

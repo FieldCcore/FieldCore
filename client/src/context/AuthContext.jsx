@@ -26,12 +26,18 @@ async function doRefresh() {
   return res.data.token;
 }
 
-// Axios interceptor: on 401 try one token refresh then retry
+// Axios interceptor: on 401 try one token refresh then retry.
+// Excludes all /api/auth/ endpoints — login errors must propagate to the form,
+// not trigger a refresh attempt that silently reloads the page.
 axios.interceptors.response.use(
   r => r,
   async err => {
     const original = err.config;
-    if (err.response?.status === 401 && !original._retry && original.url !== '/api/auth/refresh') {
+    if (
+      err.response?.status === 401 &&
+      !original._retry &&
+      !original.url?.includes('/api/auth/')
+    ) {
       original._retry = true;
       try {
         const newToken = await doRefresh();

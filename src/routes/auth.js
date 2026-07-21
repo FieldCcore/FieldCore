@@ -144,14 +144,13 @@ router.post('/login', async (req, res) => {
   const ipAddress = getIp(req);
   const userAgent = getUserAgent(req);
 
-  // Brute force check
-  const bf = await checkBruteForce(email, ipAddress);
-  if (bf.locked) {
-    await pool.query(`INSERT INTO login_attempts (email, ip_address, success) VALUES ($1,$2,FALSE)`, [email, ipAddress]);
-    return res.status(429).json({ error: `Account locked. Try again in ${bf.minutesLeft} minutes.` });
-  }
-
   try {
+    // Brute force check — inside try/catch so a DB error returns 500 instead of hanging
+    const bf = await checkBruteForce(email, ipAddress);
+    if (bf.locked) {
+      await pool.query(`INSERT INTO login_attempts (email, ip_address, success) VALUES ($1,$2,FALSE)`, [email, ipAddress]);
+      return res.status(429).json({ error: `Account locked. Try again in ${bf.minutesLeft} minutes.` });
+    }
     const { rows } = await pool.query(
       `SELECT u.*, a.name AS account_name, a.plan, a.plan_status, a.onboarded
        FROM users u
