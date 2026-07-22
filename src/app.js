@@ -8,7 +8,8 @@ const fs      = require('fs');
 
 const pool            = require('./db/pool');
 
-const authRouter      = require('./routes/auth');
+const authRouter         = require('./routes/auth');
+const entitlementsRouter = require('./routes/entitlements');
 const analyticsRouter = require('./routes/analytics');
 const depositsRouter  = require('./routes/deposits');
 const clientsRouter   = require('./routes/clients');
@@ -157,7 +158,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/api/auth',    authLimiter, authRouter);
+app.use('/api/auth',         authLimiter,    authRouter);
+app.use('/api/entitlements', generalLimiter, entitlementsRouter);
 app.use('/api/analytics', generalLimiter, analyticsRouter);
 app.use('/api/deposits',  generalLimiter, depositsRouter);
 app.use('/api/clients',   generalLimiter, clientsRouter);

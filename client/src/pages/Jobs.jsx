@@ -159,6 +159,7 @@ export default function Jobs() {
   const [modal,        setModal]        = useState(null);
   const [selectedJob,  setSelectedJob]  = useState(null);
   const [defaultStart, setDefaultStart] = useState(null);
+  const [defaultMultiDay, setDefaultMultiDay] = useState(false);
   const [loading,      setLoading]      = useState(true);
 
   const loadJobs = useCallback(() => {
@@ -184,6 +185,7 @@ export default function Jobs() {
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setDefaultStart(new Date());
+      setDefaultMultiDay(searchParams.get('multiday') === '1');
       setModal('create');
       setSearchParams({}, { replace: true });
     }
@@ -371,6 +373,7 @@ export default function Jobs() {
             <div className="modal-body">
               <JobForm
                 defaultStart={defaultStart}
+                defaultMultiDay={defaultMultiDay}
                 onSave={handleJobCreated}
                 onCancel={() => setModal(null)}
               />

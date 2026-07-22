@@ -578,6 +578,12 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_job_assets_job        ON job_assets(job_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_assets_account    ON job_assets(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_multi_day        ON jobs(account_id) WHERE is_multi_day = TRUE`,
+
+  // ── ENTITLEMENT SYSTEM ──────────────────────────────────────────────────────
+  // trial_plan: if set + trial_ends_at > NOW(), account gets capabilities of this plan
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trial_plan TEXT`,
+  // feature_overrides: per-tenant capability overrides (grandfathering, beta, enterprise)
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS feature_overrides JSONB NOT NULL DEFAULT '{}'`,
 ];
 
 async function runMigrations() {

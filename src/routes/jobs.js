@@ -3,6 +3,7 @@ const router     = express.Router();
 const pool       = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { checkJobLimit } = require('../middleware/planLimits');
+const { getEntitlements } = require('../services/entitlements');
 const sms        = require('../services/sms');
 const notify     = require('../services/notify');
 const audit      = require('../services/audit');
@@ -201,6 +202,20 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
 
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
+  }
+
+  // Enforce multi-day entitlement before touching the DB
+  if (is_multi_day) {
+    const ent = await getEntitlements(req.accountId);
+    if (!ent.capabilities.can_create_multi_day_jobs) {
+      return res.status(403).json({
+        error:       'Multi-Day Jobs require the Solo plan or higher.',
+        code:        'ENTITLEMENT_REQUIRED',
+        capability:  'can_create_multi_day_jobs',
+        requiredPlan: 'solo',
+        currentPlan: ent.plan,
+      });
+    }
   }
 
   const client = await pool.connect();

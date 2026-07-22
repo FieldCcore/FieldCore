@@ -1,34 +1,21 @@
-const pool = require('../db/pool');
-
-const LIMITS = {
-  starter: { users: 2,    jobsPerMonth: 50,   sms: false },
-  solo:    { users: null, jobsPerMonth: null,  sms: false },
-  pro:     { users: null, jobsPerMonth: null,  sms: true  },
-  scale:   { users: null, jobsPerMonth: null,  sms: true  },
-};
-
-async function accountPlan(accountId) {
-  const { rows } = await pool.query(
-    `SELECT plan FROM accounts WHERE id = $1`, [accountId]
-  );
-  return rows[0]?.plan || 'starter';
-}
+const pool         = require('../db/pool');
+const entitlements = require('../services/entitlements');
 
 // POST /api/users — enforce team member cap
 async function checkUserLimit(req, res, next) {
   try {
-    const plan   = await accountPlan(req.accountId);
-    const limits = LIMITS[plan] || LIMITS.starter;
-    if (limits.users === null) return next();
+    const ent   = await entitlements.getEntitlements(req.accountId);
+    const limit = ent.capabilities.max_users;
+    if (limit === null) return next();
 
     const { rows } = await pool.query(
       `SELECT count(*) FROM users WHERE account_id = $1`, [req.accountId]
     );
-    if (parseInt(rows[0].count) >= limits.users) {
+    if (parseInt(rows[0].count) >= limit) {
       return res.status(403).json({
-        error:  `Your ${plan} plan allows up to ${limits.users} team members. Upgrade to add more.`,
-        code:   'PLAN_LIMIT_USERS',
-        plan,
+        error: `Your ${entitlements.PLAN_NAMES[ent.plan]} plan allows up to ${limit} team members. Upgrade to add more.`,
+        code:  'PLAN_LIMIT_USERS',
+        plan:  ent.plan,
       });
     }
     next();
@@ -40,20 +27,20 @@ async function checkUserLimit(req, res, next) {
 // POST /api/jobs — enforce monthly job cap
 async function checkJobLimit(req, res, next) {
   try {
-    const plan   = await accountPlan(req.accountId);
-    const limits = LIMITS[plan] || LIMITS.starter;
-    if (limits.jobsPerMonth === null) return next();
+    const ent   = await entitlements.getEntitlements(req.accountId);
+    const limit = ent.capabilities.max_jobs_per_month;
+    if (limit === null) return next();
 
     const { rows } = await pool.query(
       `SELECT count(*) FROM jobs
        WHERE account_id = $1 AND created_at >= date_trunc('month', NOW())`,
       [req.accountId]
     );
-    if (parseInt(rows[0].count) >= limits.jobsPerMonth) {
+    if (parseInt(rows[0].count) >= limit) {
       return res.status(403).json({
-        error:  `Your ${plan} plan allows up to ${limits.jobsPerMonth} jobs per month. Upgrade to continue.`,
-        code:   'PLAN_LIMIT_JOBS',
-        plan,
+        error: `Your ${entitlements.PLAN_NAMES[ent.plan]} plan allows up to ${limit} jobs per month. Upgrade to continue.`,
+        code:  'PLAN_LIMIT_JOBS',
+        plan:  ent.plan,
       });
     }
     next();
@@ -65,13 +52,12 @@ async function checkJobLimit(req, res, next) {
 // POST /api/sms/send — enforce SMS access
 async function checkSmsAccess(req, res, next) {
   try {
-    const plan   = await accountPlan(req.accountId);
-    const limits = LIMITS[plan] || LIMITS.starter;
-    if (!limits.sms) {
+    const ent = await entitlements.getEntitlements(req.accountId);
+    if (!ent.capabilities.can_use_sms) {
       return res.status(403).json({
-        error: `SMS is not available on the ${plan} plan. Upgrade to Pro or Scale.`,
+        error: `SMS is not available on the ${entitlements.PLAN_NAMES[ent.plan]} plan. Upgrade to Pro or Scale.`,
         code:  'PLAN_LIMIT_SMS',
-        plan,
+        plan:  ent.plan,
       });
     }
     next();
@@ -80,4 +66,4 @@ async function checkSmsAccess(req, res, next) {
   }
 }
 
-module.exports = { checkUserLimit, checkJobLimit, checkSmsAccess, LIMITS };
+module.exports = { checkUserLimit, checkJobLimit, checkSmsAccess };

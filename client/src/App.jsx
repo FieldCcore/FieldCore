@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Phone } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Phone, Lock } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -75,6 +75,7 @@ import Account         from './pages/Account';
 import Communications  from './pages/Communications';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
+import { useEntitlements } from './hooks/useEntitlements';
 import CallerID         from './components/CallerID';
 import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -122,6 +123,122 @@ const IcoTeam     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IcoSettings = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 14h.01M10 14h4"/></svg>;
 
+function CreateMenu() {
+  const nav = useNavigate();
+  const { entitlements } = useEntitlements();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const canMultiDay = entitlements?.capabilities?.can_create_multi_day_jobs !== false;
+  const canProject  = entitlements?.capabilities?.can_create_projects === true;
+
+  useEffect(() => {
+    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    if (open) document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="tb-btn tb-primary" onClick={() => setOpen(o => !o)}>+ Create New</button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+          background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 220, overflow: 'hidden',
+        }}>
+          {/* Single-Day Job — always available */}
+          <button
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
+              background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+              fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}
+            onClick={() => { setOpen(false); nav('/jobs?new=1'); }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>📋</span>
+            <div>
+              <div>Single-Day Job</div>
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>Schedule a one-day service appointment</div>
+            </div>
+          </button>
+
+          <div style={{ height: 1, background: 'var(--lightgray)', margin: '0 12px' }} />
+
+          {/* Multi-Day Job — solo+ */}
+          <button
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
+              background: 'none', border: 'none', cursor: canMultiDay ? 'pointer' : 'default', textAlign: 'left',
+              fontSize: 13, fontWeight: 600, color: canMultiDay ? 'var(--navy)' : 'var(--steel)',
+              opacity: canMultiDay ? 1 : 0.75 }}
+            onClick={() => {
+              if (!canMultiDay) return;
+              setOpen(false);
+              nav('/jobs?new=1&multiday=1');
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>📅</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Multi-Day Job
+                {!canMultiDay && <Lock size={11} style={{ color: 'var(--steel)' }} />}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>
+                {canMultiDay
+                  ? 'Multi-session work spanning several days'
+                  : 'Requires Solo plan — track multi-day work with daily closeouts'}
+              </div>
+            </div>
+            {!canMultiDay && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--sand)', background: 'var(--navy)',
+                padding: '2px 7px', borderRadius: 99, whiteSpace: 'nowrap' }}>Solo+</span>
+            )}
+          </button>
+
+          <div style={{ height: 1, background: 'var(--lightgray)', margin: '0 12px' }} />
+
+          {/* Project — pro+ */}
+          <button
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
+              background: 'none', border: 'none', cursor: canProject ? 'pointer' : 'default', textAlign: 'left',
+              fontSize: 13, fontWeight: 600, color: canProject ? 'var(--navy)' : 'var(--steel)',
+              opacity: canProject ? 1 : 0.75 }}
+            onClick={() => {
+              if (!canProject) return;
+              setOpen(false);
+              nav('/projects?new=1');
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>🏗️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Project
+                {!canProject && <Lock size={11} style={{ color: 'var(--steel)' }} />}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>
+                {canProject
+                  ? 'Organize multiple jobs, phases, locations, and crews'
+                  : 'Requires Pro plan — group jobs, assets, phases, and crews under one engagement'}
+              </div>
+            </div>
+            {!canProject && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--sand)', background: 'var(--navy)',
+                padding: '2px 7px', borderRadius: 99, whiteSpace: 'nowrap' }}>Pro+</span>
+            )}
+          </button>
+
+          {(!canMultiDay || !canProject) && (
+            <div style={{ padding: '8px 16px 10px', borderTop: '1px solid var(--lightgray)', marginTop: 2 }}>
+              <a href="/billing" style={{ fontSize: 11, color: 'var(--slate)', textDecoration: 'none',
+                display: 'flex', alignItems: 'center', gap: 4 }}>
+                View plans and upgrade →
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppShell() {
   const { pathname } = useLocation();
   const { user, logout, accounts, switching, switchError, switchAccount } = useAuth();
@@ -130,8 +247,8 @@ function AppShell() {
   const [dateStr,    setDateStr]    = useState('');
   const [callerOpen, setCallerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const touchStartX = React.useRef(null);
-  const touchStartY = React.useRef(null);
+  const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
 
   function handleTouchStart(e) {
     const t = e.touches[0];
@@ -407,7 +524,7 @@ function AppShell() {
           <div className="tb-date">{dateStr}</div>
           <NotificationBell />
           <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
-          <button className="tb-btn tb-primary" onClick={() => nav('/jobs?new=1')}>+ New Job</button>
+          {(user?.role === 'owner' || user?.role === 'manager') && <CreateMenu />}
         </div>
 
         <div className="content" key={user?.accountId}>

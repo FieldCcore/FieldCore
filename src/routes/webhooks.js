@@ -6,6 +6,7 @@ const smsService   = require('../services/sms');
 const sendblue     = require('../services/sendblue');
 const emailService = require('../services/email');
 const notify       = require('../services/notify');
+const { invalidate: invalidateEntitlements } = require('../services/entitlements');
 
 // POST /api/webhooks/stripe
 // Raw body required — mount before express.json()
@@ -144,23 +145,25 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
     const sub     = event.data.object;
     const priceId = sub.items.data[0]?.price?.id;
     const plan    = priceIdToPlan(priceId);
-    await pool.query(
+    const { rows: updated } = await pool.query(
       `UPDATE accounts
        SET plan = $1, plan_status = $2, stripe_subscription_id = $3,
            renewal_7d_sent = FALSE, renewal_3d_sent = FALSE
-       WHERE stripe_customer_id = $4`,
+       WHERE stripe_customer_id = $4 RETURNING id`,
       [plan, sub.status, sub.id, sub.customer]
     );
+    updated.forEach(r => invalidateEntitlements(r.id));
   }
 
   if (event.type === 'customer.subscription.deleted') {
     const sub = event.data.object;
-    await pool.query(
+    const { rows: updated } = await pool.query(
       `UPDATE accounts
        SET plan = 'starter', plan_status = 'active', stripe_subscription_id = NULL
-       WHERE stripe_customer_id = $1`,
+       WHERE stripe_customer_id = $1 RETURNING id`,
       [sub.customer]
     );
+    updated.forEach(r => invalidateEntitlements(r.id));
   }
 
   if (event.type === 'invoice.payment_succeeded') {
@@ -205,10 +208,11 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
 
   if (event.type === 'invoice.payment_failed') {
     const inv = event.data.object;
-    await pool.query(
-      `UPDATE accounts SET plan_status = 'past_due' WHERE stripe_customer_id = $1`,
+    const { rows: updated } = await pool.query(
+      `UPDATE accounts SET plan_status = 'past_due' WHERE stripe_customer_id = $1 RETURNING id`,
       [inv.customer]
     );
+    updated.forEach(r => invalidateEntitlements(r.id));
     // Email operator about failure
     const { rows: [acct] } = await pool.query(
       `SELECT a.name, u.email AS owner_email

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { format, addMinutes } from 'date-fns';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Lock } from 'lucide-react';
 import api from '../api';
 import AddressAutocomplete from './AddressAutocomplete';
+import { useEntitlements } from '../hooks/useEntitlements';
 
 function blankSession(date = '') {
   return { scheduled_date: date, start_time: '', end_time: '', title: '', description: '', tech_ids: [], lead_tech_id: '' };
 }
 
-export default function JobForm({ job, defaultStart, onSave, onCancel }) {
+export default function JobForm({ job, defaultStart, defaultMultiDay = false, onSave, onCancel }) {
   const [clients,   setClients]   = useState([]);
   const [techs,     setTechs]     = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -32,7 +33,7 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
     service_lat:     job?.service_lat     || '',
     service_lng:     job?.service_lng     || '',
     // Multi-day fields
-    is_multi_day:         job?.is_multi_day       || false,
+    is_multi_day:         job?.is_multi_day       || defaultMultiDay || false,
     title:                job?.title              || '',
     scope_of_work:        job?.scope_of_work      || '',
     estimated_start_date: job?.estimated_start_date
@@ -48,8 +49,11 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
   const [sessions, setSessions] = useState([blankSession(
     defaultStart ? format(new Date(defaultStart), 'yyyy-MM-dd') : ''
   )]);
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
+  const [saving, setSaving]             = useState(false);
+  const [error,  setError]              = useState('');
+  const [showUpgradeHint, setShowUpgradeHint] = useState(false);
+  const { entitlements } = useEntitlements();
+  const canMultiDay = entitlements?.capabilities?.can_create_multi_day_jobs !== false;
 
   useEffect(() => {
     api.get('/clients').then(r => setClients(r.data));
@@ -187,21 +191,44 @@ export default function JobForm({ job, defaultStart, onSave, onCancel }) {
       <div className="form-group">
         <label style={{ fontSize: 13, fontWeight: 700, display: 'block', marginBottom: 8 }}>Job Duration</label>
         <div style={{ display: 'flex', gap: 0, border: '1px solid var(--lightgray)', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
-          {[{ v: false, label: 'Single Day' }, { v: true, label: 'Multiple Days' }].map(opt => (
-            <button
-              key={String(opt.v)}
-              type="button"
-              onClick={() => setForm(prev => ({ ...prev, is_multi_day: opt.v }))}
-              style={{
-                padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-                background: form.is_multi_day === opt.v ? 'var(--navy)' : 'var(--white)',
-                color:      form.is_multi_day === opt.v ? '#fff' : 'var(--slate)',
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => { setForm(prev => ({ ...prev, is_multi_day: false })); setShowUpgradeHint(false); }}
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: !form.is_multi_day ? 'var(--navy)' : 'var(--white)',
+              color:      !form.is_multi_day ? '#fff' : 'var(--slate)',
+            }}
+          >
+            Single Day
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!canMultiDay) { setShowUpgradeHint(true); return; }
+              setShowUpgradeHint(false);
+              setForm(prev => ({ ...prev, is_multi_day: true }));
+            }}
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none',
+              cursor: canMultiDay ? 'pointer' : 'default',
+              background: form.is_multi_day ? 'var(--navy)' : 'var(--white)',
+              color:      form.is_multi_day ? '#fff' : (canMultiDay ? 'var(--slate)' : 'var(--steel)'),
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            Multiple Days
+            {!canMultiDay && <Lock size={11} style={{ opacity: 0.6 }} />}
+          </button>
         </div>
+        {showUpgradeHint && !canMultiDay && (
+          <div style={{ marginTop: 8, padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe',
+            borderRadius: 6, fontSize: 12, color: '#1e40af', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Lock size={12} />
+            Multi-Day Jobs require the <strong>Solo plan</strong> or higher.{' '}
+            <a href="/billing" style={{ color: '#1d4ed8', fontWeight: 700, textDecoration: 'none' }}>Upgrade →</a>
+          </div>
+        )}
       </div>
 
       {/* ── Multi-day project title ── */}
