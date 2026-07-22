@@ -21,6 +21,29 @@ const C = {
 const STATUS_COLOR = { scheduled: C.blue, in_progress: C.amber, complete: C.green, cancelled: C.red };
 const STATUS_BG    = { scheduled: C.blueLt, in_progress: C.amberLt, complete: C.greenLt, cancelled: C.redLt };
 
+const SESSION_STATUS_COLOR = {
+  scheduled:         C.blue,
+  en_route:          '#F97316',
+  checked_in:        C.green,
+  in_progress:       C.amber,
+  paused:            '#8B5CF6',
+  completed_for_day: C.green,
+  rescheduled:       C.amber,
+  cancelled:         C.red,
+  missed:            C.red,
+};
+const SESSION_STATUS_BG = {
+  scheduled:         C.blueLt,
+  en_route:          'rgba(249,115,22,.15)',
+  checked_in:        C.greenLt,
+  in_progress:       C.amberLt,
+  paused:            'rgba(139,92,246,.15)',
+  completed_for_day: C.greenLt,
+  rescheduled:       C.amberLt,
+  cancelled:         C.redLt,
+  missed:            C.redLt,
+};
+
 function fmtTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 function fmtDate(iso) { return new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }); }
 const cacheKey = (uid, v) => `fc_jobs_${v}_${uid}`;
@@ -63,9 +86,24 @@ function StatusPill({ status }) {
   );
 }
 
+/* ── Session status pill ──────────────────────────────────────── */
+function SessionStatusPill({ status }) {
+  const bg    = SESSION_STATUS_BG[status]    || C.blueLt;
+  const color = SESSION_STATUS_COLOR[status] || C.blue;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: bg, borderRadius: 99, padding: '3px 10px', flexShrink: 0 }}>
+      <div style={{ width: 5, height: 5, borderRadius: '50%', background: color }} />
+      <span style={{ fontSize: 10, fontWeight: 700, color, textTransform: 'capitalize' }}>
+        {status.replace(/_/g, ' ')}
+      </span>
+    </div>
+  );
+}
+
 /* ── Job Queue ────────────────────────────────────────────────── */
-function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, availLoading, availErr, gpsStatus, gpsLastAt }) {
+function JobQueue({ user, onSelect, onSelectSession, onLogout, onPwChange, avail, onAvailChange, availLoading, availErr, gpsStatus, gpsLastAt }) {
   const [jobs,         setJobs]         = useState([]);
+  const [sessions,     setSessions]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [loadingMore,  setLoadingMore]  = useState(false);
   const [hasMore,      setHasMore]      = useState(false);
@@ -127,6 +165,14 @@ function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, 
   }
 
   useEffect(() => { load(); }, [user.id, view]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load today's multi-day sessions when on 'today' view
+  useEffect(() => {
+    if (view !== 'today') { setSessions([]); return; }
+    api.get('/mobile/sessions/today')
+      .then(r => setSessions(r.data || []))
+      .catch(() => setSessions([]));
+  }, [user.id, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Init Leaflet map and update pins whenever jobs change
   useEffect(() => {
@@ -276,7 +322,7 @@ function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, 
               </div>
             )}
             <div style={{ background: 'rgba(45,55,72,.75)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: C.sub }}>
-              {loading ? '…' : `${jobs.length}${hasMore ? '+' : ''} job${(jobs.length !== 1 || hasMore) ? 's' : ''} ${view === 'week' ? 'this week' : view}`}
+              {loading ? '…' : `${jobs.length}${hasMore ? '+' : ''} job${(jobs.length !== 1 || hasMore) ? 's' : ''}${sessions.length > 0 ? ` · ${sessions.length} session${sessions.length !== 1 ? 's' : ''}` : ''} ${view === 'week' ? 'this week' : view}`}
             </div>
             {nextAddr && (
               <a
@@ -329,7 +375,7 @@ function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, 
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: C.muted, fontSize: 13 }}>Loading jobs…</div>
-        ) : jobs.length === 0 ? (
+        ) : jobs.length === 0 && sessions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 48, color: C.muted }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.sub }}>
@@ -352,7 +398,12 @@ function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, 
               groups[d].forEach(j => items.push({ type: 'job', key: j.id, job: j }));
             });
           } else {
-            jobs.forEach(j => items.push({ type: 'job', key: j.id, job: j }));
+            // Merge jobs + today's sessions sorted by start time
+            const merged = [
+              ...jobs.map(j => ({ type: 'job', key: j.id, job: j, _sort: j.scheduled_at || '9999-01-01T00:00:00Z' })),
+              ...(view === 'today' ? sessions.map(s => ({ type: 'session', key: `s-${s.id}`, session: s, _sort: (s.scheduled_date + 'T' + (s.start_time || '08:00') + ':00') })) : []),
+            ].sort((a, b) => a._sort.localeCompare(b._sort));
+            merged.forEach(item => items.push(item));
           }
           return items.map(item => {
             if (item.type === 'header') return (
@@ -360,6 +411,52 @@ function JobQueue({ user, onSelect, onLogout, onPwChange, avail, onAvailChange, 
                 {item.label}
               </div>
             );
+            if (item.type === 'session') {
+              const s = item.session;
+              const addr = s.service_address
+                ? [s.service_address, s.service_city, s.service_state].filter(Boolean).join(', ')
+                : null;
+              const timeLabel = s.start_time ? s.start_time.slice(0, 5) : 'Time TBD';
+              const isDone = s.status === 'completed_for_day';
+              return (
+                <div
+                  key={item.key}
+                  onClick={() => onSelectSession(s)}
+                  style={{ background: C.navy2, borderRadius: 14, padding: 14, border: `1px solid ${isDone ? 'rgba(46,125,50,.35)' : 'rgba(59,130,246,.35)'}`, cursor: 'pointer', opacity: isDone ? 0.75 : 1 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, textTransform: 'uppercase', letterSpacing: 1, background: C.blueLt, borderRadius: 4, padding: '2px 6px' }}>
+                          Day {s.day_number} of {s.total_sessions}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.white, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.service_type}</div>
+                      <div style={{ fontSize: 13, color: C.sub }}>{s.client_name}</div>
+                    </div>
+                    <SessionStatusPill status={s.status} />
+                  </div>
+                  {addr && (
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <MapPin size={10} />{addr}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                    <div style={{ fontSize: 12, color: C.sand }}>{timeLabel}</div>
+                    {addr && (
+                      <a
+                        href={`https://maps.google.com/?q=${encodeURIComponent(addr)}`}
+                        target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 11, color: C.sand, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
+                      >
+                        <MapPin size={10} /> Directions
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            }
             const job = item.job;
             const addr = job.service_address
               ? [job.service_address, job.service_city, job.service_state].filter(Boolean).join(', ')
@@ -876,6 +973,245 @@ function TipScreen({ job, onBack, onComplete }) {
   );
 }
 
+/* ── Day Closeout Screen ──────────────────────────────────────── */
+function DayCloseoutScreen({ session, onBack, onComplete }) {
+  const [form,   setForm]   = useState({
+    work_completed: session.work_completed || '',
+    work_remaining: session.work_remaining || '',
+    completion_pct: session.completion_pct ?? 0,
+    blockers:       session.blockers       || '',
+    client_notes:   session.client_notes   || '',
+    actual_hours:   session.actual_hours   || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState(null);
+
+  const set = field => e => setForm(prev => ({ ...prev, [field]: e.target.value }));
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await api.post(`/mobile/sessions/${session.id}/complete`, {
+        ...form,
+        completion_pct: parseInt(form.completion_pct),
+        actual_hours:   form.actual_hours ? parseFloat(form.actual_hours) : null,
+      });
+      onComplete(r.data.session || r.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not complete session.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: C.navy3, border: `1px solid ${C.border}`, borderRadius: 10, color: C.white, fontSize: 14, fontFamily: 'inherit', outline: 'none', resize: 'vertical' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
+      <Topbar title="Complete for the Day" onBack={onBack} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        <div style={{ background: C.amberLt, border: `1px solid rgba(217,119,6,.35)`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: C.amber, fontWeight: 600 }}>
+          This closes today's session — not the overall job.
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && (
+            <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fc8181' }}>{error}</div>
+          )}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Work Completed Today</div>
+            <textarea rows={3} value={form.work_completed} onChange={set('work_completed')} placeholder="Describe what was accomplished…" style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Work Remaining</div>
+            <textarea rows={2} value={form.work_remaining} onChange={set('work_remaining')} placeholder="What still needs to be done?" style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Overall Completion: <span style={{ color: C.sand }}>{form.completion_pct}%</span></div>
+            <input type="range" min="0" max="100" step="5" value={form.completion_pct} onChange={set('completion_pct')} style={{ width: '100%', accentColor: C.sand }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Hours Worked</div>
+            <input type="number" step="0.25" min="0" value={form.actual_hours} onChange={set('actual_hours')} placeholder="e.g. 7.5" style={{ ...inputStyle, resize: undefined }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Blockers / Delays</div>
+            <textarea rows={2} value={form.blockers} onChange={set('blockers')} placeholder="Any issues, missing materials, waiting on approvals?" style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Client-Facing Update</div>
+            <textarea rows={2} value={form.client_notes} onChange={set('client_notes')} placeholder="Progress note to share with the client" style={inputStyle} />
+          </div>
+          <button type="submit" style={btn({ background: C.green, opacity: saving ? 0.65 : 1, marginTop: 4 })} disabled={saving}>
+            <Check size={16} strokeWidth={2.5} />{saving ? 'Saving…' : 'Complete for the Day'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── Session Detail (multi-day) ───────────────────────────────── */
+function SessionDetail({ session: initSession, onBack, onUpdate }) {
+  const [session,    setSession]    = useState(initSession);
+  const [subscreen,  setSubscreen]  = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [msg,        setMsg]        = useState(null);
+
+  function update(updated) {
+    setSession(updated);
+    onUpdate(updated);
+  }
+
+  async function handleCheckin() {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation
+          ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
+          : rej(new Error('no geo'))
+      ).catch(() => ({ coords: { latitude: 0, longitude: 0 } }));
+      const r = await api.post(`/mobile/sessions/${session.id}/checkin`, {
+        lat: pos.coords.latitude, lng: pos.coords.longitude,
+      });
+      update(r.data);
+      setMsg({ type: 'ok', text: 'Checked in — GPS recorded' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.response?.data?.error || 'Check-in failed.' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (subscreen === 'photos') {
+    const jobForPhotos = { id: session.job_id, client_name: session.client_name };
+    return <PhotosScreen job={jobForPhotos} onBack={() => setSubscreen(null)} />;
+  }
+  if (subscreen === 'closeout') return (
+    <DayCloseoutScreen
+      session={session}
+      onBack={() => setSubscreen(null)}
+      onComplete={updated => {
+        update(updated);
+        setSubscreen(null);
+        setMsg({ type: 'ok', text: 'Session closed out for the day' });
+      }}
+    />
+  );
+
+  const addr = session.service_address
+    ? [session.service_address, session.service_city, session.service_state].filter(Boolean).join(', ')
+    : null;
+
+  const timeLabel = session.start_time
+    ? `${session.start_time.slice(0, 5)}${session.end_time ? ' – ' + session.end_time.slice(0, 5) : ''}`
+    : 'Time TBD';
+
+  const isCheckedIn  = session.status === 'checked_in';
+  const isInProgress = session.status === 'in_progress';
+  const isDone       = session.status === 'completed_for_day';
+  const isCancelled  = ['cancelled', 'missed'].includes(session.status);
+  const canAct       = !isDone && !isCancelled;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.navy }}>
+      <Topbar title="Session Detail" onBack={onBack} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* Header card */}
+        <div style={{ background: C.navy2, borderRadius: 14, padding: 16, border: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, textTransform: 'uppercase', letterSpacing: 1, background: C.blueLt, borderRadius: 4, padding: '3px 8px' }}>
+              Day {session.day_number} of {session.total_sessions}
+            </span>
+            <SessionStatusPill status={session.status} />
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.white, marginBottom: 4 }}>{session.service_type}</div>
+          <div style={{ fontSize: 12, color: C.sub }}>{timeLabel}</div>
+        </div>
+
+        {/* Info rows */}
+        <div style={{ background: C.navy2, borderRadius: 14, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+          {[
+            { l: 'Client',   v: session.client_name },
+            addr             && { l: 'Location', v: addr, link: `https://maps.google.com/?q=${encodeURIComponent(addr)}` },
+            session.client_phone && { l: 'Phone', v: session.client_phone, link: `tel:${session.client_phone}` },
+            session.description && { l: 'Notes', v: session.description },
+          ].filter(Boolean).map((r, i, arr) => (
+            <div key={i} style={{ display: 'flex', padding: '12px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : 'none', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, width: 60, flexShrink: 0 }}>{r.l}</div>
+              {r.link
+                ? <a href={r.link} target={r.link.startsWith('tel') ? '_self' : '_blank'} rel="noreferrer" style={{ fontSize: 13, color: C.sand, flex: 1, textDecoration: 'none' }}>{r.v}</a>
+                : <div style={{ fontSize: 13, color: C.white, flex: 1 }}>{r.v}</div>
+              }
+            </div>
+          ))}
+        </div>
+
+        {/* Previous day work summary */}
+        {session.work_remaining && (
+          <div style={{ background: C.navy2, borderRadius: 14, padding: 14, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Carry-Over Work</div>
+            <div style={{ fontSize: 13, color: C.white }}>{session.work_remaining}</div>
+          </div>
+        )}
+
+        {/* Status messages */}
+        {msg?.type === 'ok'  && <div style={{ background: C.greenLt, border: `1px solid rgba(46,125,50,.3)`, borderRadius: 10, padding: '12px 14px', fontSize: 13, color: C.green, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><Check size={14} />{msg.text}</div>}
+        {msg?.type === 'err' && <div style={{ background: C.redLt, border: `1px solid rgba(181,42,42,.3)`, borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#fc8181' }}>{msg.text}</div>}
+
+        {/* Actions */}
+        {canAct && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {canAct && (
+              <button style={btnGhost({ opacity: loading ? 0.65 : 1 })} onClick={handleCheckin} disabled={loading}>
+                <MapPin size={16} /> {isCheckedIn ? 'Update GPS Location' : 'GPS Check-In'}
+              </button>
+            )}
+            <button style={btnGhost()} onClick={() => setSubscreen('photos')}>
+              <Camera size={16} /> Job Photos
+            </button>
+            {canAct && (
+              <button
+                style={btn({ background: C.green })}
+                onClick={() => setSubscreen('closeout')}
+              >
+                <Check size={16} strokeWidth={2.5} /> Complete for the Day
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Done state */}
+        {isDone && (
+          <div style={{ background: C.greenLt, border: `1px solid rgba(46,125,50,.3)`, borderRadius: 14, padding: 20 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: C.green, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Check size={18} strokeWidth={2.5} /> Session Complete
+            </div>
+            {session.work_completed && (
+              <div style={{ fontSize: 13, color: C.sub, marginBottom: 12 }}>{session.work_completed}</div>
+            )}
+            {session.actual_hours && (
+              <div style={{ fontSize: 12, color: C.sub, marginBottom: 12 }}>{parseFloat(session.actual_hours).toFixed(1)}h logged</div>
+            )}
+            <button style={btnGhost({ width: 'auto', padding: '10px 20px' })} onClick={() => setSubscreen('photos')}>
+              <Camera size={14} /> View / Add Photos
+            </button>
+          </div>
+        )}
+
+        {isCancelled && (
+          <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 14, padding: 20, textAlign: 'center' }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: C.red }}>Session {session.status === 'missed' ? 'Missed' : 'Cancelled'}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Job Detail ───────────────────────────────────────────────── */
 function JobDetail({ job: initJob, onBack, onUpdate }) {
   const [job,         setJob]         = useState(initJob);
@@ -1168,7 +1504,8 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
 export default function TechApp() {
   const { user, logout } = useAuth();
   const navigate         = useNavigate();
-  const [selectedJob,  setSelectedJob]  = useState(null);
+  const [selectedJob,     setSelectedJob]     = useState(null);
+  const [selectedSession, setSelectedSession] = useState(null);
   const [pwModal,      setPwModal]      = useState(false);
   const [pwForm,       setPwForm]       = useState({ current: '', next: '', confirm: '' });
   const [pwSaving,     setPwSaving]     = useState(false);
@@ -1239,6 +1576,10 @@ export default function TechApp() {
     if (selectedJob?.id === updated.id) setSelectedJob(prev => ({ ...prev, ...updated }));
   }
 
+  function handleSessionUpdate(updated) {
+    if (selectedSession?.id === updated.id) setSelectedSession(prev => ({ ...prev, ...updated }));
+  }
+
   async function handlePwSubmit(e) {
     e.preventDefault();
     if (pwForm.next !== pwForm.confirm) return setPwMsg({ ok: false, text: 'Passwords do not match.' });
@@ -1300,10 +1641,11 @@ export default function TechApp() {
       )}
 
       <div style={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {!selectedJob ? (
+        {!selectedJob && !selectedSession ? (
           <JobQueue
             user={user}
             onSelect={setSelectedJob}
+            onSelectSession={setSelectedSession}
             onLogout={handleLogout}
             onPwChange={() => { setPwModal(true); setPwMsg(null); }}
             avail={avail}
@@ -1312,6 +1654,12 @@ export default function TechApp() {
             availErr={availErr}
             gpsStatus={gpsStatus}
             gpsLastAt={gpsLastAt}
+          />
+        ) : selectedSession ? (
+          <SessionDetail
+            session={selectedSession}
+            onBack={() => setSelectedSession(null)}
+            onUpdate={handleSessionUpdate}
           />
         ) : (
           <JobDetail

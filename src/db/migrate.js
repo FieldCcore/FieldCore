@@ -474,6 +474,110 @@ const MIGRATIONS = [
      UNIQUE (normalized_phone)
    )`,
   `CREATE INDEX IF NOT EXISTS idx_sms_opt_outs_phone ON sms_opt_outs(normalized_phone)`,
+
+  // ── MULTI-DAY JOBS ──────────────────────────────────────────────────────────
+  // Expand jobs status constraint to include multi-day and project statuses
+  `ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check`,
+  `ALTER TABLE jobs ADD CONSTRAINT jobs_status_check CHECK (status IN (
+     'draft','unscheduled','scheduled','in_progress','paused',
+     'awaiting_client','awaiting_parts','partially_completed',
+     'ready_for_inspection','complete','cancelled','no_show'
+  ))`,
+
+  // New columns on jobs for multi-day project tracking
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_multi_day        BOOLEAN      NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS title               TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS scope_of_work       TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS estimated_start_date DATE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS estimated_end_date   DATE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS end_date_unknown     BOOLEAN      NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS actual_start_date    DATE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS actual_completion_date DATE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_manager_id       UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS estimated_labor_hours NUMERIC(6,2)`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS overall_completion_pct INT NOT NULL DEFAULT 0`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS billing_method       TEXT NOT NULL DEFAULT 'fixed'`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS priority             TEXT NOT NULL DEFAULT 'normal'`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS updated_at           TIMESTAMPTZ`,
+
+  // Daily work sessions — each row is one scheduled workday on a parent job
+  `CREATE TABLE IF NOT EXISTS job_sessions (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     job_id           UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     session_number   INT  NOT NULL DEFAULT 1,
+     title            TEXT,
+     description      TEXT,
+     scheduled_date   DATE NOT NULL,
+     start_time       TIME,
+     end_time         TIME,
+     status           TEXT NOT NULL DEFAULT 'scheduled'
+                        CHECK (status IN ('scheduled','en_route','checked_in','in_progress','paused',
+                                          'completed_for_day','rescheduled','cancelled','missed')),
+     lead_tech_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     estimated_hours  NUMERIC(6,2),
+     actual_hours     NUMERIC(6,2),
+     checkin_at       TIMESTAMPTZ,
+     checkout_at      TIMESTAMPTZ,
+     checkin_lat      NUMERIC(9,6),
+     checkin_lng      NUMERIC(9,6),
+     completion_pct   INT  NOT NULL DEFAULT 0 CHECK (completion_pct >= 0 AND completion_pct <= 100),
+     work_completed   TEXT,
+     work_remaining   TEXT,
+     blockers         TEXT,
+     internal_notes   TEXT,
+     client_notes     TEXT,
+     created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+     updated_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // Technician assignments per session (many-to-many)
+  `CREATE TABLE IF NOT EXISTS job_session_techs (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     session_id  UUID NOT NULL REFERENCES job_sessions(id) ON DELETE CASCADE,
+     job_id      UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     tech_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     is_lead     BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (session_id, tech_id)
+  )`,
+
+  // Assets / service items per job (vehicles, units, rooms, equipment, etc.)
+  `CREATE TABLE IF NOT EXISTS job_assets (
+     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     job_id               UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name                 TEXT NOT NULL,
+     description          TEXT,
+     asset_type           TEXT,
+     identifier           TEXT,
+     status               TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending','in_progress','completed','not_applicable')),
+     assigned_session_id  UUID REFERENCES job_sessions(id) ON DELETE SET NULL,
+     assigned_tech_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     completion_pct       INT  NOT NULL DEFAULT 0,
+     notes                TEXT,
+     completed_at         TIMESTAMPTZ,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // Optional session context on job photos (NULL for existing/single-day photos)
+  `ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES job_sessions(id) ON DELETE SET NULL`,
+
+  // Indexes for performance
+  `CREATE INDEX IF NOT EXISTS idx_job_sessions_job      ON job_sessions(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_sessions_account  ON job_sessions(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_sessions_date     ON job_sessions(account_id, scheduled_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_sessions_status   ON job_sessions(job_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_sess_techs_sess   ON job_session_techs(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_sess_techs_tech   ON job_session_techs(account_id, tech_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assets_job        ON job_assets(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assets_account    ON job_assets(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_multi_day        ON jobs(account_id) WHERE is_multi_day = TRUE`,
 ];
 
 async function runMigrations() {

@@ -55,10 +55,19 @@ const localizer = dateFnsLocalizer({
 });
 
 const STATUS_COLORS = {
-  scheduled:   '#5F667A',
-  in_progress: '#D6B58A',
-  complete:    '#1E6B3C',
-  cancelled:   'var(--red)',
+  scheduled:          '#5F667A',
+  in_progress:        '#D6B58A',
+  partially_completed:'#D97706',
+  complete:           '#1E6B3C',
+  cancelled:          '#B52A2A',
+};
+
+// Session status mapped to a calendar color (distinct from parent job)
+const SESSION_STATUS_COLORS = {
+  scheduled:         '#3B82F6',
+  in_progress:       '#F59E0B',
+  completed_for_day: '#16A34A',
+  cancelled:         '#9CA3AF',
 };
 
 function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
@@ -142,17 +151,26 @@ function parseTime(timeStr) {
 
 export default function Jobs() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [jobs, setJobs]               = useState([]);
+  const [jobs,         setJobs]         = useState([]);
+  const [sessions,     setSessions]     = useState([]);
   const [businessHours, setBusinessHours] = useState([]);
-  const [view, setView]               = useState('week');
-  const [date, setDate]               = useState(new Date());
-  const [modal, setModal]             = useState(null);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [view,         setView]         = useState('week');
+  const [date,         setDate]         = useState(new Date());
+  const [modal,        setModal]        = useState(null);
+  const [selectedJob,  setSelectedJob]  = useState(null);
   const [defaultStart, setDefaultStart] = useState(null);
-  const [loading, setLoading]         = useState(true);
+  const [loading,      setLoading]      = useState(true);
 
   const loadJobs = useCallback(() => {
-    api.get('/jobs').then(r => setJobs(r.data)).finally(() => setLoading(false));
+    Promise.all([
+      api.get('/jobs'),
+      api.get('/jobs/sessions'),
+    ]).then(([jobsRes, sessionsRes]) => {
+      setJobs(jobsRes.data);
+      setSessions(sessionsRes.data);
+    }).catch(() => {
+      api.get('/jobs').then(r => setJobs(r.data));
+    }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
@@ -188,16 +206,41 @@ export default function Jobs() {
     return { calMin: min, calMax: max };
   }, [businessHours]);
 
-  // Map jobs to calendar events using service duration if available
-  const events = useMemo(() => jobs
-    .filter(j => j.scheduled_at)
-    .map(j => ({
-      id:    j.id,
-      title: `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
-      start: new Date(j.scheduled_at),
-      end:   addMinutes(new Date(j.scheduled_at), j.duration_minutes || 60),
-      resource: j,
-    })), [jobs]);
+  // Map jobs and sessions to calendar events
+  const events = useMemo(() => {
+    // Single-day jobs (is_multi_day = false or null, with scheduled_at)
+    const jobEvents = jobs
+      .filter(j => j.scheduled_at && !j.is_multi_day)
+      .map(j => ({
+        id:    j.id,
+        title: `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
+        start: new Date(j.scheduled_at),
+        end:   addMinutes(new Date(j.scheduled_at), j.duration_minutes || 60),
+        resource: { ...j, _type: 'job' },
+      }));
+
+    // Multi-day job sessions — each appears as its own calendar event
+    const sessionEvents = sessions
+      .filter(s => s.scheduled_date)
+      .map(s => {
+        const base = new Date(s.scheduled_date + 'T' + (s.start_time || '08:00') + ':00');
+        const end  = s.end_time
+          ? new Date(s.scheduled_date + 'T' + s.end_time + ':00')
+          : addMinutes(base, 60);
+        const dayLabel = s.total_sessions > 1
+          ? `Day ${s.day_number} of ${s.total_sessions}`
+          : 'Multi-Day';
+        return {
+          id:    `session-${s.id}`,
+          title: `[${dayLabel}] ${s.service_type || s.title || ''}${s.client_name ? ' — ' + s.client_name : ''}`,
+          start: base,
+          end,
+          resource: { ...s, _type: 'session', _jobId: s.job_id },
+        };
+      });
+
+    return [...jobEvents, ...sessionEvents];
+  }, [jobs, sessions]);
 
   // Grey out slots outside business hours
   function slotPropGetter(slotDate) {
@@ -220,12 +263,25 @@ export default function Jobs() {
   }
 
   function handleSelectEvent(event) {
-    setSelectedJob(event.resource);
-    setModal('detail');
+    const resource = event.resource;
+    if (resource._type === 'session') {
+      // Clicking a session event opens the parent job
+      const parentJob = jobs.find(j => j.id === resource._jobId);
+      if (parentJob) {
+        setSelectedJob(parentJob);
+        setModal('detail');
+      }
+    } else {
+      setSelectedJob(resource);
+      setModal('detail');
+    }
   }
 
   function handleJobCreated(job) {
     setJobs(prev => [job, ...prev]);
+    if (job.sessions?.length) {
+      setSessions(prev => [...prev, ...job.sessions.map(s => ({ ...s, job_id: job.id, service_type: job.service_type, client_name: job.client_name }))]);
+    }
     setModal(null);
   }
 
@@ -241,25 +297,25 @@ export default function Jobs() {
   }
 
   function eventStyleGetter(event) {
-    const status = event.resource?.status || 'scheduled';
+    const resource = event.resource || {};
+    const isSession = resource._type === 'session';
+    const status = isSession
+      ? (resource.status || 'scheduled')
+      : (resource.status || 'scheduled');
+
     if (view === 'agenda') {
-      return {
-        style: {
-          background: 'none',
-          backgroundColor: 'transparent',
-          boxShadow: 'none',
-          border: 'none',
-          borderRadius: 0,
-          padding: 0,
-          color: 'var(--navy)',
-        },
-      };
+      return { style: { background: 'none', backgroundColor: 'transparent', boxShadow: 'none', border: 'none', borderRadius: 0, padding: 0, color: 'var(--navy)' } };
     }
+
+    const bgColor = isSession
+      ? (SESSION_STATUS_COLORS[status] || '#3B82F6')
+      : (STATUS_COLORS[status] || '#5F667A');
+
     return {
       style: {
-        backgroundColor: STATUS_COLORS[status],
+        backgroundColor: bgColor,
         borderRadius: '6px',
-        border: 'none',
+        border: isSession ? '2px dashed rgba(255,255,255,0.4)' : 'none',
         color: '#fff',
         fontSize: '12px',
         padding: '2px 6px',

@@ -109,8 +109,18 @@ function MapAutoCenter({ positions, fallbackCenter, fallbackZoom }) {
   return null;
 }
 
+const SESSION_COLORS = {
+  scheduled:         '#3B82F6',
+  checked_in:        '#2E7D32',
+  in_progress:       '#D97706',
+  completed_for_day: '#2E7D32',
+  paused:            '#7C3AED',
+  cancelled:         '#C62828',
+};
+
 export default function Dispatch() {
   const [jobs,       setJobs]       = useState([]);
+  const [sessions,   setSessions]   = useState([]);
   const [techs,      setTechs]      = useState([]);
   const [techLocs,   setTechLocs]   = useState([]);
   const [selected,   setSelected]   = useState(null);
@@ -131,8 +141,10 @@ export default function Dispatch() {
       api.get('/users'),
       api.get('/business-settings').catch(() => null),
       api.get('/mobile/locations').catch(() => null),
-    ]).then(([jobsRes, usersRes, settingsRes, locsRes]) => {
+      api.get(`/jobs/sessions?date_from=${today}&date_to=${today}`).catch(() => ({ data: [] })),
+    ]).then(([jobsRes, usersRes, settingsRes, locsRes, sessionsRes]) => {
       setJobs(jobsRes.data);
+      setSessions(sessionsRes.data || []);
       setTechs(usersRes.data.filter(u => u.role === 'tech'));
       setTechLocs(locsRes?.data || []);
       const p = settingsRes?.data?.profile;
@@ -241,7 +253,7 @@ export default function Dispatch() {
           <div className="dispatch-panel-sub">
             {loading
               ? 'Loading…'
-              : `${techs.length} tech${techs.length !== 1 ? 's' : ''} · ${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`
+              : `${techs.length} tech${techs.length !== 1 ? 's' : ''} · ${jobs.length} job${jobs.length !== 1 ? 's' : ''}${sessions.length > 0 ? ` · ${sessions.length} session${sessions.length !== 1 ? 's' : ''}` : ''} today`
             }
           </div>
         </div>
@@ -298,12 +310,14 @@ export default function Dispatch() {
         {/* ── Job Queue ── */}
         <div className="dispatch-section-lbl" style={{ marginTop: 8 }}>Job Queue</div>
 
-        {!loading && jobs.length === 0 ? (
+        {!loading && jobs.length === 0 && sessions.length === 0 ? (
           <div style={{ padding: '16px', fontSize: 12, color: 'var(--steel)', lineHeight: 1.5 }}>
             No jobs scheduled for today.
             <br />Create one from the <a href="/jobs" style={{ color: 'var(--blue)' }}>Calendar</a>.
           </div>
-        ) : jobs.map((j, idx) => {
+        ) : null}
+
+        {jobs.map((j, idx) => {
           const pos       = jobPos(j);
           const notMapped = j.service_address && !pos;
           const statusStyle = JOB_STATUS_STYLE[j.status] || JOB_STATUS_STYLE.scheduled;
@@ -331,6 +345,38 @@ export default function Dispatch() {
             </div>
           );
         })}
+
+        {/* ── Today's Multi-Day Sessions ── */}
+        {sessions.length > 0 && (
+          <>
+            <div className="dispatch-section-lbl" style={{ marginTop: 8 }}>Multi-Day Sessions Today</div>
+            {sessions.map((s, idx) => {
+              const color = SESSION_COLORS[s.status] || '#3B82F6';
+              const timeStr = s.start_time ? s.start_time.slice(0, 5) : '—';
+              return (
+                <div key={s.id || idx} className="dispatch-job-row" style={{ borderLeft: `3px solid ${color}` }}>
+                  <div className="dispatch-job-dot" style={{ background: color }} />
+                  <div className="dispatch-job-info">
+                    <div className="dispatch-job-name">
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#1d4ed8',
+                        background: '#eff6ff', borderRadius: 3, padding: '1px 5px', marginRight: 5 }}>
+                        Day {s.day_number}/{s.total_sessions}
+                      </span>
+                      {s.client_name} — {s.service_type}
+                    </div>
+                    <div className="dispatch-job-meta">
+                      {s.lead_tech_name || 'Unassigned'} · {timeStr}
+                    </div>
+                  </div>
+                  <span className="dispatch-job-badge"
+                    style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+                    {(s.status || 'scheduled').replace(/_/g, ' ')}
+                  </span>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* ── Map ── */}

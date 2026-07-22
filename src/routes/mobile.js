@@ -92,27 +92,197 @@ router.post('/jobs/:id/checkin', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/mobile/jobs/:id/complete — mark complete from mobile
+// POST /api/mobile/jobs/:id/complete — mark complete from mobile (single-day only)
 router.post('/jobs/:id/complete', requireAuth, async (req, res) => {
   try {
+    const { rows: existing } = await pool.query(
+      `SELECT id, is_multi_day, amount, client_id FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Job not found' });
+    const job = existing[0];
+
+    if (job.is_multi_day) {
+      return res.status(400).json({
+        error: 'Multi-day jobs cannot be completed from the mobile app. Use the session closeout flow instead.'
+      });
+    }
+
     const { rows } = await pool.query(
-      `UPDATE jobs SET status = 'complete', completed_at = NOW()
+      `UPDATE jobs SET status = 'complete', completed_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND account_id = $2 RETURNING *`,
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Job not found' });
-    const job = rows[0];
+    const updated = rows[0];
 
-    // Auto-invoice if job has an amount
-    if (job.amount) {
+    if (updated.amount) {
       await pool.query(
         `INSERT INTO invoices (account_id, job_id, client_id, amount)
          VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
-        [req.accountId, job.id, job.client_id, job.amount]
+        [req.accountId, updated.id, updated.client_id, updated.amount]
       ).catch(() => {});
     }
 
-    res.json(job);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/mobile/sessions/today — today's work sessions for this tech
+router.get('/sessions/today', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*,
+              j.service_type, j.title AS job_title, j.status AS job_status,
+              j.service_address, j.service_city, j.service_state, j.service_zip,
+              j.client_id, j.is_multi_day,
+              c.name AS client_name, c.phone AS client_phone,
+              (SELECT COUNT(*) FROM job_sessions s2 WHERE s2.job_id = s.job_id) AS total_sessions,
+              (SELECT COUNT(*) FROM job_sessions s2
+               WHERE s2.job_id = s.job_id AND s2.scheduled_date < s.scheduled_date) + 1 AS day_number,
+              COALESCE(
+                (SELECT json_agg(json_build_object('tech_id', jst.tech_id, 'tech_name', u2.name))
+                 FROM job_session_techs jst
+                 JOIN users u2 ON u2.id = jst.tech_id
+                 WHERE jst.session_id = s.id), '[]'
+              ) AS techs
+       FROM job_sessions s
+       JOIN jobs j    ON j.id = s.job_id
+       JOIN clients c ON c.id = j.client_id
+       WHERE s.account_id = $1
+         AND s.scheduled_date = CURRENT_DATE
+         AND s.status NOT IN ('cancelled','missed')
+         AND (
+           s.lead_tech_id = $2
+           OR EXISTS (
+             SELECT 1 FROM job_session_techs jst
+             WHERE jst.session_id = s.id AND jst.tech_id = $2
+           )
+         )
+       ORDER BY s.start_time NULLS LAST`,
+      [req.accountId, req.userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/sessions/:sid/checkin — session GPS check-in
+router.post('/sessions/:sid/checkin', requireAuth, async (req, res) => {
+  const { lat, lng } = req.body;
+  if (!lat || !lng) return res.status(400).json({ error: 'lat and lng are required' });
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT s.*, j.id AS job_id FROM job_sessions s
+       JOIN jobs j ON j.id = s.job_id
+       WHERE s.id = $1 AND s.account_id = $2`,
+      [req.params.sid, req.accountId]
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Session not found' });
+    const session = existing[0];
+
+    const { rows } = await pool.query(
+      `UPDATE job_sessions SET
+         status = CASE WHEN status = 'scheduled' THEN 'checked_in' ELSE status END,
+         checkin_at = COALESCE(checkin_at, NOW()),
+         checkin_lat = $1, checkin_lng = $2,
+         updated_at = NOW()
+       WHERE id = $3 AND account_id = $4 RETURNING *`,
+      [lat, lng, req.params.sid, req.accountId]
+    );
+
+    // Move parent job to in_progress if not already
+    await pool.query(
+      `UPDATE jobs SET
+         status = CASE WHEN status IN ('scheduled','unscheduled','draft') THEN 'in_progress' ELSE status END,
+         actual_start_date = COALESCE(actual_start_date, CURRENT_DATE),
+         checkin_at = COALESCE(checkin_at, NOW()),
+         checkin_lat = $1, checkin_lng = $2,
+         updated_at = NOW()
+       WHERE id = $3 AND account_id = $4`,
+      [lat, lng, session.job_id, req.accountId]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mobile/sessions/:sid/complete — complete for the day from mobile
+router.post('/sessions/:sid/complete', requireAuth, async (req, res) => {
+  const { work_completed, work_remaining, completion_pct, blockers, internal_notes, actual_hours } = req.body;
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT s.*, j.id AS job_id FROM job_sessions s
+       JOIN jobs j ON j.id = s.job_id
+       WHERE s.id = $1 AND s.account_id = $2`,
+      [req.params.sid, req.accountId]
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Session not found' });
+    const session = existing[0];
+
+    if (session.status === 'completed_for_day') {
+      return res.status(409).json({ error: 'Session is already completed for the day.' });
+    }
+
+    await pool.query(
+      `UPDATE job_sessions SET
+         status         = 'completed_for_day',
+         checkout_at    = NOW(),
+         work_completed = COALESCE($1, work_completed),
+         work_remaining = COALESCE($2, work_remaining),
+         completion_pct = COALESCE($3, completion_pct),
+         blockers       = COALESCE($4, blockers),
+         internal_notes = COALESCE($5, internal_notes),
+         actual_hours   = COALESCE($6, actual_hours),
+         updated_by     = $7,
+         updated_at     = NOW()
+       WHERE id = $8 AND account_id = $9`,
+      [
+        work_completed || null, work_remaining || null,
+        completion_pct != null ? parseInt(completion_pct) : null,
+        blockers || null, internal_notes || null,
+        actual_hours ? parseFloat(actual_hours) : null,
+        req.userId, req.params.sid, req.accountId,
+      ]
+    );
+
+    // Update parent job status
+    await pool.query(
+      `UPDATE jobs SET
+         status = CASE
+           WHEN status IN ('in_progress','scheduled') THEN 'partially_completed'
+           ELSE status
+         END,
+         overall_completion_pct = (
+           SELECT COALESCE(AVG(completion_pct)::INT, 0)
+           FROM job_sessions WHERE job_id = $1
+         ),
+         updated_at = NOW()
+       WHERE id = $1 AND account_id = $2`,
+      [session.job_id, req.accountId]
+    );
+
+    // Refetch updated session to return enriched data
+    const { rows: updatedRows } = await pool.query(
+      `SELECT s.*,
+              j.service_type, j.title AS job_title,
+              c.name AS client_name, c.phone AS client_phone,
+              (SELECT COUNT(*) FROM job_sessions s2 WHERE s2.job_id = s.job_id) AS total_sessions,
+              (SELECT COUNT(*) FROM job_sessions s2
+               WHERE s2.job_id = s.job_id AND s2.scheduled_date < s.scheduled_date) + 1 AS day_number
+       FROM job_sessions s
+       JOIN jobs j    ON j.id = s.job_id
+       JOIN clients c ON c.id = j.client_id
+       WHERE s.id = $1 AND s.account_id = $2`,
+      [req.params.sid, req.accountId]
+    );
+
+    res.json({ session: updatedRows[0], message: 'Session completed for the day. The overall job remains open.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

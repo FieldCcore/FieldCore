@@ -7,7 +7,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -42,10 +42,11 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         [accountId]
       ),
 
-      // Active jobs right now
+      // Active jobs right now (include multi-day in-flight statuses)
       pool.query(
         `SELECT count(*) FROM jobs
-         WHERE account_id = $1 AND status = 'in_progress'`,
+         WHERE account_id = $1
+           AND status IN ('in_progress','partially_completed','paused','awaiting_client','awaiting_parts','ready_for_inspection')`,
         [accountId]
       ),
 
@@ -69,13 +70,25 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         [accountId]
       ),
 
-      // Techs on the team
+      // Techs on the team — counts both single-day (tech_id) and multi-day session assignments
       pool.query(
         `SELECT u.id, u.name, u.role,
-                COUNT(j.id) FILTER (WHERE j.status = 'in_progress') AS active_jobs,
-                COUNT(j.id) FILTER (WHERE j.scheduled_at >= date_trunc('week', CURRENT_DATE)) AS jobs
+                COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'in_progress') AS active_jobs,
+                COUNT(DISTINCT j.id) FILTER (WHERE
+                  j.scheduled_at >= date_trunc('week', CURRENT_DATE)
+                  OR EXISTS (
+                    SELECT 1 FROM job_sessions s
+                    JOIN job_session_techs jst ON jst.session_id = s.id
+                    WHERE jst.tech_id = u.id AND s.job_id = j.id
+                      AND s.scheduled_date >= date_trunc('week', CURRENT_DATE)::date
+                  )
+                ) AS jobs
          FROM users u
-         LEFT JOIN jobs j ON j.tech_id = u.id AND j.account_id = $1
+         LEFT JOIN jobs j ON (j.tech_id = u.id OR EXISTS (
+           SELECT 1 FROM job_sessions s2
+           JOIN job_session_techs jst2 ON jst2.session_id = s2.id
+           WHERE jst2.tech_id = u.id AND s2.job_id = j.id AND s2.account_id = $1
+         )) AND j.account_id = $1
          WHERE u.account_id = $1 AND u.role = 'tech'
          GROUP BY u.id`,
         [accountId]
@@ -112,10 +125,34 @@ router.get('/dashboard', requireAuth, async (req, res) => {
          LIMIT 5`,
         [accountId]
       ),
+
+      // Today's multi-day sessions (for dashboard alongside single-day jobs)
+      pool.query(
+        `SELECT s.id, s.status, s.start_time, s.end_time, s.scheduled_date,
+                s.day_number,
+                (SELECT COUNT(*) FROM job_sessions s2 WHERE s2.job_id = s.job_id) AS total_sessions,
+                j.id AS job_id, j.service_type, j.status AS job_status, j.amount,
+                c.name AS client_name, u.name AS tech_name
+         FROM (
+           SELECT s.*,
+                  (SELECT COUNT(*) FROM job_sessions s2
+                   WHERE s2.job_id = s.job_id AND s2.scheduled_date < s.scheduled_date) + 1 AS day_number
+           FROM job_sessions s
+           WHERE s.account_id = $1
+             AND s.scheduled_date = CURRENT_DATE
+             AND s.status NOT IN ('cancelled','missed')
+         ) s
+         JOIN jobs j    ON j.id = s.job_id
+         JOIN clients c ON c.id = j.client_id
+         LEFT JOIN users u ON u.id = s.lead_tech_id
+         ORDER BY s.start_time NULLS LAST`,
+        [accountId]
+      ),
     ]);
 
     res.json({
       todayJobs:       todayJobs.rows,
+      todaySessions:   todaySessions.rows,
       weekRevenue:     parseFloat(weekRevenue.rows[0].total),
       mtdRevenue:      parseFloat(mtdRevenue.rows[0].total),
       activeJobs:      parseInt(activeJobs.rows[0].count),
