@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ORDER = ['starter', 'solo', 'pro', 'scale'];
-const NAMES = { starter: 'Solo', solo: 'Solo', pro: 'Pro', scale: 'Scale' };
+const NAMES = { starter: 'Starter', solo: 'Solo', pro: 'Pro', scale: 'Scale' };
 
 const IcoLock = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 28, height: 28, color: 'var(--sand-dark)' }}>

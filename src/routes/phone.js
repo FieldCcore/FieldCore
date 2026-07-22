@@ -2,8 +2,7 @@ const express    = require('express');
 const router     = express.Router();
 const pool       = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
-
-const PLAN_LIMITS = { solo: 1, pro: 2, scale: 3, custom: 999, starter: 0 };
+const { getEntitlements } = require('../services/entitlements');
 
 function getTwilio() {
   const sid   = process.env.TWILIO_ACCOUNT_SID;
@@ -48,17 +47,20 @@ router.post('/numbers/provision', requireAuth, requireRole('owner'), async (req,
   if (!phone_number) return res.status(400).json({ error: 'phone_number is required' });
 
   try {
-    // Check plan limit
-    const [acctRes, countRes] = await Promise.all([
-      pool.query(`SELECT plan FROM accounts WHERE id = $1`, [req.accountId]),
+    // Check plan limit via centralized entitlements
+    const [ent, countRes] = await Promise.all([
+      getEntitlements(req.accountId),
       pool.query(`SELECT COUNT(*) FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE`, [req.accountId]),
     ]);
-    const plan  = acctRes.rows[0]?.plan || 'starter';
-    const limit = PLAN_LIMITS[plan] ?? 0;
+    const limit = ent.capabilities.max_phone_numbers ?? 0;
     const count = parseInt(countRes.rows[0].count);
     if (count >= limit) {
       return res.status(403).json({
-        error: `Your ${plan} plan allows ${limit} phone number${limit !== 1 ? 's' : ''}. Upgrade to add more.`,
+        error:       `Your ${ent.plan} plan allows ${limit} phone number${limit !== 1 ? 's' : ''}. Upgrade to add more.`,
+        code:        'ENTITLEMENT_REQUIRED',
+        capability:  'max_phone_numbers',
+        currentPlan: ent.plan,
+        requiredPlan: 'scale',
       });
     }
 

@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const requireEntitlement = require('../middleware/requireEntitlement');
 
 const ENTITY_COLS = `
   a.id, a.name, a.legal_name, a.dba, a.business_type, a.ein,
@@ -59,14 +60,9 @@ router.get('/:id', requireAuth, requireRole('owner'), async (req, res) => {
 });
 
 // POST /api/entities — create new entity (Scale plan required)
-router.post('/', requireAuth, requireRole('owner'), async (req, res) => {
+router.post('/', requireAuth, requireRole('owner'), requireEntitlement('can_create_entities'), async (req, res) => {
   const { name, legal_name, dba, business_type, ein, address, city, state, zip, phone, entity_email } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Business name is required.' });
-
-  const planRes = await pool.query(`SELECT plan FROM accounts WHERE id = $1`, [req.accountId]);
-  if (planRes.rows[0]?.plan !== 'scale') {
-    return res.status(403).json({ error: 'Multi-entity management requires the Scale plan.' });
-  }
 
   const client = await pool.connect();
   try {

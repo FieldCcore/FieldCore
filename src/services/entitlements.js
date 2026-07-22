@@ -23,7 +23,7 @@ const PLAN_CAPABILITIES = {
     // Multi-day jobs
     can_create_multi_day_jobs:          false,
     can_manage_work_sessions:           false,
-    // Projects (not yet implemented — stubs for future enforcement)
+    // Projects (stubs for future enforcement — routes not yet implemented)
     can_create_projects:                false,
     can_manage_project_teams:           false,
     can_use_project_financials:         false,
@@ -35,11 +35,15 @@ const PLAN_CAPABILITIES = {
     can_use_multi_location_projects:    false,
     can_use_advanced_project_reporting: false,
     can_use_division_project_controls:  false,
-    // Existing plan limits
+    // Entities (multi-LLC / multi-brand management)
+    can_create_entities:                false,
+    can_use_consolidated_reporting:     false,
+    // Communications
     can_use_sms:                        false,
     // null = unlimited, integer = hard cap
     max_users:                          2,
     max_jobs_per_month:                 50,
+    max_phone_numbers:                  0,
     max_active_projects:                0,
     max_jobs_per_project:               0,
     max_project_team_members:           0,
@@ -59,9 +63,12 @@ const PLAN_CAPABILITIES = {
     can_use_multi_location_projects:    false,
     can_use_advanced_project_reporting: false,
     can_use_division_project_controls:  false,
+    can_create_entities:                false,
+    can_use_consolidated_reporting:     false,
     can_use_sms:                        false,
     max_users:                          null,
     max_jobs_per_month:                 null,
+    max_phone_numbers:                  1,
     max_active_projects:                0,
     max_jobs_per_project:               0,
     max_project_team_members:           0,
@@ -81,9 +88,12 @@ const PLAN_CAPABILITIES = {
     can_use_multi_location_projects:    true,
     can_use_advanced_project_reporting: false,
     can_use_division_project_controls:  false,
+    can_create_entities:                false,
+    can_use_consolidated_reporting:     false,
     can_use_sms:                        true,
     max_users:                          null,
     max_jobs_per_month:                 null,
+    max_phone_numbers:                  2,
     max_active_projects:                null,
     max_jobs_per_project:               null,
     max_project_team_members:           null,
@@ -103,9 +113,12 @@ const PLAN_CAPABILITIES = {
     can_use_multi_location_projects:    true,
     can_use_advanced_project_reporting: true,
     can_use_division_project_controls:  true,
+    can_create_entities:                true,
+    can_use_consolidated_reporting:     true,
     can_use_sms:                        true,
     max_users:                          null,
     max_jobs_per_month:                 null,
+    max_phone_numbers:                  3,
     max_active_projects:                null,
     max_jobs_per_project:               null,
     max_project_team_members:           null,
@@ -128,6 +141,8 @@ const REQUIRED_PLAN = {
   can_use_multi_location_projects:    'pro',
   can_use_advanced_project_reporting: 'scale',
   can_use_division_project_controls:  'scale',
+  can_create_entities:                'scale',
+  can_use_consolidated_reporting:     'scale',
   can_use_sms:                        'pro',
 };
 

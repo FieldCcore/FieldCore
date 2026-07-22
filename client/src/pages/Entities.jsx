@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Building2, Users, ArrowRightLeft, Plus, ChevronDown, ChevronUp, Pencil, Trash2, CheckCircle, ExternalLink, BarChart2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useEntitlements } from '../hooks/useEntitlements';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import StatusBadge from '../components/StatusBadge';
 
@@ -40,7 +41,9 @@ function TypeBadge({ type }) {
 
 export default function Entities() {
   const { user, switchAccount, switchError } = useAuth();
-  const isScale = user?.plan === 'scale';
+  const { entitlements } = useEntitlements();
+  const canCreateEntities         = entitlements?.capabilities?.can_create_entities === true;
+  const canConsolidatedReporting  = entitlements?.capabilities?.can_use_consolidated_reporting === true;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const connectSuccess = searchParams.get('connect') === 'success';
@@ -77,13 +80,13 @@ export default function Entities() {
   }, []);
 
   useEffect(() => {
-    if (!isScale) return;
+    if (!canConsolidatedReporting) return;
     setAnalyticsLoading(true);
     api.get('/analytics/consolidated')
       .then(r => setAnalytics(r.data))
       .catch(() => {})
       .finally(() => setAnalyticsLoading(false));
-  }, [isScale]);
+  }, [canConsolidatedReporting]);
 
   function openAdd() {
     setEditTarget(null);
@@ -247,7 +250,7 @@ export default function Entities() {
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
           Manage multiple business entities, locations, or brands under one account.
         </p>
-        {isScale && (
+        {canCreateEntities && (
           <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <Plus size={14} />Add Entity
           </button>
@@ -276,7 +279,7 @@ export default function Entities() {
       )}
 
       {/* Scale plan gate */}
-      {!isScale && (
+      {!canCreateEntities && (
         <div style={{ background: '#fdfaf5', border: '1px solid #D6B58A66', borderRadius: 12, padding: '20px 24px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 16 }}>
           <Building2 size={32} style={{ color: '#D6B58A', flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
@@ -290,7 +293,7 @@ export default function Entities() {
       )}
 
       {/* Consolidated Analytics — Scale plan only */}
-      {isScale && (
+      {canConsolidatedReporting && (
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <BarChart2 size={16} style={{ color: '#D6B58A' }} />
@@ -573,7 +576,7 @@ export default function Entities() {
 
           {entities.length === 0 && (
             <div style={{ textAlign: 'center', padding: '56px 0', color: 'var(--steel)', fontSize: 14 }}>
-              {isScale ? 'No entities yet. Click "+ Add Entity" to create your first.' : 'Upgrade to Scale to manage multiple business entities.'}
+              {canCreateEntities ? 'No entities yet. Click "+ Add Entity" to create your first.' : 'Upgrade to Scale to manage multiple business entities.'}
             </div>
           )}
         </div>

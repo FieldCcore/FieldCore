@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const requireEntitlement = require('../middleware/requireEntitlement');
 
 // GET /api/analytics/dashboard — all stats for the main dashboard
 router.get('/dashboard', requireAuth, async (req, res) => {
@@ -266,10 +267,10 @@ router.get('/team', requireAuth, requireRole('owner', 'manager'), async (req, re
   }
 });
 
-// GET /api/analytics/consolidated — multi-entity rollup (Scale+ only)
-router.get('/consolidated', requireAuth, requireRole('owner'), async (req, res) => {
+// GET /api/analytics/consolidated — multi-entity rollup (Scale only)
+router.get('/consolidated', requireAuth, requireRole('owner'), requireEntitlement('can_use_consolidated_reporting'), async (req, res) => {
   try {
-    // Find all account_ids this user has owner/manager access to
+    // Find all account_ids this user has owner access to
     const memberRes = await pool.query(
       `SELECT DISTINCT am.account_id, a.name AS account_name, a.plan
        FROM account_memberships am
@@ -282,14 +283,7 @@ router.get('/consolidated', requireAuth, requireRole('owner'), async (req, res) 
     );
 
     const allAccounts = memberRes.rows;
-
-    // Only run consolidated query if user has Scale plan on at least one account
-    const hasScale = allAccounts.some(a => a.plan === 'scale' || a.plan === 'custom');
-    if (!hasScale) {
-      return res.status(403).json({ error: 'Consolidated reporting requires Scale or Custom plan.' });
-    }
-
-    const accountIds = allAccounts.map(a => a.account_id);
+    const accountIds  = allAccounts.map(a => a.account_id);
 
     const [mtd, ytd, byEntity, byService] = await Promise.all([
       pool.query(
