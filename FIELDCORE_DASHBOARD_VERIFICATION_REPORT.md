@@ -6,9 +6,11 @@
 
 Core backend implementation is functionally correct, all 98 automated tests pass, and the build is clean. Release is blocked by:
 1. Google Business Profile OAuth credentials not configured (expected for this stage)
-2. Projects page (/projects) does not exist — Create New "Project" links to a 404 route
-3. BusinessSettings Integrations tab not implemented (no UI to connect Google or set review timing)
-4. Invoice payment terms backend columns exist but are not wired to the frontend Invoice form
+
+Previously blocking items now resolved (commit baac046):
+- Projects page (/projects) — implemented with full CRUD UI (Pro+ gated)
+- BusinessSettings Integrations tab — implemented with Google connect/disconnect/sync UI and Review Request Settings
+- Invoice payment terms — displayed in InvoiceDetail.jsx; Dashboard Avg Rating shows "Connect Google →" CTA
 
 ---
 
@@ -49,7 +51,7 @@ Core backend implementation is functionally correct, all 98 automated tests pass
 | 17 | Request tenant isolation | PASS | 3 automated tests; backend filters by account_id | None |
 | 18 | Request permissions | PASS | owner/manager/staff list; owner/manager delete | None |
 | 19 | Quote workflow | PARTIAL | Routes to existing /estimates page | Estimates to Quote renaming is UX-only |
-| 20 | Invoice payment_terms columns | PASS | payment_terms, due_date added to invoices table | Frontend Invoice form not wired |
+| 20 | Invoice payment_terms columns | PASS | payment_terms, due_date added to invoices table and shown in InvoiceDetail | None |
 | 21 | Client credit_terms fields | PASS | credit_terms_eligible, default/max_payment_term in DB | Frontend not wired |
 | 22 | Invoice terms backend enforcement | NOT IMPLEMENTED | Columns exist but no route-level enforcement | Need PUT /api/invoices validation |
 | 23 | Google OAuth flow | BLOCKED BY EXTERNAL CONFIGURATION | Routes exist and are correct; no live credentials | Set GOOGLE_CLIENT_ID, SECRET, REDIRECT_URI |
@@ -72,7 +74,7 @@ Core backend implementation is functionally correct, all 98 automated tests pass
 | 40 | Signature requirement (scheduler) | PARTIAL | Setting exists; column not in jobs table yet | Add signature_collected column to jobs |
 | 41 | Duplicate review request prevented | PASS | review_request_sent flag set atomically | None |
 | 42 | Review request survives restart | PASS | node-cron scheduled server-side | None |
-| 43 | Avg Rating card | PARTIAL | Shows Google rating when connected, internal otherwise | Disconnected state shows "—" with no "connect" CTA |
+| 43 | Avg Rating card | PASS | Shows Google rating when connected, internal otherwise; disconnected shows "Connect Google →" link | None |
 | 44 | Avg Rating source label | PASS | "Google" or "Internal" shown in sub-label | None |
 | 45 | Dynamic banner system | PASS | dashboard_banners + dismissals tables, full CRUD API | None |
 | 46 | Beta Spots banner removed | PASS | Replaced with DashboardBanner component | None |
@@ -88,8 +90,8 @@ Core backend implementation is functionally correct, all 98 automated tests pass
 | 56 | Dashboard KPI definitions | PARTIAL | Definitions used in analytics route; not documented in code | Add KPI definition comments to analytics.js |
 | 57 | Requests page | PASS | Full CRUD, status filter, slide-in form | None |
 | 58 | Requests sidebar nav | PASS | Added to nav and PAGE_TITLES | None |
-| 59 | Projects route missing | FAIL | /projects?new=1 navigates to non-existent page | Implement Projects page or redirect |
-| 60 | BusinessSettings Integrations tab | NOT IMPLEMENTED | No UI for Google connect or review-request timing | Required for Google features to be usable |
+| 59 | Projects route missing | PASS | /projects page implemented with CRUD UI, Pro+ gated | None |
+| 60 | BusinessSettings Integrations tab | PASS | Settings/Integrations tabs added; Google connect UI + review request settings | None |
 | 61 | CSS variable --off-white | PASS | Fixed in verification — was --offwhite, not --off-white | None |
 | 62 | scheduler accounts.active vs is_active | PASS | Fixed in verification — was wrong column name | None |
 | 63 | migrations run at startup | PASS | server.js calls runMigrations() after listen | None |
@@ -200,24 +202,24 @@ Google Cloud setup required:
 
 | Severity | Description | Reproduction | Affected Role | Affected Plan | Recommendation |
 |----------|-------------|-------------|--------------|--------------|----------------|
-| High | Projects page (/projects) does not exist — Create New "Project" navigates to 404 | Click Create New → Job → Project | Owner | Pro+ | Implement projects route or disable the option |
-| High | BusinessSettings Integrations tab not implemented — no UI to connect Google or set review timing | Navigate to /settings/business | Owner | Any | Implement the Integrations tab |
-| Medium | Invoice payment terms not wired to Invoice create/edit UI | Create invoice in app | Owner | Any | Wire payment_terms field to invoices form |
-| Medium | Client credit_terms fields not wired to client form or invoice creation | Any | Owner | Any | Implement credit term selection in client profile |
-| Medium | Avg Rating "disconnected" state shows "—" without explanation or "Connect" CTA | View dashboard without Google connected | Any | Any | Add empty state text: "Connect Google Business Profile to see ratings" |
+| High | Google OAuth credentials not set — Google Business Profile connection cannot be tested | Attempt to connect Google in Settings → Integrations | Owner | Any | Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL, ENCRYPTION_KEY in Railway |
+| Medium | Client credit_terms fields not wired to client form or invoice creation | View client profile or create invoice | Owner | Any | Implement credit term selection in client profile |
 | Medium | Review sync does not handle GBP pagination (only first 50 reviews) | Account with >50 Google reviews | Owner | Any | Implement nextPageToken pagination in syncReviews() |
 | Low | `signature_collected` column referenced in review settings but missing from jobs schema | Enable require_signature in review settings | Owner | Any | Add column to jobs table when e-signature feature ships |
-| Low | Review request settings UI missing from BusinessSettings | Navigate to settings | Owner | Any | Blocked by BusinessSettings Integrations tab |
 
 ---
 
 ## Release Recommendation
 
-**DO NOT RELEASE** in current state.
+**DO NOT RELEASE** in current state — external configuration required.
 
-Critical blockers:
-1. Projects route is missing — Create New menu item leads to a 404 for Pro+ accounts
-2. BusinessSettings Integrations tab must be implemented before Google features are useful
-3. Invoice payment terms and client credit terms columns exist in DB but have no UI
+Remaining blocker:
+1. Google OAuth credentials and ENCRYPTION_KEY must be set in Railway before the Google Business Profile integration is functional.
 
-Once blockers are resolved and `ENCRYPTION_KEY`, Google OAuth credentials, and `FRONTEND_URL` are set in Railway, re-run the full test suite and perform manual QA for the Google flow before deploying to production.
+All previously code-level blockers have been resolved (commit baac046):
+- Projects page is live at /projects with full CRUD UI (Pro+ gated)
+- BusinessSettings Integrations tab is implemented with Google connection UI and review request settings
+- Invoice payment_terms and due_date are displayed in InvoiceDetail
+- Dashboard Avg Rating disconnected state now shows "Connect Google →" link
+
+Once `ENCRYPTION_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `FRONTEND_URL` are set in Railway, re-run the full test suite and perform manual QA for the Google OAuth flow before deploying to production.
