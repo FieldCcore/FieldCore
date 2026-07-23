@@ -420,59 +420,174 @@ function startBillingRenewalReminders() {
   console.log('[Scheduler] Billing renewal reminders scheduled (daily 09:00)');
 }
 
-// ── 9. Post-job review requests — runs every hour at :45 ────────────────────
+// ── 9. Post-job review requests — runs every 15 min, respects per-account delay ─
 function startReviewRequestJob() {
-  cron.schedule('45 * * * *', async () => {
+  cron.schedule('*/15 * * * *', async () => {
     try {
       const appUrl = process.env.APP_URL || '';
-      const { rows: jobs } = await pool.query(`
-        SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
-               a.name AS business_name
-        FROM jobs j
-        JOIN clients c ON c.id = j.client_id
-        JOIN accounts a ON a.id = j.account_id
-        WHERE j.status = 'complete'
-          AND j.review_request_sent = FALSE
-          AND j.completed_at IS NOT NULL
-          AND j.completed_at < NOW() - INTERVAL '1 hour'
-          AND j.completed_at > NOW() - INTERVAL '25 hours'
+
+      // Load all active accounts with their review settings (or defaults)
+      const { rows: accountSettings } = await pool.query(`
+        SELECT a.id AS account_id,
+               COALESCE(s.enabled, TRUE)            AS enabled,
+               COALESCE(s.delay_seconds, 3600)      AS delay_seconds,
+               COALESCE(s.require_invoice_paid, FALSE) AS require_invoice_paid,
+               COALESCE(s.require_signature, FALSE) AS require_signature,
+               COALESCE(s.exclude_cancelled, TRUE)  AS exclude_cancelled
+        FROM accounts a
+        LEFT JOIN review_request_settings s ON s.account_id = a.id
+        WHERE a.active = TRUE
       `);
 
-      for (const job of jobs) {
+      for (const setting of accountSettings) {
+        if (!setting.enabled) continue;
+
+        const delayInterval = `${setting.delay_seconds} seconds`;
+        const maxWindow     = setting.delay_seconds + 86400; // delay + 24h safety window
+
         try {
-          const token = crypto.randomBytes(24).toString('hex');
-          await pool.query(
-            `UPDATE jobs SET review_token = $1, review_request_sent = TRUE WHERE id = $2`,
-            [token, job.id]
-          );
+          let query = `
+            SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+                   a.name AS business_name
+            FROM jobs j
+            JOIN clients c ON c.id = j.client_id
+            JOIN accounts a ON a.id = j.account_id
+            WHERE j.account_id = $1
+              AND j.status = 'complete'
+              AND j.review_request_sent = FALSE
+              AND j.completed_at IS NOT NULL
+              AND j.completed_at < NOW() - INTERVAL '${delayInterval}'
+              AND j.completed_at > NOW() - INTERVAL '${maxWindow} seconds'
+          `;
 
-          const reviewUrl = `${appUrl}/review/${token}`;
-          const smsBody   = `Hi ${job.client_name}, thanks for your ${job.service_type} with ${job.business_name}! We'd love your feedback: ${reviewUrl} Reply STOP to opt out.`;
-
-          if (job.client_email) {
-            await email.send({
-              to:      job.client_email,
-              subject: `How did your ${job.service_type} go? Leave a quick review`,
-              html:    email.reviewRequestHtml(job.client_name, job.service_type, job.business_name, reviewUrl),
-            });
+          if (setting.require_invoice_paid) {
+            query += ` AND EXISTS (
+              SELECT 1 FROM invoices i WHERE i.job_id = j.id AND i.status = 'paid'
+            )`;
           }
-          if (job.client_phone) {
-            await sms.send(job.account_id, job.client_id, job.client_phone, smsBody);
+          if (setting.require_signature) {
+            query += ` AND j.signature_collected = TRUE`;
+          }
+          if (setting.exclude_cancelled) {
+            query += ` AND j.status != 'cancelled'`;
           }
 
-          console.log(`[Scheduler] Review request sent for job ${job.id} (${job.client_name})`);
+          const { rows: jobs } = await pool.query(query, [setting.account_id]);
+
+          for (const job of jobs) {
+            try {
+              const token = crypto.randomBytes(24).toString('hex');
+              await pool.query(
+                `UPDATE jobs SET review_token = $1, review_request_sent = TRUE WHERE id = $2`,
+                [token, job.id]
+              );
+
+              const reviewUrl = `${appUrl}/review/${token}`;
+              const smsBody   = `Hi ${job.client_name}, thanks for your ${job.service_type} with ${job.business_name}! We'd love your feedback: ${reviewUrl} Reply STOP to opt out.`;
+
+              if (job.client_email) {
+                await email.send({
+                  to:      job.client_email,
+                  subject: `How did your ${job.service_type} go? Leave a quick review`,
+                  html:    email.reviewRequestHtml(job.client_name, job.service_type, job.business_name, reviewUrl),
+                });
+              }
+              if (job.client_phone) {
+                await sms.send(job.account_id, job.client_id, job.client_phone, smsBody);
+              }
+
+              console.log(`[Scheduler] Review request sent for job ${job.id} (${job.client_name})`);
+            } catch (err) {
+              console.error(`[Scheduler] Review request failed for job ${job.id}:`, err.message);
+            }
+          }
         } catch (err) {
-          console.error(`[Scheduler] Review request failed for job ${job.id}:`, err.message);
+          console.error(`[Scheduler] Review request error for account ${setting.account_id}:`, err.message);
         }
       }
     } catch (err) {
       console.error('[Scheduler] Review request error:', err.message);
     }
   });
-  console.log('[Scheduler] Review request job scheduled (hourly :45)');
+  console.log('[Scheduler] Review request job scheduled (every 15 min, per-account delay)');
 }
 
-// ── 10. Expired token cleanup — runs daily at 03:00 ─────────────────────────
+// ── 10a. Google Business Profile review sync — runs every 30 min ─────────────
+function startGoogleReviewSyncJob() {
+  const { syncReviews } = require('./googleReviews');
+  const notify          = require('./notify');
+
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      const { rows: connections } = await pool.query(`
+        SELECT gc.account_id, gc.location_id,
+               COALESCE(s.notify_on_new_review, TRUE)   AS notify_on_new_review,
+               COALESCE(s.notify_roles, ARRAY['owner','manager']) AS notify_roles
+        FROM google_business_connections gc
+        LEFT JOIN review_request_settings s ON s.account_id = gc.account_id
+        WHERE gc.status = 'connected' AND gc.location_id IS NOT NULL
+      `);
+
+      for (const conn of connections) {
+        try {
+          // Fetch new reviews since last sync
+          const { rows: before } = await pool.query(
+            `SELECT COUNT(*) AS cnt FROM external_reviews WHERE account_id = $1 AND provider = 'google'`,
+            [conn.account_id]
+          );
+
+          const result = await syncReviews(conn.account_id);
+
+          if (result.synced > 0 && conn.notify_on_new_review) {
+            // Fetch the new reviews to include in notifications
+            const { rows: newReviews } = await pool.query(
+              `SELECT * FROM external_reviews
+               WHERE account_id = $1 AND provider = 'google' AND notified_at IS NULL
+               ORDER BY review_at DESC LIMIT 10`,
+              [conn.account_id]
+            );
+
+            for (const review of newReviews) {
+              const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
+              const snippet = review.body ? review.body.slice(0, 80) + (review.body.length > 80 ? '…' : '') : 'No comment';
+
+              // Get users to notify
+              const { rows: users } = await pool.query(
+                `SELECT id FROM users WHERE account_id = $1 AND role = ANY($2)`,
+                [conn.account_id, conn.notify_roles]
+              );
+
+              for (const user of users) {
+                await notify.create({
+                  accountId: conn.account_id,
+                  userId:    user.id,
+                  type:      'google_review',
+                  title:     `New Google review ${stars}`,
+                  body:      `${review.reviewer_name}: "${snippet}"`,
+                  link:      '/reviews',
+                });
+              }
+
+              await pool.query(
+                `UPDATE external_reviews SET notified_at = NOW() WHERE id = $1`,
+                [review.id]
+              );
+            }
+          }
+
+          console.log(`[Scheduler] Google sync account ${conn.account_id}: ${result.synced} new review(s)`);
+        } catch (err) {
+          console.error(`[Scheduler] Google sync failed for account ${conn.account_id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Google review sync error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Google review sync scheduled (every 30 min)');
+}
+
+// ── 11. Expired token cleanup — runs daily at 03:00 ─────────────────────────
 function startExpiredTokenCleanup() {
   cron.schedule('0 3 * * *', async () => {
     try {
@@ -505,6 +620,7 @@ function startReminderJobs() {
   startPreChargeNoticeJob();
   startBillingRenewalReminders();
   startReviewRequestJob();
+  startGoogleReviewSyncJob();
   startExpiredTokenCleanup();
 }
 

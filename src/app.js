@@ -39,6 +39,10 @@ const estimatesRouter      = require('./routes/estimates');
 const reviewsRouter        = require('./routes/reviews');
 const pushTokensRouter     = require('./routes/push-tokens');
 const mapsRouter           = require('./routes/maps');
+const requestsRouter       = require('./routes/requests');
+const bannersRouter        = require('./routes/banners');
+const googleReviewsRouter  = require('./routes/google-reviews');
+const reviewSettingsRouter = require('./routes/review-settings');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -191,6 +195,10 @@ app.use('/api/estimates',        generalLimiter, estimatesRouter);
 app.use('/api/reviews',          generalLimiter, reviewsRouter);
 app.use('/api/push-tokens',      generalLimiter, pushTokensRouter);
 app.use('/api/maps',             generalLimiter, mapsRouter);
+app.use('/api/requests',        generalLimiter, requestsRouter);
+app.use('/api/banners',         generalLimiter, bannersRouter);
+app.use('/api/google-reviews',  generalLimiter, googleReviewsRouter);
+app.use('/api/review-settings', generalLimiter, reviewSettingsRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', async (req, res) => {

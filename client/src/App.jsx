@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Phone, Lock } from 'lucide-react';
+import { Phone, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -73,6 +73,7 @@ import TechApp         from './pages/TechApp';
 import MobileDemo      from './pages/MobileDemo';
 import Account         from './pages/Account';
 import Communications  from './pages/Communications';
+import Requests        from './pages/Requests';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -103,6 +104,7 @@ const PAGE_TITLES = {
   '/estimates':          'Estimates',
   '/clients':            'Client Database',
   '/communications':     'Communications',
+  '/requests':           'Requests',
   '/team':               'Team Management',
   '/fleet':              'Fleet',
   '/booking':            'Settings & Rules',
@@ -123,112 +125,140 @@ const IcoTeam     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IcoSettings = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 14h.01M10 14h4"/></svg>;
 
+const menuItemStyle = (disabled) => ({
+  display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+  padding: '10px 16px', background: 'none', border: 'none',
+  cursor: disabled ? 'default' : 'pointer', textAlign: 'left',
+  fontSize: 13, fontWeight: 600,
+  color: disabled ? 'var(--steel)' : 'var(--navy)',
+  opacity: disabled ? 0.7 : 1,
+  transition: 'background .12s',
+});
+
+const menuDivider = <div style={{ height: 1, background: 'var(--lightgray)', margin: '2px 12px' }} />;
+
+function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge }) {
+  return (
+    <button style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
+      <span style={{ width: 32, height: 32, background: 'var(--off-white)', borderRadius: 8,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={16} style={{ color: disabled ? 'var(--steel)' : 'var(--navy)' }} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {label}
+          {disabled && <Lock size={11} style={{ color: 'var(--steel)', flexShrink: 0 }} />}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1, lineHeight: 1.4 }}>{description}</div>
+      </div>
+      {badge && (
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--sand)', background: 'var(--navy)',
+          padding: '2px 7px', borderRadius: 99, whiteSpace: 'nowrap', flexShrink: 0 }}>{badge}</span>
+      )}
+    </button>
+  );
+}
+
 function CreateMenu() {
   const nav = useNavigate();
   const { entitlements } = useEntitlements();
-  const [open, setOpen] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const [jobOpen, setJobOpen] = useState(false);
   const ref = useRef(null);
 
   const canMultiDay = entitlements?.capabilities?.can_create_multi_day_jobs !== false;
   const canProject  = entitlements?.capabilities?.can_create_projects === true;
 
   useEffect(() => {
-    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    if (open) document.addEventListener('mousedown', onOutside);
-    return () => document.removeEventListener('mousedown', onOutside);
+    if (!open) setJobOpen(false);
   }, [open]);
+
+  useEffect(() => {
+    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    function onEscape(e)  { if (e.key === 'Escape') setOpen(false); }
+    if (open) {
+      document.addEventListener('mousedown', onOutside);
+      document.addEventListener('keydown', onEscape);
+    }
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [open]);
+
+  function go(path) { setOpen(false); nav(path); }
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button className="tb-btn tb-primary" onClick={() => setOpen(o => !o)}>+ Create New</button>
+      <button
+        className="tb-btn tb-primary"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        + Create New
+      </button>
+
       {open && (
-        <div style={{
+        <div role="menu" style={{
           position: 'absolute', top: 'calc(100% + 6px)', right: 0,
           background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 220, overflow: 'hidden',
+          boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 248, overflow: 'hidden',
         }}>
-          {/* Single-Day Job — always available */}
-          <button
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
-              background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-              fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}
-            onClick={() => { setOpen(false); nav('/jobs?new=1'); }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>📋</span>
-            <div>
-              <div>Single-Day Job</div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>Schedule a one-day service appointment</div>
-            </div>
-          </button>
+          <CreateMenuItem icon={UserPlus}  label="Client"  description="Add a new client record" onClick={() => go('/clients?new=1')} />
+          {menuDivider}
+          <CreateMenuItem icon={Inbox}     label="Request" description="Log an inbound lead or service request" onClick={() => go('/requests?new=1')} />
+          {menuDivider}
+          <CreateMenuItem icon={FileText}  label="Quote"   description="Build a quote or estimate for a client" onClick={() => go('/estimates?new=1')} />
+          {menuDivider}
 
-          <div style={{ height: 1, background: 'var(--lightgray)', margin: '0 12px' }} />
+          {/* Job — has submenu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              style={{ ...menuItemStyle(false), justifyContent: 'space-between' }}
+              onClick={() => setJobOpen(o => !o)}
+              aria-haspopup="menu"
+              aria-expanded={jobOpen}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 32, height: 32, background: 'var(--off-white)', borderRadius: 8,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Briefcase size={16} style={{ color: 'var(--navy)' }} />
+                </span>
+                <div>
+                  <div>Job</div>
+                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>Schedule a service job</div>
+                </div>
+              </div>
+              <ChevronRight size={14} style={{ color: 'var(--steel)', transform: jobOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />
+            </button>
 
-          {/* Multi-Day Job — solo+ */}
-          <button
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
-              background: 'none', border: 'none', cursor: canMultiDay ? 'pointer' : 'default', textAlign: 'left',
-              fontSize: 13, fontWeight: 600, color: canMultiDay ? 'var(--navy)' : 'var(--steel)',
-              opacity: canMultiDay ? 1 : 0.75 }}
-            onClick={() => {
-              if (!canMultiDay) return;
-              setOpen(false);
-              nav('/jobs?new=1&multiday=1');
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>📅</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                Multi-Day Job
-                {!canMultiDay && <Lock size={11} style={{ color: 'var(--steel)' }} />}
+            {jobOpen && (
+              <div style={{ background: 'var(--off-white)', borderTop: '1px solid var(--lightgray)', borderBottom: '1px solid var(--lightgray)' }}>
+                <CreateMenuItem
+                  icon={Calendar}
+                  label="Single-Day Job"
+                  description="One-day service appointment"
+                  onClick={() => go('/jobs?new=1')}
+                />
+                <CreateMenuItem
+                  icon={CalendarDays}
+                  label="Multi-Day Job"
+                  description={canMultiDay ? 'Multi-session work spanning several days' : 'Requires Solo plan'}
+                  onClick={() => go('/jobs?new=1&multiday=1')}
+                  disabled={!canMultiDay}
+                  badge={!canMultiDay ? 'Solo+' : null}
+                />
               </div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>
-                {canMultiDay
-                  ? 'Multi-session work spanning several days'
-                  : 'Requires Solo plan — track multi-day work with daily closeouts'}
-              </div>
-            </div>
-            {!canMultiDay && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--sand)', background: 'var(--navy)',
-                padding: '2px 7px', borderRadius: 99, whiteSpace: 'nowrap' }}>Solo+</span>
             )}
-          </button>
+          </div>
 
-          <div style={{ height: 1, background: 'var(--lightgray)', margin: '0 12px' }} />
-
-          {/* Project — pro+ */}
-          <button
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 16px',
-              background: 'none', border: 'none', cursor: canProject ? 'pointer' : 'default', textAlign: 'left',
-              fontSize: 13, fontWeight: 600, color: canProject ? 'var(--navy)' : 'var(--steel)',
-              opacity: canProject ? 1 : 0.75 }}
-            onClick={() => {
-              if (!canProject) return;
-              setOpen(false);
-              nav('/projects?new=1');
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>🏗️</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                Project
-                {!canProject && <Lock size={11} style={{ color: 'var(--steel)' }} />}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--steel)', marginTop: 1 }}>
-                {canProject
-                  ? 'Organize multiple jobs, phases, locations, and crews'
-                  : 'Requires Pro plan — group jobs, assets, phases, and crews under one engagement'}
-              </div>
-            </div>
-            {!canProject && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--sand)', background: 'var(--navy)',
-                padding: '2px 7px', borderRadius: 99, whiteSpace: 'nowrap' }}>Pro+</span>
-            )}
-          </button>
+          {menuDivider}
+          <CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices?new=1')} />
 
           {(!canMultiDay || !canProject) && (
             <div style={{ padding: '8px 16px 10px', borderTop: '1px solid var(--lightgray)', marginTop: 2 }}>
-              <a href="/billing" style={{ fontSize: 11, color: 'var(--slate)', textDecoration: 'none',
-                display: 'flex', alignItems: 'center', gap: 4 }}>
+              <a href="/billing" style={{ fontSize: 11, color: 'var(--slate)', textDecoration: 'none' }}>
                 View plans and upgrade →
               </a>
             </div>
@@ -467,6 +497,7 @@ function AppShell() {
                   <>
                     <div className="nav-section">CRM</div>
                     {ni('/clients',        false, IcoClients, 'Clients',        null)}
+                    {ni('/requests',       false, IcoInvoice, 'Requests',       null)}
                     {(isOwner || isManager) && ni('/communications', false, IcoPhone, 'Communications', null)}
                   </>
                 )}
@@ -539,6 +570,7 @@ function AppShell() {
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/communications" element={<ProtectedRoute><Communications /></ProtectedRoute>} />
+            <Route path="/requests"      element={<ProtectedRoute><Requests /></ProtectedRoute>}      />
             <Route path="/messages"    element={<Navigate to="/communications" replace />} />
             <Route path="/phone"       element={<Navigate to="/communications" replace />} />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />

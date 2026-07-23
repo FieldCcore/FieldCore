@@ -584,6 +584,139 @@ const MIGRATIONS = [
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trial_plan TEXT`,
   // feature_overrides: per-tenant capability overrides (grandfathering, beta, enterprise)
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS feature_overrides JSONB NOT NULL DEFAULT '{}'`,
+
+  // ── REQUESTS / LEADS ────────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS requests (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id        UUID REFERENCES clients(id) ON DELETE SET NULL,
+     client_name      TEXT,
+     client_email     TEXT,
+     client_phone     TEXT,
+     service_type     TEXT,
+     requested_date   DATE,
+     requested_date_end DATE,
+     preferred_time   TEXT,
+     location         TEXT,
+     notes            TEXT,
+     internal_notes   TEXT,
+     status           TEXT NOT NULL DEFAULT 'new'
+                        CHECK (status IN ('new','contacted','awaiting_review','confirmed','converted','declined','closed')),
+     source           TEXT DEFAULT 'direct',
+     assigned_to      UUID REFERENCES users(id) ON DELETE SET NULL,
+     reviewed_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+     follow_up_date   DATE,
+     converted_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+     created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_requests_account    ON requests(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_requests_client     ON requests(client_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_requests_status     ON requests(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_requests_created    ON requests(account_id, created_at DESC)`,
+
+  // ── DYNAMIC DASHBOARD BANNERS ────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS dashboard_banners (
+     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id            UUID REFERENCES accounts(id) ON DELETE CASCADE,
+     banner_type           TEXT NOT NULL DEFAULT 'announcement',
+     title                 TEXT NOT NULL,
+     message               TEXT NOT NULL,
+     severity              TEXT NOT NULL DEFAULT 'info'
+                             CHECK (severity IN ('info','success','warning','critical')),
+     icon                  TEXT,
+     primary_action_label  TEXT,
+     primary_action_url    TEXT,
+     secondary_action_label TEXT,
+     secondary_action_url  TEXT,
+     dismissible           BOOLEAN NOT NULL DEFAULT TRUE,
+     starts_at             TIMESTAMPTZ,
+     ends_at               TIMESTAMPTZ,
+     priority              INT NOT NULL DEFAULT 0,
+     audience_roles        TEXT[],
+     required_plan         TEXT,
+     is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_banners_account  ON dashboard_banners(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_banners_active   ON dashboard_banners(is_active, starts_at, ends_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_banners_priority ON dashboard_banners(priority DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS dashboard_banner_dismissals (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     banner_id    UUID NOT NULL REFERENCES dashboard_banners(id) ON DELETE CASCADE,
+     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     dismissed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (banner_id, user_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_banner_dismissals_user ON dashboard_banner_dismissals(user_id)`,
+
+  // ── GOOGLE BUSINESS PROFILE CONNECTIONS ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS google_business_connections (
+     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id        UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE UNIQUE,
+     google_account_id TEXT,
+     location_id       TEXT,
+     location_name     TEXT,
+     access_token_enc  TEXT,
+     refresh_token_enc TEXT,
+     token_expires_at  TIMESTAMPTZ,
+     last_sync_at      TIMESTAMPTZ,
+     last_sync_error   TEXT,
+     average_rating    NUMERIC(3,1),
+     total_reviews     INT DEFAULT 0,
+     status            TEXT NOT NULL DEFAULT 'disconnected'
+                         CHECK (status IN ('disconnected','connected','error','expired')),
+     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_gbp_connections_account ON google_business_connections(account_id)`,
+
+  // ── EXTERNAL REVIEWS (synced from Google) ────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS external_reviews (
+     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider           TEXT NOT NULL DEFAULT 'google',
+     external_review_id TEXT NOT NULL,
+     location_id        TEXT,
+     reviewer_name      TEXT,
+     rating             INTEGER CHECK (rating BETWEEN 1 AND 5),
+     body               TEXT,
+     owner_response     TEXT,
+     review_at          TIMESTAMPTZ,
+     synced_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     notified_at        TIMESTAMPTZ,
+     UNIQUE (account_id, provider, external_review_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_ext_reviews_account  ON external_reviews(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ext_reviews_provider ON external_reviews(account_id, provider)`,
+  `CREATE INDEX IF NOT EXISTS idx_ext_reviews_at       ON external_reviews(account_id, review_at DESC)`,
+
+  // ── REVIEW REQUEST SETTINGS ───────────────────────────────────────────────────
+  // delay_seconds: 0 = immediate; stored as integer seconds for flexibility
+  `CREATE TABLE IF NOT EXISTS review_request_settings (
+     account_id              UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+     enabled                 BOOLEAN NOT NULL DEFAULT TRUE,
+     delay_seconds           INT NOT NULL DEFAULT 3600,
+     require_invoice_paid    BOOLEAN NOT NULL DEFAULT FALSE,
+     require_signature       BOOLEAN NOT NULL DEFAULT FALSE,
+     exclude_cancelled       BOOLEAN NOT NULL DEFAULT TRUE,
+     notify_on_new_review    BOOLEAN NOT NULL DEFAULT TRUE,
+     notify_roles            TEXT[] NOT NULL DEFAULT ARRAY['owner','manager'],
+     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+
+  // ── INVOICE PAYMENT TERMS ────────────────────────────────────────────────────
+  // payment_terms: 'due_on_receipt' | 'net_15' | 'net_30' | 'net_45' | 'net_60' | 'net_90' | 'custom'
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_terms TEXT DEFAULT 'due_on_receipt'`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date      TIMESTAMPTZ`,
+
+  // ── CLIENT CREDIT TERMS ───────────────────────────────────────────────────────
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS credit_terms_eligible  BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS default_payment_term   TEXT DEFAULT 'due_on_receipt'`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS max_payment_term       TEXT DEFAULT 'net_30'`,
 ];
 
 async function runMigrations() {

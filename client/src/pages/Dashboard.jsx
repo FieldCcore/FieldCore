@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
-
-const BACKEND = import.meta.env.VITE_API_URL || '';
+import DashboardBanner from '../components/DashboardBanner';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -37,21 +35,17 @@ function fmtTime(iso) {
 export default function Dashboard() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const [data, setData]       = useState(null);
+  const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const [beta, setBeta]       = useState(null);
+  const [gbp,     setGbp]     = useState(null);
 
   useEffect(() => {
     api.get('/analytics/dashboard')
       .then(r => setData(r.data))
       .catch(() => setData({}))
       .finally(() => setLoading(false));
-    // Load beta stats (best-effort, non-blocking)
-    const token = localStorage.getItem('fc_token');
-    if (token) {
-      axios.get(`${BACKEND}/api/beta/stats`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => setBeta(r.data)).catch(() => {});
-    }
+    api.get('/google-reviews/connection')
+      .then(r => setGbp(r.data)).catch(() => {});
   }, []);
 
   if (loading) {
@@ -62,9 +56,14 @@ export default function Dashboard() {
           pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [],
           recentReviews = [] } = data || {};
 
-  const avgRating = recentReviews.length
+  const googleRating  = gbp?.average_rating ? parseFloat(gbp.average_rating).toFixed(1) : null;
+  const googleCount   = gbp?.total_reviews  || 0;
+  const internalAvg   = recentReviews.length
     ? (recentReviews.reduce((s, r) => s + r.rating, 0) / recentReviews.length).toFixed(1)
     : null;
+  const avgRating     = googleRating || internalAvg;
+  const reviewCount   = googleCount  || recentReviews.length;
+  const ratingSource  = googleRating ? 'Google' : 'Internal';
 
   const maxBar = Math.max(...weekBars.map(b => parseFloat(b.revenue)), 1);
   const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
@@ -123,33 +122,15 @@ export default function Dashboard() {
             {avgRating >= 4.5 && <span className="dash-sc-b bg">Excellent</span>}
           </div>
           <div className="dash-sc-v">{avgRating ? `${avgRating} ★` : '—'}</div>
-          <div className="dash-sc-s">{recentReviews.length > 0 ? `${recentReviews.length} review${recentReviews.length !== 1 ? 's' : ''}` : 'No reviews yet'}</div>
+          <div className="dash-sc-s">
+            {reviewCount > 0
+              ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} · ${ratingSource}`
+              : 'No reviews yet'}
+          </div>
         </div>
       </div>
 
-      {beta && (
-        <div className="dash-beta-banner" style={{ background: '#1C2333', borderRadius: 12, padding: '18px 22px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Beta Spots</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#D6B58A', lineHeight: 1 }}>{beta.active_count}<span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', fontWeight: 400 }}>/{beta.cap}</span></div>
-            </div>
-            <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,.08)' }} />
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Spots Left</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: beta.spots_left > 0 ? '#4EC87A' : '#E05555', lineHeight: 1 }}>{beta.spots_left}</div>
-            </div>
-            <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,.08)' }} />
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,.3)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 3 }}>Waitlist</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,.7)', lineHeight: 1 }}>{beta.waitlist_count}</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', maxWidth: 200, lineHeight: 1.5 }}>
-            Beta signups — first {beta.cap} operators get 3 months free.
-          </div>
-        </div>
-      )}
+      <DashboardBanner />
 
       <div className="dash-3col">
         {/* Col 1 — Today's Jobs */}
@@ -243,9 +224,12 @@ export default function Dashboard() {
           </div>
 
           <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Recent Reviews</span></div>
+            <div className="dash-ch">
+              <span className="dash-cht">Recent Reviews</span>
+              {gbp?.status === 'connected' && <span className="dash-sc-b bg" style={{ fontSize: 10 }}>Google</span>}
+            </div>
             {recentReviews.length === 0 ? (
-              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No reviews yet — requests are sent 1 hour after job completion.</div>
+              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No reviews yet — requests are sent after job completion.</div>
             ) : (
               recentReviews.map((r, i) => (
                 <div key={i} style={{ padding: '12px 16px', borderBottom: i < recentReviews.length - 1 ? '1px solid var(--border)' : 'none' }}>

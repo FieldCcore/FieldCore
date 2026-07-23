@@ -1303,7 +1303,7 @@ body {
 /* ── Dashboard ───────────────────────────────────────────── */
 .dash-stat-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -1463,7 +1463,7 @@ body {
 /* ── Dashboard deposit alerts ────────────────────────────── */
 .dash-dep-hdr {
   display: grid;
-  grid-template-columns: 1fr 60px 80px 80px;
+  grid-template-columns: 1fr minmax(50px,60px) minmax(70px,80px) minmax(58px,72px);
   gap: 0;
   padding: 7px 16px;
   background: var(--navy);
@@ -1472,10 +1472,11 @@ body {
   letter-spacing: .06em;
   color: rgba(255,255,255,.5);
   text-transform: uppercase;
+  overflow: hidden;
 }
 .dash-dep-row {
   display: grid;
-  grid-template-columns: 1fr 60px 80px 80px;
+  grid-template-columns: 1fr minmax(50px,60px) minmax(70px,80px) minmax(58px,72px);
   gap: 0;
   padding: 10px 16px;
   border-bottom: 1px solid var(--offwhite);
@@ -1483,6 +1484,7 @@ body {
   font-size: 12px;
   transition: background .1s;
   align-items: center;
+  overflow: hidden;
 }
 .dash-dep-row:hover { background: var(--sand-lt); }
 .dash-dep-row:last-child { border-bottom: none; }
@@ -2214,7 +2216,7 @@ body {
 
 /* ── Tablet (769px–1024px): sidebar stays, content adjusts ── */
 @media (min-width: 769px) and (max-width: 1024px) {
-  .dash-stat-grid   { grid-template-columns: repeat(2, 1fr); }
+  .dash-stat-grid   { grid-template-columns: repeat(3, 1fr); }
   .dash-3col        { grid-template-columns: 1fr 1fr; }
   .rev-layout       { grid-template-columns: 1fr !important; }
 }
