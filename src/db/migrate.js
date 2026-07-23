@@ -717,6 +717,25 @@ const MIGRATIONS = [
   `ALTER TABLE clients ADD COLUMN IF NOT EXISTS credit_terms_eligible  BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE clients ADD COLUMN IF NOT EXISTS default_payment_term   TEXT DEFAULT 'due_on_receipt'`,
   `ALTER TABLE clients ADD COLUMN IF NOT EXISTS max_payment_term       TEXT DEFAULT 'net_30'`,
+
+  // ── PROJECTS ─────────────────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS projects (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name        TEXT NOT NULL,
+     description TEXT,
+     client_id   UUID REFERENCES clients(id) ON DELETE SET NULL,
+     status      TEXT NOT NULL DEFAULT 'active'
+                   CHECK (status IN ('draft','active','on_hold','completed','cancelled')),
+     start_date  DATE,
+     end_date    DATE,
+     location    TEXT,
+     created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_projects_account ON projects(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_projects_status  ON projects(account_id, status)`,
 ];
 
 async function runMigrations() {

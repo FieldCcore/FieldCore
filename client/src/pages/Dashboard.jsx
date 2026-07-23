@@ -125,7 +125,9 @@ export default function Dashboard() {
           <div className="dash-sc-s">
             {reviewCount > 0
               ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} · ${ratingSource}`
-              : 'No reviews yet'}
+              : gbp && gbp.status !== 'connected'
+                ? <a href="/business-settings?tab=integrations" style={{ color: 'var(--sand)', fontSize: 11, textDecoration: 'none' }}>Connect Google →</a>
+                : 'No reviews yet'}
           </div>
         </div>
       </div>

@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+
+const DELAY_OPTIONS = [
+  { value: 0,      label: 'Immediately' },
+  { value: 1800,   label: '30 minutes' },
+  { value: 3600,   label: '1 hour' },
+  { value: 7200,   label: '2 hours' },
+  { value: 14400,  label: '4 hours' },
+  { value: 43200,  label: '12 hours' },
+  { value: 86400,  label: '24 hours' },
+  { value: 172800, label: '2 days' },
+  { value: 259200, label: '3 days' },
+  { value: 604800, label: '7 days' },
+];
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const TIMEZONES = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu'];
@@ -39,6 +53,9 @@ function SaveBar({ saving, saved, onSave, label = 'Save changes' }) {
 }
 
 export default function BusinessSettings() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'settings';
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
@@ -58,6 +75,15 @@ export default function BusinessSettings() {
     tech_sms_template: '',
   });
 
+  // Integrations tab state
+  const [gbp, setGbp]               = useState(null);
+  const [gbpLoading, setGbpLoading] = useState(false);
+  const [gbpSyncing, setGbpSyncing] = useState(false);
+  const [gbpError, setGbpError]     = useState('');
+  const [rvSettings, setRvSettings] = useState({ enabled: true, delay_seconds: 3600, require_invoice_paid: false, exclude_cancelled: true });
+  const [rvSaving, setRvSaving]     = useState(false);
+  const [rvSaved, setRvSaved]       = useState(false);
+
   useEffect(() => {
     api.get('/no-show/settings').then(r => {
       const s = r.data;
@@ -70,6 +96,56 @@ export default function BusinessSettings() {
       });
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setGbpLoading(true);
+    api.get('/google-reviews/connection').then(r => setGbp(r.data)).catch(() => {}).finally(() => setGbpLoading(false));
+    api.get('/review-settings').then(r => {
+      const s = r.data;
+      setRvSettings({
+        enabled:              s.enabled !== false,
+        delay_seconds:        s.delay_seconds ?? 3600,
+        require_invoice_paid: !!s.require_invoice_paid,
+        exclude_cancelled:    s.exclude_cancelled !== false,
+      });
+    }).catch(() => {});
+  }, []);
+
+  async function connectGoogle() {
+    try {
+      const r = await api.get('/google-reviews/auth');
+      window.location.href = r.data.url;
+    } catch { setGbpError('Could not start Google connection.'); }
+  }
+
+  async function disconnectGoogle() {
+    if (!window.confirm('Disconnect Google Business Profile?')) return;
+    try {
+      await api.delete('/google-reviews/connection');
+      setGbp(prev => ({ ...prev, status: 'disconnected' }));
+    } catch { setGbpError('Failed to disconnect.'); }
+  }
+
+  async function syncNow() {
+    setGbpSyncing(true);
+    setGbpError('');
+    try {
+      const r = await api.post('/google-reviews/sync');
+      setGbp(prev => ({ ...prev, last_sync_at: new Date().toISOString(), last_sync_error: null }));
+      if (r.data.synced > 0) setGbpError('');
+    } catch { setGbpError('Sync failed.'); }
+    finally { setGbpSyncing(false); }
+  }
+
+  async function saveReviewSettings() {
+    setRvSaving(true);
+    try {
+      await api.put('/review-settings', rvSettings);
+      setRvSaved(true);
+      setTimeout(() => setRvSaved(false), 2500);
+    } catch { setError('Failed to save review request settings.'); }
+    finally { setRvSaving(false); }
+  }
 
   useEffect(() => {
     api.get('/business-settings').then(r => {
@@ -158,14 +234,121 @@ export default function BusinessSettings() {
     finally { setSaving(false); }
   }
 
+  const bssInput = { width: '100%', padding: '8px 10px', border: '1px solid var(--lightgray)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', background: 'var(--white)', color: 'var(--navy)', boxSizing: 'border-box' };
+  const bssLabel = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 };
+
   return (
     <div>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--lightgray)', marginBottom: 24 }}>
+        {[['settings','Settings'],['integrations','Integrations']].map(([key, label]) => (
+          <button key={key}
+            onClick={() => setSearchParams({ tab: key })}
+            style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: tab === key ? '2px solid var(--navy)' : '2px solid transparent',
+              marginBottom: -2, fontWeight: 700, fontSize: 13, color: tab === key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', transition: 'color .12s' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div style={{ background: 'var(--red-lt)', border: '1px solid #FFCDD2', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red)', marginBottom: 16 }}>
           {error}
         </div>
       )}
 
+      {/* ── INTEGRATIONS TAB ── */}
+      {tab === 'integrations' && (
+        <div>
+          {/* Google Business Profile */}
+          <Section title="Google Business Profile">
+            {gbpLoading ? (
+              <div style={{ color: 'var(--steel)', fontSize: 13 }}>Loading…</div>
+            ) : gbp?.status === 'connected' ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>{gbp.location_name || 'Connected'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>
+                      Last synced: {gbp.last_sync_at ? new Date(gbp.last_sync_at).toLocaleString() : 'Never'}
+                      {gbp.average_rating && <span style={{ marginLeft: 12 }}>Rating: {parseFloat(gbp.average_rating).toFixed(1)} / 5</span>}
+                    </div>
+                  </div>
+                </div>
+                {gbp.last_sync_error && (
+                  <div style={{ padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, fontSize: 12, color: '#9a3412', marginBottom: 12 }}>
+                    Last sync error: {gbp.last_sync_error}
+                  </div>
+                )}
+                {gbpError && <div style={{ padding: '8px 12px', background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{gbpError}</div>}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn-primary" style={{ fontSize: 13 }} onClick={syncNow} disabled={gbpSyncing}>
+                    {gbpSyncing ? 'Syncing…' : 'Sync Now'}
+                  </button>
+                  <button className="bss-btn-ghost" onClick={disconnectGoogle}>Disconnect</button>
+                </div>
+              </div>
+            ) : gbp?.status === 'expired' ? (
+              <div>
+                <div style={{ padding: '10px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, fontSize: 13, color: '#9a3412', marginBottom: 14 }}>
+                  Your Google connection has expired. Reconnect to resume syncing reviews.
+                </div>
+                {gbpError && <div style={{ padding: '8px 12px', background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{gbpError}</div>}
+                <button className="btn-primary" style={{ fontSize: 13 }} onClick={connectGoogle}>Reconnect Google</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.6, marginBottom: 16 }}>
+                  Connect your Google Business Profile to automatically sync reviews, display your rating on the Dashboard, and send review request links to clients after completed jobs.
+                </div>
+                {gbpError && <div style={{ padding: '8px 12px', background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{gbpError}</div>}
+                <button className="btn-primary" style={{ fontSize: 13 }} onClick={connectGoogle}>Connect Google Business Profile</button>
+              </div>
+            )}
+          </Section>
+
+          {/* Review Request Settings */}
+          <Section title="Review Request Settings">
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                <input type="checkbox" checked={rvSettings.enabled}
+                  onChange={e => setRvSettings(s => ({ ...s, enabled: e.target.checked }))} />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Enable review requests</div>
+                  <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>Send a review link to clients after their job is completed.</div>
+                </div>
+              </label>
+            </div>
+            <div style={{ opacity: rvSettings.enabled ? 1 : 0.45, pointerEvents: rvSettings.enabled ? 'auto' : 'none' }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={bssLabel}>Send review request</label>
+                <select style={bssInput} value={rvSettings.delay_seconds}
+                  onChange={e => setRvSettings(s => ({ ...s, delay_seconds: parseInt(e.target.value) }))}>
+                  {DELAY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label} after job completion</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                  <input type="checkbox" checked={rvSettings.require_invoice_paid}
+                    onChange={e => setRvSettings(s => ({ ...s, require_invoice_paid: e.target.checked }))} />
+                  Only send after invoice is paid
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                  <input type="checkbox" checked={rvSettings.exclude_cancelled}
+                    onChange={e => setRvSettings(s => ({ ...s, exclude_cancelled: e.target.checked }))} />
+                  Skip cancelled jobs
+                </label>
+              </div>
+            </div>
+            <SaveBar saving={rvSaving} saved={rvSaved} onSave={saveReviewSettings} label="Save review settings" />
+          </Section>
+        </div>
+      )}
+
+      {/* ── SETTINGS TAB ── */}
+      {tab === 'settings' && (
+        <div>
       {/* ── Business Information ── */}
       <Section title="Business Information">
         <div className="bss-grid-2">
@@ -444,6 +627,8 @@ export default function BusinessSettings() {
         </div>
         <SaveBar saving={saving} saved={saved === 'noshow'} onSave={saveNsSettings} label="Save no-show settings" />
       </Section>
+        </div>
+      )}
     </div>
   );
 }

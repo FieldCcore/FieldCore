@@ -141,6 +141,22 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         {invoice.service_type && <div className="detail-row"><label>Service</label><span>{invoice.service_type}</span></div>}
         <div className="detail-row"><label>Created</label><span>{format(new Date(invoice.created_at), 'MMM d, yyyy')}</span></div>
         {invoice.sent_at && <div className="detail-row"><label>Sent</label><span>{format(new Date(invoice.sent_at), 'MMM d, yyyy h:mm a')}</span></div>}
+        {invoice.payment_terms && (
+          <div className="detail-row">
+            <label>Terms</label>
+            <span style={{ textTransform: 'none' }}>{{
+              due_on_receipt: 'Due on Receipt',
+              net_15: 'Net 15', net_30: 'Net 30', net_45: 'Net 45',
+              net_60: 'Net 60', net_90: 'Net 90', custom: 'Custom',
+            }[invoice.payment_terms] || invoice.payment_terms}</span>
+          </div>
+        )}
+        {invoice.due_date && (
+          <div className="detail-row">
+            <label>Due Date</label>
+            <span>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</span>
+          </div>
+        )}
       </div>
 
       {/* Line items */}

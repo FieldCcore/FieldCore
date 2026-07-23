@@ -26,13 +26,13 @@ router.get('/auth', requireAuth, requireRole('owner'), (req, res) => {
 // GET /api/google-reviews/callback — OAuth callback
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) return res.redirect(`${process.env.FRONTEND_URL}/settings/business?tab=integrations&error=access_denied`);
+  if (error) return res.redirect(`${process.env.FRONTEND_URL}/business-settings?tab=integrations&error=access_denied`);
 
   let accountId;
   try {
     ({ accountId } = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')));
   } catch {
-    return res.redirect(`${process.env.FRONTEND_URL}/settings/business?tab=integrations&error=invalid_state`);
+    return res.redirect(`${process.env.FRONTEND_URL}/business-settings?tab=integrations&error=invalid_state`);
   }
 
   try {
@@ -89,9 +89,9 @@ router.get('/callback', async (req, res) => {
       }
     }
 
-    res.redirect(`${process.env.FRONTEND_URL}/settings/business?tab=integrations&connected=1`);
+    res.redirect(`${process.env.FRONTEND_URL}/business-settings?tab=integrations&connected=1`);
   } catch (err) {
-    res.redirect(`${process.env.FRONTEND_URL}/settings/business?tab=integrations&error=token_failed`);
+    res.redirect(`${process.env.FRONTEND_URL}/business-settings?tab=integrations&error=token_failed`);
   }
 });
 

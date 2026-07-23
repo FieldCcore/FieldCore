@@ -74,6 +74,7 @@ import MobileDemo      from './pages/MobileDemo';
 import Account         from './pages/Account';
 import Communications  from './pages/Communications';
 import Requests        from './pages/Requests';
+import Projects        from './pages/Projects';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -105,6 +106,7 @@ const PAGE_TITLES = {
   '/clients':            'Client Database',
   '/communications':     'Communications',
   '/requests':           'Requests',
+  '/projects':           'Projects',
   '/team':               'Team Management',
   '/fleet':              'Fleet',
   '/booking':            'Settings & Rules',
@@ -579,6 +581,7 @@ function AppShell() {
             <Route path="/clients/:id" element={<ProtectedRoute><ClientProfile /></ProtectedRoute>}  />
             <Route path="/communications" element={<ProtectedRoute><Communications /></ProtectedRoute>} />
             <Route path="/requests"      element={<ProtectedRoute><Requests /></ProtectedRoute>}      />
+            <Route path="/projects"      element={<ProtectedRoute><PlanGate requires="pro"><Projects /></PlanGate></ProtectedRoute>} />
             <Route path="/messages"    element={<Navigate to="/communications" replace />} />
             <Route path="/phone"       element={<Navigate to="/communications" replace />} />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
