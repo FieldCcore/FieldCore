@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --testPathPattern=src/tests --forceExit",
-    "test:watch": "jest --testPathPattern=src/tests --watch"
+    "test": "jest --testPathPatterns=src/tests --forceExit",
+    "test:watch": "jest --testPathPatterns=src/tests --watch"
   },
   "jest": {
     "testEnvironment": "node",

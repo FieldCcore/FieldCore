@@ -49,12 +49,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (createdJobIds.length) {
-    await pool.query(`DELETE FROM jobs WHERE id = ANY($1)`, [createdJobIds]);
+  if (accountId) {
+    // Delete account cascades to all child records (jobs, invoices, clients, users)
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [accountId]);
   }
-  if (clientId)   await pool.query(`DELETE FROM clients  WHERE id = $1`, [clientId]);
-  if (userId)     await pool.query(`DELETE FROM users    WHERE id = $1`, [userId]);
-  if (accountId)  await pool.query(`DELETE FROM accounts WHERE id = $1`, [accountId]);
   await pool.end();
 });
 

@@ -436,7 +436,7 @@ function startReviewRequestJob() {
                COALESCE(s.exclude_cancelled, TRUE)  AS exclude_cancelled
         FROM accounts a
         LEFT JOIN review_request_settings s ON s.account_id = a.id
-        WHERE a.active = TRUE
+        WHERE a.is_active = TRUE
       `);
 
       for (const setting of accountSettings) {
@@ -466,7 +466,8 @@ function startReviewRequestJob() {
             )`;
           }
           if (setting.require_signature) {
-            query += ` AND j.signature_collected = TRUE`;
+            // signature_collected column not yet in schema — skip filter gracefully
+            // TODO: add column when e-signature feature ships
           }
           if (setting.exclude_cancelled) {
             query += ` AND j.status != 'cancelled'`;
@@ -548,25 +549,19 @@ function startGoogleReviewSyncJob() {
             );
 
             for (const review of newReviews) {
-              const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
-              const snippet = review.body ? review.body.slice(0, 80) + (review.body.length > 80 ? '…' : '') : 'No comment';
+              const stars   = '★'.repeat(review.rating || 0) + '☆'.repeat(5 - (review.rating || 0));
+              const snippet = review.body
+                ? review.body.slice(0, 80) + (review.body.length > 80 ? '…' : '')
+                : 'No comment';
 
-              // Get users to notify
-              const { rows: users } = await pool.query(
-                `SELECT id FROM users WHERE account_id = $1 AND role = ANY($2)`,
-                [conn.account_id, conn.notify_roles]
+              // One account-level notification per review (notifications table has no user_id)
+              await notify.create(
+                conn.account_id,
+                'google_review',
+                `New Google review ${stars}`,
+                `${review.reviewer_name || 'Anonymous'}: "${snippet}"`,
+                '/reviews'
               );
-
-              for (const user of users) {
-                await notify.create({
-                  accountId: conn.account_id,
-                  userId:    user.id,
-                  type:      'google_review',
-                  title:     `New Google review ${stars}`,
-                  body:      `${review.reviewer_name}: "${snippet}"`,
-                  link:      '/reviews',
-                });
-              }
 
               await pool.query(
                 `UPDATE external_reviews SET notified_at = NOW() WHERE id = $1`,

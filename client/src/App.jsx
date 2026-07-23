@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Phone, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight } from 'lucide-react';
+import { Phone, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -140,7 +140,7 @@ const menuDivider = <div style={{ height: 1, background: 'var(--lightgray)', mar
 function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge }) {
   return (
     <button style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
-      <span style={{ width: 32, height: 32, background: 'var(--off-white)', borderRadius: 8,
+      <span style={{ width: 32, height: 32, background: 'var(--offwhite)', borderRadius: 8,
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={16} style={{ color: disabled ? 'var(--steel)' : 'var(--navy)' }} />
       </span>
@@ -221,7 +221,7 @@ function CreateMenu() {
               aria-expanded={jobOpen}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ width: 32, height: 32, background: 'var(--off-white)', borderRadius: 8,
+                <span style={{ width: 32, height: 32, background: 'var(--offwhite)', borderRadius: 8,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Briefcase size={16} style={{ color: 'var(--navy)' }} />
                 </span>
@@ -234,7 +234,7 @@ function CreateMenu() {
             </button>
 
             {jobOpen && (
-              <div style={{ background: 'var(--off-white)', borderTop: '1px solid var(--lightgray)', borderBottom: '1px solid var(--lightgray)' }}>
+              <div style={{ background: 'var(--offwhite)', borderTop: '1px solid var(--lightgray)', borderBottom: '1px solid var(--lightgray)' }}>
                 <CreateMenuItem
                   icon={Calendar}
                   label="Single-Day Job"
@@ -248,6 +248,14 @@ function CreateMenu() {
                   onClick={() => go('/jobs?new=1&multiday=1')}
                   disabled={!canMultiDay}
                   badge={!canMultiDay ? 'Solo+' : null}
+                />
+                <CreateMenuItem
+                  icon={FolderOpen}
+                  label="Project"
+                  description={canProject ? 'Organize jobs, phases, locations, and crews' : 'Requires Pro plan'}
+                  onClick={() => go('/projects?new=1')}
+                  disabled={!canProject}
+                  badge={!canProject ? 'Pro+' : null}
                 />
               </div>
             )}

@@ -204,23 +204,47 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
 
-  // Enforce multi-day entitlement before touching the DB
-  if (is_multi_day) {
-    const ent = await getEntitlements(req.accountId);
-    if (!ent.capabilities.can_create_multi_day_jobs) {
-      return res.status(403).json({
-        error:       'Multi-Day Jobs require the Solo plan or higher.',
-        code:        'ENTITLEMENT_REQUIRED',
-        capability:  'can_create_multi_day_jobs',
-        requiredPlan: 'solo',
-        currentPlan: ent.plan,
-      });
-    }
+  // Enforce entitlements before touching the DB
+  const ent = await getEntitlements(req.accountId);
+
+  if (is_multi_day && !ent.capabilities.can_create_multi_day_jobs) {
+    return res.status(403).json({
+      error:       'Multi-Day Jobs require the Solo plan or higher.',
+      code:        'ENTITLEMENT_REQUIRED',
+      capability:  'can_create_multi_day_jobs',
+      requiredPlan: 'solo',
+      currentPlan: ent.plan,
+    });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Enforce monthly job cap inside transaction with advisory lock to prevent races
+    if (ent.capabilities.max_jobs_per_month !== null) {
+      // Advisory lock keyed on account UUID (converted to bigint via hashtext)
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [req.accountId]);
+      const { rows: [{ cnt }] } = await client.query(
+        `SELECT COUNT(*) AS cnt FROM jobs
+         WHERE account_id = $1
+           AND status != 'cancelled'
+           AND created_at >= date_trunc('month', NOW())`,
+        [req.accountId]
+      );
+      if (parseInt(cnt) >= ent.capabilities.max_jobs_per_month) {
+        // Throw so the outer catch/finally handles ROLLBACK + release
+        const capErr = new Error('MONTHLY_CAP_REACHED');
+        capErr.statusCode = 403;
+        capErr.body = {
+          error:       `Monthly job limit of ${ent.capabilities.max_jobs_per_month} reached for your plan.`,
+          code:        'MONTHLY_JOB_CAP_REACHED',
+          limit:       ent.capabilities.max_jobs_per_month,
+          currentPlan: ent.plan,
+        };
+        throw capErr;
+      }
+    }
 
     const addressToGeocode  = service_address || service_location || address || null;
     let finalServiceAddress = addressToGeocode;
@@ -339,7 +363,10 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     if (mappingWarning) response.geocode_warning = mappingWarning;
     res.status(201).json(response);
   } catch (err) {
-    await client.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch {}
+    if (err.statusCode && err.body) {
+      return res.status(err.statusCode).json(err.body);
+    }
     res.status(500).json({ error: err.message });
   } finally {
     client.release();

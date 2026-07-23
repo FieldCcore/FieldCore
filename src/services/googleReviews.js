@@ -2,6 +2,10 @@ const pool   = require('../db/pool');
 const crypto = require('crypto');
 
 const ALG = 'aes-256-gcm';
+
+if (!process.env.ENCRYPTION_KEY && process.env.NODE_ENV === 'production') {
+  console.error('[googleReviews] CRITICAL: ENCRYPTION_KEY is not set in production. Google OAuth tokens cannot be stored securely.');
+}
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY || '0'.repeat(64), 'hex');
 
 function encrypt(text) {

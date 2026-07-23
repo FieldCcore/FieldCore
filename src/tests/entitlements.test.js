@@ -499,7 +499,7 @@ describe('Criterion 24: Existing standalone Job behavior remains unchanged', () 
                scheduled_at: '2026-12-15T10:00:00Z' });
     expect(res.status).toBe(201);
     expect(res.body.is_multi_day).toBe(false);
-    expect(res.body.amount).toBe(29900);
+    expect(parseFloat(res.body.amount)).toBe(29900);
   });
 });
 

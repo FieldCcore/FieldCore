@@ -176,7 +176,7 @@ export default function Requests() {
                   style={{ borderBottom: i < requests.length - 1 ? '1px solid var(--lightgray)' : 'none',
                     cursor: 'pointer', transition: 'background .1s' }}
                   onClick={() => openEdit(r)}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--off-white)'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}
                 >
                   <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--navy)' }}>

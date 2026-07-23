@@ -122,7 +122,7 @@ router.patch('/:id', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE dashboard_banners SET ${updates.join(', ')}
-       WHERE id = $${i} AND (account_id = $${i + 1} OR account_id IS NULL)
+       WHERE id = $${i} AND account_id = $${i + 1}
        RETURNING *`,
       values
     );
@@ -138,7 +138,7 @@ router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { rowCount } = await pool.query(
       `UPDATE dashboard_banners SET is_active = FALSE, updated_at = NOW()
-       WHERE id = $1 AND (account_id = $2 OR account_id IS NULL)`,
+       WHERE id = $1 AND account_id = $2`,
       [req.params.id, req.accountId]
     );
     if (!rowCount) return res.status(404).json({ error: 'Banner not found.' });
