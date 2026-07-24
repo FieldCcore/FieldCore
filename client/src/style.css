@@ -3066,7 +3066,7 @@ body {
   left: var(--menu-horizontal-padding);
   right: var(--menu-horizontal-padding);
   bottom: 0;
-  height: 1px;
-  background: var(--menu-divider-color);
+  height: 0;
+  border-bottom: 1px solid var(--menu-divider-color);
   pointer-events: none;
 }
