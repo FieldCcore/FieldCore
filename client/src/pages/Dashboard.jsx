@@ -100,19 +100,20 @@ export default function Dashboard() {
           <div className="dash-sc-v">{activeJobs}</div>
           <div className="dash-sc-s">{activeJobs > 0 ? 'In progress now' : 'None in progress'}</div>
         </div>
-        <div className="dash-sc">
+        <div className="dash-sc dash-sc--link" onClick={() => nav('/invoices')}>
           <div className="dash-sc-header">
             <div className="dash-sc-l">Pending Invoices</div>
-            {pendingInvoices.count > 0 && <span className="dash-sc-b br">Collect</span>}
           </div>
           <div className="dash-sc-v">{fmt$(pendingInvoices.total || 0)}</div>
           <div className="dash-sc-s">{pendingInvoices.count || 0} outstanding</div>
         </div>
         <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Pending Deposits</div>
-            {pendingDeposits.length > 0 && <span className="dash-sc-b br">Action Needed</span>}
-          </div>
+          <div className="dash-sc-l">Pending Deposits</div>
+          {pendingDeposits.length > 0 && (
+            <div className="dash-sc-badge-stack">
+              <span className="dash-sc-b br">Action Needed</span>
+            </div>
+          )}
           <div className="dash-sc-v">{pendingDeposits.length}</div>
           <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
         </div>
