@@ -1497,6 +1497,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 76px;
+  max-height: 130px;
   overflow: visible;
 }
 .rv-chart-area {

@@ -334,6 +334,7 @@ export default function Dashboard() {
             </div>
           ) : undefined}
         >
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* Section 2: Financial Snapshot */}
           <div className="rv-snap">
             <div className="rv-snap__date">{dateRange}</div>
@@ -389,6 +390,7 @@ export default function Dashboard() {
                 );
               })}
             </div>
+          </div>
           </div>
         </DashboardPanel>
 
