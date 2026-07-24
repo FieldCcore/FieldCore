@@ -11,6 +11,8 @@ import DashboardBanner from '../components/DashboardBanner';
 import KpiCard from '../components/KpiCard';
 import DashboardPanel from '../components/DashboardPanel';
 import FinancialSnapshot from '../components/FinancialSnapshot';
+import TodaysPriorities from '../components/TodaysPriorities';
+import usePriorities from '../hooks/usePriorities';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -100,6 +102,7 @@ export default function Dashboard() {
   const [loading,    setLoading]    = useState(true);
   const [gbp,        setGbp]        = useState(null);
   const [hoveredBar, setHoveredBar] = useState(null);
+  const { priorities, loading: prioritiesLoading } = usePriorities();
 
   useEffect(() => {
     api.get('/analytics/dashboard')
@@ -452,64 +455,12 @@ export default function Dashboard() {
           )}
         </DashboardPanel>
 
-        {/* Row 2 — Deposit Alerts */}
+        {/* Row 2 — Today's Priorities */}
         <DashboardPanel
-          title="Deposit Alerts"
-          scrollable
-          footer={
-            pendingDeposits.length > 0 ? (
-              <button className="dp-panel__action" onClick={() => nav('/deposits')} type="button">
-                View All →
-              </button>
-            ) : undefined
-          }
+          title="Today's Priorities"
+          action={{ label: 'Deposits →', onClick: () => nav('/deposits') }}
         >
-          {pendingDeposits.length === 0 ? (
-            <div className="dp-empty">
-              <div className="dp-empty__icon"><Inbox size={15} strokeWidth={1.5} /></div>
-              <div className="dp-empty__title">All clear</div>
-              <div className="dp-empty__subtitle">No pending deposits at this time.</div>
-            </div>
-          ) : (
-            <>
-              <div className="dep-table-hdr">
-                <span>Client</span>
-                <span className="dep-col--amount">Amt</span>
-                <span>Status</span>
-                <span className="dep-col--expiry">Expiry</span>
-              </div>
-              {pendingDeposits.map((d, i) => {
-                const hoursLeft = d.expires_at
-                  ? Math.max(0, Math.floor((new Date(d.expires_at) - Date.now()) / 3600000))
-                  : null;
-                const expiryMod = hoursLeft === null ? 'is-none'
-                  : hoursLeft < 24 ? 'is-urgent'
-                  : 'is-warn';
-                return (
-                  <div className="dep-table-row" key={i} onClick={() => nav('/deposits')}
-                    role="button" tabIndex={0}
-                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && nav('/deposits')}
-                  >
-                    <div>
-                      <div className="dep-client__name">{d.client_name}</div>
-                      {d.service_type && (
-                        <div className="dep-client__sub">{d.service_type}</div>
-                      )}
-                    </div>
-                    <div className="dep-col--amount">${d.amount}</div>
-                    <div className="dep-col--status">
-                      <span className="dep-status" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>
-                        Pending
-                      </span>
-                    </div>
-                    <div className={`dep-col--expiry ${expiryMod}`}>
-                      {hoursLeft !== null ? `${hoursLeft}h left` : 'Not Set'}
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
+          <TodaysPriorities priorities={priorities} loading={prioritiesLoading} />
         </DashboardPanel>
 
         {/* Row 3 — Activity Feed (full-width) */}

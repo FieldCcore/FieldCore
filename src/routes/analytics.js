@@ -216,6 +216,73 @@ router.get('/dashboard', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/analytics/priorities — actionable items for Today's Priorities widget
+router.get('/priorities', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
+  try {
+    const [failedInvoices, pendingDeposits, unassignedJobs, unreadMessages, sentEstimates] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) FROM invoices WHERE account_id = $1 AND status = 'failed'`,
+        [accountId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM deposits WHERE account_id = $1 AND status = 'pending'`,
+        [accountId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM jobs
+         WHERE account_id = $1
+           AND scheduled_at::date = CURRENT_DATE
+           AND tech_id IS NULL
+           AND status NOT IN ('cancelled','complete')`,
+        [accountId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM messages
+         WHERE account_id = $1 AND direction = 'inbound' AND read_at IS NULL`,
+        [accountId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM estimates WHERE account_id = $1 AND status = 'sent'`,
+        [accountId]
+      ),
+    ]);
+
+    const priorities = [];
+
+    const consider = (type, result, label, subFn, route, tone) => {
+      const n = parseInt(result.rows[0].count, 10);
+      if (n > 0) priorities.push({ type, count: n, label, sub: subFn(n), route, tone });
+    };
+
+    // Ordered by urgency
+    consider('failed_payments', failedInvoices,
+      'Failed Payments',
+      n => `${n} payment${n !== 1 ? 's' : ''} need${n === 1 ? 's' : ''} attention`,
+      '/invoices', 'danger');
+    consider('deposits', pendingDeposits,
+      'Pending Deposits',
+      n => `${n} awaiting payment`,
+      '/deposits', 'warning');
+    consider('unassigned', unassignedJobs,
+      'Unassigned Jobs Today',
+      n => `${n} job${n !== 1 ? 's' : ''} need${n === 1 ? 's' : ''} a technician`,
+      '/dispatch', 'warning');
+    consider('messages', unreadMessages,
+      'Unread Messages',
+      n => `${n} awaiting response`,
+      '/communications', 'info');
+    consider('estimates', sentEstimates,
+      'Estimates Awaiting Approval',
+      n => `${n} sent, awaiting signature`,
+      '/estimates', 'info');
+
+    res.json(priorities);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/analytics/revenue — weekly chart + by-service + monthly summary
 router.get('/revenue', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const accountId = req.accountId;
