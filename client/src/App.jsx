@@ -137,11 +137,9 @@ const menuItemStyle = (disabled) => ({
   transition: 'background .12s',
 });
 
-const menuDivider = <div style={{ height: 1, background: 'var(--lightgray)', margin: '2px 12px' }} />;
-
-function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge }) {
+function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge, className }) {
   return (
-    <button style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
+    <button className={`create-new-menu-item${className ? ' ' + className : ''}`} style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
       <span style={{ width: 32, height: 32, background: 'var(--offwhite)', borderRadius: 8,
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={16} style={{ color: disabled ? 'var(--steel)' : 'var(--navy)' }} />
@@ -208,14 +206,11 @@ function CreateMenu() {
           boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 248, overflow: 'hidden',
         }}>
           <CreateMenuItem icon={UserPlus}  label="Client"  description="Add a new client record" onClick={() => go('/clients?new=1')} />
-          {menuDivider}
           <CreateMenuItem icon={Inbox}     label="Request" description="Log an inbound lead or service request" onClick={() => go('/requests?new=1')} />
-          {menuDivider}
           <CreateMenuItem icon={FileText}  label="Quote"   description="Build a quote or estimate for a client" onClick={() => go('/estimates?new=1')} />
-          {menuDivider}
 
           {/* Job — has submenu */}
-          <div style={{ position: 'relative' }}>
+          <div className="create-new-menu-item" style={{ position: 'relative' }}>
             <button
               style={{ ...menuItemStyle(false), justifyContent: 'space-between' }}
               onClick={() => setJobOpen(o => !o)}
@@ -236,7 +231,7 @@ function CreateMenu() {
             </button>
 
             {jobOpen && (
-              <div style={{ background: 'var(--offwhite)', borderTop: '1px solid var(--lightgray)', borderBottom: '1px solid var(--lightgray)' }}>
+              <div style={{ background: 'var(--offwhite)', borderTop: '1px solid var(--lightgray)' }}>
                 <CreateMenuItem
                   icon={Calendar}
                   label="Single-Day Job"
@@ -263,11 +258,10 @@ function CreateMenu() {
             )}
           </div>
 
-          {menuDivider}
           <CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices?new=1')} />
 
           {(!canMultiDay || !canProject) && (
-            <div style={{ padding: '8px 16px 10px', borderTop: '1px solid var(--lightgray)', marginTop: 2 }}>
+            <div style={{ padding: '8px 16px 10px' }}>
               <a href="/billing" style={{ fontSize: 11, color: 'var(--slate)', textDecoration: 'none' }}>
                 View plans and upgrade →
               </a>

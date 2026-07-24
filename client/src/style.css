@@ -3050,3 +3050,23 @@ body {
   .dep-table-hdr,
   .dep-table-row { grid-template-columns: 1fr 48px 64px 52px; gap: 6px; font-size: 11px; }
 }
+
+/* ── Create New dropdown dividers ──────────────────────── */
+:root {
+  --menu-horizontal-padding: 16px;
+  --menu-divider-color: var(--lightgray);
+}
+.create-new-menu-item {
+  position: relative;
+  box-sizing: border-box;
+}
+.create-new-menu-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: var(--menu-horizontal-padding);
+  right: var(--menu-horizontal-padding);
+  bottom: 0;
+  height: 1px;
+  background: var(--menu-divider-color);
+  pointer-events: none;
+}
