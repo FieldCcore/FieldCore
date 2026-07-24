@@ -103,7 +103,7 @@ export default function Dashboard() {
         <div className="dash-sc">
           <div className="dash-sc-header">
             <div className="dash-sc-l">Pending Invoices</div>
-            {pendingInvoices.count > 0 && <StatusBadge status="collect" />}
+            {pendingInvoices.count > 0 && <span className="dash-sc-b br">Collect</span>}
           </div>
           <div className="dash-sc-v">{fmt$(pendingInvoices.total || 0)}</div>
           <div className="dash-sc-s">{pendingInvoices.count || 0} outstanding</div>
@@ -111,7 +111,7 @@ export default function Dashboard() {
         <div className="dash-sc">
           <div className="dash-sc-header">
             <div className="dash-sc-l">Pending Deposits</div>
-            {pendingDeposits.length > 0 && <StatusBadge status="action needed" />}
+            {pendingDeposits.length > 0 && <span className="dash-sc-b br">Action Needed</span>}
           </div>
           <div className="dash-sc-v">{pendingDeposits.length}</div>
           <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
@@ -267,7 +267,7 @@ export default function Dashboard() {
                       </div>
                       <strong>${d.amount}</strong>
                       <span className="dash-dep-badge" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>Pending</span>
-                      <span className="dash-dep-timer" style={{ color: hoursLeft !== null && hoursLeft < 24 ? 'var(--red)' : 'var(--amber)', fontWeight: hoursLeft !== null && hoursLeft < 24 ? 700 : 400 }}>
+                      <span className="dash-dep-timer" style={{ color: hoursLeft === null ? 'var(--steel)' : hoursLeft < 24 ? 'var(--red)' : 'var(--amber)', fontWeight: hoursLeft !== null && hoursLeft < 24 ? 700 : 400 }}>
                         {hoursLeft !== null ? `${hoursLeft}h left` : '—'}
                       </span>
                     </div>

@@ -92,6 +92,7 @@ export default function StatusBadge({ status, variant, children, style = {} }) {
     <span style={{
       display: 'inline-flex',
       alignItems: 'center',
+      flexShrink: 0,
       padding: '2px 8px',
       borderRadius: 99,
       fontSize: 10.5,
