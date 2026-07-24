@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, CalendarDays, Briefcase, FileText, CreditCard, Star,
-  Map, Phone, BarChart2, Users, Plus, ChevronRight, Inbox, Calendar,
+  Map, Phone, BarChart2, Users, Plus, ChevronRight, Calendar,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +12,9 @@ import KpiCard from '../components/KpiCard';
 import DashboardPanel from '../components/DashboardPanel';
 import FinancialSnapshot from '../components/FinancialSnapshot';
 import TodaysPriorities from '../components/TodaysPriorities';
+import RecentActivity from '../components/RecentActivity';
 import usePriorities from '../hooks/usePriorities';
+import useActivity from '../hooks/useActivity';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -27,21 +29,6 @@ const STATUS_LABEL = {
   in_progress: 'Active',
   complete:    'Paid ✓',
   cancelled:   'Cancelled',
-};
-
-const TONE_BG = {
-  success: 'var(--green-lt)',
-  info:    'var(--blue-lt)',
-  warning: 'var(--amber-lt)',
-  danger:  'var(--red-lt)',
-  neutral: 'var(--off)',
-};
-const TONE_COLOR = {
-  success: 'var(--green)',
-  info:    'var(--blue)',
-  warning: 'var(--amber)',
-  danger:  'var(--red)',
-  neutral: 'var(--steel)',
 };
 
 function fmt$(n) {
@@ -103,6 +90,7 @@ export default function Dashboard() {
   const [gbp,        setGbp]        = useState(null);
   const [hoveredBar, setHoveredBar] = useState(null);
   const { priorities, loading: prioritiesLoading } = usePriorities();
+  const { activity,   loading: activityLoading }   = useActivity();
 
   useEffect(() => {
     api.get('/analytics/dashboard')
@@ -181,31 +169,6 @@ export default function Dashboard() {
   } else if (activeDays > 0) {
     footerInsight = { type: 'avgday', avg: weekRevenue / activeDays, days: activeDays };
   }
-
-  // Activity feed — composed from existing data, no extra fetch
-  const activityFeed = [
-    ...todayJobs.map(j => ({
-      icon: Briefcase,
-      tone: j.status === 'in_progress' || j.status === 'complete' ? 'success' : 'neutral',
-      text: j.client_name,
-      sub:  `${j.service_type} · ${STATUS_LABEL[j.status] || j.status}`,
-      time: j.scheduled_at,
-    })),
-    ...recentReviews.slice(0, 4).map(r => ({
-      icon: Star,
-      tone: r.rating >= 4 ? 'success' : r.rating >= 3 ? 'warning' : 'danger',
-      text: r.client_name,
-      sub:  `${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)} · ${r.service_type}`,
-      time: r.created_at,
-    })),
-    ...pendingDeposits.slice(0, 3).map(d => ({
-      icon: CreditCard,
-      tone: 'warning',
-      text: d.client_name,
-      sub:  `Deposit pending · $${d.amount}`,
-      time: d.expires_at,
-    })),
-  ];
 
   return (
     <div>
@@ -463,33 +426,13 @@ export default function Dashboard() {
           <TodaysPriorities priorities={priorities} loading={prioritiesLoading} />
         </DashboardPanel>
 
-        {/* Row 3 — Activity Feed (full-width) */}
-        <DashboardPanel title="Activity Feed" className="dp-panel--activity">
-          {activityFeed.length === 0 ? (
-            <div className="dp-empty">
-              <div className="dp-empty__icon"><Inbox size={15} strokeWidth={1.5} /></div>
-              <div className="dp-empty__title">No recent activity</div>
-              <div className="dp-empty__subtitle">Jobs, reviews, and deposits will appear here.</div>
-            </div>
-          ) : (
-            <div className="af-feed">
-              {activityFeed.map((item, i) => (
-                <div className="af-item" key={i}>
-                  <div
-                    className="af-item__icon"
-                    style={{ background: TONE_BG[item.tone] ?? TONE_BG.neutral, color: TONE_COLOR[item.tone] ?? TONE_COLOR.neutral }}
-                  >
-                    <item.icon size={14} strokeWidth={2} />
-                  </div>
-                  <div className="af-item__body">
-                    <div className="af-item__text">{item.text}</div>
-                    <div className="af-item__sub">{item.sub}</div>
-                    {item.time && <div className="af-item__time">{fmtRelative(item.time)}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* Row 3 — Recent Activity (full-width) */}
+        <DashboardPanel
+          title="Recent Activity"
+          action={{ label: 'View All →', onClick: () => nav('/jobs') }}
+          className="dp-panel--activity"
+        >
+          <RecentActivity activity={activity} loading={activityLoading} />
         </DashboardPanel>
 
       </div>

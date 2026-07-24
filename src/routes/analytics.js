@@ -283,6 +283,169 @@ router.get('/priorities', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/analytics/activity — recent completed/recorded events (newest first, max 20)
+// Strict rule: only completed or recorded events — no pending/unresolved items (those live in /priorities)
+router.get('/activity', requireAuth, async (req, res) => {
+  const accountId = req.accountId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT type, label, sub_type, route, tone, event_time
+       FROM (
+
+         -- Payment received (invoice paid)
+         SELECT
+           'payment_received'                                        AS type,
+           'Payment of $' || ROUND(i.amount::numeric, 2) || ' received from ' || c.name AS label,
+           'Payment'                                                 AS sub_type,
+           '/invoices'                                               AS route,
+           'success'                                                 AS tone,
+           i.paid_at                                                 AS event_time
+         FROM invoices i
+         JOIN clients c ON c.id = i.client_id
+         WHERE i.account_id = $1 AND i.paid_at IS NOT NULL
+
+         UNION ALL
+
+         -- Invoice sent
+         SELECT
+           'invoice_sent',
+           'Invoice sent to ' || c.name,
+           'Invoice',
+           '/invoices',
+           'neutral',
+           i.sent_at
+         FROM invoices i
+         JOIN clients c ON c.id = i.client_id
+         WHERE i.account_id = $1 AND i.sent_at IS NOT NULL
+
+         UNION ALL
+
+         -- Job completed
+         SELECT
+           'job_completed',
+           j.service_type || ' completed for ' || c.name,
+           'Job',
+           '/jobs',
+           'success',
+           j.completed_at
+         FROM jobs j
+         JOIN clients c ON c.id = j.client_id
+         WHERE j.account_id = $1 AND j.completed_at IS NOT NULL
+
+         UNION ALL
+
+         -- Job created (last 30 days, non-cancelled only)
+         SELECT
+           'job_created',
+           'New job scheduled · ' || j.service_type || ' for ' || c.name,
+           'Job',
+           '/jobs',
+           'neutral',
+           j.created_at
+         FROM jobs j
+         JOIN clients c ON c.id = j.client_id
+         WHERE j.account_id = $1
+           AND j.status NOT IN ('cancelled')
+           AND j.created_at >= NOW() - INTERVAL '30 days'
+
+         UNION ALL
+
+         -- Estimate approved (signed)
+         SELECT
+           'estimate_signed',
+           'Estimate approved by ' || c.name,
+           'Estimate',
+           '/estimates',
+           'success',
+           e.signed_at
+         FROM estimates e
+         JOIN clients c ON c.id = e.client_id
+         WHERE e.account_id = $1 AND e.signed_at IS NOT NULL
+
+         UNION ALL
+
+         -- Estimate sent
+         SELECT
+           'estimate_sent',
+           'Estimate sent to ' || c.name,
+           'Estimate',
+           '/estimates',
+           'info',
+           e.sent_at
+         FROM estimates e
+         JOIN clients c ON c.id = e.client_id
+         WHERE e.account_id = $1 AND e.sent_at IS NOT NULL
+
+         UNION ALL
+
+         -- New client added (last 30 days)
+         SELECT
+           'client_created',
+           'New client added: ' || c.name,
+           'Client',
+           '/clients/' || c.id,
+           'info',
+           c.created_at
+         FROM clients c
+         WHERE c.account_id = $1
+           AND c.created_at >= NOW() - INTERVAL '30 days'
+
+         UNION ALL
+
+         -- Review received
+         SELECT
+           'review_received',
+           r.rating::text || '★ review received from ' || c.name,
+           'Review',
+           '/jobs',
+           CASE WHEN r.rating >= 4 THEN 'success'
+                WHEN r.rating >= 3 THEN 'warning'
+                ELSE 'danger' END,
+           r.created_at
+         FROM reviews r
+         JOIN clients c ON c.id = r.client_id
+         WHERE r.account_id = $1
+
+         UNION ALL
+
+         -- Deposit collected (NOT pending — pending lives in priorities)
+         SELECT
+           'deposit_paid',
+           'Deposit collected from ' || c.name,
+           'Deposit',
+           '/deposits',
+           'success',
+           d.collected_at
+         FROM deposits d
+         JOIN clients c ON c.id = d.client_id
+         WHERE d.account_id = $1 AND d.status = 'collected' AND d.collected_at IS NOT NULL
+
+         UNION ALL
+
+         -- Deposit refunded
+         SELECT
+           'deposit_refunded',
+           'Deposit refunded to ' || c.name,
+           'Deposit',
+           '/deposits',
+           'warning',
+           d.refunded_at
+         FROM deposits d
+         JOIN clients c ON c.id = d.client_id
+         WHERE d.account_id = $1 AND d.status = 'refunded' AND d.refunded_at IS NOT NULL
+
+       ) AS activity
+       WHERE event_time IS NOT NULL
+       ORDER BY event_time DESC
+       LIMIT 20`,
+      [accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/analytics/revenue — weekly chart + by-service + monthly summary
 router.get('/revenue', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const accountId = req.accountId;
