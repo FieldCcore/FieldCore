@@ -76,10 +76,13 @@ export default function BusinessSettings() {
   });
 
   // Integrations tab state
-  const [gbp, setGbp]               = useState(null);
-  const [gbpLoading, setGbpLoading] = useState(false);
-  const [gbpSyncing, setGbpSyncing] = useState(false);
-  const [gbpError, setGbpError]     = useState('');
+  const [gbp, setGbp]                   = useState(null);
+  const [gbpLoading, setGbpLoading]     = useState(false);
+  const [gbpSyncing, setGbpSyncing]     = useState(false);
+  const [gbpError, setGbpError]         = useState('');
+  const [gbpLocations, setGbpLocations] = useState(null);   // null = not loaded
+  const [gbpLocLoading, setGbpLocLoading] = useState(false);
+  const [gbpLocSaving, setGbpLocSaving] = useState(false);
   const [rvSettings, setRvSettings] = useState({ enabled: true, delay_seconds: 3600, require_invoice_paid: false, exclude_cancelled: true });
   const [rvSaving, setRvSaving]     = useState(false);
   const [rvSaved, setRvSaved]       = useState(false);
@@ -130,11 +133,37 @@ export default function BusinessSettings() {
     setGbpSyncing(true);
     setGbpError('');
     try {
-      const r = await api.post('/google-reviews/sync');
+      await api.post('/google-reviews/sync');
       setGbp(prev => ({ ...prev, last_sync_at: new Date().toISOString(), last_sync_error: null }));
-      if (r.data.synced > 0) setGbpError('');
-    } catch { setGbpError('Sync failed.'); }
+    } catch (err) { setGbpError(err?.response?.data?.error || 'Sync failed.'); }
     finally { setGbpSyncing(false); }
+  }
+
+  async function loadAvailableLocations() {
+    setGbpLocLoading(true);
+    setGbpError('');
+    try {
+      const r = await api.get('/google-reviews/locations/available');
+      setGbpLocations(r.data.locations || []);
+    } catch (err) {
+      setGbpError(err?.response?.data?.error || 'Could not load locations.');
+    } finally { setGbpLocLoading(false); }
+  }
+
+  async function selectLocation(loc) {
+    setGbpLocSaving(true);
+    setGbpError('');
+    try {
+      await api.post('/google-reviews/locations', {
+        location_id:     loc.id,
+        location_name:   loc.name,
+        display_address: loc.address || null,
+      });
+      setGbp(prev => ({ ...prev, location_id: loc.id, location_name: loc.name }));
+      setGbpLocations(null);
+    } catch (err) {
+      setGbpError(err?.response?.data?.error || 'Failed to select location.');
+    } finally { setGbpLocSaving(false); }
   }
 
   async function saveReviewSettings() {
@@ -266,25 +295,83 @@ export default function BusinessSettings() {
               <div style={{ color: 'var(--steel)', fontSize: 13 }}>Loading…</div>
             ) : gbp?.status === 'connected' ? (
               <div>
+                {/* Status row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>{gbp.location_name || 'Connected'}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>
+                      {gbp.location_name || 'Google Business Profile'}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>
                       Last synced: {gbp.last_sync_at ? new Date(gbp.last_sync_at).toLocaleString() : 'Never'}
-                      {gbp.average_rating && <span style={{ marginLeft: 12 }}>Rating: {parseFloat(gbp.average_rating).toFixed(1)} / 5</span>}
+                      {gbp.average_rating != null && (
+                        <span style={{ marginLeft: 12 }}>Rating: {parseFloat(gbp.average_rating).toFixed(1)} / 5 ({gbp.total_reviews} review{gbp.total_reviews !== 1 ? 's' : ''})</span>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* No location selected — prompt user to pick one */}
+                {!gbp.location_id && (
+                  <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 13, color: '#92400e', marginBottom: 14 }}>
+                    No location selected — choose your business location to start syncing reviews.
+                  </div>
+                )}
+
+                {/* Location picker (loaded on demand) */}
+                {gbpLocations !== null && (
+                  <div style={{ marginBottom: 14, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', marginBottom: 10 }}>Select your business location</div>
+                    {gbpLocLoading ? (
+                      <div style={{ fontSize: 13, color: 'var(--steel)' }}>Loading locations…</div>
+                    ) : gbpLocations.length === 0 ? (
+                      <div style={{ fontSize: 13, color: 'var(--steel)' }}>No locations found. Make sure your Google account has a Business Profile.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {gbpLocations.map(loc => (
+                          <button
+                            key={loc.id}
+                            onClick={() => selectLocation(loc)}
+                            disabled={gbpLocSaving}
+                            style={{
+                              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                              background: loc.is_active ? 'var(--green-lt)' : 'var(--white)',
+                              border: `1px solid ${loc.is_active ? 'var(--green)' : 'var(--lightgray)'}`,
+                              borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: loc.is_active ? 'var(--green)' : 'var(--lightgray)', marginTop: 4, flexShrink: 0 }} />
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{loc.name}</div>
+                              {loc.address && <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>{loc.address}</div>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setGbpLocations(null)}
+                      style={{ marginTop: 10, fontSize: 12, color: 'var(--steel)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
                 {gbp.last_sync_error && (
                   <div style={{ padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, fontSize: 12, color: '#9a3412', marginBottom: 12 }}>
                     Last sync error: {gbp.last_sync_error}
                   </div>
                 )}
                 {gbpError && <div style={{ padding: '8px 12px', background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{gbpError}</div>}
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button className="btn-primary" style={{ fontSize: 13 }} onClick={syncNow} disabled={gbpSyncing}>
-                    {gbpSyncing ? 'Syncing…' : 'Sync Now'}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {gbp.location_id && (
+                    <button className="btn-primary" style={{ fontSize: 13 }} onClick={syncNow} disabled={gbpSyncing}>
+                      {gbpSyncing ? 'Syncing…' : 'Sync Now'}
+                    </button>
+                  )}
+                  <button className="bss-btn-ghost" onClick={() => { loadAvailableLocations(); }} disabled={gbpLocLoading}>
+                    {gbp.location_id ? 'Change Location' : 'Select Location'}
                   </button>
                   <button className="bss-btn-ghost" onClick={disconnectGoogle}>Disconnect</button>
                 </div>

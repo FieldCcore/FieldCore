@@ -461,11 +461,15 @@ describe('GET /api/google-reviews/connection', () => {
   });
 
   it('does not return access_token_enc or refresh_token_enc', async () => {
-    // Insert a fake connection with tokens
+    // Insert a connection into the provider-neutral table
+    const { rows: rp } = await pool.query(`SELECT id FROM review_providers WHERE provider_key = 'google'`);
     await pool.query(
-      `INSERT INTO google_business_connections (account_id, access_token_enc, refresh_token_enc, status)
-       VALUES ($1, 'enc_access', 'enc_refresh', 'connected')`,
-      [acct.accountId]
+      `INSERT INTO connected_review_accounts
+         (account_id, provider_id, access_token_enc, refresh_token_enc, connection_status)
+       VALUES ($1, $2, 'enc_access', 'enc_refresh', 'connected')
+       ON CONFLICT (account_id, provider_id) DO UPDATE
+         SET connection_status = 'connected', access_token_enc = 'enc_access', refresh_token_enc = 'enc_refresh'`,
+      [acct.accountId, rp[0].id]
     );
 
     const res = await request(app).get('/api/google-reviews/connection').set('Authorization', `Bearer ${acct.token}`);
@@ -486,11 +490,14 @@ describe('DELETE /api/google-reviews/connection', () => {
   beforeAll(async () => {
     acct = await makeAccount('GBPDisconn');
     createdAccountIds.push(acct.accountId);
+    const { rows: rp } = await pool.query(`SELECT id FROM review_providers WHERE provider_key = 'google'`);
     await pool.query(
-      `INSERT INTO google_business_connections (account_id, access_token_enc, refresh_token_enc, status)
-       VALUES ($1, 'enc_access', 'enc_refresh', 'connected')
-       ON CONFLICT (account_id) DO UPDATE SET status='connected'`,
-      [acct.accountId]
+      `INSERT INTO connected_review_accounts
+         (account_id, provider_id, access_token_enc, refresh_token_enc, connection_status)
+       VALUES ($1, $2, 'enc_access', 'enc_refresh', 'connected')
+       ON CONFLICT (account_id, provider_id) DO UPDATE
+         SET connection_status = 'connected', access_token_enc = 'enc_access', refresh_token_enc = 'enc_refresh'`,
+      [acct.accountId, rp[0].id]
     );
   });
 

@@ -736,6 +736,185 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_projects_account ON projects(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_projects_status  ON projects(account_id, status)`,
+
+  // ── PROVIDER-READY REVIEW ARCHITECTURE ───────────────────────────────────────
+  // Phase 1: provider registry — one row per supported provider (Google, Yelp, etc.)
+  // Only enabled providers are surfaced to tenants. Currently Google only.
+  `CREATE TABLE IF NOT EXISTS review_providers (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     provider_key TEXT NOT NULL UNIQUE,
+     display_name TEXT NOT NULL,
+     is_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+
+  // Seed Google Business Profile as the only enabled public provider
+  `INSERT INTO review_providers (provider_key, display_name, is_enabled)
+   VALUES ('google', 'Google Business Profile', TRUE)
+   ON CONFLICT (provider_key) DO NOTHING`,
+
+  // Phase 2: OAuth connections — one row per tenant × provider
+  // Supersedes google_business_connections (kept for rollback safety, no longer written to)
+  `CREATE TABLE IF NOT EXISTS connected_review_accounts (
+     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id            UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     entity_id             UUID REFERENCES accounts(id) ON DELETE CASCADE,
+     provider_id           UUID NOT NULL REFERENCES review_providers(id),
+     external_account_id   TEXT,
+     external_account_name TEXT,
+     connection_status     TEXT NOT NULL DEFAULT 'disconnected'
+                             CHECK (connection_status IN ('disconnected','connected','expired','error')),
+     access_token_enc      TEXT,
+     refresh_token_enc     TEXT,
+     token_expires_at      TIMESTAMPTZ,
+     granted_scopes        TEXT[],
+     connected_by_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+     connected_at          TIMESTAMPTZ,
+     last_sync_at          TIMESTAMPTZ,
+     last_sync_attempt_at  TIMESTAMPTZ,
+     last_sync_status      TEXT,
+     last_sync_error       TEXT,
+     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, provider_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_cra_account  ON connected_review_accounts(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cra_provider ON connected_review_accounts(provider_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cra_status   ON connected_review_accounts(connection_status)`,
+
+  // Phase 3: review locations — multi-location support (GBP can have many locations)
+  `CREATE TABLE IF NOT EXISTS review_locations (
+     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     connected_account_id UUID NOT NULL REFERENCES connected_review_accounts(id) ON DELETE CASCADE,
+     account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     entity_id            UUID REFERENCES accounts(id) ON DELETE CASCADE,
+     external_location_id TEXT NOT NULL,
+     location_name        TEXT,
+     display_address      TEXT,
+     is_primary           BOOLEAN NOT NULL DEFAULT FALSE,
+     is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+     last_sync_at         TIMESTAMPTZ,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (connected_account_id, external_location_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_rl_cra      ON review_locations(connected_account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rl_account  ON review_locations(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rl_active   ON review_locations(account_id, is_active)`,
+
+  // Phase 4: enhance external_reviews with FK columns + new fields
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS connected_account_id UUID REFERENCES connected_review_accounts(id) ON DELETE SET NULL`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS location_row_id      UUID REFERENCES review_locations(id) ON DELETE SET NULL`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS reviewer_photo_url   TEXT`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS owner_response_at    TIMESTAMPTZ`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS review_url           TEXT`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS raw_metadata         JSONB`,
+  `ALTER TABLE external_reviews ADD COLUMN IF NOT EXISTS updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+
+  // Phase 5: sync job history — one row per sync run
+  `CREATE TABLE IF NOT EXISTS review_sync_jobs (
+     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     connected_account_id UUID NOT NULL REFERENCES connected_review_accounts(id) ON DELETE CASCADE,
+     location_row_id      UUID REFERENCES review_locations(id) ON DELETE SET NULL,
+     account_id           UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     trigger              TEXT NOT NULL DEFAULT 'scheduled'
+                            CHECK (trigger IN ('scheduled','manual','webhook')),
+     status               TEXT NOT NULL DEFAULT 'running'
+                            CHECK (status IN ('running','completed','failed')),
+     reviews_fetched      INT NOT NULL DEFAULT 0,
+     reviews_new          INT NOT NULL DEFAULT 0,
+     reviews_updated      INT NOT NULL DEFAULT 0,
+     error_message        TEXT,
+     started_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     completed_at         TIMESTAMPTZ,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_rsj_cra     ON review_sync_jobs(connected_account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rsj_account ON review_sync_jobs(account_id, started_at DESC)`,
+
+  // Phase 6: review request events — per-job send audit trail (replaces boolean flag only)
+  `CREATE TABLE IF NOT EXISTS review_request_events (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id       UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     client_id    UUID REFERENCES clients(id) ON DELETE SET NULL,
+     review_token TEXT NOT NULL,
+     channels     TEXT[] NOT NULL DEFAULT ARRAY['email'],
+     email_sent   BOOLEAN NOT NULL DEFAULT FALSE,
+     sms_sent     BOOLEAN NOT NULL DEFAULT FALSE,
+     sent_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_rre_account ON review_request_events(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rre_job     ON review_request_events(job_id)`,
+
+  // Phase 7: data migration — copy existing google_business_connections → connected_review_accounts
+  // ON CONFLICT DO NOTHING so this is safe to re-run; disconnected-only rows are skipped
+  `INSERT INTO connected_review_accounts (
+     account_id, provider_id, external_account_id, external_account_name,
+     connection_status, access_token_enc, refresh_token_enc, token_expires_at,
+     granted_scopes, connected_at, last_sync_at, last_sync_error,
+     created_at, updated_at
+   )
+   SELECT
+     gc.account_id,
+     rp.id                                              AS provider_id,
+     gc.google_account_id                               AS external_account_id,
+     gc.google_account_id                               AS external_account_name,
+     gc.status                                          AS connection_status,
+     gc.access_token_enc,
+     gc.refresh_token_enc,
+     gc.token_expires_at,
+     ARRAY['https://www.googleapis.com/auth/business.manage'] AS granted_scopes,
+     gc.created_at                                      AS connected_at,
+     gc.last_sync_at,
+     gc.last_sync_error,
+     gc.created_at,
+     gc.updated_at
+   FROM google_business_connections gc
+   JOIN review_providers rp ON rp.provider_key = 'google'
+   WHERE gc.status = 'connected' OR gc.last_sync_at IS NOT NULL
+   ON CONFLICT (account_id, provider_id) DO NOTHING`,
+
+  // Phase 8: data migration — copy location rows
+  `INSERT INTO review_locations (
+     connected_account_id, account_id, external_location_id, location_name,
+     is_primary, is_active, last_sync_at, created_at, updated_at
+   )
+   SELECT
+     cra.id                   AS connected_account_id,
+     gc.account_id,
+     gc.location_id           AS external_location_id,
+     gc.location_name,
+     TRUE                     AS is_primary,
+     TRUE                     AS is_active,
+     gc.last_sync_at,
+     gc.created_at,
+     gc.updated_at
+   FROM google_business_connections gc
+   JOIN connected_review_accounts cra
+     ON  cra.account_id = gc.account_id
+   JOIN review_providers rp ON rp.id = cra.provider_id AND rp.provider_key = 'google'
+   WHERE gc.location_id IS NOT NULL
+   ON CONFLICT (connected_account_id, external_location_id) DO NOTHING`,
+
+  // Phase 9: backfill external_reviews.connected_account_id
+  `UPDATE external_reviews er
+   SET connected_account_id = cra.id
+   FROM connected_review_accounts cra
+   JOIN review_providers rp ON rp.id = cra.provider_id
+   WHERE cra.account_id = er.account_id
+     AND rp.provider_key = er.provider
+     AND er.connected_account_id IS NULL`,
+
+  // Phase 10: backfill external_reviews.location_row_id
+  `UPDATE external_reviews er
+   SET location_row_id = rl.id
+   FROM review_locations rl
+   WHERE rl.connected_account_id = er.connected_account_id
+     AND rl.external_location_id = er.location_id
+     AND er.location_row_id IS NULL`,
 ];
 
 async function runMigrations() {

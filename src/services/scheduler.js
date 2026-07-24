@@ -515,37 +515,63 @@ function startReviewRequestJob() {
 
 // ── 10a. Google Business Profile review sync — runs every 30 min ─────────────
 function startGoogleReviewSyncJob() {
-  const { syncReviews } = require('./googleReviews');
-  const notify          = require('./notify');
+  const { getProvider }  = require('./reviewProviders');
+  const notify           = require('./notify');
 
   cron.schedule('*/30 * * * *', async () => {
     try {
+      // Query connected_review_accounts — the new provider-neutral source of truth
       const { rows: connections } = await pool.query(`
-        SELECT gc.account_id, gc.location_id,
-               COALESCE(s.notify_on_new_review, TRUE)   AS notify_on_new_review,
-               COALESCE(s.notify_roles, ARRAY['owner','manager']) AS notify_roles
-        FROM google_business_connections gc
-        LEFT JOIN review_request_settings s ON s.account_id = gc.account_id
-        WHERE gc.status = 'connected' AND gc.location_id IS NOT NULL
+        SELECT cra.id, cra.account_id, cra.access_token_enc, cra.refresh_token_enc,
+               cra.token_expires_at, cra.connection_status,
+               rl.id AS location_row_id,
+               rl.external_location_id, rl.location_name,
+               COALESCE(s.notify_on_new_review, TRUE)              AS notify_on_new_review,
+               COALESCE(s.notify_roles, ARRAY['owner','manager'])  AS notify_roles
+        FROM connected_review_accounts cra
+        JOIN review_providers rp
+          ON rp.id = cra.provider_id AND rp.provider_key = 'google' AND rp.is_enabled = TRUE
+        JOIN review_locations rl
+          ON rl.connected_account_id = cra.id AND rl.is_active = TRUE AND rl.is_primary = TRUE
+        LEFT JOIN review_request_settings s ON s.account_id = cra.account_id
+        WHERE cra.connection_status = 'connected'
       `);
 
-      for (const conn of connections) {
+      for (const row of connections) {
+        const syncJobId = null;
         try {
-          // Fetch new reviews since last sync
-          const { rows: before } = await pool.query(
-            `SELECT COUNT(*) AS cnt FROM external_reviews WHERE account_id = $1 AND provider = 'google'`,
-            [conn.account_id]
+          // Log sync job
+          const { rows: jobRows } = await pool.query(
+            `INSERT INTO review_sync_jobs
+               (connected_account_id, location_row_id, account_id, trigger, status)
+             VALUES ($1,$2,$3,'scheduled','running') RETURNING id`,
+            [row.id, row.location_row_id, row.account_id]
+          );
+          const syncJobId = jobRows[0].id;
+
+          const provider = getProvider('google');
+          const location = {
+            id:                   row.location_row_id,
+            external_location_id: row.external_location_id,
+            location_name:        row.location_name,
+          };
+          const result = await provider.syncReviews(row, location);
+
+          await pool.query(
+            `UPDATE review_sync_jobs
+             SET status = 'completed', reviews_fetched = $1, reviews_new = $2,
+                 reviews_updated = $3, completed_at = NOW()
+             WHERE id = $4`,
+            [result.fetched, result.created, result.updated, syncJobId]
           );
 
-          const result = await syncReviews(conn.account_id);
-
-          if (result.synced > 0 && conn.notify_on_new_review) {
-            // Fetch the new reviews to include in notifications
+          // Send in-app notifications for newly synced reviews
+          if (result.created > 0 && row.notify_on_new_review) {
             const { rows: newReviews } = await pool.query(
               `SELECT * FROM external_reviews
-               WHERE account_id = $1 AND provider = 'google' AND notified_at IS NULL
+               WHERE connected_account_id = $1 AND notified_at IS NULL
                ORDER BY review_at DESC LIMIT 10`,
-              [conn.account_id]
+              [row.id]
             );
 
             for (const review of newReviews) {
@@ -554,9 +580,8 @@ function startGoogleReviewSyncJob() {
                 ? review.body.slice(0, 80) + (review.body.length > 80 ? '…' : '')
                 : 'No comment';
 
-              // One account-level notification per review (notifications table has no user_id)
               await notify.create(
-                conn.account_id,
+                row.account_id,
                 'google_review',
                 `New Google review ${stars}`,
                 `${review.reviewer_name || 'Anonymous'}: "${snippet}"`,
@@ -570,9 +595,15 @@ function startGoogleReviewSyncJob() {
             }
           }
 
-          console.log(`[Scheduler] Google sync account ${conn.account_id}: ${result.synced} new review(s)`);
+          console.log(`[Scheduler] Google sync account ${row.account_id}: ${result.created} new, ${result.updated} updated`);
         } catch (err) {
-          console.error(`[Scheduler] Google sync failed for account ${conn.account_id}:`, err.message);
+          if (syncJobId) {
+            await pool.query(
+              `UPDATE review_sync_jobs SET status = 'failed', error_message = $1, completed_at = NOW() WHERE id = $2`,
+              [err.message, syncJobId]
+            ).catch(() => {});
+          }
+          console.error(`[Scheduler] Google sync failed for account ${row.account_id}:`, err.message);
         }
       }
     } catch (err) {
