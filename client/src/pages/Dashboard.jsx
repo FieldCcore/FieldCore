@@ -10,6 +10,7 @@ import StatusBadge from '../components/StatusBadge';
 import DashboardBanner from '../components/DashboardBanner';
 import KpiCard from '../components/KpiCard';
 import DashboardPanel from '../components/DashboardPanel';
+import FinancialSnapshot from '../components/FinancialSnapshot';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -146,13 +147,18 @@ export default function Dashboard() {
     ? { label: DAY_LABELS[bestBarIdx], revenue: weekBars[bestBarIdx].revenue }
     : null;
 
-  // Snapshot grid — only cells with real data
-  const snapshotMetrics = [
-    weekCollected   > 0 && { val: fmt$(weekCollected),   key: 'Collected' },
-    weekOutstanding > 0 && { val: fmt$(weekOutstanding), key: 'Outstanding', outstanding: true },
-    weekInvoicesPaid > 0 && { val: weekInvoicesPaid,     key: 'Invoices Paid' },
-    avgJobValue     > 0 && { val: fmt$(avgJobValue),     key: 'Avg Job Value' },
+  // Financial Snapshot metrics — Collected/Outstanding/InvoicesPaid always shown (even as $0/0)
+  // AvgJobValue hidden when no jobs this week (can't calculate meaningfully)
+  const snapMetrics = [
+    { label: 'Collected',     value: fmt$(weekCollected) },
+    { label: 'Outstanding',   value: fmt$(weekOutstanding), tone: weekOutstanding > 0 ? 'warning' : undefined },
+    { label: 'Invoices Paid', value: String(weekInvoicesPaid) },
+    totalWeekJobs > 0 && { label: 'Avg Job Value', value: fmt$(avgJobValue) },
   ].filter(Boolean);
+
+  const snapEmptyMsg = weekRevenue === 0
+    ? 'No completed payments have been recorded this week.'
+    : null;
 
   // Footer insight — highest priority available
   let footerInsight = null;
@@ -335,26 +341,17 @@ export default function Dashboard() {
           ) : undefined}
         >
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Section 2: Financial Snapshot */}
+          {/* Revenue Summary — primary focus */}
           <div className="rv-snap">
             <div className="rv-snap__date">{dateRange}</div>
             <div className="rv-snap__total">{fmt$(weekRevenue)}</div>
             <div className="rv-snap__total-lbl">Total Revenue This Week</div>
-            {weekRevenue === 0 ? (
-              <div className="rv-snap__empty-msg">No completed payments recorded this week.</div>
-            ) : snapshotMetrics.length > 0 && (
-              <div className="rv-snap__grid">
-                {snapshotMetrics.map((m, i) => (
-                  <div key={i} className={`rv-snap__cell${m.outstanding ? ' rv-snap__cell--outstanding' : ''}`}>
-                    <div className="rv-snap__val">{m.val}</div>
-                    <div className="rv-snap__key">{m.key}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* Section 3: Weekly Trend */}
+          {/* Financial Snapshot — secondary focus */}
+          <FinancialSnapshot metrics={snapMetrics} emptyMessage={snapEmptyMsg} />
+
+          {/* Weekly Trend — supporting info */}
           <div className="rv-chart-wrap">
             <div className="rv-chart-area">
               {weekBars.map((b, i) => {
