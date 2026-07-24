@@ -137,9 +137,9 @@ const menuItemStyle = (disabled) => ({
   transition: 'background .12s',
 });
 
-function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge, className }) {
+function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge }) {
   return (
-    <button className={`create-new-menu-item${className ? ' ' + className : ''}`} style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
+    <button style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
       <span style={{ width: 32, height: 32, background: 'var(--offwhite)', borderRadius: 8,
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={16} style={{ color: disabled ? 'var(--steel)' : 'var(--navy)' }} />
@@ -205,9 +205,9 @@ function CreateMenu() {
           background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10,
           boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 248, overflow: 'hidden',
         }}>
-          <CreateMenuItem icon={UserPlus}  label="Client"  description="Add a new client record" onClick={() => go('/clients?new=1')} />
-          <CreateMenuItem icon={Inbox}     label="Request" description="Log an inbound lead or service request" onClick={() => go('/requests?new=1')} />
-          <CreateMenuItem icon={FileText}  label="Quote"   description="Build a quote or estimate for a client" onClick={() => go('/estimates?new=1')} />
+          <div className="create-new-menu-item"><CreateMenuItem icon={UserPlus}  label="Client"  description="Add a new client record" onClick={() => go('/clients?new=1')} /></div>
+          <div className="create-new-menu-item"><CreateMenuItem icon={Inbox}     label="Request" description="Log an inbound lead or service request" onClick={() => go('/requests?new=1')} /></div>
+          <div className="create-new-menu-item"><CreateMenuItem icon={FileText}  label="Quote"   description="Build a quote or estimate for a client" onClick={() => go('/estimates?new=1')} /></div>
 
           {/* Job — has submenu */}
           <div className="create-new-menu-item" style={{ position: 'relative' }}>
@@ -258,7 +258,7 @@ function CreateMenu() {
             )}
           </div>
 
-          <CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices?new=1')} />
+          <div className="create-new-menu-item"><CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices?new=1')} /></div>
 
           {(!canMultiDay || !canProject) && (
             <div style={{ padding: '8px 16px 10px' }}>
