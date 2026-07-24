@@ -8,7 +8,7 @@ const requireEntitlement = require('../middleware/requireEntitlement');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -182,6 +182,17 @@ router.get('/dashboard', requireAuth, async (req, res) => {
            AND scheduled_at < date_trunc('week', CURRENT_DATE)`,
         [accountId]
       ),
+
+      // Count of paid invoices for jobs scheduled this week
+      pool.query(
+        `SELECT COUNT(*) AS count
+         FROM invoices i
+         JOIN jobs j ON j.id = i.job_id
+         WHERE i.account_id = $1
+           AND j.scheduled_at >= date_trunc('week', CURRENT_DATE)
+           AND i.status = 'paid'`,
+        [accountId]
+      ),
     ]);
 
     res.json({
@@ -191,6 +202,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       weekCollected:    parseFloat(weekCollected.rows[0].total),
       weekOutstanding:  parseFloat(weekOutstanding.rows[0].total),
       prevWeekRevenue:  parseFloat(prevWeekRevenue.rows[0].total),
+      weekInvoicesPaid: parseInt(weekInvoicesPaidCount.rows[0].count),
       mtdRevenue:       parseFloat(mtdRevenue.rows[0].total),
       activeJobs:       parseInt(activeJobs.rows[0].count),
       pendingInvoices:  { count: parseInt(pendingInvoices.rows[0].count), total: parseFloat(pendingInvoices.rows[0].total) },

@@ -95,9 +95,10 @@ function QaRow({ icon: Icon, label, onClick, primary = false }) {
 export default function Dashboard() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [gbp,     setGbp]     = useState(null);
+  const [data,       setData]       = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [gbp,        setGbp]        = useState(null);
+  const [hoveredBar, setHoveredBar] = useState(null);
 
   useEffect(() => {
     api.get('/analytics/dashboard')
@@ -113,7 +114,7 @@ export default function Dashboard() {
   }
 
   const { todayJobs = [], weekRevenue = 0, weekCollected = 0, weekOutstanding = 0,
-          prevWeekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
+          weekInvoicesPaid = 0, prevWeekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
           pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [],
           recentReviews = [] } = data || {};
 
@@ -131,17 +132,46 @@ export default function Dashboard() {
 
   const todayRevenue = weekBars[todayIdx]?.revenue || 0;
 
-  // Revenue This Week panel derived values
-  const dateRange   = weekDateRange();
-  const pctChange   = prevWeekRevenue > 0
-    ? Math.round(((weekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100)
-    : null;
-  const bestBarIdx  = weekBars.reduce((bi, b, i) =>
+  // Revenue This Week — derived metrics
+  const dateRange      = weekDateRange();
+  const totalWeekJobs  = weekBars.reduce((s, b) => s + parseInt(b.jobs || 0), 0);
+  const avgJobValue    = totalWeekJobs > 0 ? weekRevenue / totalWeekJobs : 0;
+  const activeDays     = weekBars.filter(b => parseFloat(b.revenue) > 0).length;
+  const collectionTotal = weekCollected + weekOutstanding;
+  const collectionRate  = collectionTotal > 0 ? Math.round((weekCollected / collectionTotal) * 100) : null;
+
+  const bestBarIdx = weekBars.reduce((bi, b, i) =>
     parseFloat(b.revenue) > parseFloat(weekBars[bi]?.revenue ?? 0) ? i : bi, 0);
-  const bestDay     = weekBars[bestBarIdx] && parseFloat(weekBars[bestBarIdx].revenue) > 0
+  const bestDay = weekBars[bestBarIdx] && parseFloat(weekBars[bestBarIdx].revenue) > 0
     ? { label: DAY_LABELS[bestBarIdx], revenue: weekBars[bestBarIdx].revenue }
     : null;
-  const hasInvoiceSplit = weekCollected > 0 || weekOutstanding > 0;
+
+  // Snapshot grid — only cells with real data
+  const snapshotMetrics = [
+    weekCollected   > 0 && { val: fmt$(weekCollected),   key: 'Collected' },
+    weekOutstanding > 0 && { val: fmt$(weekOutstanding), key: 'Outstanding', outstanding: true },
+    weekInvoicesPaid > 0 && { val: weekInvoicesPaid,     key: 'Invoices Paid' },
+    avgJobValue     > 0 && { val: fmt$(avgJobValue),     key: 'Avg Job Value' },
+  ].filter(Boolean);
+
+  // Footer insight — highest priority available
+  let footerInsight = null;
+  if (prevWeekRevenue > 0) {
+    const pct = Math.round(((weekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100);
+    footerInsight = { type: 'week', pct, prev: prevWeekRevenue };
+  } else if (bestDay) {
+    footerInsight = { type: 'bestday', label: bestDay.label, revenue: bestDay.revenue };
+  } else if (collectionRate !== null) {
+    footerInsight = { type: 'collection', rate: collectionRate };
+  } else if (weekOutstanding > 0 && weekRevenue > 0) {
+    footerInsight = {
+      type: 'outstanding',
+      amount: weekOutstanding,
+      pct: Math.round((weekOutstanding / weekRevenue) * 100),
+    };
+  } else if (activeDays > 0) {
+    footerInsight = { type: 'avgday', avg: weekRevenue / activeDays, days: activeDays };
+  }
 
   // Activity feed — composed from existing data, no extra fetch
   const activityFeed = [
@@ -278,64 +308,87 @@ export default function Dashboard() {
         <DashboardPanel
           title="Revenue This Week"
           action={{ label: 'Revenue Analytics →', onClick: () => nav('/revenue') }}
-          footer={
-            (pctChange !== null || prevWeekRevenue > 0 || bestDay) ? (
-              <div className="rev-footer">
-                {pctChange !== null && (
-                  <span className={pctChange >= 0 ? 'rev-footer__pos' : 'rev-footer__neg'}>
-                    {pctChange >= 0 ? '+' : ''}{pctChange}% vs last week
-                  </span>
-                )}
-                {prevWeekRevenue > 0 && (
-                  <>
-                    {pctChange !== null && <span className="rev-footer__sep">·</span>}
-                    <span>{fmt$(prevWeekRevenue)} prev</span>
-                  </>
-                )}
-                {bestDay && (
-                  <>
-                    {(pctChange !== null || prevWeekRevenue > 0) && <span className="rev-footer__sep">·</span>}
-                    <span>Best: {bestDay.label} {fmt$(bestDay.revenue)}</span>
-                  </>
-                )}
-              </div>
-            ) : undefined
-          }
+          footer={footerInsight ? (
+            <div className="rv-footer">
+              {footerInsight.type === 'week' && (<>
+                <span className={footerInsight.pct >= 0 ? 'rv-footer__pos' : 'rv-footer__neg'}>
+                  {footerInsight.pct >= 0 ? '↑' : '↓'} {Math.abs(footerInsight.pct)}% vs last week
+                </span>
+                <span className="rv-footer__sep">·</span>
+                <span>{fmt$(footerInsight.prev)} prev week</span>
+              </>)}
+              {footerInsight.type === 'bestday' && (
+                <span>Best day: {footerInsight.label} · {fmt$(footerInsight.revenue)}</span>
+              )}
+              {footerInsight.type === 'collection' && (
+                <span>{footerInsight.rate}% collected this week</span>
+              )}
+              {footerInsight.type === 'outstanding' && (<>
+                <span className="rv-footer__neg">{fmt$(footerInsight.amount)} outstanding</span>
+                <span className="rv-footer__sep">·</span>
+                <span>{footerInsight.pct}% of total</span>
+              </>)}
+              {footerInsight.type === 'avgday' && (
+                <span>{fmt$(footerInsight.avg)} avg/day · {footerInsight.days} day{footerInsight.days !== 1 ? 's' : ''} active</span>
+              )}
+            </div>
+          ) : undefined}
         >
-          {/* Summary metrics */}
-          <div className="rev-summary">
-            <div className="rev-summary__date">{dateRange}</div>
-            <div className="rev-summary__total">{fmt$(weekRevenue)}</div>
-            <div className="rev-summary__label">Total revenue this week</div>
-            {hasInvoiceSplit && (
-              <div className="rev-summary__split">
-                {weekCollected > 0 && <><strong>{fmt$(weekCollected)}</strong> collected</>}
-                {weekCollected > 0 && weekOutstanding > 0 && <span style={{ margin: '0 6px', color: 'var(--lightgray)' }}>·</span>}
-                {weekOutstanding > 0 && <><strong>{fmt$(weekOutstanding)}</strong> outstanding</>}
+          {/* Section 2: Financial Snapshot */}
+          <div className="rv-snap">
+            <div className="rv-snap__date">{dateRange}</div>
+            <div className="rv-snap__total">{fmt$(weekRevenue)}</div>
+            <div className="rv-snap__total-lbl">Total Revenue This Week</div>
+            {weekRevenue === 0 ? (
+              <div className="rv-snap__empty-msg">No completed payments recorded this week.</div>
+            ) : snapshotMetrics.length > 0 && (
+              <div className="rv-snap__grid">
+                {snapshotMetrics.map((m, i) => (
+                  <div key={i} className={`rv-snap__cell${m.outstanding ? ' rv-snap__cell--outstanding' : ''}`}>
+                    <div className="rv-snap__val">{m.val}</div>
+                    <div className="rv-snap__key">{m.key}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Compact bar chart */}
-          <div className="dash-chart-area dash-chart-area--compact">
-            {weekBars.map((b, i) => {
-              const h = maxBar > 0 ? Math.max(4, (parseFloat(b.revenue) / maxBar) * 100) : 4;
-              const isToday  = i === todayIdx;
-              const isFuture = i > todayIdx;
-              return (
-                <div className="dash-bar-wrap" key={i}>
+          {/* Section 3: Weekly Trend */}
+          <div className="rv-chart-wrap">
+            <div className="rv-chart-area">
+              {weekBars.map((b, i) => {
+                const rev = parseFloat(b.revenue);
+                const h   = maxBar > 0 ? Math.max(4, (rev / maxBar) * 100) : 4;
+                const isToday  = i === todayIdx;
+                const isFuture = i > todayIdx;
+                return (
                   <div
-                    className="dash-bar"
-                    style={{
-                      height: `${h}%`,
-                      background: isToday ? 'var(--navy)' : isFuture ? 'var(--lightgray)' : 'var(--slate)',
-                    }}
-                  />
-                  <div className="dash-bar-lbl">{DAY_LABELS[i]}</div>
-                  <div className="dash-bar-val">{parseFloat(b.revenue) > 0 ? fmt$(b.revenue) : '—'}</div>
-                </div>
-              );
-            })}
+                    key={i}
+                    className="dash-bar-wrap"
+                    style={{ position: 'relative' }}
+                    onMouseEnter={() => setHoveredBar(i)}
+                    onMouseLeave={() => setHoveredBar(null)}
+                  >
+                    {hoveredBar === i && rev > 0 && (
+                      <div className="rv-bar-tip">
+                        {fmt$(rev)}
+                        {parseInt(b.jobs) > 0 && (
+                          <div className="rv-bar-tip__sub">{b.jobs} job{b.jobs !== '1' ? 's' : ''}</div>
+                        )}
+                      </div>
+                    )}
+                    <div
+                      className="dash-bar"
+                      style={{
+                        height: `${h}%`,
+                        background: isToday ? 'var(--navy)' : isFuture ? 'var(--lightgray)' : 'var(--slate)',
+                      }}
+                    />
+                    <div className="dash-bar-lbl">{DAY_LABELS[i]}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </DashboardPanel>
 
