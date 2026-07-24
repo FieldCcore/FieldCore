@@ -7,10 +7,11 @@ export default function DashboardPanel({
   children,
   footer,
   loading = false,
+  scrollable = false,
   className = '',
 }) {
   return (
-    <div className={`dp-panel${className ? ` ${className}` : ''}`}>
+    <div className={`dp-panel${scrollable ? ' dp-panel--scrollable' : ''}${className ? ` ${className}` : ''}`}>
       <div className="dp-panel__header">
         <span className="dp-panel__title">{title}</span>
         <div className="dp-panel__meta">

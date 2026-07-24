@@ -18,11 +18,17 @@ const ICON_COLOR = {
 /**
  * KpiCard — shared design-system component for Dashboard KPI metrics.
  *
- * Header layout: [icon 28px] [title 1fr] [badge auto]
- * Use `badge` for short labels (Live, Active, Excellent) that fit in the header.
- * Use `statusBadge` for longer labels (Action Needed) that render below the header.
- * Use `action` for subtle text-link CTAs below the subtitle.
- * Use `onClick` to make the entire card a clickable button.
+ * Internal grid rows (guaranteed vertical alignment across all cards):
+ *   Row 1 — header: [icon 28px] [title 1fr] [badge auto]
+ *   Row 2 — value (primary number)
+ *   Row 3 — subtitle (supporting text)
+ *   Row 4 — footer: badge OR text-link action (always present, even if empty)
+ *
+ * Props:
+ *   badge      — { label, tone } compact label in header (Live, Excellent)
+ *   statusBadge — { label, tone } badge in footer row (Action Needed)
+ *   action     — { label, onClick } text-link in footer row
+ *   onClick    — makes the whole card a clickable button
  */
 export default function KpiCard({
   icon: Icon,
@@ -30,9 +36,9 @@ export default function KpiCard({
   value,
   subtitle,
   tone = 'neutral',
-  badge,        // { label, tone } — placed in header right column
-  statusBadge,  // { label, tone } — placed in status row below header
-  action,       // { label, onClick } — text CTA below subtitle
+  badge,
+  statusBadge,
+  action,
   onClick,
   loading = false,
 }) {
@@ -48,6 +54,7 @@ export default function KpiCard({
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick() : undefined}
       aria-label={onClick ? title : undefined}
     >
+      {/* Row 1 — header */}
       <div className="kpi-card__header">
         {Icon && (
           <div
@@ -66,29 +73,33 @@ export default function KpiCard({
         )}
       </div>
 
-      {statusBadge && (
-        <div className="kpi-card__status">
-          <span className={`kpi-badge kpi-badge--${statusBadge.tone ?? 'neutral'}`} role="status">
-            {statusBadge.label}
-          </span>
-        </div>
-      )}
-
       {loading ? (
         <div className="kpi-card__skeleton" aria-label="Loading" />
       ) : (
         <>
+          {/* Row 2 — value */}
           <div className="kpi-card__value">{value}</div>
+
+          {/* Row 3 — subtitle */}
           <div className="kpi-card__subtitle">{subtitle}</div>
-          {action && (
-            <button
-              className="kpi-card__action"
-              onClick={(e) => { e.stopPropagation(); action.onClick?.(); }}
-              type="button"
-            >
-              {action.label}
-            </button>
-          )}
+
+          {/* Row 4 — footer: badge OR action (always rendered for alignment) */}
+          <div className="kpi-card__footer">
+            {statusBadge && (
+              <span className={`kpi-badge kpi-badge--${statusBadge.tone ?? 'neutral'}`} role="status">
+                {statusBadge.label}
+              </span>
+            )}
+            {action && !statusBadge && (
+              <button
+                className="kpi-card__action"
+                onClick={(e) => { e.stopPropagation(); action.onClick?.(); }}
+                type="button"
+              >
+                {action.label}
+              </button>
+            )}
+          </div>
         </>
       )}
     </div>
