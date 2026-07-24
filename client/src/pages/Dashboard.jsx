@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  TrendingUp, CalendarDays, Briefcase, FileText, CreditCard, Star,
+  Map, Phone, BarChart2, Users, Plus, ChevronRight, Inbox, Calendar,
+} from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import DashboardBanner from '../components/DashboardBanner';
+import KpiCard from '../components/KpiCard';
+import DashboardPanel from '../components/DashboardPanel';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -30,6 +36,24 @@ function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function QaRow({ icon: Icon, label, onClick, primary = false }) {
+  return (
+    <button
+      className={`qa-row${primary ? ' qa-row--primary' : ''}`}
+      onClick={onClick}
+      type="button"
+    >
+      <div className="qa-row__icon">
+        <Icon size={14} strokeWidth={2} />
+      </div>
+      <span className="qa-row__label">{label}</span>
+      <div className="qa-row__arrow">
+        <ChevronRight size={13} strokeWidth={2} />
+      </div>
+    </button>
+  );
 }
 
 export default function Dashboard() {
@@ -68,6 +92,8 @@ export default function Dashboard() {
   const maxBar = Math.max(...weekBars.map(b => parseFloat(b.revenue)), 1);
   const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
+  const todayRevenue = weekBars[todayIdx]?.revenue || 0;
+
   return (
     <div>
       {user?.accountName && (
@@ -76,76 +102,83 @@ export default function Dashboard() {
           <span className="dash-entity-biz">{user.accountName}</span>
         </div>
       )}
-      <div className="dash-stat-grid">
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Today Revenue</div>
-          </div>
-          <div className="dash-sc-v">{fmt$(weekBars[todayIdx]?.revenue || 0)}</div>
-          <div className="dash-sc-s">{todayJobs.length} job{todayJobs.length !== 1 ? 's' : ''} today</div>
-        </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Month to Date</div>
-            {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
-          </div>
-          <div className="dash-sc-v">{fmt$(mtdRevenue)}</div>
-          <div className="dash-sc-s">Completed jobs</div>
-        </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Active Jobs</div>
-            {activeJobs > 0 && <span className="dash-sc-b bg">Live</span>}
-          </div>
-          <div className="dash-sc-v">{activeJobs}</div>
-          <div className="dash-sc-s">{activeJobs > 0 ? 'In progress now' : 'None in progress'}</div>
-        </div>
-        <div className="dash-sc dash-sc--link" onClick={() => nav('/invoices')}>
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Pending Invoices</div>
-          </div>
-          <div className="dash-sc-v">{fmt$(pendingInvoices.total || 0)}</div>
-          <div className="dash-sc-s">{pendingInvoices.count || 0} outstanding</div>
-        </div>
-        <div className="dash-sc">
-          <div className="dash-sc-l">Pending Deposits</div>
-          {pendingDeposits.length > 0 && (
-            <div className="dash-sc-badge-stack">
-              <span className="dash-sc-b br">Action Needed</span>
-            </div>
-          )}
-          <div className="dash-sc-v">{pendingDeposits.length}</div>
-          <div className="dash-sc-s">{pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}</div>
-        </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Avg Rating</div>
-            {avgRating >= 4.5 && <span className="dash-sc-b bg">Excellent</span>}
-          </div>
-          <div className="dash-sc-v">{avgRating ? `${avgRating} ★` : '—'}</div>
-          <div className="dash-sc-s">
-            {reviewCount > 0
+
+      {/* ── KPI Grid ── */}
+      <div className="kpi-grid">
+        <KpiCard
+          icon={TrendingUp}
+          title="Today Revenue"
+          value={fmt$(todayRevenue)}
+          subtitle={`${todayJobs.length} job${todayJobs.length !== 1 ? 's' : ''} today`}
+          tone="success"
+        />
+        <KpiCard
+          icon={CalendarDays}
+          title="Month to Date"
+          value={fmt$(mtdRevenue)}
+          subtitle="Completed jobs"
+          tone={mtdRevenue > 0 ? 'info' : 'neutral'}
+          badge={mtdRevenue > 0 ? { label: 'Active', tone: 'info' } : undefined}
+        />
+        <KpiCard
+          icon={Briefcase}
+          title="Active Jobs"
+          value={activeJobs}
+          subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
+          tone={activeJobs > 0 ? 'success' : 'neutral'}
+          badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : undefined}
+        />
+        <KpiCard
+          icon={FileText}
+          title="Pending Invoices"
+          value={fmt$(pendingInvoices.total || 0)}
+          subtitle={`${pendingInvoices.count || 0} outstanding`}
+          tone={pendingInvoices.count > 0 ? 'warning' : 'neutral'}
+          onClick={() => nav('/invoices')}
+        />
+        <KpiCard
+          icon={CreditCard}
+          title="Pending Deposits"
+          value={pendingDeposits.length}
+          subtitle={pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}
+          tone={pendingDeposits.length > 0 ? 'danger' : 'neutral'}
+          statusBadge={pendingDeposits.length > 0 ? { label: 'Action Needed', tone: 'danger' } : undefined}
+        />
+        <KpiCard
+          icon={Star}
+          title="Avg Rating"
+          value={avgRating ? `${avgRating} ★` : '—'}
+          subtitle={
+            reviewCount > 0
               ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} · ${ratingSource}`
-              : gbp && gbp.status !== 'connected'
-                ? <a href="/business-settings?tab=integrations" style={{ color: 'var(--sand)', fontSize: 11, textDecoration: 'none' }}>Connect Google →</a>
-                : 'No reviews yet'}
-          </div>
-        </div>
+              : 'No reviews yet'
+          }
+          tone={avgRating >= 4.5 ? 'success' : 'neutral'}
+          badge={avgRating >= 4.5 ? { label: 'Excellent', tone: 'success' } : undefined}
+          action={
+            !reviewCount && gbp && gbp.status !== 'connected'
+              ? { label: 'Connect Google →', onClick: () => nav('/business-settings?tab=integrations') }
+              : undefined
+          }
+        />
       </div>
 
       <DashboardBanner />
 
-      <div className="dash-3col">
+      {/* ── Lower grid ── */}
+      <div className="dp-grid">
+
         {/* Col 1 — Today's Jobs */}
-        <div>
-          <div className="dash-card">
-            <div className="dash-ch">
-              <span className="dash-cht">Today's Jobs</span>
-              <span className="dash-cha" style={{ cursor: 'pointer' }} onClick={() => nav('/jobs')}>Calendar →</span>
-            </div>
+        <div className="dp-col">
+          <DashboardPanel
+            title="Today's Jobs"
+            action={{ label: 'Calendar →', onClick: () => nav('/jobs') }}
+          >
             {todayJobs.length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
-                No jobs scheduled for today.
+              <div className="dp-empty">
+                <div className="dp-empty__icon"><Calendar size={15} strokeWidth={1.5} /></div>
+                <div className="dp-empty__title">No jobs today</div>
+                <div className="dp-empty__subtitle">Jobs scheduled for today will appear here.</div>
               </div>
             ) : (
               todayJobs.map((j, i) => (
@@ -162,13 +195,12 @@ export default function Dashboard() {
                 </div>
               ))
             )}
-          </div>
+          </DashboardPanel>
         </div>
 
         {/* Col 2 — Revenue Chart + Team */}
-        <div>
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Revenue This Week</span></div>
+        <div className="dp-col">
+          <DashboardPanel title="Revenue This Week">
             <div className="dash-chart-area">
               {weekBars.map((b, i) => {
                 const h = maxBar > 0 ? Math.max(4, (parseFloat(b.revenue) / maxBar) * 100) : 4;
@@ -189,12 +221,15 @@ export default function Dashboard() {
                 );
               })}
             </div>
-          </div>
+          </DashboardPanel>
 
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Team</span></div>
+          <DashboardPanel title="Team">
             {team.length === 0 ? (
-              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No techs on team yet.</div>
+              <div className="dp-empty">
+                <div className="dp-empty__icon"><Users size={15} strokeWidth={1.5} /></div>
+                <div className="dp-empty__title">No team members</div>
+                <div className="dp-empty__subtitle">Add technicians in Team settings.</div>
+              </div>
             ) : (
               team.map((t, i) => (
                 <div className="dash-tech" key={i}>
@@ -209,51 +244,56 @@ export default function Dashboard() {
                 </div>
               ))
             )}
-          </div>
-        </div>
+          </DashboardPanel>
 
-        {/* Col 3 — Quick Actions + Deposit Alerts */}
-        <div>
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Quick Actions</span></div>
-            <div className="dash-actions">
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/dispatch')}>Dispatch Map</button>
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/deposits')}>Review Deposits</button>
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/communications')}>Business Phone</button>
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/revenue')}>Revenue Analytics</button>
-              <button className="tb-btn tb-ghost dash-act-btn" onClick={() => nav('/team')}>Team Report</button>
-              <button className="tb-btn tb-primary dash-act-btn" onClick={() => nav('/jobs?new=1')}>+ Book New Job</button>
-            </div>
-          </div>
-
-          <div className="dash-card">
-            <div className="dash-ch">
-              <span className="dash-cht">Recent Reviews</span>
-              {gbp?.status === 'connected' && <span className="dash-sc-b bg" style={{ fontSize: 10 }}>Google</span>}
-            </div>
+          <DashboardPanel
+            title="Recent Reviews"
+            badge={gbp?.status === 'connected' ? { label: 'Google', tone: 'success' } : undefined}
+          >
             {recentReviews.length === 0 ? (
-              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No reviews yet — requests are sent after job completion.</div>
+              <div className="dp-empty">
+                <div className="dp-empty__icon"><Star size={15} strokeWidth={1.5} /></div>
+                <div className="dp-empty__title">No reviews yet</div>
+                <div className="dp-empty__subtitle">Requests are sent automatically after job completion.</div>
+              </div>
             ) : (
               recentReviews.map((r, i) => (
-                <div key={i} style={{ padding: '12px 16px', borderBottom: i < recentReviews.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{r.client_name}</span>
-                    <span style={{ color: '#D6B58A', fontSize: 14, letterSpacing: 2 }}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                <div className="dash-review-row" key={i}>
+                  <div className="dash-review-top">
+                    <span className="dash-review-name">{r.client_name}</span>
+                    <span className="dash-review-stars">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--steel)', marginBottom: r.body ? 4 : 0 }}>{r.service_type}</div>
-                  {r.body && <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>"{r.body}"</div>}
+                  <div className="dash-review-service">{r.service_type}</div>
+                  {r.body && <div className="dash-review-body">"{r.body}"</div>}
                 </div>
               ))
             )}
-          </div>
+          </DashboardPanel>
+        </div>
 
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Deposit Alerts</span></div>
+        {/* Col 3 — Quick Actions + Deposit Alerts */}
+        <div className="dp-col">
+          <DashboardPanel title="Quick Actions">
+            <div className="qa-list">
+              <QaRow icon={Map}      label="Dispatch Map"      onClick={() => nav('/dispatch')} />
+              <QaRow icon={CreditCard} label="Review Deposits"  onClick={() => nav('/deposits')} />
+              <QaRow icon={Phone}    label="Business Phone"    onClick={() => nav('/communications')} />
+              <QaRow icon={BarChart2} label="Revenue Analytics" onClick={() => nav('/revenue')} />
+              <QaRow icon={Users}    label="Team Report"       onClick={() => nav('/team')} />
+              <QaRow icon={Plus}     label="Book New Job"      onClick={() => nav('/jobs?new=1')} primary />
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel title="Deposit Alerts">
             {pendingDeposits.length === 0 ? (
-              <div style={{ padding: '16px', color: 'var(--steel)', fontSize: 13 }}>No pending deposits.</div>
+              <div className="dp-empty">
+                <div className="dp-empty__icon"><Inbox size={15} strokeWidth={1.5} /></div>
+                <div className="dp-empty__title">All clear</div>
+                <div className="dp-empty__subtitle">No pending deposits at this time.</div>
+              </div>
             ) : (
               <>
-                <div className="dash-dep-hdr">
+                <div className="dep-table-hdr">
                   <span>Client</span><span>Amt</span><span>Status</span><span>Expiry</span>
                 </div>
                 {pendingDeposits.map((d, i) => {
@@ -261,22 +301,32 @@ export default function Dashboard() {
                     ? Math.max(0, Math.floor((new Date(d.expires_at) - Date.now()) / 3600000))
                     : null;
                   return (
-                    <div className="dash-dep-row" key={i} onClick={() => nav('/deposits')} style={{ cursor: 'pointer' }}>
+                    <div className="dep-table-row" key={i} onClick={() => nav('/deposits')}>
                       <div>
-                        <strong>{d.client_name}</strong>
-                        <div className="dash-dep-sub">{d.service_type}</div>
+                        <div className="dep-client__name">{d.client_name}</div>
+                        <div className="dep-client__sub">{d.service_type}</div>
                       </div>
-                      <strong>${d.amount}</strong>
-                      <span className="dash-dep-badge" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>Pending</span>
-                      <span className="dash-dep-timer" style={{ color: hoursLeft === null ? 'var(--steel)' : hoursLeft < 24 ? 'var(--red)' : 'var(--amber)', fontWeight: hoursLeft !== null && hoursLeft < 24 ? 700 : 400 }}>
+                      <div className="dep-amount">${d.amount}</div>
+                      <div>
+                        <span className="dep-status" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>
+                          Pending
+                        </span>
+                      </div>
+                      <div
+                        className="dep-expiry"
+                        style={{
+                          color: hoursLeft === null ? 'var(--steel)' : hoursLeft < 24 ? 'var(--red)' : 'var(--amber)',
+                          fontWeight: hoursLeft !== null && hoursLeft < 24 ? 700 : 400,
+                        }}
+                      >
                         {hoursLeft !== null ? `${hoursLeft}h left` : '—'}
-                      </span>
+                      </div>
                     </div>
                   );
                 })}
               </>
             )}
-          </div>
+          </DashboardPanel>
         </div>
       </div>
     </div>
