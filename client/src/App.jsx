@@ -445,7 +445,6 @@ function AppShell() {
                 onClick={async () => { if (!isActive && !switching) { try { await switchAccount(a.id); nav('/dashboard'); } catch {} } }}
                 className={'entity-opt' + (isActive ? ' active' : '')}
                 disabled={switching}
-                title={isActive ? 'Current entity' : `Switch to ${a.name}`}
                 style={{ opacity: switching && !isActive ? 0.6 : 1, cursor: switching ? 'wait' : (isActive ? 'default' : 'pointer') }}
               >
                 <span className="entity-dot" style={{ background: isSwitchingToThis ? '#8A90A2' : (isActive ? '#D6B58A' : dotColors[i % dotColors.length]) }} />
@@ -540,7 +539,7 @@ function AppShell() {
           <button
             onClick={() => { logout(); nav('/login'); }}
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 13, padding: '2px 4px', flexShrink: 0 }}
-            title="Sign out"
+            aria-label="Sign out"
           >⎋</button>
         </div>
       </aside>

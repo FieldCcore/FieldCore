@@ -259,7 +259,7 @@ export default function Account() {
                         <button
                           onClick={() => revokeSession(s.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 4, outline: 'none' }}
-                          title="Revoke session"
+                          aria-label="Revoke session"
                         >
                           <Trash2 size={14} />
                         </button>

@@ -552,7 +552,7 @@ export default function Entities() {
                                   </div>
                                   <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 7px', borderRadius: 4, background: '#f4f4f0', color: '#6b7280' }}>{m.role}</span>
                                   {m.membership_type === 'cross' && (
-                                    <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} title="Remove">×</button>
+                                    <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} aria-label="Remove">×</button>
                                   )}
                                 </div>
                               ))}

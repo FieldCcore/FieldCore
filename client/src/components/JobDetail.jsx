@@ -439,7 +439,6 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
               {statusList.map(s => (
                 <button key={s} disabled={job.status === s || updating || (s === 'complete' && job.is_multi_day)}
                   className="status-btn"
-                  title={s === 'complete' && job.is_multi_day ? 'Use "Complete Job" button below' : ''}
                   style={{
                     background: job.status === s ? STATUS_COLORS[s] || '#1C2333' : '#f1f5f9',
                     color:      job.status === s ? '#fff' : '#475569',

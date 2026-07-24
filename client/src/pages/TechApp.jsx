@@ -287,10 +287,10 @@ function JobQueue({ user, onSelect, onSelectSession, onLogout, onPwChange, avail
               {availLoading ? '…' : avail ? 'Available' : 'Off Duty'}
             </button>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Change password">
+              <button onClick={onPwChange} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} aria-label="Change password">
                 <Lock size={15} />
               </button>
-              <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
+              <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }} aria-label="Sign out">
                 <LogOut size={16} />
               </button>
             </div>

@@ -215,7 +215,7 @@ export default function BookingSettings() {
                         type="button"
                         onClick={() => removeRule(i)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', fontSize: 15, lineHeight: 1, padding: '0 2px' }}
-                        title="Remove rule"
+                        aria-label="Remove rule"
                       >
                         ×
                       </button>

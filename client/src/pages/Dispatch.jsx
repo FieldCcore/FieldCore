@@ -398,7 +398,6 @@ export default function Dispatch() {
               <Marker
                 key={`job-${j.id}`}
                 position={pos}
-                title={`${j.client_name} — ${j.service_type}`}
                 icon={dotIcon(color, 'white')}
                 onClick={() => setActiveInfo({ pos, job: j })}
               />
@@ -418,7 +417,6 @@ export default function Dispatch() {
               <Marker
                 key={`tech-${t.id}`}
                 position={pos}
-                title={t.name}
                 icon={avatarIcon(fill, stroke, initials(t.name))}
                 onClick={() => setActiveInfo({ pos, tech: t, isStale, jobCount, loc })}
               />

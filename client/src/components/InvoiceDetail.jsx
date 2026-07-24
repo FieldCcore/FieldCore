@@ -232,7 +232,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
               <input readOnly value={invoice.payment_link} className="link-input" />
               <button className="btn-primary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
               <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
-              <button className="btn-secondary" onClick={handleSend} disabled={sending} title="Resend email to client">
+              <button className="btn-secondary" onClick={handleSend} disabled={sending}>
                 {sending ? '…' : 'Resend'}
               </button>
             </>
