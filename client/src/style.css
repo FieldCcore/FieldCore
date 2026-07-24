@@ -1426,6 +1426,55 @@ body {
 .js-pending { background: var(--offwhite); color: var(--slate); }
 .js-noshow  { background: var(--red-lt);   color: var(--red);   }
 
+/* ── Revenue This Week panel ─────────────────────────────── */
+.rev-summary {
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--off);
+}
+.rev-summary__date {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--steel);
+  margin-bottom: 8px;
+}
+.rev-summary__total {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  color: var(--navy);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.rev-summary__label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--steel);
+  margin-bottom: 8px;
+}
+.rev-summary__split {
+  font-size: 11px;
+  color: var(--slate);
+}
+.rev-summary__split strong {
+  font-weight: 600;
+  color: var(--navy);
+}
+.rev-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--slate);
+}
+.rev-footer__sep { color: var(--lightgray); }
+.rev-footer__pos { color: var(--green); font-weight: 700; }
+.rev-footer__neg { color: var(--red);   font-weight: 700; }
+
 /* ── Dashboard chart ─────────────────────────────────────── */
 .dash-chart-area {
   padding: 16px;
@@ -1434,6 +1483,13 @@ body {
   gap: 8px;
   height: 160px;
 }
+.dash-chart-area--compact {
+  height: 80px;
+  padding: 8px 16px 4px;
+  gap: 6px;
+}
+.dash-chart-area--compact .dash-bar-val { display: none; }
+.dash-chart-area--compact .dash-bar-wrap { gap: 3px; }
 .dash-bar-wrap {
   flex: 1;
   display: flex;

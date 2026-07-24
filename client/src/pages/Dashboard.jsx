@@ -53,6 +53,17 @@ function fmtTime(iso) {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+function weekDateRange() {
+  const now = new Date();
+  const dow = now.getDay();
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${fmt(mon)} – ${fmt(sun)}`;
+}
+
 function fmtRelative(iso) {
   if (!iso) return '';
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -101,7 +112,8 @@ export default function Dashboard() {
     return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading dashboard…</div>;
   }
 
-  const { todayJobs = [], weekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
+  const { todayJobs = [], weekRevenue = 0, weekCollected = 0, weekOutstanding = 0,
+          prevWeekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
           pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [],
           recentReviews = [] } = data || {};
 
@@ -118,6 +130,18 @@ export default function Dashboard() {
   const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
   const todayRevenue = weekBars[todayIdx]?.revenue || 0;
+
+  // Revenue This Week panel derived values
+  const dateRange   = weekDateRange();
+  const pctChange   = prevWeekRevenue > 0
+    ? Math.round(((weekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100)
+    : null;
+  const bestBarIdx  = weekBars.reduce((bi, b, i) =>
+    parseFloat(b.revenue) > parseFloat(weekBars[bi]?.revenue ?? 0) ? i : bi, 0);
+  const bestDay     = weekBars[bestBarIdx] && parseFloat(weekBars[bestBarIdx].revenue) > 0
+    ? { label: DAY_LABELS[bestBarIdx], revenue: weekBars[bestBarIdx].revenue }
+    : null;
+  const hasInvoiceSplit = weekCollected > 0 || weekOutstanding > 0;
 
   // Activity feed — composed from existing data, no extra fetch
   const activityFeed = [
@@ -251,8 +275,49 @@ export default function Dashboard() {
         </DashboardPanel>
 
         {/* Row 1 — Revenue This Week */}
-        <DashboardPanel title="Revenue This Week">
-          <div className="dash-chart-area">
+        <DashboardPanel
+          title="Revenue This Week"
+          action={{ label: 'Revenue Analytics →', onClick: () => nav('/revenue') }}
+          footer={
+            (pctChange !== null || prevWeekRevenue > 0 || bestDay) ? (
+              <div className="rev-footer">
+                {pctChange !== null && (
+                  <span className={pctChange >= 0 ? 'rev-footer__pos' : 'rev-footer__neg'}>
+                    {pctChange >= 0 ? '+' : ''}{pctChange}% vs last week
+                  </span>
+                )}
+                {prevWeekRevenue > 0 && (
+                  <>
+                    {pctChange !== null && <span className="rev-footer__sep">·</span>}
+                    <span>{fmt$(prevWeekRevenue)} prev</span>
+                  </>
+                )}
+                {bestDay && (
+                  <>
+                    {(pctChange !== null || prevWeekRevenue > 0) && <span className="rev-footer__sep">·</span>}
+                    <span>Best: {bestDay.label} {fmt$(bestDay.revenue)}</span>
+                  </>
+                )}
+              </div>
+            ) : undefined
+          }
+        >
+          {/* Summary metrics */}
+          <div className="rev-summary">
+            <div className="rev-summary__date">{dateRange}</div>
+            <div className="rev-summary__total">{fmt$(weekRevenue)}</div>
+            <div className="rev-summary__label">Total revenue this week</div>
+            {hasInvoiceSplit && (
+              <div className="rev-summary__split">
+                {weekCollected > 0 && <><strong>{fmt$(weekCollected)}</strong> collected</>}
+                {weekCollected > 0 && weekOutstanding > 0 && <span style={{ margin: '0 6px', color: 'var(--lightgray)' }}>·</span>}
+                {weekOutstanding > 0 && <><strong>{fmt$(weekOutstanding)}</strong> outstanding</>}
+              </div>
+            )}
+          </div>
+
+          {/* Compact bar chart */}
+          <div className="dash-chart-area dash-chart-area--compact">
             {weekBars.map((b, i) => {
               const h = maxBar > 0 ? Math.max(4, (parseFloat(b.revenue) / maxBar) * 100) : 4;
               const isToday  = i === todayIdx;

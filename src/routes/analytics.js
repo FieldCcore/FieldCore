@@ -8,7 +8,7 @@ const requireEntitlement = require('../middleware/requireEntitlement');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -149,19 +149,55 @@ router.get('/dashboard', requireAuth, async (req, res) => {
          ORDER BY s.start_time NULLS LAST`,
         [accountId]
       ),
+
+      // Paid invoices for jobs scheduled this week
+      pool.query(
+        `SELECT COALESCE(SUM(i.amount), 0) AS total
+         FROM invoices i
+         JOIN jobs j ON j.id = i.job_id
+         WHERE i.account_id = $1
+           AND j.scheduled_at >= date_trunc('week', CURRENT_DATE)
+           AND i.status = 'paid'`,
+        [accountId]
+      ),
+
+      // Pending invoices for jobs scheduled this week
+      pool.query(
+        `SELECT COALESCE(SUM(i.amount), 0) AS total
+         FROM invoices i
+         JOIN jobs j ON j.id = i.job_id
+         WHERE i.account_id = $1
+           AND j.scheduled_at >= date_trunc('week', CURRENT_DATE)
+           AND i.status = 'pending'`,
+        [accountId]
+      ),
+
+      // Previous week completed revenue (for week-over-week comparison)
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM jobs
+         WHERE account_id = $1
+           AND status = 'complete'
+           AND scheduled_at >= date_trunc('week', CURRENT_DATE) - INTERVAL '1 week'
+           AND scheduled_at < date_trunc('week', CURRENT_DATE)`,
+        [accountId]
+      ),
     ]);
 
     res.json({
-      todayJobs:       todayJobs.rows,
-      todaySessions:   todaySessions.rows,
-      weekRevenue:     parseFloat(weekRevenue.rows[0].total),
-      mtdRevenue:      parseFloat(mtdRevenue.rows[0].total),
-      activeJobs:      parseInt(activeJobs.rows[0].count),
-      pendingInvoices: { count: parseInt(pendingInvoices.rows[0].count), total: parseFloat(pendingInvoices.rows[0].total) },
-      pendingDeposits: pendingDeposits.rows,
-      team:            teamStats.rows,
-      weekBars:        weekBars.rows,
-      recentReviews:   recentReviews.rows,
+      todayJobs:        todayJobs.rows,
+      todaySessions:    todaySessions.rows,
+      weekRevenue:      parseFloat(weekRevenue.rows[0].total),
+      weekCollected:    parseFloat(weekCollected.rows[0].total),
+      weekOutstanding:  parseFloat(weekOutstanding.rows[0].total),
+      prevWeekRevenue:  parseFloat(prevWeekRevenue.rows[0].total),
+      mtdRevenue:       parseFloat(mtdRevenue.rows[0].total),
+      activeJobs:       parseInt(activeJobs.rows[0].count),
+      pendingInvoices:  { count: parseInt(pendingInvoices.rows[0].count), total: parseFloat(pendingInvoices.rows[0].total) },
+      pendingDeposits:  pendingDeposits.rows,
+      team:             teamStats.rows,
+      weekBars:         weekBars.rows,
+      recentReviews:    recentReviews.rows,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
