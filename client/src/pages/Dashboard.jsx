@@ -473,32 +473,37 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="dep-table-hdr">
-                <span>Client</span><span>Amt</span><span>Status</span><span>Expiry</span>
+                <span>Client</span>
+                <span className="dep-col--amount">Amt</span>
+                <span>Status</span>
+                <span className="dep-col--expiry">Expiry</span>
               </div>
               {pendingDeposits.map((d, i) => {
                 const hoursLeft = d.expires_at
                   ? Math.max(0, Math.floor((new Date(d.expires_at) - Date.now()) / 3600000))
                   : null;
+                const expiryMod = hoursLeft === null ? 'is-none'
+                  : hoursLeft < 24 ? 'is-urgent'
+                  : 'is-warn';
                 return (
-                  <div className="dep-table-row" key={i} onClick={() => nav('/deposits')}>
+                  <div className="dep-table-row" key={i} onClick={() => nav('/deposits')}
+                    role="button" tabIndex={0}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && nav('/deposits')}
+                  >
                     <div>
                       <div className="dep-client__name">{d.client_name}</div>
-                      <div className="dep-client__sub">{d.service_type}</div>
+                      {d.service_type && (
+                        <div className="dep-client__sub">{d.service_type}</div>
+                      )}
                     </div>
-                    <div className="dep-amount">${d.amount}</div>
-                    <div>
+                    <div className="dep-col--amount">${d.amount}</div>
+                    <div className="dep-col--status">
                       <span className="dep-status" style={{ background: 'var(--blue-lt)', color: 'var(--blue)' }}>
                         Pending
                       </span>
                     </div>
-                    <div
-                      className="dep-expiry"
-                      style={{
-                        color: hoursLeft === null ? 'var(--steel)' : hoursLeft < 24 ? 'var(--red)' : 'var(--amber)',
-                        fontWeight: hoursLeft !== null && hoursLeft < 24 ? 700 : 400,
-                      }}
-                    >
-                      {hoursLeft !== null ? `${hoursLeft}h left` : '—'}
+                    <div className={`dep-col--expiry ${expiryMod}`}>
+                      {hoursLeft !== null ? `${hoursLeft}h left` : 'Not Set'}
                     </div>
                   </div>
                 );
