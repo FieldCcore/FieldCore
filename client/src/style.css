@@ -1290,6 +1290,35 @@ body {
   border-radius: 99px;
 }
 
+/* ── Dashboard greeting ─────────────────────────────────── */
+@keyframes fc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.dash-greet {
+  margin-bottom: 16px;
+  animation: fc-fade-in 250ms ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-greet { animation: none; }
+}
+.dash-greet__date {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--steel);
+  margin-bottom: 4px;
+}
+.dash-greet__name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1.2;
+}
+
 /* ── Dashboard entity context bar ───────────────────────── */
 .dash-entity-bar {
   display: flex;

@@ -18,6 +18,22 @@ import useActivity from '../hooks/useActivity';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+function getGreeting(name) {
+  const hour  = new Date().getHours();
+  const first = (name || '').split(' ')[0] || 'there';
+  if (hour >= 5  && hour < 12) return `Good morning, ${first}`;
+  if (hour >= 12 && hour < 17) return `Good afternoon, ${first}`;
+  return `Good evening, ${first}`;
+}
+
+function getDateLabel() {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month:   'long',
+    day:     'numeric',
+  });
+}
+
 const STATUS_DOT = {
   scheduled:   'var(--steel)',
   in_progress: 'var(--green)',
@@ -172,6 +188,12 @@ export default function Dashboard() {
 
   return (
     <div>
+      {/* ── Greeting ── */}
+      <div className="dash-greet" aria-label="Dashboard greeting">
+        <div className="dash-greet__date">{getDateLabel()}</div>
+        <p className="dash-greet__name">{getGreeting(user?.name)}</p>
+      </div>
+
       {user?.accountName && (
         <div className="dash-entity-bar">
           <span className="dash-entity-eyebrow">Viewing</span>
