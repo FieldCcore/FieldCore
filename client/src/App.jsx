@@ -280,7 +280,6 @@ function AppShell() {
   const { user, logout, accounts, switching, switchError, switchAccount } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
-  const [dateStr,    setDateStr]    = useState('');
   const [callerOpen, setCallerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const touchStartX = useRef(null);
@@ -312,15 +311,6 @@ function AppShell() {
   }
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
-
-  useEffect(() => {
-    const d = new Date();
-    const days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    setDateStr(`${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`);
-  }, []);
-
-
 
   // Auto-show CallerID on live inbound calls
   const lastCallIdRef = React.useRef(null);
@@ -548,18 +538,19 @@ function AppShell() {
 
       <div className="main">
         <div className="topbar">
-          <button className="tb-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Open menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </button>
-          <div className="tb-title-wrap">
-            <div className="tb-title">{pageTitle}</div>
-            {user?.accountName && (
-              <div className="tb-entity-label">{user.accountName}</div>
-            )}
+          <div className="tb-left">
+            <button className="tb-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Open menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div className="tb-title-wrap">
+              <div className="tb-title">{pageTitle}</div>
+              {user?.accountName && (
+                <div className="tb-entity-label">{user.accountName}</div>
+              )}
+            </div>
           </div>
           <GlobalSearch />
-          <div className="tb-actions">
-            <div className="tb-date">{dateStr}</div>
+          <div className="tb-right">
             <NotificationBell />
             <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
             {(user?.role === 'owner' || user?.role === 'manager') && <CreateMenu />}
