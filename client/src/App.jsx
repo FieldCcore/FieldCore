@@ -79,6 +79,7 @@ import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import { useEntitlements } from './hooks/useEntitlements';
 import CallerID         from './components/CallerID';
+import GlobalSearch     from './components/GlobalSearch';
 import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { MapProvider } from './maps';
@@ -556,10 +557,13 @@ function AppShell() {
               <div className="tb-entity-label">{user.accountName}</div>
             )}
           </div>
-          <div className="tb-date">{dateStr}</div>
-          <NotificationBell />
-          <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
-          {(user?.role === 'owner' || user?.role === 'manager') && <CreateMenu />}
+          <GlobalSearch />
+          <div className="tb-actions">
+            <div className="tb-date">{dateStr}</div>
+            <NotificationBell />
+            <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
+            {(user?.role === 'owner' || user?.role === 'manager') && <CreateMenu />}
+          </div>
         </div>
 
         <div className="content" key={user?.accountId}>
