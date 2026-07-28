@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Phone, Plus, PhoneCall, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
+import { Phone, Plus, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -195,49 +195,6 @@ const HdrBtn = React.forwardRef(function HdrBtn(
   );
 });
 
-// ── Call Actions popover ──────────────────────────────────
-function CallMenu({ open, onOpen, onClose, onMakeCall }) {
-  const ref    = useRef(null);
-  const btnRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
-    function onEscape(e)  { if (e.key === 'Escape') { onClose(); btnRef.current?.focus(); } }
-    document.addEventListener('mousedown', onOutside);
-    document.addEventListener('keydown', onEscape);
-    return () => {
-      document.removeEventListener('mousedown', onOutside);
-      document.removeEventListener('keydown', onEscape);
-    };
-  }, [open, onClose]);
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <HdrBtn
-        ref={btnRef}
-        icon={Phone}
-        label="Open calling options"
-        onClick={onOpen}
-        variant="neutral"
-        isOpen={open}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      />
-      {open && (
-        <div role="menu" className="hdr-panel" style={{ minWidth: 220 }} onKeyDown={panelKeyNav} aria-label="Calling options">
-          <CreateMenuItem
-            icon={PhoneCall}
-            label="Make a Call"
-            description="Call a client or contact"
-            onClick={() => { onClose(); onMakeCall(); }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Create New popover ────────────────────────────────────
 function CreateMenu({ open, onOpen, onClose }) {
   const nav = useNavigate();
@@ -358,14 +315,17 @@ function AppShell() {
   const isPublicBook = pathname.startsWith('/book/');
   const [callerOpen,  setCallerOpen]  = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [openMenu,    setOpenMenu]    = useState(null); // 'call' | 'create' | null
+  const [openMenu,    setOpenMenu]    = useState(null); // 'create' | null
   const [dialerOpen,  setDialerOpen]  = useState(false);
 
-  const openCallMenu   = useCallback(() => setOpenMenu(m => m === 'call'   ? null : 'call'),   []);
+  const phoneRef       = useRef(null);
   const openCreateMenu = useCallback(() => setOpenMenu(m => m === 'create' ? null : 'create'), []);
   const closeMenu      = useCallback(() => setOpenMenu(null), []);
-  const openDialer     = useCallback(() => setDialerOpen(true),  []);
-  const closeDialer    = useCallback(() => setDialerOpen(false), []);
+  const openDialer     = useCallback(() => setDialerOpen(true), []);
+  const closeDialer    = useCallback(() => {
+    setDialerOpen(false);
+    requestAnimationFrame(() => phoneRef.current?.focus());
+  }, []);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
@@ -636,11 +596,12 @@ function AppShell() {
           <div className="tb-right">
             <GlobalSearch />
             <NotificationBell />
-            <CallMenu
-              open={openMenu === 'call'}
-              onOpen={openCallMenu}
-              onClose={closeMenu}
-              onMakeCall={openDialer}
+            <HdrBtn
+              ref={phoneRef}
+              icon={Phone}
+              label="Make a call"
+              onClick={openDialer}
+              variant="neutral"
             />
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <CreateMenu

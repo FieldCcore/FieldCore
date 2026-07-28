@@ -177,13 +177,13 @@ export default function MakeACallDialer({ onClose }) {
       <div ref={overlayRef} className="modal-overlay" style={{ zIndex: 9500 }} onClick={handleOverlayClick}
         role="dialog" aria-modal="true" aria-labelledby="dialer-title">
         <div className="modal dialer-modal">
-          <div className="modal-header" style={{ padding: '20px 24px 16px' }}>
+          <div className="modal-header">
             <h2 id="dialer-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PhoneCall size={15} aria-hidden="true" /> Make a Call
             </h2>
             <button className="btn-close" onClick={onClose} aria-label="Close dialer">×</button>
           </div>
-          <div className="modal-body" style={{ padding: '20px 24px 28px' }}>
+          <div className="modal-body dialer-completed-body">
             <div className="dialer-completed">
               <div className="dialer-completed-icon" aria-hidden="true">
                 <CheckCircle size={30} />
@@ -214,7 +214,7 @@ export default function MakeACallDialer({ onClose }) {
       <div className="modal dialer-modal">
 
         {/* Header */}
-        <div className="modal-header" style={{ padding: '20px 24px 14px', flexShrink: 0 }}>
+        <div className="modal-header">
           <h2 id="dialer-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <PhoneCall size={15} aria-hidden="true" /> Make a Call
           </h2>
