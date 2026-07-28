@@ -22,13 +22,12 @@ const ICON_COLOR = {
  *   Row 1 — header: [icon 28px] [title 1fr] [badge auto]
  *   Row 2 — value (primary number)
  *   Row 3 — subtitle (supporting text)
- *   Row 4 — footer: badge OR text-link action (always present, even if empty)
+ *   Row 4 — footer: text-link action (always present, even if empty)
  *
  * Props:
- *   badge      — { label, tone } compact label in header (Live, Excellent)
- *   statusBadge — { label, tone } badge in footer row (Action Needed)
- *   action     — { label, onClick } text-link in footer row
- *   onClick    — makes the whole card a clickable button
+ *   badge   — { label, tone } compact status label in header top-right
+ *   action  — { label, onClick } text-link in footer row (always rendered)
+ *   onClick — makes the whole card a clickable button
  */
 export default function KpiCard({
   icon: Icon,
@@ -37,7 +36,6 @@ export default function KpiCard({
   subtitle,
   tone = 'neutral',
   badge,
-  statusBadge,
   action,
   onClick,
   loading = false,
@@ -83,18 +81,14 @@ export default function KpiCard({
           {/* Row 3 — subtitle */}
           <div className="kpi-card__subtitle">{subtitle}</div>
 
-          {/* Row 4 — footer: badge OR action (always rendered for alignment) */}
+          {/* Row 4 — footer: text-link action (always present for alignment) */}
           <div className="kpi-card__footer">
-            {statusBadge && (
-              <span className={`kpi-badge kpi-badge--${statusBadge.tone ?? 'neutral'}`} role="status">
-                {statusBadge.label}
-              </span>
-            )}
-            {action && !statusBadge && (
+            {action && (
               <button
                 className="kpi-card__action"
                 onClick={(e) => { e.stopPropagation(); action.onClick?.(); }}
                 type="button"
+                aria-label={action.label}
               >
                 {action.label}
               </button>

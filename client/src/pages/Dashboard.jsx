@@ -123,8 +123,9 @@ export default function Dashboard() {
 
   const { todayJobs = [], weekRevenue = 0, weekCollected = 0, weekOutstanding = 0,
           weekInvoicesPaid = 0, prevWeekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
-          pendingInvoices = {}, pendingDeposits = [], team = [], weekBars = [],
-          recentReviews = [] } = data || {};
+          pendingInvoices = {}, failedInvoiceCount = 0,
+          pendingDeposits = [], totalDepositCount = 0,
+          team = [], weekBars = [], recentReviews = [] } = data || {};
 
   const googleRating  = gbp?.average_rating ? parseFloat(gbp.average_rating).toFixed(1) : null;
   const googleCount   = gbp?.total_reviews  || 0;
@@ -202,68 +203,101 @@ export default function Dashboard() {
       )}
 
       {/* ── KPI Grid ── */}
-      <div className="kpi-grid">
-        <KpiCard
-          icon={TrendingUp}
-          title="Today Revenue"
-          value={fmt$(todayRevenue)}
-          subtitle={`${todayJobs.length} job${todayJobs.length !== 1 ? 's' : ''} today`}
-          tone="success"
-        />
-        <KpiCard
-          icon={CalendarDays}
-          title="Month to Date"
-          value={fmt$(mtdRevenue)}
-          subtitle="Completed jobs"
-          tone={mtdRevenue > 0 ? 'info' : 'neutral'}
-          badge={mtdRevenue > 0 ? { label: 'Active', tone: 'info' } : undefined}
-        />
-        <KpiCard
-          icon={Briefcase}
-          title="Active Jobs"
-          value={activeJobs}
-          subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
-          tone={activeJobs > 0 ? 'success' : 'neutral'}
-          badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : undefined}
-        />
-        <KpiCard
-          icon={FileText}
-          title="Pending Invoices"
-          value={fmt$(pendingInvoices.total || 0)}
-          subtitle={`${pendingInvoices.count || 0} outstanding`}
-          tone={pendingInvoices.count > 0 ? 'warning' : 'neutral'}
-          action={pendingInvoices.count > 0
-            ? { label: 'Collect →', onClick: () => nav('/invoices') }
-            : undefined}
-        />
-        <KpiCard
-          icon={CreditCard}
-          title="Pending Deposits"
-          value={pendingDeposits.length}
-          subtitle={pendingDeposits.length > 0 ? 'Awaiting payment' : 'All clear'}
-          tone={pendingDeposits.length > 0 ? 'danger' : 'neutral'}
-          statusBadge={pendingDeposits.length > 0 ? { label: 'Action Needed', tone: 'danger' } : undefined}
-        />
-        <KpiCard
-          icon={Star}
-          title="Avg Rating"
-          value={avgRating ? `${avgRating} ★` : '—'}
-          subtitle={
-            reviewCount > 0
-              ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} · ${ratingSource}`
-              : 'No reviews yet'
-          }
-          tone={avgRating >= 4.5 ? 'success' : 'neutral'}
-          badge={avgRating >= 4.5 ? { label: 'Excellent', tone: 'success' } : undefined}
-          action={
-            reviewCount > 0
-              ? { label: 'View reviews →', onClick: () => nav('/reviews') }
-              : gbp?.status !== 'connected'
-              ? { label: 'Connect Google →', onClick: () => nav('/business-settings?tab=integrations') }
-              : undefined
-          }
-        />
-      </div>
+      {(() => {
+        // Deposit badge — overdue first, then pending, then all-paid/none
+        const overdueDeposits = pendingDeposits.filter(
+          d => d.expires_at && new Date(d.expires_at) < new Date()
+        );
+        const depositBadge = overdueDeposits.length > 0
+          ? { label: 'Action Needed',   tone: 'danger'  }
+          : pendingDeposits.length > 0
+          ? { label: 'Awaiting Payment', tone: 'warning' }
+          : totalDepositCount > 0
+          ? { label: 'All Paid',         tone: 'success' }
+          : { label: 'No Deposits',      tone: 'neutral' };
+
+        // Invoice badge — failed first, then outstanding, then all-paid
+        const invoiceBadge = failedInvoiceCount > 0
+          ? { label: 'Action Needed', tone: 'danger'  }
+          : (pendingInvoices.count || 0) > 0
+          ? { label: 'Outstanding',   tone: 'warning' }
+          : { label: 'All Paid',      tone: 'success' };
+
+        // GBP connection badge (null = API never responded, skip badge)
+        const gbpBadge = gbp?.status === 'connected'
+          ? { label: 'Connected',       tone: 'success' }
+          : gbp?.status === 'syncing'
+          ? { label: 'Syncing',         tone: 'info'    }
+          : gbp?.status != null
+          ? { label: 'Needs Reconnect', tone: 'warning' }
+          : undefined;
+
+        // Rating action — always present; direction based on GBP state
+        const ratingAction = gbp?.status === 'connected'
+          ? { label: 'View reviews →',   onClick: () => nav('/reviews') }
+          : { label: 'Connect Google →', onClick: () => nav('/business-settings?tab=integrations') };
+
+        return (
+          <div className="kpi-grid">
+            <KpiCard
+              icon={TrendingUp}
+              title="Today Revenue"
+              value={fmt$(todayRevenue)}
+              subtitle={`${todayJobs.length} job${todayJobs.length !== 1 ? 's' : ''} today`}
+              tone="success"
+              action={{ label: 'View today →', onClick: () => nav('/revenue') }}
+            />
+            <KpiCard
+              icon={CalendarDays}
+              title="Month to Date"
+              value={fmt$(mtdRevenue)}
+              subtitle="Completed jobs"
+              tone={mtdRevenue > 0 ? 'info' : 'neutral'}
+              action={{ label: 'View monthly report →', onClick: () => nav('/revenue') }}
+            />
+            <KpiCard
+              icon={Briefcase}
+              title="Active Jobs"
+              value={activeJobs}
+              subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
+              tone={activeJobs > 0 ? 'success' : 'neutral'}
+              badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : { label: 'Clear', tone: 'neutral' }}
+              action={{ label: 'View active jobs →', onClick: () => nav('/jobs') }}
+            />
+            <KpiCard
+              icon={FileText}
+              title="Pending Invoices"
+              value={fmt$(pendingInvoices.total || 0)}
+              subtitle={`${pendingInvoices.count || 0} outstanding`}
+              tone={failedInvoiceCount > 0 ? 'danger' : (pendingInvoices.count || 0) > 0 ? 'warning' : 'neutral'}
+              badge={invoiceBadge}
+              action={{ label: 'Collect →', onClick: () => nav('/invoices') }}
+            />
+            <KpiCard
+              icon={CreditCard}
+              title="Pending Deposits"
+              value={pendingDeposits.length}
+              subtitle={pendingDeposits.length > 0 ? `${pendingDeposits.length} awaiting` : 'All clear'}
+              tone={overdueDeposits.length > 0 ? 'danger' : pendingDeposits.length > 0 ? 'warning' : 'neutral'}
+              badge={depositBadge}
+              action={{ label: 'Review deposits →', onClick: () => nav('/deposits') }}
+            />
+            <KpiCard
+              icon={Star}
+              title="Avg Rating"
+              value={avgRating ? `${avgRating} ★` : '—'}
+              subtitle={
+                reviewCount > 0
+                  ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} · ${ratingSource}`
+                  : 'No reviews yet'
+              }
+              tone={avgRating >= 4.5 ? 'success' : 'neutral'}
+              badge={gbpBadge}
+              action={ratingAction}
+            />
+          </div>
+        );
+      })()}
 
       <DashboardBanner />
 

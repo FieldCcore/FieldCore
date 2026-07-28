@@ -3308,6 +3308,7 @@ body {
   font-family: inherit;
 }
 .kpi-card__action:hover { text-decoration: underline; }
+.kpi-card__action:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 .kpi-card__skeleton {
   height: 44px;
   border-radius: var(--r-sm);

@@ -8,7 +8,7 @@ const requireEntitlement = require('../middleware/requireEntitlement');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -193,6 +193,18 @@ router.get('/dashboard', requireAuth, async (req, res) => {
            AND i.status = 'paid'`,
         [accountId]
       ),
+
+      // Count failed invoices (for KPI badge)
+      pool.query(
+        `SELECT COUNT(*) FROM invoices WHERE account_id = $1 AND status = 'failed'`,
+        [accountId]
+      ),
+
+      // Total deposit count across all statuses (for KPI badge)
+      pool.query(
+        `SELECT COUNT(*) FROM deposits WHERE account_id = $1`,
+        [accountId]
+      ),
     ]);
 
     res.json({
@@ -205,8 +217,10 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       weekInvoicesPaid: parseInt(weekInvoicesPaidCount.rows[0].count),
       mtdRevenue:       parseFloat(mtdRevenue.rows[0].total),
       activeJobs:       parseInt(activeJobs.rows[0].count),
-      pendingInvoices:  { count: parseInt(pendingInvoices.rows[0].count), total: parseFloat(pendingInvoices.rows[0].total) },
-      pendingDeposits:  pendingDeposits.rows,
+      pendingInvoices:    { count: parseInt(pendingInvoices.rows[0].count), total: parseFloat(pendingInvoices.rows[0].total) },
+      failedInvoiceCount: parseInt(failedInvoiceCount.rows[0].count),
+      pendingDeposits:    pendingDeposits.rows,
+      totalDepositCount:  parseInt(totalDepositCount.rows[0].count),
       team:             teamStats.rows,
       weekBars:         weekBars.rows,
       recentReviews:    recentReviews.rows,
