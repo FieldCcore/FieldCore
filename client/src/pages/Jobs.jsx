@@ -151,10 +151,11 @@ function parseTime(timeStr) {
 
 export default function Jobs() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const initView = searchParams.get('view');
   const [jobs,         setJobs]         = useState([]);
   const [sessions,     setSessions]     = useState([]);
   const [businessHours, setBusinessHours] = useState([]);
-  const [view,         setView]         = useState('week');
+  const [view,         setView]         = useState(() => ['month', 'week', 'day', 'agenda'].includes(initView) ? initView : 'week');
   const [date,         setDate]         = useState(new Date());
   const [modal,        setModal]        = useState(null);
   const [selectedJob,  setSelectedJob]  = useState(null);
@@ -187,6 +188,8 @@ export default function Jobs() {
       setDefaultStart(new Date());
       setDefaultMultiDay(searchParams.get('multiday') === '1');
       setModal('create');
+      setSearchParams({}, { replace: true });
+    } else if (searchParams.get('view')) {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);

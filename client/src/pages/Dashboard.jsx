@@ -263,7 +263,7 @@ export default function Dashboard() {
               subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
               tone={activeJobs > 0 ? 'success' : 'neutral'}
               badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : { label: 'Clear', tone: 'success' }}
-              action={{ label: 'View active jobs →', onClick: () => nav('/jobs') }}
+              action={{ label: 'View active jobs →', onClick: () => nav('/jobs?view=day') }}
             />
             <KpiCard
               icon={FileText}
@@ -308,7 +308,7 @@ export default function Dashboard() {
         {/* Row 1 — Today's Jobs */}
         <DashboardPanel
           title="Today's Jobs"
-          action={{ label: 'Calendar →', onClick: () => nav('/jobs') }}
+          action={{ label: 'Calendar →', onClick: () => nav('/jobs?view=day') }}
         >
           {todayJobs.length === 0 ? (
             <div className="dp-empty">

@@ -195,7 +195,7 @@ const HdrBtn = React.forwardRef(function HdrBtn(
 });
 
 // ── Call Actions popover ──────────────────────────────────
-function CallMenu({ open, onOpen, onClose, onSimulateCall }) {
+function CallMenu({ open, onOpen, onClose }) {
   const nav    = useNavigate();
   const ref    = useRef(null);
   const btnRef = useRef(null);
@@ -228,9 +228,9 @@ function CallMenu({ open, onOpen, onClose, onSimulateCall }) {
         <div role="menu" className="hdr-panel" style={{ minWidth: 220 }} onKeyDown={panelKeyNav} aria-label="Calling options">
           <CreateMenuItem
             icon={Phone}
-            label="Simulate Inbound Call"
-            description="Open the call answer screen"
-            onClick={() => { onClose(); onSimulateCall(); }}
+            label="Make a Call"
+            description="Call a client or contact"
+            onClick={() => { onClose(); nav('/communications'); }}
           />
           <CreateMenuItem
             icon={PhoneCall}
@@ -643,7 +643,6 @@ function AppShell() {
               open={openMenu === 'call'}
               onOpen={openCallMenu}
               onClose={closeMenu}
-              onSimulateCall={() => setCallerOpen(true)}
             />
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <CreateMenu
