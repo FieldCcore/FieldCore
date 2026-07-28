@@ -1,101 +1,129 @@
 import React from 'react';
 
+/**
+ * StatusBadge — canonical FieldCore status badge.
+ *
+ * Exposes four semantic variants. Blue is NOT a status color.
+ *
+ *   success  — green: paid, complete, connected, live, active
+ *   warning  — yellow: syncing, paused, due soon, expiring soon
+ *   critical — red:  outstanding, awaiting payment, failed, overdue
+ *   neutral  — gray: draft, archived, scheduled, unknown
+ *
+ * Pass `status` (string key) to use the canonical mapping,
+ * or override with `variant` for one-off cases.
+ */
+
 const VARIANTS = {
-  blue:   { bg: 'var(--blue-lt)',  color: 'var(--blue)'  },
-  green:  { bg: 'var(--green-lt)', color: 'var(--green)' },
-  red:    { bg: '#B52A2A',         color: '#fff'          },
-  yellow: { bg: '#fef3c7',         color: '#92400e'       },
-  gray:   { bg: 'var(--offwhite)', color: 'var(--slate)'  },
+  success:  { bg: 'var(--green-lt)',  color: 'var(--green)'  },
+  warning:  { bg: 'var(--yellow-lt)', color: 'var(--yellow)' },
+  critical: { bg: 'var(--red-lt)',    color: 'var(--red)'    },
+  neutral:  { bg: 'var(--off)',       color: 'var(--steel)'  },
+  // legacy aliases kept for smooth migration
+  green:    { bg: 'var(--green-lt)',  color: 'var(--green)'  },
+  red:      { bg: '#B52A2A',          color: '#fff'           },
+  yellow:   { bg: 'var(--yellow-lt)', color: 'var(--yellow)' },
+  gray:     { bg: 'var(--off)',       color: 'var(--steel)'  },
 };
 
 /**
- * STATUS_TO_VARIANT — canonical string-to-color mapping.
+ * Canonical status-string → variant.
  *
  * Semantic rules:
- *   green  = success, complete, paid, connected, live, all-good
- *   blue   = informational, in-progress, pending, awaiting (not overdue)
- *   yellow = warning, needs attention soon, not yet failed
- *   red    = failure, overdue, blocked, disconnected, immediate action
- *   gray   = neutral, draft, archived, unknown, disabled
+ *   success  = healthy, done, connected, active, working
+ *   warning  = needs attention soon, not yet failed
+ *   critical = business impact NOW (money outstanding, failed, blocked)
+ *   neutral  = not started, archived, sent, scheduled, unknown
  */
 const STATUS_TO_VARIANT = {
-  // ── green — success / paid / complete / connected ───────────────
-  paid:                    'green',
-  complete:                'green',
-  completed:               'green',
-  connected:               'green',
-  success:                 'green',
-  verified:                'green',
-  excellent:               'green',
-  signed:                  'green',
-  accepted:                'green',
-  approved:                'green',
-  collected:               'green',
-  'payouts connected':     'green',
-  'payouts active':        'green',
-  'stripe connected':      'green',
-  default:                 'green',
-  live:                    'green',  // active jobs running = success
-  'all paid':              'green',
-  clear:                   'green',  // "Clear" on Active Jobs KPI = all good
+  // ── success — healthy, complete, active ──────────────────────
+  paid:                    'success',
+  complete:                'success',
+  completed:               'success',
+  connected:               'success',
+  success:                 'success',
+  verified:                'success',
+  excellent:               'success',
+  signed:                  'success',
+  accepted:                'success',
+  approved:                'success',
+  collected:               'success',
+  'payouts connected':     'success',
+  'payouts active':        'success',
+  'stripe connected':      'success',
+  default:                 'success',
+  live:                    'success',
+  active:                  'success',
+  in_progress:             'success',
+  'in progress':           'success',
+  available:               'success',
+  'all paid':              'success',
+  clear:                   'success',
+  healthy:                 'success',
+  synced:                  'success',
 
-  // ── blue — informational / pending / in-progress / awaiting ─────
-  active:                  'blue',
-  pending:                 'blue',
-  in_progress:             'blue',
-  'in progress':           'blue',
-  scheduled:               'blue',
-  info:                    'blue',
-  trialing:                'blue',
-  trial:                   'blue',
-  connecting:              'blue',
-  'onboarding started':    'blue',
-  outstanding:             'blue',  // unpaid but not overdue — informational
-  unpaid:                  'blue',  // owed but not failed
-  'balance due':           'blue',  // amount owed, not a failure
-  sent:                    'blue',  // sent and awaiting action — informational
+  // ── warning — needs attention, not yet failed ────────────────
+  warning:                 'warning',
+  'needs review':          'warning',
+  'setup required':        'warning',
+  'verification pending':  'warning',
+  'pending setup':         'warning',
+  'stripe pending':        'warning',
+  'most popular':          'warning',
+  syncing:                 'warning',
+  connecting:              'warning',
+  paused:                  'warning',
+  rescheduled:             'warning',
+  'awaiting_client':       'warning',
+  'awaiting_parts':        'warning',
+  'awaiting client':       'warning',
+  'awaiting parts':        'warning',
+  'due soon':              'warning',
+  'expiring soon':         'warning',
+  'awaiting approval':     'warning',
+  'reminder sent':         'warning',
 
-  // ── yellow — warning / attention-soon / not-yet-failed ──────────
-  warning:                 'yellow',
-  'needs review':          'yellow',
-  'setup required':        'yellow',
-  'verification pending':  'yellow',
-  'pending setup':         'yellow',
-  'stripe pending':        'yellow',
-  'most popular':          'yellow',
-  'awaiting payment':      'yellow',  // payment due but not overdue
-  'deposit due':           'yellow',  // upcoming deposit — not yet failed
-  collect:                 'yellow',  // action needed soon — not failed
-  syncing:                 'yellow',  // sync in progress — not broken
+  // ── critical — business impact NOW ──────────────────────────
+  outstanding:             'critical', // money owed = critical
+  unpaid:                  'critical',
+  'balance due':           'critical',
+  pending:                 'critical', // generic pending = money outstanding in FieldCore
+  'awaiting payment':      'critical', // money waiting to be collected
+  'deposit due':           'critical',
+  collect:                 'critical',
+  'deposit pending':       'critical',
+  late:                    'critical',
+  overdue:                 'critical',
+  failed:                  'critical',
+  cancelled:               'critical',
+  canceled:                'critical',
+  declined:                'critical',
+  expired:                 'critical',
+  error:                   'critical',
+  'no-show':               'critical',
+  noshow:                  'critical',
+  no_show:                 'critical',
+  past_due:                'critical',
+  'past due':              'critical',
+  'action needed':         'critical',
+  'payment failed':        'critical',
+  'needs reconnect':       'critical',
+  blocked:                 'critical',
 
-  // ── red — failure / overdue / blocked / action-required ─────────
-  late:                    'red',
-  overdue:                 'red',
-  failed:                  'red',
-  cancelled:               'red',
-  canceled:                'red',
-  declined:                'red',
-  expired:                 'red',
-  error:                   'red',
-  'no-show':               'red',
-  noshow:                  'red',
-  no_show:                 'red',
-  past_due:                'red',
-  'past due':              'red',
-  'action needed':         'red',
-  'payment failed':        'red',
-  'needs reconnect':       'red',  // GBP/integration disconnected = danger
-
-  // ── gray — neutral / draft / archived / unknown ──────────────────
-  draft:                   'gray',
-  disabled:                'gray',
-  'not connected':         'gray',
-  inactive:                'gray',
-  unknown:                 'gray',
-  void:                    'gray',
-  refunded:                'gray',
-  available:               'gray',
-  'no deposits':           'gray',
+  // ── neutral — no active status ───────────────────────────────
+  draft:                   'neutral',
+  disabled:                'neutral',
+  'not connected':         'neutral',
+  inactive:                'neutral',
+  unknown:                 'neutral',
+  void:                    'neutral',
+  refunded:                'neutral',
+  sent:                    'neutral', // sent, awaiting — no action needed from us
+  scheduled:               'neutral', // on the calendar, not yet started
+  'no deposits':           'neutral',
+  'no reviews':            'neutral',
+  archived:                'neutral',
+  'onboarding started':    'neutral',
 };
 
 function toTitleCase(str) {
@@ -104,8 +132,8 @@ function toTitleCase(str) {
 
 export default function StatusBadge({ status, variant, children, style = {} }) {
   const key = (status || '').toLowerCase().replace(/_/g, ' ').trim();
-  const v = variant || STATUS_TO_VARIANT[key] || 'gray';
-  const colors = VARIANTS[v] || VARIANTS.gray;
+  const v = variant || STATUS_TO_VARIANT[key] || 'neutral';
+  const colors = VARIANTS[v] || VARIANTS.neutral;
   const label = children != null ? children : toTitleCase(status || '');
 
   return (

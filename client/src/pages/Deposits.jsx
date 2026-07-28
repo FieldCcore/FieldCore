@@ -13,12 +13,12 @@ function fmtTimer(expiresAt) {
 }
 
 const STATUS_STYLE = {
-  pending:   { background: 'var(--blue-lt)',  color: 'var(--blue)'  },
-  collected: { background: 'var(--green-lt)', color: 'var(--green)' },
-  refunded:  { background: 'var(--offwhite)', color: 'var(--slate)' },
+  pending:   { background: 'var(--red-lt)',    color: 'var(--red)'   },  // critical — money outstanding
+  collected: { background: 'var(--green-lt)',  color: 'var(--green)' },
+  refunded:  { background: 'var(--offwhite)',  color: 'var(--slate)' },
 };
 const STATUS_LABEL = {
-  pending: 'Pending', collected: '✓ Collected', refunded: 'Refunded',
+  pending: 'Awaiting Payment', collected: '✓ Collected', refunded: 'Refunded',
 };
 
 export default function Deposits() {
@@ -146,7 +146,7 @@ export default function Deposits() {
                         <td>
                           {d.expires_at && d.status === 'pending' ? (
                             <span className="dep-timer" style={{
-                              color: (new Date(d.expires_at) - Date.now()) < 3600000 ? 'var(--red)' : 'var(--amber)',
+                              color: (new Date(d.expires_at) - Date.now()) < 3600000 ? 'var(--red)' : 'var(--yellow)',
                               fontWeight: (new Date(d.expires_at) - Date.now()) < 3600000 ? 700 : 400,
                             }}>
                               {fmtTimer(d.expires_at)} left
@@ -218,7 +218,7 @@ export default function Deposits() {
                   <div className="dep-rule-service">All Services</div>
                   <div className="dep-rule-detail">${globalDeposit.toFixed(2)} flat · Default</div>
                 </div>
-                <span style={{ fontSize: 11, background: 'var(--blue-lt)', color: 'var(--blue)', padding: '2px 7px', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>default</span>
+                <span style={{ fontSize: 11, background: 'var(--green-lt)', color: 'var(--green)', padding: '2px 7px', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>default</span>
               </div>
             )}
 

@@ -13,17 +13,17 @@ const MULTI_DAY_STATUSES  = [
   'ready_for_inspection','complete','cancelled',
 ];
 const STATUS_COLORS = {
-  scheduled:           '#5F667A',
-  in_progress:         '#1565C0',  // info — blue
-  partially_completed: '#1565C0',  // info — blue
-  paused:              '#D97706',  // warning — amber
-  awaiting_client:     '#0369A1',
-  awaiting_parts:      '#0369A1',
-  ready_for_inspection:'#059669',
-  complete:            '#1E6B3C',
-  cancelled:           '#B52A2A',
-  draft:               '#94A3B8',
-  unscheduled:         '#94A3B8',
+  scheduled:           '#8A90A2',  // neutral
+  in_progress:         '#2E7D32',  // success
+  partially_completed: '#2E7D32',  // success
+  paused:              '#D4A000',  // warning — yellow
+  awaiting_client:     '#D4A000',  // warning — stuck
+  awaiting_parts:      '#D4A000',  // warning — stuck
+  ready_for_inspection:'#2E7D32',  // success — almost done
+  complete:            '#2E7D32',  // success
+  cancelled:           '#C62828',  // critical
+  draft:               '#8A90A2',  // neutral
+  unscheduled:         '#8A90A2',  // neutral
 };
 
 const PRIORITY_COLOR = { normal: '#5F667A', high: '#D97706', urgent: '#DC2626' };

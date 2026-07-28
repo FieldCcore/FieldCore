@@ -6,15 +6,15 @@ import AddSessionModal from './AddSessionModal';
 import SessionCloseoutModal from './SessionCloseoutModal';
 
 const SESSION_STATUS_COLOR = {
-  scheduled:         { bg: '#EFF6FF', color: '#1d4ed8', label: 'Scheduled' },
-  en_route:          { bg: '#E3F2FD', color: '#1565C0', label: 'En Route' },       // info — blue
-  checked_in:        { bg: '#ECFDF5', color: '#065f46', label: 'Checked In' },
-  in_progress:       { bg: '#E3F2FD', color: '#1565C0', label: 'In Progress' },    // info — blue
-  paused:            { bg: '#FFFBEB', color: '#92400e', label: 'Paused' },          // warning — amber
-  completed_for_day: { bg: '#F0FDF4', color: '#166534', label: 'Completed for Day' },
-  rescheduled:       { bg: '#FFF7ED', color: '#92400e', label: 'Rescheduled' },    // warning — amber
-  cancelled:         { bg: '#FEF2F2', color: '#991b1b', label: 'Cancelled' },
-  missed:            { bg: '#FEF2F2', color: '#7f1d1d', label: 'Missed' },
+  scheduled:         { bg: '#EDEBE7', color: '#5F667A', label: 'Scheduled' },         // neutral
+  en_route:          { bg: '#E8F5E9', color: '#2E7D32', label: 'En Route' },           // success
+  checked_in:        { bg: '#E8F5E9', color: '#2E7D32', label: 'Checked In' },         // success
+  in_progress:       { bg: '#E8F5E9', color: '#2E7D32', label: 'In Progress' },        // success
+  paused:            { bg: '#FFF9DB', color: '#8A6D00', label: 'Paused' },             // warning
+  completed_for_day: { bg: '#E8F5E9', color: '#2E7D32', label: 'Completed for Day' }, // success
+  rescheduled:       { bg: '#FFF9DB', color: '#8A6D00', label: 'Rescheduled' },        // warning
+  cancelled:         { bg: '#FFEBEE', color: '#C62828', label: 'Cancelled' },          // critical
+  missed:            { bg: '#FFEBEE', color: '#C62828', label: 'Missed' },             // critical
 };
 
 function SessionStatusBadge({ status }) {

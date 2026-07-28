@@ -208,28 +208,29 @@ export default function Dashboard() {
         const overdueDeposits = pendingDeposits.filter(
           d => d.expires_at && new Date(d.expires_at) < new Date()
         );
-        const depositBadge = overdueDeposits.length > 0
-          ? { label: 'Action Needed',   tone: 'danger'  }
-          : pendingDeposits.length > 0
-          ? { label: 'Awaiting Payment', tone: 'warning' }
+        // All pending deposits = critical (money waiting to be collected)
+        const depositBadge = pendingDeposits.length > 0
+          ? (overdueDeposits.length > 0
+              ? { label: 'Action Needed',    tone: 'critical' }
+              : { label: 'Awaiting Payment', tone: 'critical' })
           : totalDepositCount > 0
-          ? { label: 'All Paid',         tone: 'success' }
-          : { label: 'No Deposits',      tone: 'neutral' };
+          ? { label: 'All Paid',   tone: 'success' }
+          : { label: 'No Deposits', tone: 'neutral' };
 
-        // Invoice badge — failed first, then outstanding, then all-paid
-        const invoiceBadge = failedInvoiceCount > 0
-          ? { label: 'Action Needed', tone: 'danger'  }
-          : (pendingInvoices.count || 0) > 0
-          ? { label: 'Outstanding',   tone: 'info'    }
-          : { label: 'All Paid',      tone: 'success' };
+        // Outstanding invoices = critical (money owed = business impact)
+        const invoiceBadge = (failedInvoiceCount > 0 || (pendingInvoices.count || 0) > 0)
+          ? (failedInvoiceCount > 0
+              ? { label: 'Action Needed', tone: 'critical' }
+              : { label: 'Outstanding',   tone: 'critical' })
+          : { label: 'All Paid', tone: 'success' };
 
-        // GBP connection badge (null = API never responded, skip badge)
+        // GBP connection badge (null = API never responded → no badge)
         const gbpBadge = gbp?.status === 'connected'
-          ? { label: 'Connected',       tone: 'success' }
+          ? { label: 'Connected',       tone: 'success'  }
           : gbp?.status === 'syncing'
-          ? { label: 'Syncing',         tone: 'warning' }
+          ? { label: 'Syncing',         tone: 'warning'  }
           : gbp?.status != null
-          ? { label: 'Needs Reconnect', tone: 'danger'  }
+          ? { label: 'Needs Reconnect', tone: 'critical' }
           : undefined;
 
         // Rating action — always present; direction based on GBP state
@@ -252,7 +253,7 @@ export default function Dashboard() {
               title="Month to Date"
               value={fmt$(mtdRevenue)}
               subtitle="Completed jobs"
-              tone={mtdRevenue > 0 ? 'info' : 'neutral'}
+              tone={mtdRevenue > 0 ? 'success' : 'neutral'}
               action={{ label: 'View monthly report →', onClick: () => nav('/revenue') }}
             />
             <KpiCard
@@ -261,7 +262,7 @@ export default function Dashboard() {
               value={activeJobs}
               subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
               tone={activeJobs > 0 ? 'success' : 'neutral'}
-              badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : { label: 'Clear', tone: 'neutral' }}
+              badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : { label: 'Clear', tone: 'success' }}
               action={{ label: 'View active jobs →', onClick: () => nav('/jobs') }}
             />
             <KpiCard
@@ -269,7 +270,7 @@ export default function Dashboard() {
               title="Pending Invoices"
               value={fmt$(pendingInvoices.total || 0)}
               subtitle={`${pendingInvoices.count || 0} outstanding`}
-              tone={failedInvoiceCount > 0 ? 'danger' : (pendingInvoices.count || 0) > 0 ? 'warning' : 'neutral'}
+              tone={(failedInvoiceCount > 0 || (pendingInvoices.count || 0) > 0) ? 'critical' : 'neutral'}
               badge={invoiceBadge}
               action={{ label: 'Collect →', onClick: () => nav('/invoices') }}
             />
@@ -278,7 +279,7 @@ export default function Dashboard() {
               title="Pending Deposits"
               value={pendingDeposits.length}
               subtitle={pendingDeposits.length > 0 ? `${pendingDeposits.length} awaiting` : 'All clear'}
-              tone={overdueDeposits.length > 0 ? 'danger' : pendingDeposits.length > 0 ? 'warning' : 'neutral'}
+              tone={pendingDeposits.length > 0 ? 'critical' : 'neutral'}
               badge={depositBadge}
               action={{ label: 'Review deposits →', onClick: () => nav('/deposits') }}
             />

@@ -8,16 +8,16 @@ const CONTINENTAL_US = { lat: 39.5, lng: -98.35 };
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 const JOB_COLORS = {
-  scheduled:   '#8A90A2',
-  in_progress: '#1565C0',
-  complete:    '#2E7D32',
-  cancelled:   '#C62828',
-  no_show:     '#C62828',
+  scheduled:   '#8A90A2',  // neutral
+  in_progress: '#2E7D32',  // success
+  complete:    '#2E7D32',  // success
+  cancelled:   '#C62828',  // critical
+  no_show:     '#C62828',  // critical
 };
 
 const JOB_STATUS_STYLE = {
-  scheduled:   { background: 'var(--offwhite)', color: 'var(--slate)'  },
-  in_progress: { background: 'var(--blue-lt)',  color: 'var(--blue)'   },
+  scheduled:   { background: 'var(--off)',      color: 'var(--steel)'  },
+  in_progress: { background: 'var(--green-lt)', color: 'var(--green)'  },
   complete:    { background: 'var(--green-lt)', color: 'var(--green)'  },
   cancelled:   { background: 'var(--red-lt)',   color: 'var(--red)'    },
   no_show:     { background: 'var(--red-lt)',   color: 'var(--red)'    },
@@ -61,7 +61,7 @@ function getTechStatus(tech, jobs, techLocs) {
   if (!tech.is_available) return { label: 'Off Duty',  color: '#8A90A2', bg: '#f1f5f9' };
   const loc      = techLocs.find(l => l.user_id === tech.id);
   const isBusy   = jobs.some(j => j.tech_id === tech.id && j.status === 'in_progress');
-  if (isBusy)    return { label: 'Busy',      color: '#1565C0', bg: 'rgba(21,101,192,.10)' };  // info — blue
+  if (isBusy)    return { label: 'Busy',      color: '#2E7D32', bg: 'rgba(46,125,50,.10)' };  // success — on a job
   if (!loc)      return { label: 'Available', color: '#2E7D32', bg: 'rgba(46,125,50,.10)' };
   const age = Date.now() - new Date(loc.updated_at).getTime();
   if (age > GPS_OFFLINE_MS) return { label: 'No GPS',   color: '#8A90A2', bg: '#f1f5f9' };
@@ -110,12 +110,13 @@ function MapAutoCenter({ positions, fallbackCenter, fallbackZoom }) {
 }
 
 const SESSION_COLORS = {
-  scheduled:         '#3B82F6',
-  checked_in:        '#2E7D32',
-  in_progress:       '#1565C0',  // info — blue
-  completed_for_day: '#2E7D32',
-  paused:            '#D97706',  // warning — amber
-  cancelled:         '#C62828',
+  scheduled:         '#8A90A2',  // neutral
+  en_route:          '#2E7D32',  // success
+  checked_in:        '#2E7D32',  // success
+  in_progress:       '#2E7D32',  // success
+  completed_for_day: '#2E7D32',  // success
+  paused:            '#D4A000',  // warning
+  cancelled:         '#C62828',  // critical
 };
 
 export default function Dispatch() {

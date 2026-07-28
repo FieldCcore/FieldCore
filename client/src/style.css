@@ -27,8 +27,9 @@
   --amber-lt:   #FFF3E0;
   --blue:       #1565C0;
   --blue-lt:    #E3F2FD;
-  --yellow:     #92400e;
-  --yellow-lt:  #fef3c7;
+  --yellow:     #8A6D00;
+  --yellow-lt:  #FFF9DB;
+  --yellow-bd:  #F4D03F;
   --sb:         220px;
   --text-muted: #5F667A;
   --navy-3:     #2D3748;
@@ -3336,11 +3337,13 @@ body {
   letter-spacing: .02em;
   flex-shrink: 0;
 }
-.kpi-badge--success { background: var(--green-lt); color: var(--green); }
-.kpi-badge--info    { background: var(--blue-lt);  color: var(--blue);  }
-.kpi-badge--warning { background: var(--amber-lt); color: var(--amber); }
-.kpi-badge--danger  { background: var(--red-lt);   color: var(--red);   }
-.kpi-badge--neutral { background: var(--off);      color: var(--steel); }
+.kpi-badge--success  { background: var(--green-lt);  color: var(--green);  }
+.kpi-badge--warning  { background: var(--yellow-lt); color: var(--yellow); }
+.kpi-badge--critical { background: var(--red-lt);    color: var(--red);    }
+.kpi-badge--neutral  { background: var(--off);       color: var(--steel);  }
+/* legacy aliases — do not use in new code */
+.kpi-badge--danger   { background: var(--red-lt);    color: var(--red);    }
+.kpi-badge--info     { background: var(--off);        color: var(--steel);  }
 
 /* KPI grid responsive breakpoints */
 @media (max-width: 1399px) {
@@ -3544,10 +3547,12 @@ body {
   background: var(--off);
   color: var(--slate);
 }
-.tp-row--danger  .tp-row__icon { background: var(--red-lt);   color: var(--red); }
-.tp-row--warning .tp-row__icon { background: var(--amber-lt); color: var(--amber); }
-.tp-row--info    .tp-row__icon { background: var(--blue-lt);  color: var(--blue); }
-.tp-row--success .tp-row__icon { background: var(--green-lt); color: var(--green); }
+.tp-row--critical .tp-row__icon { background: var(--red-lt);    color: var(--red);    }
+.tp-row--warning  .tp-row__icon { background: var(--yellow-lt); color: var(--yellow); }
+.tp-row--success  .tp-row__icon { background: var(--green-lt);  color: var(--green);  }
+/* legacy aliases */
+.tp-row--danger   .tp-row__icon { background: var(--red-lt);    color: var(--red);    }
+.tp-row--info     .tp-row__icon { background: var(--off);        color: var(--steel);  }
 .tp-row__body { min-width: 0; }
 .tp-row__label {
   font-size: 13px;
@@ -3582,9 +3587,11 @@ body {
   background: var(--off);
   color: var(--slate);
 }
-.tp-row--danger  .tp-row__count { background: var(--red-lt);   color: var(--red); }
-.tp-row--warning .tp-row__count { background: var(--amber-lt); color: var(--amber); }
-.tp-row--info    .tp-row__count { background: var(--blue-lt);  color: var(--blue); }
+.tp-row--critical .tp-row__count { background: var(--red-lt);    color: var(--red);    }
+.tp-row--warning  .tp-row__count { background: var(--yellow-lt); color: var(--yellow); }
+/* legacy aliases */
+.tp-row--danger   .tp-row__count { background: var(--red-lt);    color: var(--red);    }
+.tp-row--info     .tp-row__count { background: var(--off);        color: var(--steel);  }
 .tp-row__chevron { color: var(--lightgray); flex-shrink: 0; }
 .tp-row:hover .tp-row__chevron { color: var(--slate); }
 
@@ -3769,10 +3776,12 @@ body {
   background: var(--off);
   color: var(--slate);
 }
-.ra-row--success .ra-row__icon { background: var(--green-lt); color: var(--green); }
-.ra-row--warning .ra-row__icon { background: var(--amber-lt); color: var(--amber); }
-.ra-row--danger  .ra-row__icon { background: var(--red-lt);   color: var(--red);   }
-.ra-row--info    .ra-row__icon { background: var(--blue-lt);  color: var(--blue);  }
+.ra-row--success  .ra-row__icon { background: var(--green-lt);  color: var(--green);  }
+.ra-row--warning  .ra-row__icon { background: var(--yellow-lt); color: var(--yellow); }
+.ra-row--critical .ra-row__icon { background: var(--red-lt);    color: var(--red);    }
+/* legacy aliases */
+.ra-row--danger   .ra-row__icon { background: var(--red-lt);    color: var(--red);    }
+.ra-row--info     .ra-row__icon { background: var(--off);        color: var(--steel);  }
 .ra-row__body { min-width: 0; }
 .ra-row__label {
   font-size: 12px;
@@ -3799,10 +3808,13 @@ body {
   background: var(--off);
   color: var(--slate);
 }
-.ra-badge--success { background: var(--green-lt); color: var(--green); }
-.ra-badge--warning { background: var(--amber-lt); color: var(--amber); }
-.ra-badge--danger  { background: var(--red-lt);   color: var(--red);   }
-.ra-badge--info    { background: var(--blue-lt);  color: var(--blue);  }
+.ra-badge--success  { background: var(--green-lt);  color: var(--green);  }
+.ra-badge--warning  { background: var(--yellow-lt); color: var(--yellow); }
+.ra-badge--critical { background: var(--red-lt);    color: var(--red);    }
+.ra-badge--neutral  { background: var(--off);        color: var(--steel);  }
+/* legacy aliases */
+.ra-badge--danger   { background: var(--red-lt);    color: var(--red);    }
+.ra-badge--info     { background: var(--off);        color: var(--steel);  }
 .ra-row__time {
   font-family: 'DM Mono', monospace;
   font-size: 9px;

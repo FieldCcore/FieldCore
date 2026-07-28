@@ -273,11 +273,11 @@ router.get('/priorities', requireAuth, async (req, res) => {
     consider('failed_payments', failedInvoices,
       'Failed Payments',
       n => `${n} payment${n !== 1 ? 's' : ''} need${n === 1 ? 's' : ''} attention`,
-      '/invoices', 'danger');
+      '/invoices', 'critical');
     consider('deposits', pendingDeposits,
-      'Pending Deposits',
-      n => `${n} awaiting payment`,
-      '/deposits', 'warning');
+      'Awaiting Payment',
+      n => `${n} deposit${n !== 1 ? 's' : ''} awaiting payment`,
+      '/deposits', 'critical');
     consider('unassigned', unassignedJobs,
       'Unassigned Jobs Today',
       n => `${n} job${n !== 1 ? 's' : ''} need${n === 1 ? 's' : ''} a technician`,
@@ -285,11 +285,11 @@ router.get('/priorities', requireAuth, async (req, res) => {
     consider('messages', unreadMessages,
       'Unread Messages',
       n => `${n} awaiting response`,
-      '/communications', 'info');
+      '/communications', 'warning');
     consider('estimates', sentEstimates,
       'Estimates Awaiting Approval',
       n => `${n} sent, awaiting signature`,
-      '/estimates', 'info');
+      '/estimates', 'warning');
 
     res.json(priorities);
   } catch (err) {
@@ -384,7 +384,7 @@ router.get('/activity', requireAuth, async (req, res) => {
            'Estimate sent to ' || c.name,
            'Estimate',
            '/estimates',
-           'info',
+           'neutral',
            e.sent_at
          FROM estimates e
          JOIN clients c ON c.id = e.client_id
@@ -398,7 +398,7 @@ router.get('/activity', requireAuth, async (req, res) => {
            'New client added: ' || c.name,
            'Client',
            '/clients/' || c.id,
-           'info',
+           'neutral',
            c.created_at
          FROM clients c
          WHERE c.account_id = $1
@@ -414,7 +414,7 @@ router.get('/activity', requireAuth, async (req, res) => {
            '/jobs',
            CASE WHEN r.rating >= 4 THEN 'success'
                 WHEN r.rating >= 3 THEN 'warning'
-                ELSE 'danger' END,
+                ELSE 'critical' END,
            r.created_at
          FROM reviews r
          JOIN clients c ON c.id = r.client_id
@@ -442,7 +442,7 @@ router.get('/activity', requireAuth, async (req, res) => {
            'Deposit refunded to ' || c.name,
            'Deposit',
            '/deposits',
-           'warning',
+           'neutral',
            d.refunded_at
          FROM deposits d
          JOIN clients c ON c.id = d.client_id

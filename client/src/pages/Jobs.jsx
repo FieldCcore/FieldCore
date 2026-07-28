@@ -55,19 +55,19 @@ const localizer = dateFnsLocalizer({
 });
 
 const STATUS_COLORS = {
-  scheduled:           '#5F667A',
-  in_progress:         '#1565C0',  // info — blue
-  partially_completed: '#1565C0',  // info — blue
-  complete:            '#1E6B3C',
-  cancelled:           '#B52A2A',
+  scheduled:           '#8A90A2',  // neutral
+  in_progress:         '#2E7D32',  // success
+  partially_completed: '#2E7D32',  // success
+  complete:            '#2E7D32',  // success
+  cancelled:           '#C62828',  // critical
 };
 
-// Session status mapped to a calendar color (distinct from parent job)
+// Session status mapped to a calendar dot color
 const SESSION_STATUS_COLORS = {
-  scheduled:         '#3B82F6',
-  in_progress:       '#1565C0',  // info — blue
-  completed_for_day: '#16A34A',
-  cancelled:         '#9CA3AF',
+  scheduled:         '#8A90A2',  // neutral
+  in_progress:       '#2E7D32',  // success
+  completed_for_day: '#2E7D32',  // success
+  cancelled:         '#C62828',  // critical
 };
 
 function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {

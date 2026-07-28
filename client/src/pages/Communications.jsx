@@ -715,7 +715,7 @@ function VoicemailPanel({ vms, onMarkRead }) {
                       <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {v.client_name || fmtNum(v.from_number) || 'Unknown'}
                       </span>
-                      {!v.is_read && <StatusBadge variant="blue">New</StatusBadge>}
+                      {!v.is_read && <StatusBadge variant="warning">New</StatusBadge>}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 1 }}>
                       {fmtDur(v.duration_seconds)} · {fmtDt(v.created_at)}
@@ -759,7 +759,7 @@ function VoicemailPanel({ vms, onMarkRead }) {
                 {[
                   ['Duration', fmtDur(selectedVm.duration_seconds)],
                   ['Received', fmtDt(selectedVm.created_at)],
-                  ['Status',   <StatusBadge variant={selectedVm.is_read ? 'gray' : 'blue'}>{selectedVm.is_read ? 'Read' : 'New'}</StatusBadge>],
+                  ['Status',   <StatusBadge variant={selectedVm.is_read ? 'neutral' : 'warning'}>{selectedVm.is_read ? 'Read' : 'New'}</StatusBadge>],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{label}</div>

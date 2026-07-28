@@ -1,18 +1,22 @@
 import React from 'react';
 
 const ICON_BG = {
-  success: 'var(--green-lt)',
-  info:    'var(--blue-lt)',
-  warning: 'var(--amber-lt)',
-  danger:  'var(--red-lt)',
-  neutral: 'var(--off)',
+  success:  'var(--green-lt)',
+  warning:  'var(--yellow-lt)',
+  critical: 'var(--red-lt)',
+  neutral:  'var(--off)',
+  // legacy aliases
+  danger: 'var(--red-lt)',
+  info:   'var(--off)',
 };
 const ICON_COLOR = {
-  success: 'var(--green)',
-  info:    'var(--blue)',
-  warning: 'var(--amber)',
-  danger:  'var(--red)',
-  neutral: 'var(--steel)',
+  success:  'var(--green)',
+  warning:  'var(--yellow)',
+  critical: 'var(--red)',
+  neutral:  'var(--steel)',
+  // legacy aliases
+  danger: 'var(--red)',
+  info:   'var(--steel)',
 };
 
 /**
