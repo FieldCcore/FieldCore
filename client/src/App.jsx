@@ -636,8 +636,8 @@ function AppShell() {
               )}
             </div>
           </div>
-          <GlobalSearch />
           <div className="tb-right">
+            <GlobalSearch />
             <NotificationBell />
             <CallMenu
               open={openMenu === 'call'}

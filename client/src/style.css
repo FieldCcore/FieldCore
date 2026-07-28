@@ -37,6 +37,14 @@
   --r-sm:   6px;   /* buttons, inputs, small controls */
   --r-md:   8px;   /* sub-panels, sections, note boxes */
   --r-lg:   12px;  /* cards, panels, tables, modals    */
+  /* ── Motion tokens ──────────────────────────────────────── */
+  --motion-duration-instant:  120ms;
+  --motion-duration-fast:     180ms;
+  --motion-duration-standard: 280ms;
+  --motion-duration-smooth:   380ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-enter:    cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-exit:     cubic-bezier(0.4, 0, 1, 1);
 }
 
 body {
@@ -312,11 +320,9 @@ body {
   height: 52px;
   background: var(--white);
   border-bottom: 1px solid var(--lightgray);
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
   padding: 0 24px;
-  column-gap: 12px;
   flex-shrink: 0;
 }
 /* Left zone: hamburger + page title */
@@ -370,8 +376,8 @@ body {
 .tb-btn:hover { opacity: .85; }
 .tb-primary { background: var(--navy); color: var(--sand); }
 .tb-ghost   { background: var(--offwhite); color: var(--navy); }
-/* Right utility cluster */
-.tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Right utility cluster — margin-left: auto anchors it to the right edge */
+.tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 
 /* ── Header icon utility buttons ─────────────────────────── */
 .hdr-btn {
@@ -409,7 +415,7 @@ body {
   z-index: 999;
   overflow: hidden;
   transform-origin: top right;
-  animation: hdr-panel-in 200ms ease-out both;
+  animation: hdr-panel-in var(--motion-duration-standard) var(--motion-ease-enter) both;
 }
 @keyframes hdr-panel-in {
   from { opacity: 0; transform: scale(.98) translateY(-3px); }
@@ -421,25 +427,32 @@ body {
 
 /* ── Global Search ───────────────────────────────────────── */
 
-/* Expanding container — sits in the topbar 1fr center column */
+/* Expanding container — right side of topbar, inside tb-right */
 .gs-wrap {
   position: relative;
   height: 32px;
   width: 210px;
-  justify-self: center;
   z-index: 100;
-  transition: width 200ms ease;
+  /* Close: fast exit so controls snap back cleanly */
+  transition: width var(--motion-duration-fast) var(--motion-ease-exit);
 }
-@media (prefers-reduced-motion: reduce) { .gs-wrap { transition: none; } }
-.gs-wrap--open { width: 400px; z-index: 9100; }
+/* Open state — overrides transition for the opening direction */
+.gs-wrap--open {
+  width: 420px;
+  z-index: 9100;
+  transition: width var(--motion-duration-smooth) var(--motion-ease-enter);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gs-wrap, .gs-wrap--open { transition: none; }
+}
 
 @media (max-width: 1280px) {
   .gs-wrap       { width: 175px; }
-  .gs-wrap--open { width: 340px; }
+  .gs-wrap--open { width: 360px; }
 }
 @media (max-width: 1024px) {
   /* Icon-only; modal handles the expanded state */
-  .gs-wrap, .gs-wrap--open { width: 32px; z-index: 100; }
+  .gs-wrap, .gs-wrap--open { width: 32px; z-index: 100; transition: none; }
 }
 
 /* ── Inactive trigger ─────────────────────────────────────── */
@@ -552,6 +565,15 @@ body {
   flex-direction: column;
   max-height: 440px;
   overflow: hidden;
+  /* 80ms delay: let the field start expanding before revealing the panel */
+  animation: gs-panel-in var(--motion-duration-standard) var(--motion-ease-enter) 80ms both;
+}
+@keyframes gs-panel-in {
+  from { opacity: 0; transform: scale(0.985) translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gs-panel { animation: none; }
 }
 .gs-panel__body {
   flex: 1; overflow-y: auto; min-height: 0;
