@@ -18,26 +18,26 @@ const C = {
   red:   '#C62828', redLt: 'rgba(198,40,40,.15)',
 };
 
-const STATUS_COLOR = { scheduled: C.blue, in_progress: C.amber, complete: C.green, cancelled: C.red };
-const STATUS_BG    = { scheduled: C.blueLt, in_progress: C.amberLt, complete: C.greenLt, cancelled: C.redLt };
+const STATUS_COLOR = { scheduled: C.blue, in_progress: C.blue, complete: C.green, cancelled: C.red };
+const STATUS_BG    = { scheduled: C.blueLt, in_progress: C.blueLt, complete: C.greenLt, cancelled: C.redLt };
 
 const SESSION_STATUS_COLOR = {
   scheduled:         C.blue,
-  en_route:          '#F97316',
+  en_route:          C.blue,    // info — blue (on the way, not a warning)
   checked_in:        C.green,
-  in_progress:       C.amber,
-  paused:            '#8B5CF6',
+  in_progress:       C.blue,    // info — blue
+  paused:            C.amber,   // warning — amber (was purple)
   completed_for_day: C.green,
-  rescheduled:       C.amber,
+  rescheduled:       C.amber,   // warning — amber
   cancelled:         C.red,
   missed:            C.red,
 };
 const SESSION_STATUS_BG = {
   scheduled:         C.blueLt,
-  en_route:          'rgba(249,115,22,.15)',
+  en_route:          C.blueLt,   // info — blue
   checked_in:        C.greenLt,
-  in_progress:       C.amberLt,
-  paused:            'rgba(139,92,246,.15)',
+  in_progress:       C.blueLt,   // info — blue
+  paused:            C.amberLt,  // warning — amber (was purple)
   completed_for_day: C.greenLt,
   rescheduled:       C.amberLt,
   cancelled:         C.redLt,

@@ -55,17 +55,17 @@ const localizer = dateFnsLocalizer({
 });
 
 const STATUS_COLORS = {
-  scheduled:          '#5F667A',
-  in_progress:        '#D6B58A',
-  partially_completed:'#D97706',
-  complete:           '#1E6B3C',
-  cancelled:          '#B52A2A',
+  scheduled:           '#5F667A',
+  in_progress:         '#1565C0',  // info — blue
+  partially_completed: '#1565C0',  // info — blue
+  complete:            '#1E6B3C',
+  cancelled:           '#B52A2A',
 };
 
 // Session status mapped to a calendar color (distinct from parent job)
 const SESSION_STATUS_COLORS = {
   scheduled:         '#3B82F6',
-  in_progress:       '#F59E0B',
+  in_progress:       '#1565C0',  // info — blue
   completed_for_day: '#16A34A',
   cancelled:         '#9CA3AF',
 };

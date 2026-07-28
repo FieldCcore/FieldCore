@@ -4,24 +4,22 @@ const VARIANTS = {
   blue:   { bg: 'var(--blue-lt)',  color: 'var(--blue)'  },
   green:  { bg: 'var(--green-lt)', color: 'var(--green)' },
   red:    { bg: '#B52A2A',         color: '#fff'          },
-  yellow: { bg: '#fef3c7',         color: '#92400e'      },
-  gray:   { bg: 'var(--offwhite)', color: 'var(--slate)' },
+  yellow: { bg: '#fef3c7',         color: '#92400e'       },
+  gray:   { bg: 'var(--offwhite)', color: 'var(--slate)'  },
 };
 
+/**
+ * STATUS_TO_VARIANT — canonical string-to-color mapping.
+ *
+ * Semantic rules:
+ *   green  = success, complete, paid, connected, live, all-good
+ *   blue   = informational, in-progress, pending, awaiting (not overdue)
+ *   yellow = warning, needs attention soon, not yet failed
+ *   red    = failure, overdue, blocked, disconnected, immediate action
+ *   gray   = neutral, draft, archived, unknown, disabled
+ */
 const STATUS_TO_VARIANT = {
-  // blue — active/pending/in-progress
-  active:                  'blue',
-  pending:                 'blue',
-  in_progress:             'blue',
-  'in progress':           'blue',
-  scheduled:               'blue',
-  info:                    'blue',
-  trialing:                'blue',
-  trial:                   'blue',
-  connecting:              'blue',
-  live:                    'blue',
-  'onboarding started':    'blue',
-  // green — paid/complete/connected/success
+  // ── green — success / paid / complete / connected ───────────────
   paid:                    'green',
   complete:                'green',
   completed:               'green',
@@ -37,9 +35,40 @@ const STATUS_TO_VARIANT = {
   'payouts active':        'green',
   'stripe connected':      'green',
   default:                 'green',
-  // red — negative/action-required/failed
-  outstanding:             'red',
-  unpaid:                  'red',
+  live:                    'green',  // active jobs running = success
+  'all paid':              'green',
+  clear:                   'green',  // "Clear" on Active Jobs KPI = all good
+
+  // ── blue — informational / pending / in-progress / awaiting ─────
+  active:                  'blue',
+  pending:                 'blue',
+  in_progress:             'blue',
+  'in progress':           'blue',
+  scheduled:               'blue',
+  info:                    'blue',
+  trialing:                'blue',
+  trial:                   'blue',
+  connecting:              'blue',
+  'onboarding started':    'blue',
+  outstanding:             'blue',  // unpaid but not overdue — informational
+  unpaid:                  'blue',  // owed but not failed
+  'balance due':           'blue',  // amount owed, not a failure
+  sent:                    'blue',  // sent and awaiting action — informational
+
+  // ── yellow — warning / attention-soon / not-yet-failed ──────────
+  warning:                 'yellow',
+  'needs review':          'yellow',
+  'setup required':        'yellow',
+  'verification pending':  'yellow',
+  'pending setup':         'yellow',
+  'stripe pending':        'yellow',
+  'most popular':          'yellow',
+  'awaiting payment':      'yellow',  // payment due but not overdue
+  'deposit due':           'yellow',  // upcoming deposit — not yet failed
+  collect:                 'yellow',  // action needed soon — not failed
+  syncing:                 'yellow',  // sync in progress — not broken
+
+  // ── red — failure / overdue / blocked / action-required ─────────
   late:                    'red',
   overdue:                 'red',
   failed:                  'red',
@@ -53,21 +82,11 @@ const STATUS_TO_VARIANT = {
   no_show:                 'red',
   past_due:                'red',
   'past due':              'red',
-  collect:                 'red',
   'action needed':         'red',
   'payment failed':        'red',
-  'deposit due':           'red',
-  'balance due':           'red',
-  // yellow — warnings / neutral attention
-  warning:                 'yellow',
-  'needs review':          'yellow',
-  'setup required':        'yellow',
-  'verification pending':  'yellow',
-  'pending setup':         'yellow',
-  'stripe pending':        'yellow',
-  'most popular':          'yellow',
-  sent:                    'yellow',
-  // gray — inactive/disabled/unknown
+  'needs reconnect':       'red',  // GBP/integration disconnected = danger
+
+  // ── gray — neutral / draft / archived / unknown ──────────────────
   draft:                   'gray',
   disabled:                'gray',
   'not connected':         'gray',
@@ -76,6 +95,7 @@ const STATUS_TO_VARIANT = {
   void:                    'gray',
   refunded:                'gray',
   available:               'gray',
+  'no deposits':           'gray',
 };
 
 function toTitleCase(str) {

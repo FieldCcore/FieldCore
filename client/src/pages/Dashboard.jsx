@@ -220,16 +220,16 @@ export default function Dashboard() {
         const invoiceBadge = failedInvoiceCount > 0
           ? { label: 'Action Needed', tone: 'danger'  }
           : (pendingInvoices.count || 0) > 0
-          ? { label: 'Outstanding',   tone: 'warning' }
+          ? { label: 'Outstanding',   tone: 'info'    }
           : { label: 'All Paid',      tone: 'success' };
 
         // GBP connection badge (null = API never responded, skip badge)
         const gbpBadge = gbp?.status === 'connected'
           ? { label: 'Connected',       tone: 'success' }
           : gbp?.status === 'syncing'
-          ? { label: 'Syncing',         tone: 'info'    }
+          ? { label: 'Syncing',         tone: 'warning' }
           : gbp?.status != null
-          ? { label: 'Needs Reconnect', tone: 'warning' }
+          ? { label: 'Needs Reconnect', tone: 'danger'  }
           : undefined;
 
         // Rating action — always present; direction based on GBP state
