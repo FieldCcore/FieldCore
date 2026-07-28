@@ -79,6 +79,7 @@ import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import { useEntitlements } from './hooks/useEntitlements';
 import CallerID         from './components/CallerID';
+import MakeACallDialer  from './components/MakeACallDialer';
 import GlobalSearch     from './components/GlobalSearch';
 import ProtectedRoute   from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -195,8 +196,7 @@ const HdrBtn = React.forwardRef(function HdrBtn(
 });
 
 // ── Call Actions popover ──────────────────────────────────
-function CallMenu({ open, onOpen, onClose }) {
-  const nav    = useNavigate();
+function CallMenu({ open, onOpen, onClose, onMakeCall }) {
   const ref    = useRef(null);
   const btnRef = useRef(null);
 
@@ -227,16 +227,10 @@ function CallMenu({ open, onOpen, onClose }) {
       {open && (
         <div role="menu" className="hdr-panel" style={{ minWidth: 220 }} onKeyDown={panelKeyNav} aria-label="Calling options">
           <CreateMenuItem
-            icon={Phone}
+            icon={PhoneCall}
             label="Make a Call"
             description="Call a client or contact"
-            onClick={() => { onClose(); nav('/communications'); }}
-          />
-          <CreateMenuItem
-            icon={PhoneCall}
-            label="Business Phone"
-            description="Calls, messages, and voicemail"
-            onClick={() => { onClose(); nav('/communications'); }}
+            onClick={() => { onClose(); onMakeCall(); }}
           />
         </div>
       )}
@@ -365,10 +359,13 @@ function AppShell() {
   const [callerOpen,  setCallerOpen]  = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openMenu,    setOpenMenu]    = useState(null); // 'call' | 'create' | null
+  const [dialerOpen,  setDialerOpen]  = useState(false);
 
   const openCallMenu   = useCallback(() => setOpenMenu(m => m === 'call'   ? null : 'call'),   []);
   const openCreateMenu = useCallback(() => setOpenMenu(m => m === 'create' ? null : 'create'), []);
   const closeMenu      = useCallback(() => setOpenMenu(null), []);
+  const openDialer     = useCallback(() => setDialerOpen(true),  []);
+  const closeDialer    = useCallback(() => setDialerOpen(false), []);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
@@ -643,6 +640,7 @@ function AppShell() {
               open={openMenu === 'call'}
               onOpen={openCallMenu}
               onClose={closeMenu}
+              onMakeCall={openDialer}
             />
             {(user?.role === 'owner' || user?.role === 'manager') && (
               <CreateMenu
@@ -701,6 +699,7 @@ function AppShell() {
 
       {sidebarOpen && <div className="sb-overlay" onClick={() => setSidebarOpen(false)} />}
       {callerOpen && <CallerID onClose={() => setCallerOpen(false)} />}
+      {dialerOpen && <MakeACallDialer onClose={closeDialer} />}
     </div>
   );
 }

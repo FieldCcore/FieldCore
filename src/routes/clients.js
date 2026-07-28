@@ -39,6 +39,27 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
   }
 });
 
+// GET /api/clients/search?q= — lightweight search for dialer and quick pickers
+router.get('/search', requireAuth, async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+  const like = `%${q.toLowerCase()}%`;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, phone, email, tier
+       FROM clients
+       WHERE account_id = $1
+         AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(email,'')) LIKE $2 OR phone LIKE $3)
+       ORDER BY name
+       LIMIT 8`,
+      [req.accountId, like, `%${q}%`]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/clients/:id — with full job history
 router.get('/:id', requireAuth, async (req, res) => {
   try {

@@ -11,6 +11,20 @@ function getTwilio() {
   return require('twilio')(sid, token);
 }
 
+// GET /api/phone/status — check whether telephony is configured for this account
+router.get('/status', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, number, label FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
+      [req.accountId]
+    );
+    const configured = rows.length > 0;
+    res.json({ configured, number: configured ? rows[0].number : null, label: configured ? rows[0].label : null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/phone/numbers
 router.get('/numbers', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
@@ -198,40 +212,53 @@ router.get('/calls/latest-inbound', requireAuth, requireRole('owner', 'manager')
   }
 });
 
-// POST /api/phone/calls/outbound — click-to-call: Twilio calls operator first, then client
+// POST /api/phone/calls/outbound — click-to-call: Twilio calls operator first, then bridges to client
+// Accepts { client_id, operator_number } or { to_number, operator_number }
 router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { client_id, operator_number } = req.body;
-  if (!client_id || !operator_number) {
-    return res.status(400).json({ error: 'client_id and operator_number are required' });
-  }
+  const { client_id, to_number, operator_number } = req.body;
+  if (!operator_number) return res.status(400).json({ error: 'operator_number is required' });
+  if (!client_id && !to_number) return res.status(400).json({ error: 'client_id or to_number is required' });
 
   try {
-    const [clientRes, numRes] = await Promise.all([
-      pool.query(`SELECT * FROM clients WHERE id = $1 AND account_id = $2`, [client_id, req.accountId]),
-      pool.query(`SELECT * FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`, [req.accountId]),
-    ]);
-    const client = clientRes.rows[0];
-    if (!client) return res.status(404).json({ error: 'Client not found' });
-    if (!client.phone) return res.status(400).json({ error: 'Client has no phone number' });
-
+    const numRes = await pool.query(
+      `SELECT * FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
+      [req.accountId]
+    );
     const fromNumber = numRes.rows[0]?.number;
-    if (!fromNumber) return res.status(400).json({ error: 'No active phone number on account' });
+    if (!fromNumber) {
+      return res.status(400).json({ error: 'No active phone number on account', code: 'NO_PHONE_CONFIGURED' });
+    }
 
-    const appUrl = process.env.APP_URL || '';
+    let clientPhone      = to_number || null;
+    let resolvedClientId = null;
+    let resolvedName     = null;
+
+    if (client_id) {
+      const clientRes = await pool.query(
+        `SELECT * FROM clients WHERE id = $1 AND account_id = $2`,
+        [client_id, req.accountId]
+      );
+      const client = clientRes.rows[0];
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+      if (!client.phone) return res.status(400).json({ error: 'Client has no phone number' });
+      clientPhone      = client.phone;
+      resolvedClientId = client.id;
+      resolvedName     = client.name;
+    }
+
+    const appUrl       = process.env.APP_URL || '';
     const twilioClient = getTwilio();
 
-    // Call the operator first; when answered, bridge to client
     const call = await twilioClient.calls.create({
       to:   operator_number,
       from: fromNumber,
-      url:  `${appUrl}/api/webhooks/twilio/bridge?client_phone=${encodeURIComponent(client.phone)}&client_name=${encodeURIComponent(client.name || '')}`,
+      url:  `${appUrl}/api/webhooks/twilio/bridge?client_phone=${encodeURIComponent(clientPhone)}&client_name=${encodeURIComponent(resolvedName || '')}`,
     });
 
-    // Log outbound call
     const { rows } = await pool.query(
       `INSERT INTO call_logs (account_id, direction, from_number, to_number, client_id, client_name, status)
        VALUES ($1,'outbound',$2,$3,$4,$5,'in_progress') RETURNING *`,
-      [req.accountId, fromNumber, client.phone, client_id, client.name]
+      [req.accountId, fromNumber, clientPhone, resolvedClientId, resolvedName]
     );
 
     res.json({ call_sid: call.sid, log: rows[0] });
