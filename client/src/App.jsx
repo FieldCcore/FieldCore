@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Phone, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Phone, Plus, PhoneCall, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -129,6 +129,20 @@ const IcoSettings = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 14h.01M10 14h4"/></svg>;
 const IcoLogout   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
 
+// Arrow-key navigation for role="menu" panels
+function panelKeyNav(e) {
+  const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+  if (!keys.includes(e.key)) return;
+  e.preventDefault();
+  const items = [...e.currentTarget.querySelectorAll('[role="menuitem"]:not([disabled])')];
+  if (!items.length) return;
+  const idx = items.indexOf(document.activeElement);
+  if      (e.key === 'ArrowDown') items[(idx + 1) % items.length]?.focus();
+  else if (e.key === 'ArrowUp')   items[(idx - 1 + items.length) % items.length]?.focus();
+  else if (e.key === 'Home')      items[0]?.focus();
+  else if (e.key === 'End')       items[items.length - 1]?.focus();
+}
+
 const menuItemStyle = (disabled) => ({
   display: 'flex', alignItems: 'center', gap: 12, width: '100%',
   padding: '10px 16px', background: 'none', border: 'none',
@@ -141,7 +155,7 @@ const menuItemStyle = (disabled) => ({
 
 function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, badge }) {
   return (
-    <button style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
+    <button role="menuitem" style={menuItemStyle(disabled)} onClick={disabled ? undefined : onClick}>
       <span style={{ width: 32, height: 32, background: 'var(--offwhite)', borderRadius: 8,
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={16} style={{ color: disabled ? 'var(--steel)' : 'var(--navy)' }} />
@@ -161,12 +175,82 @@ function CreateMenuItem({ icon: Icon, label, description, onClick, disabled, bad
   );
 }
 
-function CreateMenu() {
+// ── Shared header icon button ─────────────────────────────
+const HdrBtn = React.forwardRef(function HdrBtn(
+  { icon: Icon, label, onClick, variant = 'neutral', isOpen, ...rest },
+  ref
+) {
+  return (
+    <button
+      ref={ref}
+      className={`hdr-btn hdr-btn--${variant}${isOpen ? ' hdr-btn--open' : ''}`}
+      onClick={onClick}
+      aria-label={label}
+      type="button"
+      {...rest}
+    >
+      <Icon size={15} strokeWidth={2} aria-hidden="true" />
+    </button>
+  );
+});
+
+// ── Call Actions popover ──────────────────────────────────
+function CallMenu({ open, onOpen, onClose, onSimulateCall }) {
+  const nav    = useNavigate();
+  const ref    = useRef(null);
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    function onEscape(e)  { if (e.key === 'Escape') { onClose(); btnRef.current?.focus(); } }
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <HdrBtn
+        ref={btnRef}
+        icon={Phone}
+        label="Open calling options"
+        onClick={onOpen}
+        variant="neutral"
+        isOpen={open}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      />
+      {open && (
+        <div role="menu" className="hdr-panel" style={{ minWidth: 220 }} onKeyDown={panelKeyNav} aria-label="Calling options">
+          <CreateMenuItem
+            icon={Phone}
+            label="Simulate Inbound Call"
+            description="Open the call answer screen"
+            onClick={() => { onClose(); onSimulateCall(); }}
+          />
+          <CreateMenuItem
+            icon={PhoneCall}
+            label="Business Phone"
+            description="Calls, messages, and voicemail"
+            onClick={() => { onClose(); nav('/communications'); }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Create New popover ────────────────────────────────────
+function CreateMenu({ open, onOpen, onClose }) {
   const nav = useNavigate();
   const { entitlements } = useEntitlements();
-  const [open,    setOpen]    = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
-  const ref = useRef(null);
+  const ref    = useRef(null);
+  const btnRef = useRef(null);
 
   const canMultiDay = entitlements?.capabilities?.can_create_multi_day_jobs !== false;
   const canProject  = entitlements?.capabilities?.can_create_projects === true;
@@ -176,37 +260,34 @@ function CreateMenu() {
   }, [open]);
 
   useEffect(() => {
-    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    function onEscape(e)  { if (e.key === 'Escape') setOpen(false); }
-    if (open) {
-      document.addEventListener('mousedown', onOutside);
-      document.addEventListener('keydown', onEscape);
-    }
+    if (!open) return;
+    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    function onEscape(e)  { if (e.key === 'Escape') { onClose(); btnRef.current?.focus(); } }
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onEscape);
     return () => {
       document.removeEventListener('mousedown', onOutside);
       document.removeEventListener('keydown', onEscape);
     };
-  }, [open]);
+  }, [open, onClose]);
 
-  function go(path) { setOpen(false); nav(path); }
+  function go(path) { onClose(); nav(path); }
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        className="tb-btn tb-primary"
-        onClick={() => setOpen(o => !o)}
+      <HdrBtn
+        ref={btnRef}
+        icon={Plus}
+        label="Create new"
+        onClick={onOpen}
+        variant="accent"
+        isOpen={open}
         aria-haspopup="menu"
         aria-expanded={open}
-      >
-        + Create New
-      </button>
+      />
 
       {open && (
-        <div role="menu" style={{
-          position: 'absolute', top: 'calc(100% + 6px)', right: 0,
-          background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,.13)', zIndex: 999, minWidth: 248, overflow: 'hidden',
-        }}>
+        <div role="menu" className="hdr-panel" style={{ minWidth: 248 }} onKeyDown={panelKeyNav} aria-label="Create new">
           <div className="create-new-menu-item"><CreateMenuItem icon={UserPlus}  label="Client"  description="Add a new client record" onClick={() => go('/clients?new=1')} /></div>
           <div className="create-new-menu-item"><CreateMenuItem icon={Inbox}     label="Request" description="Log an inbound lead or service request" onClick={() => go('/requests?new=1')} /></div>
           <div className="create-new-menu-item"><CreateMenuItem icon={FileText}  label="Quote"   description="Build a quote or estimate for a client" onClick={() => go('/estimates?new=1')} /></div>
@@ -214,6 +295,7 @@ function CreateMenu() {
           {/* Job — has submenu */}
           <div className="create-new-menu-item" style={{ position: 'relative' }}>
             <button
+              role="menuitem"
               style={{ ...menuItemStyle(false), justifyContent: 'space-between' }}
               onClick={() => setJobOpen(o => !o)}
               aria-haspopup="menu"
@@ -280,8 +362,13 @@ function AppShell() {
   const { user, logout, accounts, switching, switchError, switchAccount } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
-  const [callerOpen, setCallerOpen] = useState(false);
+  const [callerOpen,  setCallerOpen]  = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openMenu,    setOpenMenu]    = useState(null); // 'call' | 'create' | null
+
+  const openCallMenu   = useCallback(() => setOpenMenu(m => m === 'call'   ? null : 'call'),   []);
+  const openCreateMenu = useCallback(() => setOpenMenu(m => m === 'create' ? null : 'create'), []);
+  const closeMenu      = useCallback(() => setOpenMenu(null), []);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
@@ -552,8 +639,19 @@ function AppShell() {
           <GlobalSearch />
           <div className="tb-right">
             <NotificationBell />
-            <button className="tb-btn tb-ghost" onClick={() => setCallerOpen(true)}><Phone size={13} /> Simulate Call</button>
-            {(user?.role === 'owner' || user?.role === 'manager') && <CreateMenu />}
+            <CallMenu
+              open={openMenu === 'call'}
+              onOpen={openCallMenu}
+              onClose={closeMenu}
+              onSimulateCall={() => setCallerOpen(true)}
+            />
+            {(user?.role === 'owner' || user?.role === 'manager') && (
+              <CreateMenu
+                open={openMenu === 'create'}
+                onOpen={openCreateMenu}
+                onClose={closeMenu}
+              />
+            )}
           </div>
         </div>
 

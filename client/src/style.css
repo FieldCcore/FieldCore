@@ -371,7 +371,53 @@ body {
 .tb-primary { background: var(--navy); color: var(--sand); }
 .tb-ghost   { background: var(--offwhite); color: var(--navy); }
 /* Right utility cluster */
-.tb-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* ── Header icon utility buttons ─────────────────────────── */
+.hdr-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--lightgray);
+  border-radius: var(--r-sm);
+  background: var(--offwhite);
+  color: var(--slate);
+  cursor: pointer;
+  transition: background .13s, border-color .13s, color .13s;
+}
+.hdr-btn:hover       { background: var(--white); border-color: var(--slate); color: var(--navy); }
+.hdr-btn--open       { background: var(--white); border-color: var(--slate); color: var(--navy); }
+.hdr-btn:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+
+/* Accent variant — primary action (Create) */
+.hdr-btn--accent               { background: var(--navy); border-color: var(--navy); color: var(--sand); }
+.hdr-btn--accent:hover,
+.hdr-btn--accent.hdr-btn--open { background: var(--navy); border-color: var(--navy); opacity: .85; }
+
+/* ── Header utility popovers ─────────────────────────────── */
+.hdr-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--white);
+  border: 1px solid var(--lightgray);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 24px rgba(0,0,0,.13);
+  z-index: 999;
+  overflow: hidden;
+  transform-origin: top right;
+  animation: hdr-panel-in 200ms ease-out both;
+}
+@keyframes hdr-panel-in {
+  from { opacity: 0; transform: scale(.98) translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hdr-panel { animation: none; }
+}
 
 /* ── Global Search ───────────────────────────────────────── */
 
