@@ -70,16 +70,6 @@ function weekDateRange() {
   return `${fmt(mon)} – ${fmt(sun)}`;
 }
 
-function fmtRelative(iso) {
-  if (!iso) return '';
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)  return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
 function QaRow({ icon: Icon, label, onClick, primary = false }) {
   return (
     <button
@@ -160,7 +150,7 @@ export default function Dashboard() {
   // AvgJobValue hidden when no jobs this week (can't calculate meaningfully)
   const snapMetrics = [
     { label: 'Collected',     value: fmt$(weekCollected) },
-    { label: 'Outstanding',   value: fmt$(weekOutstanding), tone: weekOutstanding > 0 ? 'warning' : undefined },
+    { label: 'Outstanding',   value: fmt$(weekOutstanding), tone: weekOutstanding > 0 ? 'critical' : undefined },
     { label: 'Invoices Paid', value: String(weekInvoicesPaid) },
     totalWeekJobs > 0 && { label: 'Avg Job Value', value: fmt$(avgJobValue) },
   ].filter(Boolean);
@@ -236,7 +226,7 @@ export default function Dashboard() {
 
         // Rating action — always present; direction based on GBP state
         const ratingAction = gbp?.status === 'connected'
-          ? { label: 'View reviews →',   onClick: () => nav('/reviews') }
+          ? { label: 'View reviews →',   onClick: () => nav('/business-settings?tab=integrations') }
           : { label: 'Connect Google →', onClick: () => nav('/business-settings?tab=integrations') };
 
         return (
@@ -480,7 +470,6 @@ export default function Dashboard() {
         {/* Row 2 — Today's Priorities */}
         <DashboardPanel
           title="Today's Priorities"
-          action={{ label: 'Deposits →', onClick: () => nav('/deposits') }}
         >
           <TodaysPriorities priorities={priorities} loading={prioritiesLoading} />
         </DashboardPanel>

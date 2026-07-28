@@ -1071,3 +1071,233 @@ describe('GET /api/requests — status filter', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ── Today's Priorities endpoint ────────────────────────────────────────────────
+
+describe('GET /api/analytics/priorities', () => {
+  let acct, acctEmpty;
+
+  beforeAll(async () => {
+    acct      = await makeAccount('PrioritiesTest');
+    acctEmpty = await makeAccount('PrioritiesEmpty');
+    createdAccountIds.push(acct.accountId, acctEmpty.accountId);
+
+    // Create a job to satisfy invoices.job_id NOT NULL constraint
+    const { rows: [pjob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Priorities Job', 'complete', NOW() - INTERVAL '1 day') RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Failed invoice — should produce a 'failed_payments' priority (critical)
+    await pool.query(
+      `INSERT INTO invoices (account_id, client_id, job_id, status, amount)
+       VALUES ($1, $2, $3, 'failed', 500)`,
+      [acct.accountId, acct.clientId, pjob.id]
+    );
+
+    // Create a job for the deposit (job_id is NOT NULL on deposits)
+    const { rows: [djob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Deposit Job', 'scheduled', NOW() + INTERVAL '3 days') RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Pending deposit — should produce a 'deposits' priority (critical)
+    await pool.query(
+      `INSERT INTO deposits (account_id, client_id, job_id, status, amount)
+       VALUES ($1, $2, $3, 'pending', 200)`,
+      [acct.accountId, acct.clientId, djob.id]
+    );
+
+    // Unassigned job today (no tech_id) — should produce an 'unassigned' priority (warning)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Unassigned Today', 'scheduled', CURRENT_DATE::timestamp + INTERVAL '10 hours')`,
+      [acct.accountId, acct.clientId]
+    );
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/analytics/priorities');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns an array', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('each item has required shape fields', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acct.token}`);
+    for (const p of res.body) {
+      expect(p).toHaveProperty('type');
+      expect(p).toHaveProperty('count');
+      expect(p).toHaveProperty('label');
+      expect(p).toHaveProperty('sub');
+      expect(p).toHaveProperty('route');
+      expect(p).toHaveProperty('tone');
+    }
+  });
+
+  it('includes failed_payments priority when failed invoices exist', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acct.token}`);
+    const fp = res.body.find(p => p.type === 'failed_payments');
+    expect(fp).toBeDefined();
+    expect(fp.tone).toBe('critical');
+    expect(fp.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it('includes deposits priority when pending deposits exist', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acct.token}`);
+    const dep = res.body.find(p => p.type === 'deposits');
+    expect(dep).toBeDefined();
+    expect(dep.tone).toBe('critical');
+    expect(dep.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it('includes unassigned priority for today unassigned jobs', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acct.token}`);
+    const ua = res.body.find(p => p.type === 'unassigned');
+    expect(ua).toBeDefined();
+    expect(ua.tone).toBe('warning');
+  });
+
+  it('empty account returns empty array', async () => {
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${acctEmpty.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(0);
+  });
+
+  it('tenant isolation: other org sees only its own priorities', async () => {
+    const other = await makeAccount('PrioritiesIsolate');
+    createdAccountIds.push(other.accountId);
+    const res = await request(app).get('/api/analytics/priorities').set('Authorization', `Bearer ${other.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(0);
+  });
+});
+
+// ── Recent Activity endpoint ───────────────────────────────────────────────────
+
+describe('GET /api/analytics/activity', () => {
+  let acct, acctEmpty;
+
+  beforeAll(async () => {
+    acct      = await makeAccount('ActivityTest');
+    acctEmpty = await makeAccount('ActivityEmpty');
+    createdAccountIds.push(acct.accountId, acctEmpty.accountId);
+
+    // Completed job with completed_at — should appear as job_completed
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, completed_at)
+       VALUES ($1, $2, 'Completed HVAC', 'complete', NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Recent job created — should appear as job_created
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'New Plumbing Job', 'scheduled', NOW() + INTERVAL '2 days')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Paid invoice (status=paid, no paid_at needed) — should appear as payment_received
+    const { rows: [ajob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, completed_at)
+       VALUES ($1, $2, 'Invoice Job', 'complete', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    await pool.query(
+      `INSERT INTO invoices (account_id, client_id, job_id, status, amount)
+       VALUES ($1, $2, $3, 'paid', 300)`,
+      [acct.accountId, acct.clientId, ajob.id]
+    );
+
+    // Pending deposit — must NOT appear in activity (pending = priorities, not activity)
+    await pool.query(
+      `INSERT INTO deposits (account_id, client_id, job_id, status, amount)
+       VALUES ($1, $2, $3, 'pending', 150)`,
+      [acct.accountId, acct.clientId, ajob.id]
+    );
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/analytics/activity');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns an array', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('each item has required shape fields', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    for (const item of res.body) {
+      expect(item).toHaveProperty('type');
+      expect(item).toHaveProperty('label');
+      expect(item).toHaveProperty('sub_type');
+      expect(item).toHaveProperty('tone');
+      expect(item).toHaveProperty('event_time');
+    }
+  });
+
+  it('includes job_completed event for completed job', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const jc = res.body.find(e => e.type === 'job_completed');
+    expect(jc).toBeDefined();
+    expect(jc.tone).toBe('success');
+  });
+
+  it('includes payment_received event for paid invoice', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const pr = res.body.find(e => e.type === 'payment_received');
+    expect(pr).toBeDefined();
+    expect(pr.tone).toBe('success');
+  });
+
+  it('does NOT include pending deposits (those belong in priorities)', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const pendingDep = res.body.filter(e =>
+      (e.type === 'deposit_paid' || e.type === 'deposit_refunded') &&
+      e.label && e.label.toLowerCase().includes('pending')
+    );
+    expect(pendingDep).toHaveLength(0);
+  });
+
+  it('returns newest events first', async () => {
+    const res = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const times = res.body.map(e => new Date(e.event_time).getTime());
+    for (let i = 1; i < times.length; i++) {
+      expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
+    }
+  });
+
+  it('account with no events sees only its own client creation, not other accounts data', async () => {
+    const mainRes   = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const emptyRes  = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acctEmpty.token}`);
+    expect(emptyRes.status).toBe(200);
+    // acct has completed jobs and invoices; acctEmpty should not see those labels
+    const mainLabels = new Set((mainRes.body || []).map(e => e.label));
+    for (const item of emptyRes.body) {
+      expect(mainLabels.has(item.label)).toBe(false);
+    }
+  });
+
+  it('tenant isolation: other org sees only its own activity, not another org', async () => {
+    const other = await makeAccount('ActivityIsolate');
+    createdAccountIds.push(other.accountId);
+    const mainRes  = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${acct.token}`);
+    const otherRes = await request(app).get('/api/analytics/activity').set('Authorization', `Bearer ${other.token}`);
+    expect(otherRes.status).toBe(200);
+    // other should not see any of acct's event labels (e.g. job completions, invoices)
+    const mainLabels = new Set((mainRes.body || []).map(e => e.label));
+    for (const item of otherRes.body) {
+      expect(mainLabels.has(item.label)).toBe(false);
+    }
+  });
+});

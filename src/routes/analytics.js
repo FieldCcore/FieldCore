@@ -349,10 +349,10 @@ router.get('/activity', requireAuth, async (req, res) => {
            'Payment'                                                 AS sub_type,
            '/invoices'                                               AS route,
            'success'                                                 AS tone,
-           i.paid_at                                                 AS event_time
+           i.created_at                                              AS event_time
          FROM invoices i
          JOIN clients c ON c.id = i.client_id
-         WHERE i.account_id = $1 AND i.paid_at IS NOT NULL
+         WHERE i.account_id = $1 AND i.status = 'paid'
 
          UNION ALL
 
@@ -465,10 +465,10 @@ router.get('/activity', requireAuth, async (req, res) => {
            'Deposit',
            '/deposits',
            'success',
-           d.collected_at
+           d.created_at
          FROM deposits d
          JOIN clients c ON c.id = d.client_id
-         WHERE d.account_id = $1 AND d.status = 'collected' AND d.collected_at IS NOT NULL
+         WHERE d.account_id = $1 AND d.status = 'collected'
 
          UNION ALL
 
@@ -479,10 +479,10 @@ router.get('/activity', requireAuth, async (req, res) => {
            'Deposit',
            '/deposits',
            'neutral',
-           d.refunded_at
+           d.created_at
          FROM deposits d
          JOIN clients c ON c.id = d.client_id
-         WHERE d.account_id = $1 AND d.status = 'refunded' AND d.refunded_at IS NOT NULL
+         WHERE d.account_id = $1 AND d.status = 'refunded'
 
        ) AS activity
        WHERE event_time IS NOT NULL

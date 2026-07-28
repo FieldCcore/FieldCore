@@ -1884,9 +1884,10 @@ body {
   line-height: 1;
   margin: 0;
 }
-.fs-snap__cell--warning .fs-snap__val { color: var(--amber); }
-.fs-snap__cell--danger  .fs-snap__val { color: var(--red); }
-.fs-snap__cell--success .fs-snap__val { color: var(--green); }
+.fs-snap__cell--warning  .fs-snap__val { color: var(--yellow); }
+.fs-snap__cell--critical .fs-snap__val { color: var(--red); }
+.fs-snap__cell--danger   .fs-snap__val { color: var(--red); }
+.fs-snap__cell--success  .fs-snap__val { color: var(--green); }
 .fs-snap__empty {
   margin: 8px 0 0;
   font-size: 11px;

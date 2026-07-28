@@ -88,7 +88,7 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Rate limit exceeded. Please slow down.' },
-  skip: (req) => req.path.startsWith('/health'),
+  skip: (req) => req.path.startsWith('/health') || process.env.NODE_ENV === 'test',
 });
 
 // Public booking reads: 60 per minute
