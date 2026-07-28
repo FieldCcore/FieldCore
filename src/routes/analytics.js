@@ -8,7 +8,7 @@ const requireEntitlement = require('../middleware/requireEntitlement');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount, scheduledData] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -205,6 +205,16 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         `SELECT COUNT(*) FROM deposits WHERE account_id = $1`,
         [accountId]
       ),
+
+      // Scheduled revenue — future non-cancelled non-complete jobs (each job counted once)
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS job_count
+         FROM jobs
+         WHERE account_id = $1
+           AND scheduled_at > NOW()
+           AND status NOT IN ('complete', 'cancelled')`,
+        [accountId]
+      ),
     ]);
 
     res.json({
@@ -221,9 +231,11 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       failedInvoiceCount: parseInt(failedInvoiceCount.rows[0].count),
       pendingDeposits:    pendingDeposits.rows,
       totalDepositCount:  parseInt(totalDepositCount.rows[0].count),
-      team:             teamStats.rows,
-      weekBars:         weekBars.rows,
-      recentReviews:    recentReviews.rows,
+      team:               teamStats.rows,
+      weekBars:           weekBars.rows,
+      recentReviews:      recentReviews.rows,
+      scheduledRevenue:   parseFloat(scheduledData.rows[0].total),
+      scheduledJobCount:  parseInt(scheduledData.rows[0].job_count),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -525,6 +537,65 @@ router.get('/revenue', requireAuth, requireRole('owner', 'manager'), async (req,
       weekly:    weekly.rows,
       byService: byService.rows,
       monthly:   monthly.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/analytics/scheduled — upcoming scheduled job revenue for the Revenue page
+router.get('/scheduled', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const accountId = req.accountId;
+  try {
+    const [summary, byWeek, byService] = await Promise.all([
+
+      // Totals
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS job_count
+         FROM jobs
+         WHERE account_id = $1
+           AND scheduled_at > NOW()
+           AND status NOT IN ('complete', 'cancelled')`,
+        [accountId]
+      ),
+
+      // Grouped by future week — next 8 weeks
+      pool.query(
+        `SELECT
+           date_trunc('week', scheduled_at)::date AS week_start,
+           COUNT(*) AS jobs,
+           COALESCE(SUM(amount), 0) AS revenue
+         FROM jobs
+         WHERE account_id = $1
+           AND scheduled_at > NOW()
+           AND status NOT IN ('complete', 'cancelled')
+         GROUP BY week_start
+         ORDER BY week_start
+         LIMIT 8`,
+        [accountId]
+      ),
+
+      // Grouped by service type
+      pool.query(
+        `SELECT
+           service_type,
+           COUNT(*) AS jobs,
+           COALESCE(SUM(amount), 0) AS revenue
+         FROM jobs
+         WHERE account_id = $1
+           AND scheduled_at > NOW()
+           AND status NOT IN ('complete', 'cancelled')
+         GROUP BY service_type
+         ORDER BY revenue DESC`,
+        [accountId]
+      ),
+    ]);
+
+    res.json({
+      scheduledRevenue:  parseFloat(summary.rows[0].total),
+      scheduledJobCount: parseInt(summary.rows[0].job_count),
+      byWeek:    byWeek.rows,
+      byService: byService.rows,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 
 async function triggerCsvDownload(url) {
@@ -35,16 +36,31 @@ function monthLabel(iso) {
   return MONTH_NAMES[d.getMonth()];
 }
 
+const VALID_VIEWS = ['revenue', 'scheduled', 'noshows'];
+
 export default function Revenue() {
-  const [data,       setData]       = useState(null);
-  const [hovered,    setHovered]    = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [tab,        setTab]        = useState('revenue');
-  const [nsData,     setNsData]     = useState([]);
-  const [nsLoading,  setNsLoading]  = useState(false);
-  const [nsRecords,  setNsRecords]  = useState([]);
-  const [exportFrom, setExportFrom] = useState('');
-  const [exportTo,   setExportTo]   = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [data,        setData]        = useState(null);
+  const [hovered,     setHovered]     = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [tab,         setTab]         = useState(() => {
+    const v = searchParams.get('view');
+    return VALID_VIEWS.includes(v) ? v : 'revenue';
+  });
+  const [nsData,      setNsData]      = useState([]);
+  const [nsLoading,   setNsLoading]   = useState(false);
+  const [nsRecords,   setNsRecords]   = useState([]);
+  const [schedData,   setSchedData]   = useState(null);
+  const [schedLoading,setSchedLoading]= useState(false);
+  const [exportFrom,  setExportFrom]  = useState('');
+  const [exportTo,    setExportTo]    = useState('');
+
+  function switchTab(key) {
+    setTab(key);
+    if (key === 'revenue') setSearchParams({}, { replace: true });
+    else setSearchParams({ view: key }, { replace: true });
+  }
 
   useEffect(() => {
     api.get('/analytics/revenue')
@@ -62,6 +78,16 @@ export default function Revenue() {
       setNsData(rep.data);
       setNsRecords(rec.data);
     }).catch(() => {}).finally(() => setNsLoading(false));
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'scheduled') return;
+    if (schedData) return; // already loaded
+    setSchedLoading(true);
+    api.get('/analytics/scheduled')
+      .then(r => setSchedData(r.data))
+      .catch(() => setSchedData({ scheduledRevenue: 0, scheduledJobCount: 0, byWeek: [], byService: [] }))
+      .finally(() => setSchedLoading(false));
   }, [tab]);
 
   if (loading) {
@@ -107,8 +133,8 @@ export default function Revenue() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--lightgray)' }}>
-        {[{ key: 'revenue', label: 'Revenue' }, { key: 'noshows', label: 'No-Show Report' }].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+        {[{ key: 'revenue', label: 'Revenue' }, { key: 'scheduled', label: 'Upcoming' }, { key: 'noshows', label: 'No-Show Report' }].map(t => (
+          <button key={t.key} onClick={() => switchTab(t.key)}
             style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent', marginBottom: -2, fontSize: 13, fontWeight: tab === t.key ? 700 : 500, color: tab === t.key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
             {t.label}
           </button>
@@ -182,6 +208,98 @@ export default function Revenue() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {tab === 'scheduled' && (
+        schedLoading ? (
+          <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading upcoming jobs…</div>
+        ) : (
+          <div>
+            <div className="dash-stat-grid" style={{ marginBottom: 20 }}>
+              <div className="dash-sc">
+                <div className="dash-sc-header"><div className="dash-sc-l">Scheduled Revenue</div></div>
+                <div className="dash-sc-v">{fmt$(schedData?.scheduledRevenue || 0)}</div>
+                <div className="dash-sc-s">Expected from upcoming jobs</div>
+              </div>
+              <div className="dash-sc">
+                <div className="dash-sc-header"><div className="dash-sc-l">Upcoming Jobs</div></div>
+                <div className="dash-sc-v">{schedData?.scheduledJobCount || 0}</div>
+                <div className="dash-sc-s">Not yet completed or cancelled</div>
+              </div>
+              <div className="dash-sc">
+                <div className="dash-sc-header"><div className="dash-sc-l">Service Types</div></div>
+                <div className="dash-sc-v">{schedData?.byService?.length || 0}</div>
+                <div className="dash-sc-s">In scheduled pipeline</div>
+              </div>
+              <div className="dash-sc">
+                <div className="dash-sc-header"><div className="dash-sc-l">Avg per Job</div></div>
+                <div className="dash-sc-v">
+                  {schedData?.scheduledJobCount > 0
+                    ? fmt$((schedData.scheduledRevenue || 0) / schedData.scheduledJobCount)
+                    : '$0'}
+                </div>
+                <div className="dash-sc-s">Expected value</div>
+              </div>
+            </div>
+
+            {(schedData?.byWeek?.length || 0) === 0 ? (
+              <div className="dash-card" style={{ padding: 32, textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
+                No upcoming scheduled jobs found.
+              </div>
+            ) : (
+              <div className="rev-layout">
+                <div className="rev-main">
+                  <div className="dash-card">
+                    <div className="dash-ch"><span className="dash-cht">Upcoming Revenue by Week</span></div>
+                    <div className="table-wrap"><table className="table">
+                      <thead>
+                        <tr>
+                          <th>Week of</th>
+                          <th>Jobs</th>
+                          <th>Expected Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schedData.byWeek.map((w, i) => (
+                          <tr key={i}>
+                            <td>{weekLabel(w.week_start)}</td>
+                            <td>{w.jobs}</td>
+                            <td><strong>{fmt$(w.revenue)}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table></div>
+                  </div>
+                </div>
+                <div className="rev-side">
+                  <div className="dash-card">
+                    <div className="dash-ch"><span className="dash-cht">By Service Type</span></div>
+                    {schedData.byService.length === 0 ? (
+                      <div style={{ padding: '24px 16px', color: 'var(--steel)', fontSize: 13 }}>No data yet.</div>
+                    ) : (
+                      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {(() => {
+                          const maxRev = Math.max(...schedData.byService.map(s => parseFloat(s.revenue)), 1);
+                          return schedData.byService.map((s, i) => (
+                            <div key={i}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
+                                <span style={{ color: 'var(--slate)', fontWeight: 600 }}>{s.service_type}</span>
+                                <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 14, color: 'var(--navy)' }}>{fmt$(s.revenue)}</span>
+                              </div>
+                              <div style={{ height: 6, background: 'var(--lightgray)', borderRadius: 99 }}>
+                                <div style={{ height: '100%', width: `${(parseFloat(s.revenue) / maxRev) * 100}%`, background: i === 0 ? 'var(--navy)' : 'var(--sand)', borderRadius: 99 }} />
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

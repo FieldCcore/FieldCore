@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  TrendingUp, CalendarDays, Briefcase, FileText, CreditCard, Star,
-  Map, Phone, BarChart2, Users, Plus, ChevronRight, Calendar,
+  TrendingUp, Calendar, Briefcase, FileText, CreditCard, Star,
+  Map, Phone, BarChart2, Users, Plus, ChevronRight,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -122,10 +122,11 @@ export default function Dashboard() {
   }
 
   const { todayJobs = [], weekRevenue = 0, weekCollected = 0, weekOutstanding = 0,
-          weekInvoicesPaid = 0, prevWeekRevenue = 0, mtdRevenue = 0, activeJobs = 0,
+          weekInvoicesPaid = 0, prevWeekRevenue = 0, activeJobs = 0,
           pendingInvoices = {}, failedInvoiceCount = 0,
           pendingDeposits = [], totalDepositCount = 0,
-          team = [], weekBars = [], recentReviews = [] } = data || {};
+          team = [], weekBars = [], recentReviews = [],
+          scheduledRevenue = 0, scheduledJobCount = 0 } = data || {};
 
   const googleRating  = gbp?.average_rating ? parseFloat(gbp.average_rating).toFixed(1) : null;
   const googleCount   = gbp?.total_reviews  || 0;
@@ -249,12 +250,12 @@ export default function Dashboard() {
               action={{ label: 'View today →', onClick: () => nav('/revenue') }}
             />
             <KpiCard
-              icon={CalendarDays}
-              title="Month to Date"
-              value={fmt$(mtdRevenue)}
-              subtitle="Completed jobs"
-              tone={mtdRevenue > 0 ? 'success' : 'neutral'}
-              action={{ label: 'View monthly report →', onClick: () => nav('/revenue') }}
+              icon={Calendar}
+              title="Scheduled Revenue"
+              value={fmt$(scheduledRevenue)}
+              subtitle={`${scheduledJobCount} upcoming job${scheduledJobCount !== 1 ? 's' : ''}`}
+              tone={scheduledRevenue > 0 ? 'success' : 'neutral'}
+              action={{ label: 'View upcoming work →', onClick: () => nav('/revenue?view=scheduled') }}
             />
             <KpiCard
               icon={Briefcase}

@@ -660,6 +660,191 @@ describe('GET /api/analytics/dashboard — KPI tenant isolation', () => {
   });
 });
 
+// ── Scheduled Revenue — dashboard KPI + /analytics/scheduled endpoint ─────────
+
+describe('GET /api/analytics/dashboard — scheduledRevenue', () => {
+  let acct, acctEmpty, jobMultiDayId;
+
+  beforeAll(async () => {
+    acct      = await makeAccount('SchedRevDash');
+    acctEmpty = await makeAccount('SchedRevEmpty');
+    createdAccountIds.push(acct.accountId, acctEmpty.accountId);
+
+    // Future scheduled job #1 — should be included
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Roof Repair', 'scheduled', NOW() + INTERVAL '3 days', 50000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Future scheduled job #2 — should be included
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'HVAC Service', 'scheduled', NOW() + INTERVAL '7 days', 30000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Future COMPLETED job — must be excluded
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Complete Future', 'complete', NOW() + INTERVAL '1 day', 20000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Future CANCELLED job — must be excluded
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Cancelled Future', 'cancelled', NOW() + INTERVAL '2 days', 15000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // PAST scheduled job — must be excluded (not future)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Past Job', 'scheduled', NOW() - INTERVAL '5 days', 10000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Multi-day job — should count once (not once per session)
+    const { rows: [mjob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount, is_multi_day)
+       VALUES ($1, $2, 'Multi-Day Reno', 'scheduled', NOW() + INTERVAL '10 days', 100000, true)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    jobMultiDayId = mjob.id;
+
+    // Two sessions for the multi-day job — revenue should NOT be double-counted
+    await pool.query(
+      `INSERT INTO job_sessions (account_id, job_id, scheduled_date, status)
+       VALUES ($1, $2, CURRENT_DATE + 10, 'scheduled'), ($1, $2, CURRENT_DATE + 11, 'scheduled')`,
+      [acct.accountId, jobMultiDayId]
+    );
+  });
+
+  it('response includes scheduledRevenue and scheduledJobCount fields', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('scheduledRevenue');
+    expect(res.body).toHaveProperty('scheduledJobCount');
+  });
+
+  it('scheduled revenue sums future non-cancelled non-complete jobs', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // 50000 + 30000 + 100000 = 180000
+    expect(res.body.scheduledRevenue).toBe(180000);
+  });
+
+  it('scheduled job count is correct', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // job1 + job2 + multiDayParent = 3 (past, complete, cancelled excluded)
+    expect(res.body.scheduledJobCount).toBe(3);
+  });
+
+  it('completed future jobs are excluded from scheduled revenue', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.scheduledRevenue).toBeLessThan(200000); // 20000 excluded
+  });
+
+  it('cancelled future jobs are excluded from scheduled revenue', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.scheduledRevenue).toBeLessThan(195000); // 15000 excluded
+  });
+
+  it('past jobs are excluded from scheduled revenue', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.scheduledRevenue).toBeLessThan(190000); // 10000 excluded
+  });
+
+  it('multi-day job is counted once not per session', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // 2 sessions exist but parent job counted once; total count still 3
+    expect(res.body.scheduledJobCount).toBe(3);
+    expect(res.body.scheduledRevenue).toBe(180000); // 100000 counted once
+  });
+
+  it('empty state returns zero scheduled revenue and zero count', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acctEmpty.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.scheduledRevenue).toBe(0);
+    expect(res.body.scheduledJobCount).toBe(0);
+  });
+
+  it('tenant isolation: other org sees zero scheduled revenue', async () => {
+    const other = await makeAccount('SchedRevIsolate');
+    createdAccountIds.push(other.accountId);
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${other.token}`);
+    expect(res.body.scheduledRevenue).toBe(0);
+    expect(res.body.scheduledJobCount).toBe(0);
+  });
+});
+
+describe('GET /api/analytics/scheduled — upcoming revenue endpoint', () => {
+  let acct;
+
+  beforeAll(async () => {
+    acct = await makeAccount('SchedEndpoint');
+    createdAccountIds.push(acct.accountId);
+
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Window Cleaning', 'scheduled', NOW() + INTERVAL '5 days', 75000),
+              ($1, $2, 'Gutter Clean',    'scheduled', NOW() + INTERVAL '12 days', 45000)`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Completed job — should not appear
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Done Job', 'complete', NOW() + INTERVAL '3 days', 20000)`,
+      [acct.accountId, acct.clientId]
+    );
+  });
+
+  it('returns expected shape with scheduledRevenue, scheduledJobCount, byWeek, byService', async () => {
+    const res = await request(app).get('/api/analytics/scheduled').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('scheduledRevenue');
+    expect(res.body).toHaveProperty('scheduledJobCount');
+    expect(Array.isArray(res.body.byWeek)).toBe(true);
+    expect(Array.isArray(res.body.byService)).toBe(true);
+  });
+
+  it('returns correct totals excluding completed jobs', async () => {
+    const res = await request(app).get('/api/analytics/scheduled').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.scheduledRevenue).toBe(120000); // 75000 + 45000
+    expect(res.body.scheduledJobCount).toBe(2);
+  });
+
+  it('byService groups jobs correctly', async () => {
+    const res = await request(app).get('/api/analytics/scheduled').set('Authorization', `Bearer ${acct.token}`);
+    const services = res.body.byService.map(s => s.service_type);
+    expect(services).toContain('Window Cleaning');
+    expect(services).toContain('Gutter Clean');
+    expect(services).not.toContain('Done Job');
+  });
+
+  it('unauthenticated request returns 401', async () => {
+    const res = await request(app).get('/api/analytics/scheduled');
+    expect(res.status).toBe(401);
+  });
+
+  it('tech role is blocked (403)', async () => {
+    const res = await request(app).get('/api/analytics/scheduled').set('Authorization', `Bearer ${acct.techToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('tenant isolation: empty org sees no scheduled data', async () => {
+    const other = await makeAccount('SchedEndpointOther');
+    createdAccountIds.push(other.accountId);
+    const res = await request(app).get('/api/analytics/scheduled').set('Authorization', `Bearer ${other.token}`);
+    expect(res.body.scheduledRevenue).toBe(0);
+    expect(res.body.scheduledJobCount).toBe(0);
+    expect(res.body.byWeek).toHaveLength(0);
+    expect(res.body.byService).toHaveLength(0);
+  });
+});
+
 // ── Review notifications — idempotency ────────────────────────────────────────
 
 describe('New review notifications — not duplicated on re-sync', () => {
