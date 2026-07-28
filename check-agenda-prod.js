@@ -1,0 +1,21 @@
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch();
+  const p = await b.newPage();
+  await p.setViewportSize({ width: 1280, height: 900 });
+  await p.goto('https://www.getfieldcore.com/login');
+  await p.waitForSelector('input[type=email]', { timeout: 10000 });
+  await p.fill('input[type=email]', 'info@getfieldcore.com');
+  await p.fill('input[type=password]', 'Kc06272007*');
+  await p.click('button[type=submit]');
+  await p.waitForURL('**/dashboard', { timeout: 15000 });
+  await p.goto('https://www.getfieldcore.com/jobs');
+  await p.waitForTimeout(2000);
+  await p.getByText('Agenda').click();
+  await p.waitForTimeout(2000);
+  await p.screenshot({ path: 'agenda-prod-full.png', fullPage: false });
+  const el = await p.$('.rbc-agenda-view');
+  if (el) await el.screenshot({ path: 'agenda-prod-zoom.png' });
+  console.log('done');
+  await b.close();
+})().catch(e => console.error('ERROR:', e.message));

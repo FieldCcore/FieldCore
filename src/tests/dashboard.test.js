@@ -660,6 +660,154 @@ describe('GET /api/analytics/dashboard — KPI tenant isolation', () => {
   });
 });
 
+// ── Upcoming Jobs Today — dashboard KPI ───────────────────────────────────────
+
+describe('GET /api/analytics/dashboard — upcomingJobsToday', () => {
+  let acct, acctEmpty;
+
+  beforeAll(async () => {
+    acct      = await makeAccount('UpcomingToday');
+    acctEmpty = await makeAccount('UpcomingTodayEmpty');
+    createdAccountIds.push(acct.accountId, acctEmpty.accountId);
+
+    // Future single-day job today — INCLUDED (23:58 local, always today and in the future)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Future Today A', 'scheduled', CURRENT_DATE::timestamp + INTERVAL '23 hours 58 minutes')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Second future single-day job today — INCLUDED (23:59 local, always today and in the future)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Future Today B', 'scheduled', CURRENT_DATE::timestamp + INTERVAL '23 hours 59 minutes')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Past single-day job today — EXCLUDED (00:01 local, already past)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Past Today', 'scheduled', CURRENT_DATE::timestamp + INTERVAL '1 minute')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Future today job — COMPLETE, EXCLUDED
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Complete Today', 'complete', CURRENT_DATE::timestamp + INTERVAL '23 hours 56 minutes')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Future today job — CANCELLED, EXCLUDED
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Cancelled Today', 'cancelled', CURRENT_DATE::timestamp + INTERVAL '23 hours 57 minutes')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Tomorrow's job — EXCLUDED (not today)
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at)
+       VALUES ($1, $2, 'Tomorrow Job', 'scheduled', CURRENT_DATE::timestamp + INTERVAL '48 hours')`,
+      [acct.accountId, acct.clientId]
+    );
+
+    // Multi-day parent job with a session today (NULL start_time) — session INCLUDED once
+    const { rows: [mjob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, is_multi_day)
+       VALUES ($1, $2, 'Multi-Day Reno', 'scheduled', NOW() - INTERVAL '1 day', true)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    // NULL start_time — no known start time, included conservatively
+    await pool.query(
+      `INSERT INTO job_sessions (account_id, job_id, scheduled_date, status)
+       VALUES ($1, $2, CURRENT_DATE, 'scheduled')`,
+      [acct.accountId, mjob.id]
+    );
+
+    // Multi-day session today with past start_time '00:01' — EXCLUDED (tests run after midnight)
+    const { rows: [mjob2] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, is_multi_day)
+       VALUES ($1, $2, 'Multi-Day Past Time', 'scheduled', NOW() - INTERVAL '1 day', true)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    await pool.query(
+      `INSERT INTO job_sessions (account_id, job_id, scheduled_date, status, start_time)
+       VALUES ($1, $2, CURRENT_DATE, 'scheduled', '00:01')`,
+      [acct.accountId, mjob2.id]
+    );
+
+    // Multi-day session today — completed_for_day, EXCLUDED
+    const { rows: [mjob3] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, is_multi_day)
+       VALUES ($1, $2, 'Multi-Day Done', 'scheduled', NOW() - INTERVAL '1 day', true)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    await pool.query(
+      `INSERT INTO job_sessions (account_id, job_id, scheduled_date, status)
+       VALUES ($1, $2, CURRENT_DATE, 'completed_for_day')`,
+      [acct.accountId, mjob3.id]
+    );
+  });
+
+  it('response includes upcomingJobsToday field', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('upcomingJobsToday');
+    expect(typeof res.body.upcomingJobsToday).toBe('number');
+  });
+
+  it('counts future-today single-day jobs and later-today sessions', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // 2 future single-day (23:58, 23:59 local) + 1 NULL-start-time session = 3
+    expect(res.body.upcomingJobsToday).toBe(3);
+  });
+
+  it('past jobs from earlier today are excluded', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // Past job from -2h not counted; if it were, count would be ≥ 5
+    expect(res.body.upcomingJobsToday).toBeLessThan(5);
+  });
+
+  it('completed jobs are excluded', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.upcomingJobsToday).toBeLessThan(5);
+  });
+
+  it('cancelled jobs are excluded', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.upcomingJobsToday).toBeLessThan(6);
+  });
+
+  it('tomorrow jobs are excluded', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    expect(res.body.upcomingJobsToday).toBeLessThan(5);
+  });
+
+  it('multi-day sessions counted once not per parent job', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acct.token}`);
+    // Multi-day parent jobs (is_multi_day=true) are excluded from single-day count;
+    // their sessions appear in session count exactly once each
+    expect(res.body.upcomingJobsToday).toBe(3);
+  });
+
+  it('empty state returns 0', async () => {
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${acctEmpty.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.upcomingJobsToday).toBe(0);
+  });
+
+  it('tenant isolation: other org sees 0 upcoming jobs today', async () => {
+    const other = await makeAccount('UpcomingTodayIsolate');
+    createdAccountIds.push(other.accountId);
+    const res = await request(app).get('/api/analytics/dashboard').set('Authorization', `Bearer ${other.token}`);
+    expect(res.body.upcomingJobsToday).toBe(0);
+  });
+});
+
 // ── Scheduled Revenue — dashboard KPI + /analytics/scheduled endpoint ─────────
 
 describe('GET /api/analytics/dashboard — scheduledRevenue', () => {

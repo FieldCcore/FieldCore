@@ -126,7 +126,7 @@ export default function Dashboard() {
           pendingInvoices = {}, failedInvoiceCount = 0,
           pendingDeposits = [], totalDepositCount = 0,
           team = [], weekBars = [], recentReviews = [],
-          scheduledRevenue = 0, scheduledJobCount = 0 } = data || {};
+          upcomingJobsToday = 0 } = data || {};
 
   const googleRating  = gbp?.average_rating ? parseFloat(gbp.average_rating).toFixed(1) : null;
   const googleCount   = gbp?.total_reviews  || 0;
@@ -251,11 +251,12 @@ export default function Dashboard() {
             />
             <KpiCard
               icon={Calendar}
-              title="Scheduled Revenue"
-              value={fmt$(scheduledRevenue)}
-              subtitle={`${scheduledJobCount} upcoming job${scheduledJobCount !== 1 ? 's' : ''}`}
-              tone={scheduledRevenue > 0 ? 'success' : 'neutral'}
-              action={{ label: 'View upcoming work →', onClick: () => nav('/revenue?view=scheduled') }}
+              title="Upcoming Jobs Today"
+              value={upcomingJobsToday}
+              subtitle={`${upcomingJobsToday} upcoming job${upcomingJobsToday !== 1 ? 's' : ''}`}
+              tone={upcomingJobsToday > 0 ? 'success' : 'neutral'}
+              badge={upcomingJobsToday === 0 ? { label: 'Clear', tone: 'success' } : undefined}
+              action={{ label: "View today's schedule →", onClick: () => nav('/jobs?view=day') }}
             />
             <KpiCard
               icon={Briefcase}

@@ -8,7 +8,7 @@ const requireEntitlement = require('../middleware/requireEntitlement');
 router.get('/dashboard', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   try {
-    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount, scheduledData] = await Promise.all([
+    const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount, scheduledData, upcomingData] = await Promise.all([
 
       // Today's jobs with client + tech name
       pool.query(
@@ -215,6 +215,29 @@ router.get('/dashboard', requireAuth, async (req, res) => {
            AND status NOT IN ('complete', 'cancelled')`,
         [accountId]
       ),
+
+      // Upcoming Jobs Today — later-today single-day jobs + later-today multi-day sessions
+      pool.query(
+        `SELECT
+           (SELECT COUNT(*)
+            FROM jobs
+            WHERE account_id = $1
+              AND scheduled_at::date = CURRENT_DATE
+              AND scheduled_at > NOW()
+              AND status NOT IN ('complete', 'cancelled')
+              AND (is_multi_day IS NULL OR is_multi_day = FALSE)
+           ) +
+           (SELECT COUNT(*)
+            FROM job_sessions s
+            JOIN jobs j ON j.id = s.job_id
+            WHERE s.account_id = $1
+              AND s.scheduled_date = CURRENT_DATE
+              AND (s.start_time IS NULL OR s.start_time::time > CURRENT_TIME)
+              AND s.status NOT IN ('completed_for_day', 'cancelled', 'missed')
+              AND j.status NOT IN ('complete', 'cancelled')
+           ) AS total`,
+        [accountId]
+      ),
     ]);
 
     res.json({
@@ -236,6 +259,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       recentReviews:      recentReviews.rows,
       scheduledRevenue:   parseFloat(scheduledData.rows[0].total),
       scheduledJobCount:  parseInt(scheduledData.rows[0].job_count),
+      upcomingJobsToday:  parseInt(upcomingData.rows[0].total),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
