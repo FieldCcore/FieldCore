@@ -11,15 +11,21 @@ function getTwilio() {
   return require('twilio')(sid, token);
 }
 
-// GET /api/phone/status — check whether telephony is configured for this account
+// GET /api/phone/status — telephony readiness for the current account + user
 router.get('/status', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT id, number, label FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
-      [req.accountId]
-    );
-    const configured = rows.length > 0;
-    res.json({ configured, number: configured ? rows[0].number : null, label: configured ? rows[0].label : null });
+    const [numRes, userRes] = await Promise.all([
+      pool.query(`SELECT id, number, label FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`, [req.accountId]),
+      pool.query(`SELECT phone FROM users WHERE id = $1`, [req.userId]),
+    ]);
+    const configured        = numRes.rows.length > 0;
+    const has_operator_phone = !!userRes.rows[0]?.phone;
+    res.json({
+      configured,
+      number:           configured ? numRes.rows[0].number : null,
+      label:            configured ? numRes.rows[0].label  : null,
+      has_operator_phone,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -212,21 +218,29 @@ router.get('/calls/latest-inbound', requireAuth, requireRole('owner', 'manager')
   }
 });
 
-// POST /api/phone/calls/outbound — click-to-call: Twilio calls operator first, then bridges to client
-// Accepts { client_id, operator_number } or { to_number, operator_number }
+// POST /api/phone/calls/outbound — click-to-call: operator_number resolved from user profile
+// Accepts { client_id } or { to_number } (no longer requires operator_number from client)
 router.post('/calls/outbound', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { client_id, to_number, operator_number } = req.body;
-  if (!operator_number) return res.status(400).json({ error: 'operator_number is required' });
+  const { client_id, to_number } = req.body;
   if (!client_id && !to_number) return res.status(400).json({ error: 'client_id or to_number is required' });
 
   try {
-    const numRes = await pool.query(
-      `SELECT * FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
-      [req.accountId]
-    );
-    const fromNumber = numRes.rows[0]?.number;
+    const [numRes, userRes] = await Promise.all([
+      pool.query(`SELECT * FROM phone_numbers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`, [req.accountId]),
+      pool.query(`SELECT phone FROM users WHERE id = $1`, [req.userId]),
+    ]);
+
+    const fromNumber      = numRes.rows[0]?.number;
+    const operator_number = userRes.rows[0]?.phone;
+
     if (!fromNumber) {
       return res.status(400).json({ error: 'No active phone number on account', code: 'NO_PHONE_CONFIGURED' });
+    }
+    if (!operator_number) {
+      return res.status(400).json({
+        error: 'Add a phone number to your profile to place outbound calls',
+        code:  'NO_OPERATOR_NUMBER',
+      });
     }
 
     let clientPhone      = to_number || null;
