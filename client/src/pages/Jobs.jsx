@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMinutes, addDays } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
@@ -91,7 +91,8 @@ function CalEventCard({ event }) {
 }
 
 // ─── Custom toolbar ───────────────────────────────────────────────────────────
-// scrollToNow is module-level so CalendarToolbar can call it without props injection
+// scrollToNow is module-level so CalendarToolbar can call it without props injection.
+// Today merges navigation + scroll-to-current-time for day and week views.
 function CalendarToolbar({ date, view, onNavigate, onView }) {
   const label = useMemo(() => {
     if (view === 'month') return format(date, 'MMMM yyyy');
@@ -106,24 +107,18 @@ function CalendarToolbar({ date, view, onNavigate, onView }) {
     return '';
   }, [date, view]);
 
-  function handleNow() {
+  function handleToday() {
     onNavigate('TODAY');
-    setTimeout(scrollToNow, 300);
+    // In time-grid views, also scroll to the current hour after the calendar repaints.
+    if (view === 'day' || view === 'week') {
+      setTimeout(scrollToNow, 300);
+    }
   }
 
   return (
     <div className="cal-toolbar">
       <div className="cal-toolbar-nav">
-        <button className="cal-nav-btn" onClick={() => onNavigate('TODAY')}>Today</button>
-        {(view === 'day' || view === 'week') && (
-          <button
-            className="cal-nav-btn cal-nav-arrow cal-nav-now"
-            onClick={handleNow}
-            aria-label="Jump to current time"
-          >
-            <Clock size={13} />
-          </button>
-        )}
+        <button className="cal-nav-btn" onClick={handleToday}>Today</button>
         <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')} aria-label="Previous">
           <ChevronLeft size={16} />
         </button>
@@ -459,16 +454,16 @@ export default function Jobs() {
         <span className="cal-legend-session-hint">Dashed border = multi-day session</span>
       </div>
 
-      {/* Filter bar */}
+      {/* Filter bar — 4 status chips only; clicking an active chip deselects (shows all) */}
       <div className="cal-filter-bar" role="group" aria-label="Filter by job status">
-        <span className="cal-filter-label" id="cal-filter-label">Filter:</span>
-        {[{ value: 'all', label: 'All' }, ...LEGEND.map(l => ({ value: l.key, label: l.label, color: l.color }))].map(opt => (
+        <span className="cal-filter-label">Filter:</span>
+        {LEGEND.map(opt => (
           <button
-            key={opt.value}
-            className={`cal-filter-chip${statusFilter === opt.value ? ' active' : ''}`}
-            style={statusFilter === opt.value && opt.color ? { background: opt.color, borderColor: opt.color } : {}}
-            onClick={() => setStatusFilter(opt.value)}
-            aria-pressed={statusFilter === opt.value}
+            key={opt.key}
+            className={`cal-filter-chip${statusFilter === opt.key ? ' active' : ''}`}
+            style={statusFilter === opt.key ? { background: opt.color, borderColor: opt.color } : {}}
+            onClick={() => setStatusFilter(prev => prev === opt.key ? 'all' : opt.key)}
+            aria-pressed={statusFilter === opt.key}
           >
             {opt.label}
           </button>

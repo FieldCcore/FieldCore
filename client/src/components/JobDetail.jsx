@@ -28,6 +28,24 @@ const STATUS_COLORS = {
 
 const PRIORITY_COLOR = { normal: '#5F667A', high: '#D4A000', urgent: '#DC2626' };
 
+function fmtRemaining(min) {
+  const secs = Math.max(0, Math.round(min * 60));
+  return `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+}
+function fmtOverdue(min) {
+  const totalMin = Math.floor(min);
+  if (totalMin < 60) return `${totalMin} min overdue`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}h ${m}m overdue` : `${h}h overdue`;
+}
+function fmtHistorical(min) {
+  const days = Math.floor(min / 60 / 24);
+  if (days < 1) return 'several hours ago';
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
+}
+
 export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit }) {
   const [job,           setJob]           = useState(initialJob);
   const [sessions,      setSessions]      = useState(initialJob.sessions || []);
@@ -119,18 +137,21 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }
   }
 
+  const graceMin    = parseFloat(job.grace_period_minutes) || 15;
+  const clockMs     = clockTime ? new Date(clockTime).getTime() : NaN;
+  const clockValid  = !isNaN(clockMs);
+  const elapsedMin  = (clockStarted && clockValid) ? (Date.now() - clockMs) / 60000 : 0;
+  const overdueMin  = elapsedMin - graceMin;
+  const remainingMin = Math.max(-overdueMin, 0);
+  const isOverdue   = clockStarted && clockValid && overdueMin > 0;
+  const isHistorical = isOverdue && overdueMin > 24 * 60;
+  const clockColor  = isOverdue ? '#dc2626' : '#D4A000';
+
   useEffect(() => {
-    if (!clockStarted) return;
+    if (!clockStarted || !clockValid || isHistorical) return;
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
-  }, [clockStarted]);
-
-  const graceMin    = parseFloat(job.grace_period_minutes) || 15;
-  const elapsedMin  = clockStarted && clockTime ? (Date.now() - new Date(clockTime).getTime()) / 60000 : 0;
-  const remainingMin = Math.max(graceMin - elapsedMin, 0);
-  const remSecs     = Math.round(remainingMin * 60);
-  const isOverdue   = clockStarted && elapsedMin >= graceMin;
-  const clockColor  = isOverdue ? '#dc2626' : '#D4A000';
+  }, [clockStarted, clockTime, isHistorical]);
 
   async function declareNoShow() {
     if (!job?.id) return;
@@ -332,27 +353,31 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
         {/* No-show grace period clock (single-day only) */}
         {!job.is_multi_day && job.status === 'scheduled' && (
           <div className="jd-section" style={{
-            borderColor: clockStarted ? (isOverdue ? '#fca5a5' : '#fde68a') : 'var(--lightgray)',
-            background:  clockStarted ? (isOverdue ? '#fef2f2' : 'var(--yellow-lt)') : 'var(--off)',
+            borderColor: clockStarted && clockValid ? (isOverdue ? '#fca5a5' : '#fde68a') : 'var(--lightgray)',
+            background:  clockStarted && clockValid ? (isOverdue ? '#fef2f2' : 'var(--yellow-lt)') : 'var(--off)',
           }}>
-            {clockStarted ? (
+            {!clockStarted ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--steel)' }}>Client not present? Start the grace period clock.</div>
+                <button className="btn-secondary"
+                  style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  onClick={startNoshowClock} disabled={startingClock}>
+                  <Timer size={11} />{startingClock ? 'Starting…' : 'Start Clock'}
+                </button>
+              </div>
+            ) : !clockValid ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Timer size={14} style={{ color: 'var(--steel)', flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: 'var(--steel)' }}>No-show timing unavailable.</div>
+              </div>
+            ) : isHistorical ? (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <Timer size={14} style={{ color: clockColor, flexShrink: 0, marginTop: 2 }} />
+                <Timer size={14} style={{ color: '#dc2626', flexShrink: 0, marginTop: 2 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : 'var(--yellow)' }}>
-                    No-show clock {isOverdue ? 'expired' : 'running'}
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#7f1d1d' }}>No-show unresolved</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#dc2626', marginTop: 3 }}>
+                    Expired {fmtHistorical(overdueMin)}
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
-                    {isOverdue
-                      ? `+${String(Math.floor(elapsedMin - graceMin)).padStart(2,'0')}:${String(Math.round((elapsedMin - graceMin) * 60) % 60).padStart(2,'0')} over`
-                      : `${String(Math.floor(remSecs / 60)).padStart(2,'0')}:${String(remSecs % 60).padStart(2,'0')} remaining`}
-                  </div>
-                  {isAdmin && job.checkin_lat && (
-                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
-                      Tech GPS: {parseFloat(job.checkin_lat).toFixed(4)}°, {parseFloat(job.checkin_lng || 0).toFixed(4)}°
-                      {job.checkin_at ? ` · Arrived ${format(new Date(job.checkin_at), 'h:mm a')}` : ''}
-                    </div>
-                  )}
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                       <button onClick={declareNoShow} disabled={declaring || arrived}
@@ -368,13 +393,34 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ fontSize: 12, color: 'var(--steel)' }}>Client not present? Start the grace period clock.</div>
-                <button className="btn-secondary"
-                  style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}
-                  onClick={startNoshowClock} disabled={startingClock}>
-                  <Timer size={11} />{startingClock ? 'Starting…' : 'Start Clock'}
-                </button>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <Timer size={14} style={{ color: clockColor, flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : 'var(--yellow)' }}>
+                    No-show clock {isOverdue ? 'expired' : 'running'}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
+                    {isOverdue ? fmtOverdue(overdueMin) : `${fmtRemaining(remainingMin)} remaining`}
+                  </div>
+                  {isAdmin && job.checkin_lat && (
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
+                      Tech GPS: {parseFloat(job.checkin_lat).toFixed(4)}°, {parseFloat(job.checkin_lng || 0).toFixed(4)}°
+                      {job.checkin_at ? ` · Arrived ${format(new Date(job.checkin_at), 'h:mm a')}` : ''}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button onClick={declareNoShow} disabled={declaring || arrived || !isOverdue}
+                        style={{ fontSize: 11, padding: '5px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 6, cursor: (declaring || !isOverdue) ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: (declaring || arrived || !isOverdue) ? 0.6 : 1 }}>
+                        {declaring ? 'Declaring…' : 'Declare No-Show'}
+                      </button>
+                      <button onClick={clientArrived} disabled={declaring || arrived} className="btn-secondary"
+                        style={{ fontSize: 11, padding: '5px 12px' }}>
+                        {arrived ? 'Updating…' : 'Client Arrived'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
