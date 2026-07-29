@@ -1427,9 +1427,6 @@ body {
 .cal-event-svc  { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
 .cal-event-cli  { font-size: 10px; font-weight: 400; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
 
-/* ── Legend session hint ──────────────────────────────────── */
-.cal-legend-session-hint { margin-left: auto; font-size: 11px; color: var(--steel); font-style: italic; }
-
 /* ── Filter bar ───────────────────────────────────────────── */
 .cal-filter-bar {
   display: flex;

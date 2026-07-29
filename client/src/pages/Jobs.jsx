@@ -442,7 +442,6 @@ export default function Jobs() {
             {label}
           </span>
         ))}
-        <span className="cal-legend-session-hint">Dashed border = multi-day session</span>
       </div>
 
       {/* Filter bar — 4 status chips only; clicking an active chip deselects (shows all) */}
