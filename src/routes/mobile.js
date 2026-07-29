@@ -289,11 +289,14 @@ router.post('/sessions/:sid/complete', requireAuth, async (req, res) => {
 });
 
 // POST /api/mobile/jobs/:id/photos — upload photo to R2/S3
+// Body: multipart/form-data with field "photo" (file) and optional "category" ('before'|'after'|'general')
 router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
   if (!storageService.isConfigured()) {
     return res.status(503).json({ error: 'Photo storage not configured. Set R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_PUBLIC_URL in environment.' });
   }
+  const VALID_CATEGORIES = ['before', 'after', 'general'];
+  const category = VALID_CATEGORIES.includes(req.body?.category) ? req.body.category : 'general';
   try {
     const url = await storageService.upload(req.file.buffer, {
       filename:    req.file.originalname || 'photo.jpg',
@@ -302,8 +305,9 @@ router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req,
     });
     if (!url) return res.status(503).json({ error: 'Photo upload failed.' });
     const { rows } = await pool.query(
-      `INSERT INTO job_photos (job_id, account_id, url, filename) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, req.accountId, url, req.file.originalname || '']
+      `INSERT INTO job_photos (job_id, account_id, url, filename, photo_category)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.id, req.accountId, url, req.file.originalname || '', category]
     );
     res.status(201).json({ ...rows[0], url });
   } catch (err) {
@@ -311,14 +315,31 @@ router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req,
   }
 });
 
-// GET /api/mobile/jobs/:id/photos — list photos for a job
+// GET /api/mobile/jobs/:id/photos — list photos for a job, ordered by category then upload time
 router.get('/jobs/:id/photos', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT *, COALESCE(url, '/uploads/' || filename) AS url FROM job_photos WHERE job_id = $1 AND account_id = $2 ORDER BY created_at`,
+      `SELECT *, COALESCE(url, '/uploads/' || filename) AS url
+       FROM job_photos
+       WHERE job_id = $1 AND account_id = $2
+       ORDER BY CASE photo_category WHEN 'before' THEN 1 WHEN 'general' THEN 2 WHEN 'after' THEN 3 ELSE 4 END, created_at`,
       [req.params.id, req.accountId]
     );
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/mobile/jobs/:id/photos/:pid — remove a photo (owner/manager only)
+router.delete('/jobs/:id/photos/:pid', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM job_photos WHERE id = $1 AND job_id = $2 AND account_id = $3 RETURNING id`,
+      [req.params.pid, req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Photo not found.' });
+    res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

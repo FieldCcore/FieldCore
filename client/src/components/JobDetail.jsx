@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Timer, MessageSquare, CheckCircle, CalendarDays, BarChart2 } from 'lucide-react';
+import { Camera, Timer, MessageSquare, CheckCircle, CalendarDays } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -13,21 +13,23 @@ const MULTI_DAY_STATUSES  = [
   'ready_for_inspection','complete','cancelled',
 ];
 const STATUS_COLORS = {
-  scheduled:           '#8A90A2',  // neutral
-  in_progress:         '#2E7D32',  // success
-  partially_completed: '#2E7D32',  // success
-  paused:              '#D4A000',  // warning — yellow
-  awaiting_client:     '#D4A000',  // warning — stuck
-  awaiting_parts:      '#D4A000',  // warning — stuck
-  ready_for_inspection:'#2E7D32',  // success — almost done
-  complete:            '#2E7D32',  // success
-  cancelled:           '#C62828',  // critical
-  draft:               '#8A90A2',  // neutral
-  unscheduled:         '#8A90A2',  // neutral
+  scheduled:           '#8A90A2',
+  in_progress:         '#2E7D32',
+  partially_completed: '#2E7D32',
+  paused:              '#D4A000',
+  awaiting_client:     '#D4A000',
+  awaiting_parts:      '#D4A000',
+  ready_for_inspection:'#2E7D32',
+  complete:            '#2E7D32',
+  cancelled:           '#C62828',
+  draft:               '#8A90A2',
+  unscheduled:         '#8A90A2',
 };
 
 const PRIORITY_COLOR = { normal: '#5F667A', high: '#D4A000', urgent: '#DC2626' };
+const PHOTO_CATS     = ['before', 'after', 'general'];
 
+// ── No-show timing helpers ─────────────────────────────────────────────────────
 function fmtRemaining(min) {
   const secs = Math.max(0, Math.round(min * 60));
   return `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
@@ -52,8 +54,9 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const [sessionsLoaded,setSessLoaded]    = useState(!!initialJob.sessions);
   const [updating,      setUpdating]      = useState(false);
   const [photos,        setPhotos]        = useState([]);
-  const [showPhotos,    setShowPhotos]    = useState(false);
-  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [loadingPhotos, setLoadingPhotos] = useState(true);
+  const [uploading,     setUploading]     = useState({ before: false, after: false, general: false });
+  const [uploadError,   setUploadError]   = useState(null);
   const [clockStarted,  setClockStarted]  = useState(!!job.no_show_clock_started_at);
   const [clockTime,     setClockTime]     = useState(job.no_show_clock_started_at || null);
   const [startingClock, setStartingClock] = useState(false);
@@ -67,7 +70,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'owner' || user?.role === 'manager';
 
-  // Load sessions for multi-day jobs
+  // ── Load sessions for multi-day jobs ────────────────────────────────────────
   useEffect(() => {
     if (!job.is_multi_day || sessionsLoaded) return;
     api.get(`/jobs/${job.id}/sessions`).then(r => {
@@ -76,15 +79,33 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }).catch(() => {});
   }, [job.id, job.is_multi_day, sessionsLoaded]);
 
+  // ── Auto-load photos on open ────────────────────────────────────────────────
   useEffect(() => {
-    if (!showPhotos) return;
     setLoadingPhotos(true);
     api.get(`/mobile/jobs/${job.id}/photos`)
       .then(r => setPhotos(r.data))
       .catch(() => {})
       .finally(() => setLoadingPhotos(false));
-  }, [showPhotos, job.id]);
+  }, [job.id]);
 
+  // ── No-show clock timing ────────────────────────────────────────────────────
+  const graceMin    = parseFloat(job.grace_period_minutes) || 15;
+  const clockMs     = clockTime ? new Date(clockTime).getTime() : NaN;
+  const clockValid  = !isNaN(clockMs);
+  const elapsedMin  = (clockStarted && clockValid) ? (Date.now() - clockMs) / 60000 : 0;
+  const overdueMin  = elapsedMin - graceMin;
+  const remainingMin = Math.max(-overdueMin, 0);
+  const isOverdue   = clockStarted && clockValid && overdueMin > 0;
+  const isHistorical = isOverdue && overdueMin > 24 * 60;
+  const clockColor  = isOverdue ? '#dc2626' : '#D4A000';
+
+  useEffect(() => {
+    if (!clockStarted || !clockValid || isHistorical) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [clockStarted, clockTime, isHistorical]);
+
+  // ── Status update ────────────────────────────────────────────────────────────
   async function updateStatus(status) {
     setUpdating(true);
     try {
@@ -112,6 +133,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }
   }
 
+  // ── No-show actions ───────────────────────────────────────────────────────────
   async function startNoshowClock() {
     setStartingClock(true);
     try {
@@ -136,22 +158,6 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
       setStartingClock(false);
     }
   }
-
-  const graceMin    = parseFloat(job.grace_period_minutes) || 15;
-  const clockMs     = clockTime ? new Date(clockTime).getTime() : NaN;
-  const clockValid  = !isNaN(clockMs);
-  const elapsedMin  = (clockStarted && clockValid) ? (Date.now() - clockMs) / 60000 : 0;
-  const overdueMin  = elapsedMin - graceMin;
-  const remainingMin = Math.max(-overdueMin, 0);
-  const isOverdue   = clockStarted && clockValid && overdueMin > 0;
-  const isHistorical = isOverdue && overdueMin > 24 * 60;
-  const clockColor  = isOverdue ? '#dc2626' : '#D4A000';
-
-  useEffect(() => {
-    if (!clockStarted || !clockValid || isHistorical) return;
-    const id = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [clockStarted, clockTime, isHistorical]);
 
   async function declareNoShow() {
     if (!job?.id) return;
@@ -190,6 +196,37 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }
   }
 
+  // ── Photo actions ─────────────────────────────────────────────────────────────
+  async function handlePhotoUpload(e, category) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploading(prev => ({ ...prev, [category]: true }));
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      fd.append('category', category);
+      const r = await api.post(`/mobile/jobs/${job.id}/photos`, fd);
+      setPhotos(prev => [...prev, r.data]);
+    } catch (err) {
+      setUploadError(err.response?.data?.error || 'Upload failed. Try again.');
+    } finally {
+      setUploading(prev => ({ ...prev, [category]: false }));
+    }
+  }
+
+  async function deletePhoto(photoId) {
+    if (!window.confirm('Remove this photo?')) return;
+    try {
+      await api.delete(`/mobile/jobs/${job.id}/photos/${photoId}`);
+      setPhotos(prev => prev.filter(p => p.id !== photoId));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not remove photo.');
+    }
+  }
+
+  // ── SMS ───────────────────────────────────────────────────────────────────────
   async function sendTemplate(template) {
     if (!job.client_id) return;
     setSmsSending(template);
@@ -209,13 +246,28 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const completedSessions = sessions.filter(s => s.status === 'completed_for_day').length;
   const nextSession = sessions.find(s => !['completed_for_day','cancelled'].includes(s.status));
 
+  // ── Address formatting ────────────────────────────────────────────────────────
+  const addressLine1 = job.service_address || '';
+  const addressLine2 = [job.service_city, job.service_state].filter(Boolean).join(', ')
+    + (job.service_zip ? ` ${job.service_zip}` : '');
+  const mapsQuery = encodeURIComponent(
+    [job.service_address, job.service_city, job.service_state].filter(Boolean).join(', ')
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* Header */}
+      {/* ── Header: client name → service name ── */}
       <div className="modal-header" style={{ alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0 }}>{job.title || job.service_type}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+          <h2 style={{ margin: 0, lineHeight: 1.2 }}>
+            {job.client_name || job.title || job.service_type}
+          </h2>
+          {job.client_name && (job.service_type || job.title) && (
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate)', marginBottom: 2 }}>
+              {job.service_type || job.title}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
             {job.is_multi_day && (
               <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--off)', color: 'var(--slate)',
                 padding: '2px 8px', borderRadius: 99, letterSpacing: '.04em', border: '1px solid var(--lightgray)' }}>
@@ -236,12 +288,8 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
       </div>
 
       <div className="modal-body">
-        {/* Detail rows */}
+        {/* ── Core detail rows ── */}
         <div className="job-detail-body">
-          {job.is_multi_day && job.title && job.service_type !== job.title && (
-            <div className="detail-row"><label>Service</label><span>{job.service_type}</span></div>
-          )}
-          <div className="detail-row"><label>Client</label><span>{job.client_name || '—'}</span></div>
           <div className="detail-row">
             <label>{job.is_multi_day ? 'Job Manager' : 'Tech'}</label>
             <span>{job.job_manager_name || job.tech_name || 'Unassigned'}</span>
@@ -249,7 +297,6 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
 
           {job.is_multi_day ? (
             <>
-              {/* Multi-day summary */}
               <div className="detail-row">
                 <label>Progress</label>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -298,17 +345,21 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             </div>
           )}
 
-          <div className="detail-row">
-            <label>Amount</label>
-            <span>{job.amount ? `$${parseFloat(job.amount).toFixed(2)}` : '—'}</span>
-          </div>
+          {/* Financial — owner / manager only */}
+          {isAdmin && job.amount && (
+            <div className="detail-row">
+              <label>Amount</label>
+              <span>${parseFloat(job.amount).toFixed(2)}</span>
+            </div>
+          )}
 
-          {!job.is_multi_day && job.recurring !== 'none' && (
+          {!job.is_multi_day && job.recurring && job.recurring !== 'none' && (
             <div className="detail-row">
               <label>Recurring</label>
               <span style={{ textTransform: 'capitalize' }}>{job.recurring}</span>
             </div>
           )}
+
           {job.checkin_at && (
             <div className="detail-row">
               <label>Check-in</label>
@@ -318,29 +369,48 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
               </span>
             </div>
           )}
-          {job.service_address && (
-            <div className="detail-row">
-              <label>Location</label>
+
+          {/* Service address — two-line format */}
+          <div className="detail-row">
+            <label>Location</label>
+            {addressLine1 ? (
               <span>
                 <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([job.service_address, job.service_city, job.service_state].filter(Boolean).join(', '))}`}
+                  href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
                   target="_blank" rel="noopener noreferrer"
                   style={{ color: 'var(--sand)', textDecoration: 'none' }}
                 >
-                  {[job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean).join(', ')}
+                  <span style={{ display: 'block' }}>{addressLine1}</span>
+                  {addressLine2 && <span style={{ display: 'block' }}>{addressLine2}</span>}
                 </a>
               </span>
-            </div>
+            ) : (
+              <span style={{ color: 'var(--steel)' }}>Service address unavailable</span>
+            )}
+          </div>
+
+          {/* Multi-day: show service type when title differs */}
+          {job.is_multi_day && job.title && job.service_type && job.service_type !== job.title && (
+            <div className="detail-row"><label>Service</label><span>{job.service_type}</span></div>
           )}
+
+          {/* Customer-approved scope */}
           {job.scope_of_work && (
-            <div className="detail-row"><label>Scope</label><span>{job.scope_of_work}</span></div>
+            <div className="detail-row"><label>Approved Scope</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.scope_of_work}</span></div>
           )}
+
+          {/* Service or job description */}
+          {job.description && (
+            <div className="detail-row"><label>Description</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.description}</span></div>
+          )}
+
+          {/* Internal job notes */}
           {job.notes && (
-            <div className="detail-row"><label>Notes</label><span>{job.notes}</span></div>
+            <div className="detail-row"><label>Job Notes</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.notes}</span></div>
           )}
         </div>
 
-        {/* Work sessions panel (multi-day) */}
+        {/* ── Multi-day sessions panel ── */}
         {job.is_multi_day && (
           <MultiDaySessionsPanel
             job={job}
@@ -350,7 +420,96 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           />
         )}
 
-        {/* No-show grace period clock (single-day only) */}
+        {/* ── Photos — Before / After / General ── */}
+        <div className="jd-section">
+          <div className="jd-section-label"><Camera size={10} />Photos</div>
+
+          {/* Category rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            {PHOTO_CATS.map(cat => {
+              const catPhotos = photos.filter(p => (p.photo_category || 'general') === cat);
+              const catLabel  = cat.charAt(0).toUpperCase() + cat.slice(1);
+              return (
+                <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, minWidth: 48 }}>{catLabel}</span>
+                  <span style={{ fontSize: 12, color: 'var(--steel)', flex: 1 }}>
+                    {loadingPhotos ? '…' : `${catPhotos.length} ${catPhotos.length === 1 ? 'photo' : 'photos'}`}
+                  </span>
+                  <label style={{ cursor: uploading[cat] ? 'wait' : 'pointer', display: 'inline-flex' }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => handlePhotoUpload(e, cat)}
+                      disabled={!!uploading[cat]}
+                      aria-label={`Upload ${catLabel} photo`}
+                    />
+                    <span
+                      className="btn-secondary"
+                      style={{ fontSize: 11, padding: '3px 10px', pointerEvents: 'none',
+                        opacity: uploading[cat] ? 0.6 : 1 }}
+                    >
+                      {uploading[cat] ? 'Uploading…' : '+ Upload'}
+                    </span>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {uploadError && (
+            <div role="alert" style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{uploadError}</div>
+          )}
+
+          {/* Photo grids grouped by category */}
+          {!loadingPhotos && photos.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {PHOTO_CATS.map(cat => {
+                const catPhotos = photos.filter(p => (p.photo_category || 'general') === cat);
+                if (!catPhotos.length) return null;
+                return (
+                  <div key={cat} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--steel)',
+                      textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                      {cat}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 5 }}>
+                      {catPhotos.map(p => (
+                        <div key={p.id} style={{ position: 'relative' }}>
+                          <a href={p.url} target="_blank" rel="noreferrer">
+                            <img
+                              src={p.url}
+                              alt={`${cat} photo`}
+                              style={{ width: '100%', aspectRatio: '1', objectFit: 'cover',
+                                borderRadius: 5, border: '1px solid var(--lightgray)', display: 'block' }}
+                            />
+                          </a>
+                          {isAdmin && (
+                            <button
+                              onClick={() => deletePhoto(p.id)}
+                              aria-label="Remove photo"
+                              style={{ position: 'absolute', top: 2, right: 2,
+                                background: 'rgba(0,0,0,0.55)', color: '#fff',
+                                border: 'none', borderRadius: 3, width: 18, height: 18,
+                                fontSize: 11, lineHeight: 1, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                            >×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!loadingPhotos && photos.length === 0 && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>No photos uploaded yet.</p>
+          )}
+        </div>
+
+        {/* ── No-show grace period clock (single-day only) ── */}
         {!job.is_multi_day && job.status === 'scheduled' && (
           <div className="jd-section" style={{
             borderColor: clockStarted && clockValid ? (isOverdue ? '#fca5a5' : '#fde68a') : 'var(--lightgray)',
@@ -426,7 +585,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        {/* SMS templates */}
+        {/* ── SMS templates ── */}
         {(job.status === 'scheduled' || job.status === 'in_progress') && job.client_id && (
           <div className="jd-section">
             <div className="jd-section-label"><MessageSquare size={10} />SMS</div>
@@ -450,34 +609,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        {/* Job photos */}
-        <div className="jd-section">
-          <button className="btn-secondary"
-            style={{ fontSize: 12, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-            onClick={() => setShowPhotos(v => !v)}>
-            <Camera size={13} />{showPhotos ? 'Hide Photos' : 'Job Photos'}
-          </button>
-          {showPhotos && (
-            <div style={{ marginTop: 12 }}>
-              {loadingPhotos && <p className="muted">Loading photos…</p>}
-              {!loadingPhotos && photos.length === 0 && (
-                <p className="muted" style={{ fontSize: 13 }}>No photos uploaded for this job.</p>
-              )}
-              {photos.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8 }}>
-                  {photos.map(p => (
-                    <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
-                      <img src={p.url} alt="Job photo"
-                        style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 6, border: '1px solid var(--lightgray)' }} />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Status update */}
+        {/* ── Status update ── */}
         {isAdmin && (
           <div className="job-status-section">
             <p className="status-label">Update Status</p>
@@ -500,7 +632,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        {/* Multi-day: explicit "Complete Job" button */}
+        {/* ── Multi-day: complete overall job ── */}
         {job.is_multi_day && isAdmin && job.status !== 'complete' && job.status !== 'cancelled' && (
           <div className="jd-section" style={{ background: '#f0fdf4', borderColor: '#86efac' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#166534', marginBottom: 8 }}>

@@ -915,6 +915,13 @@ const MIGRATIONS = [
    WHERE rl.connected_account_id = er.connected_account_id
      AND rl.external_location_id = er.location_id
      AND er.location_row_id IS NULL`,
+
+  // ── PHOTO CATEGORIES ──────────────────────────────────────────────────────────
+  // url was in original schema.sql but missing from early test/prod DBs that predate it.
+  `ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS url TEXT`,
+  // 'general' default covers all photos uploaded before this migration.
+  `ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS photo_category TEXT NOT NULL DEFAULT 'general'`,
+  `CREATE INDEX IF NOT EXISTS idx_job_photos_category ON job_photos(job_id, photo_category)`,
 ];
 
 async function runMigrations() {
