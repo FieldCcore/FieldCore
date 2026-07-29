@@ -107,18 +107,9 @@ function CalendarToolbar({ date, view, onNavigate, onView }) {
     return '';
   }, [date, view]);
 
-  function handleToday() {
-    onNavigate('TODAY');
-    // In time-grid views, also scroll to the current hour after the calendar repaints.
-    if (view === 'day' || view === 'week') {
-      setTimeout(scrollToNow, 300);
-    }
-  }
-
   return (
     <div className="cal-toolbar">
       <div className="cal-toolbar-nav">
-        <button className="cal-nav-btn" onClick={handleToday}>Today</button>
         <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')} aria-label="Previous">
           <ChevronLeft size={16} />
         </button>
