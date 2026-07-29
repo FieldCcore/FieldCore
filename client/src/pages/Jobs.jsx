@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMinutes, addDays } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
@@ -9,6 +9,89 @@ import api from '../api';
 import JobForm from '../components/JobForm';
 import JobDetail from '../components/JobDetail';
 
+// ─── Calendar status color system ────────────────────────────────────────────
+// Four canonical statuses in the Calendar view.
+// partially_completed is remapped to In Progress display-side — no DB migration.
+
+const CAL_STATUS_COLOR = {
+  scheduled:           '#8A90A2',  // neutral  — not yet active
+  in_progress:         '#D4A000',  // warning  — true yellow, actively running
+  partially_completed: '#D4A000',  // → maps to In Progress
+  complete:            '#2E7D32',  // success  — done
+  cancelled:           '#C62828',  // critical — lost revenue
+};
+
+const SESSION_CAL_COLOR = {
+  scheduled:         '#8A90A2',
+  in_progress:       '#D4A000',
+  completed_for_day: '#2E7D32',
+  cancelled:         '#C62828',
+};
+
+const LEGEND = [
+  { key: 'scheduled',   label: 'Scheduled',  color: '#8A90A2' },
+  { key: 'in_progress', label: 'In Progress', color: '#D4A000' },
+  { key: 'complete',    label: 'Completed',   color: '#2E7D32' },
+  { key: 'cancelled',   label: 'Canceled',    color: '#C62828' },
+];
+
+const VALID_VIEWS   = ['month', 'week', 'day', 'agenda'];
+const VALID_FILTERS = ['all', 'scheduled', 'in_progress', 'complete', 'cancelled'];
+
+// ─── RBC localizer ────────────────────────────────────────────────────────────
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 0 }),
+  getDay,
+  locales: { 'en-US': enUS },
+});
+
+// ─── Scroll current-time indicator into view ─────────────────────────────────
+function scrollToNow() {
+  requestAnimationFrame(() => {
+    const indicator = document.querySelector('.rbc-current-time-indicator');
+    const content   = document.querySelector('.rbc-time-content');
+    if (indicator && content) {
+      content.scrollTop = Math.max(0, indicator.offsetTop - content.clientHeight / 3);
+    } else if (content) {
+      const now   = new Date();
+      const ratio = (now.getHours() + now.getMinutes() / 60) / 24;
+      content.scrollTop = ratio * content.scrollHeight - content.clientHeight / 3;
+    }
+  });
+}
+
+// ─── Custom event card ────────────────────────────────────────────────────────
+// react-big-calendar calls this with { event, title, isAllDay, ... }
+function CalEventCard({ event }) {
+  const isSession = event.resource?._type === 'session';
+  const raw       = event.title || '';
+
+  let dayLabel = '', service = '', client = '';
+  if (isSession) {
+    const m = raw.match(/^\[([^\]]+)\]\s*(.*)/);
+    if (m) {
+      dayLabel = m[1];
+      [service, client] = m[2].split(' — ');
+    } else {
+      [service, client] = raw.split(' — ');
+    }
+  } else {
+    [service, client] = raw.split(' — ');
+  }
+
+  return (
+    <div className="cal-event-card">
+      {isSession && dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+      <span className="cal-event-svc">{service}</span>
+      {client && <span className="cal-event-cli">{client}</span>}
+    </div>
+  );
+}
+
+// ─── Custom toolbar ───────────────────────────────────────────────────────────
+// scrollToNow is module-level so CalendarToolbar can call it without props injection
 function CalendarToolbar({ date, view, onNavigate, onView }) {
   const label = useMemo(() => {
     if (view === 'month') return format(date, 'MMMM yyyy');
@@ -18,21 +101,39 @@ function CalendarToolbar({ date, view, onNavigate, onView }) {
       const sameMonth = format(s, 'MMM') === format(e, 'MMM');
       return `${format(s, 'MMM d')} – ${format(e, sameMonth ? 'd' : 'MMM d')}, ${format(e, 'yyyy')}`;
     }
-    if (view === 'day') return format(date, 'EEEE, MMMM d, yyyy');
+    if (view === 'day')    return format(date, 'EEEE, MMMM d, yyyy');
     if (view === 'agenda') return 'Upcoming Events';
     return '';
   }, [date, view]);
+
+  function handleNow() {
+    onNavigate('TODAY');
+    setTimeout(scrollToNow, 300);
+  }
 
   return (
     <div className="cal-toolbar">
       <div className="cal-toolbar-nav">
         <button className="cal-nav-btn" onClick={() => onNavigate('TODAY')}>Today</button>
-        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')}><ChevronLeft size={16} /></button>
-        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('NEXT')}><ChevronRight size={16} /></button>
+        {(view === 'day' || view === 'week') && (
+          <button
+            className="cal-nav-btn cal-nav-arrow cal-nav-now"
+            onClick={handleNow}
+            aria-label="Jump to current time"
+          >
+            <Clock size={13} />
+          </button>
+        )}
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('PREV')} aria-label="Previous">
+          <ChevronLeft size={16} />
+        </button>
+        <button className="cal-nav-btn cal-nav-arrow" onClick={() => onNavigate('NEXT')} aria-label="Next">
+          <ChevronRight size={16} />
+        </button>
       </div>
       <span className="cal-toolbar-label">{label}</span>
       <div className="cal-view-seg">
-        {['month', 'week', 'day', 'agenda'].map(v => (
+        {VALID_VIEWS.map(v => (
           <button
             key={v}
             className={`cal-view-btn${view === v ? ' active' : ''}`}
@@ -46,49 +147,20 @@ function CalendarToolbar({ date, view, onNavigate, onView }) {
   );
 }
 
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 0 }),
-  getDay,
-  locales: { 'en-US': enUS },
-});
-
-const STATUS_COLORS = {
-  scheduled:           '#8A90A2',  // neutral
-  in_progress:         '#2E7D32',  // success
-  partially_completed: '#2E7D32',  // success
-  complete:            '#2E7D32',  // success
-  cancelled:           '#C62828',  // critical
-};
-
-// Session status mapped to a calendar dot color
-const SESSION_STATUS_COLORS = {
-  scheduled:         '#8A90A2',  // neutral
-  in_progress:       '#2E7D32',  // success
-  completed_for_day: '#2E7D32',  // success
-  cancelled:         '#C62828',  // critical
-};
-
+// ─── Custom agenda view ───────────────────────────────────────────────────────
 function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
   const rangeStart = useMemo(() => {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    const d = new Date(date); d.setHours(0, 0, 0, 0); return d;
   }, [date]);
-
   const rangeEnd = useMemo(() => addDays(rangeStart, length), [rangeStart, length]);
 
   const rows = useMemo(() => {
     const filtered = [...events]
-      .filter(ev => {
-        const s = new Date(ev.start);
-        return s >= rangeStart && s < rangeEnd;
-      })
+      .filter(ev => { const s = new Date(ev.start); return s >= rangeStart && s < rangeEnd; })
       .sort((a, b) => new Date(a.start) - new Date(b.start));
     let lastDay = null;
     return filtered.map(ev => {
-      const dayKey = format(new Date(ev.start), 'yyyy-MM-dd');
+      const dayKey      = format(new Date(ev.start), 'yyyy-MM-dd');
       const isFirstOfDay = dayKey !== lastDay;
       lastDay = dayKey;
       return { event: ev, isFirstOfDay };
@@ -96,11 +168,11 @@ function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
   }, [events, rangeStart, rangeEnd]);
 
   return (
-    <div className="fc-agenda">
-      <div className="fc-agenda-header">
-        <div className="fc-agenda-hcell">Date</div>
-        <div className="fc-agenda-hcell">Time</div>
-        <div className="fc-agenda-hcell" style={{ borderRight: 'none' }}>Event</div>
+    <div className="fc-agenda" role="table" aria-label="Agenda view">
+      <div className="fc-agenda-header" role="row">
+        <div className="fc-agenda-hcell" role="columnheader">Date</div>
+        <div className="fc-agenda-hcell" role="columnheader">Time</div>
+        <div className="fc-agenda-hcell" role="columnheader" style={{ borderRight: 'none' }}>Event</div>
       </div>
       {rows.length === 0 ? (
         <div className="fc-agenda-empty">No upcoming events in this range.</div>
@@ -108,22 +180,25 @@ function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
         const start  = new Date(event.start);
         const end    = new Date(event.end);
         const status = event.resource?.status || 'scheduled';
-        const color  = STATUS_COLORS[status] || '#5F667A';
+        const color  = CAL_STATUS_COLOR[status] || '#5F667A';
         const [service, client] = (event.title || '').split(' — ');
         return (
           <div
             key={event.id ?? idx}
             className={`fc-agenda-row${idx === rows.length - 1 ? ' fc-agenda-row-last' : ''}`}
+            role="row"
+            tabIndex={0}
             onClick={e => onSelectEvent?.(event, e)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelectEvent?.(event, e)}
           >
-            <div className="fc-agenda-cell fc-agenda-date">
+            <div className="fc-agenda-cell fc-agenda-date" role="cell">
               {isFirstOfDay ? format(start, 'EEE MMM dd') : ''}
             </div>
-            <div className="fc-agenda-cell fc-agenda-time">
+            <div className="fc-agenda-cell fc-agenda-time" role="cell">
               {format(start, 'h:mm a')} – {format(end, 'h:mm a')}
             </div>
-            <div className="fc-agenda-cell fc-agenda-event">
-              <span className="fc-agenda-dot" style={{ background: color }} />
+            <div className="fc-agenda-cell fc-agenda-event" role="cell">
+              <span className="fc-agenda-dot" style={{ background: color }} aria-hidden="true" />
               <span className="fc-agenda-svc">{service}</span>
               {client && <span className="fc-agenda-cli">— {client}</span>}
             </div>
@@ -134,45 +209,53 @@ function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
   );
 }
 
-FieldCoreAgendaView.title = () => 'Upcoming Events';
+FieldCoreAgendaView.title    = () => 'Upcoming Events';
 FieldCoreAgendaView.navigate = (date, action, { length = 30 } = {}) => {
   if (action === 'PREV') return addDays(date, -length);
   if (action === 'NEXT') return addDays(date, length);
   return date;
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function parseTime(timeStr) {
   if (!timeStr) return null;
   const [h, m] = timeStr.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
+  const d = new Date(); d.setHours(h, m, 0, 0); return d;
 }
 
+// Stable component object — defined once outside render to avoid RBC remounts
+const CAL_COMPONENTS = { toolbar: CalendarToolbar, event: CalEventCard };
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function Jobs() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initView = searchParams.get('view');
-  const [jobs,         setJobs]         = useState([]);
-  const [sessions,     setSessions]     = useState([]);
-  const [businessHours, setBusinessHours] = useState([]);
-  const [view,         setView]         = useState(() => ['month', 'week', 'day', 'agenda'].includes(initView) ? initView : 'week');
-  const [date,         setDate]         = useState(new Date());
-  const [modal,        setModal]        = useState(null);
-  const [selectedJob,  setSelectedJob]  = useState(null);
-  const [defaultStart, setDefaultStart] = useState(null);
-  const [defaultMultiDay, setDefaultMultiDay] = useState(false);
-  const [loading,      setLoading]      = useState(true);
 
+  const initView   = searchParams.get('view');
+  const initFilter = searchParams.get('filter');
+
+  const [jobs,            setJobs]            = useState([]);
+  const [sessions,        setSessions]        = useState([]);
+  const [businessHours,   setBusinessHours]   = useState([]);
+  const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'week');
+  const [date,            setDate]            = useState(new Date());
+  const [modal,           setModal]           = useState(null);    // 'create' | 'edit'
+  const [drawerJob,       setDrawerJob]       = useState(null);    // event detail drawer
+  const [defaultStart,    setDefaultStart]    = useState(null);
+  const [defaultMultiDay, setDefaultMultiDay] = useState(false);
+  const [loading,         setLoading]         = useState(true);
+  const [statusFilter,    setStatusFilter]    = useState(() => VALID_FILTERS.includes(initFilter) ? initFilter : 'all');
+
+  const viewScrolled = useRef(false);
+
+  // ── Data ────────────────────────────────────────────────────────────────────
   const loadJobs = useCallback(() => {
-    Promise.all([
-      api.get('/jobs'),
-      api.get('/jobs/sessions'),
-    ]).then(([jobsRes, sessionsRes]) => {
-      setJobs(jobsRes.data);
-      setSessions(sessionsRes.data);
-    }).catch(() => {
-      api.get('/jobs').then(r => setJobs(r.data));
-    }).finally(() => setLoading(false));
+    Promise.all([api.get('/jobs'), api.get('/jobs/sessions')])
+      .then(([jobsRes, sessRes]) => {
+        setJobs(jobsRes.data);
+        setSessions(sessRes.data);
+      })
+      .catch(() => api.get('/jobs').then(r => setJobs(r.data)))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
@@ -183,48 +266,68 @@ export default function Jobs() {
     }).catch(() => {});
   }, []);
 
+  // ── One-time init: consume ?new=1 ───────────────────────────────────────────
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setDefaultStart(new Date());
       setDefaultMultiDay(searchParams.get('multiday') === '1');
       setModal('create');
-      setSearchParams({}, { replace: true });
-    } else if (searchParams.get('view')) {
-      setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derive calendar min/max from business hours (Mon–Fri open times as a guide)
+  // ── Persist view + filter to URL ────────────────────────────────────────────
+  useEffect(() => {
+    const p = {};
+    if (view !== 'week')    p.view   = view;
+    if (statusFilter !== 'all') p.filter = statusFilter;
+    setSearchParams(p, { replace: true });
+  }, [view, statusFilter, setSearchParams]);
+
+  // ── Scroll to current time when entering day/week view ──────────────────────
+  useEffect(() => {
+    if (!viewScrolled.current) {
+      viewScrolled.current = true;
+      if (view === 'day' || view === 'week') setTimeout(scrollToNow, 400);
+      return;
+    }
+    if (view === 'day' || view === 'week') setTimeout(scrollToNow, 300);
+  }, [view]);
+
+  // ── Close drawer on Escape ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!drawerJob) return;
+    const handleKey = (e) => { if (e.key === 'Escape') setDrawerJob(null); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [drawerJob]);
+
+  // ── Business hours → calendar time range ───────────────────────────────────
   const { calMin, calMax } = useMemo(() => {
-    const openHours = businessHours.filter(h => !h.is_closed && h.open_time && h.close_time);
-    if (!openHours.length) {
+    const open = businessHours.filter(h => !h.is_closed && h.open_time && h.close_time);
+    if (!open.length) {
       const min = new Date(); min.setHours(7, 0, 0, 0);
       const max = new Date(); max.setHours(20, 0, 0, 0);
       return { calMin: min, calMax: max };
     }
-    const opens  = openHours.map(h => parseInt(h.open_time.split(':')[0]));
-    const closes = openHours.map(h => parseInt(h.close_time.split(':')[0]));
-    const minHour = Math.max(0, Math.min(...opens) - 1);
-    const maxHour = Math.min(23, Math.max(...closes) + 1);
-    const min = new Date(); min.setHours(minHour, 0, 0, 0);
-    const max = new Date(); max.setHours(maxHour, 0, 0, 0);
+    const opens  = open.map(h => parseInt(h.open_time.split(':')[0]));
+    const closes = open.map(h => parseInt(h.close_time.split(':')[0]));
+    const min = new Date(); min.setHours(Math.max(0, Math.min(...opens) - 1), 0, 0, 0);
+    const max = new Date(); max.setHours(Math.min(23, Math.max(...closes) + 1), 0, 0, 0);
     return { calMin: min, calMax: max };
   }, [businessHours]);
 
-  // Map jobs and sessions to calendar events
-  const events = useMemo(() => {
-    // Single-day jobs (is_multi_day = false or null, with scheduled_at)
+  // ── Map jobs + sessions → calendar events ──────────────────────────────────
+  const allEvents = useMemo(() => {
     const jobEvents = jobs
       .filter(j => j.scheduled_at && !j.is_multi_day)
       .map(j => ({
-        id:    j.id,
-        title: `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
-        start: new Date(j.scheduled_at),
-        end:   addMinutes(new Date(j.scheduled_at), j.duration_minutes || 60),
+        id:       j.id,
+        title:    `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
+        start:    new Date(j.scheduled_at),
+        end:      addMinutes(new Date(j.scheduled_at), j.duration_minutes || 60),
         resource: { ...j, _type: 'job' },
       }));
 
-    // Multi-day job sessions — each appears as its own calendar event
     const sessionEvents = sessions
       .filter(s => s.scheduled_date)
       .map(s => {
@@ -236,9 +339,9 @@ export default function Jobs() {
           ? `Day ${s.day_number} of ${s.total_sessions}`
           : 'Multi-Day';
         return {
-          id:    `session-${s.id}`,
-          title: `[${dayLabel}] ${s.service_type || s.title || ''}${s.client_name ? ' — ' + s.client_name : ''}`,
-          start: base,
+          id:       `session-${s.id}`,
+          title:    `[${dayLabel}] ${s.service_type || s.title || ''}${s.client_name ? ' — ' + s.client_name : ''}`,
+          start:    base,
           end,
           resource: { ...s, _type: 'session', _jobId: s.job_id },
         };
@@ -247,21 +350,40 @@ export default function Jobs() {
     return [...jobEvents, ...sessionEvents];
   }, [jobs, sessions]);
 
-  // Grey out slots outside business hours
+  // ── Filter events by status ────────────────────────────────────────────────
+  const events = useMemo(() => {
+    if (statusFilter === 'all') return allEvents;
+    const match = statusFilter === 'in_progress'
+      ? ['in_progress', 'partially_completed']
+      : [statusFilter];
+    return allEvents.filter(ev => match.includes(ev.resource?.status || 'scheduled'));
+  }, [allEvents, statusFilter]);
+
+  // ── Today's operational summary ────────────────────────────────────────────
+  const todaySummary = useMemo(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const todayEvs = allEvents.filter(ev => format(new Date(ev.start), 'yyyy-MM-dd') === todayStr);
+    const count    = (...statuses) => todayEvs.filter(ev => statuses.includes(ev.resource?.status || 'scheduled')).length;
+    return {
+      total:      todayEvs.length,
+      scheduled:  count('scheduled'),
+      inProgress: count('in_progress', 'partially_completed'),
+      completed:  count('complete'),
+      cancelled:  count('cancelled'),
+    };
+  }, [allEvents]);
+
+  // ── Business hours slot styling ────────────────────────────────────────────
   function slotPropGetter(slotDate) {
-    const day = slotDate.getDay(); // 0=Sun, 6=Sat
-    const dayConfig = businessHours.find(h => h.day_of_week === day);
-    if (!dayConfig || dayConfig.is_closed) {
-      return { style: { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } };
-    }
+    const dayConfig = businessHours.find(h => h.day_of_week === slotDate.getDay());
+    if (!dayConfig || dayConfig.is_closed) return { style: { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } };
     const openTime  = parseTime(dayConfig.open_time);
     const closeTime = parseTime(dayConfig.close_time);
-    if (openTime && (slotDate < openTime || slotDate >= closeTime)) {
-      return { style: { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } };
-    }
+    if (openTime && (slotDate < openTime || slotDate >= closeTime)) return { style: { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } };
     return {};
   }
 
+  // ── Event interactions ─────────────────────────────────────────────────────
   function handleSelectSlot({ start }) {
     setDefaultStart(start);
     setModal('create');
@@ -270,22 +392,20 @@ export default function Jobs() {
   function handleSelectEvent(event) {
     const resource = event.resource;
     if (resource._type === 'session') {
-      // Clicking a session event opens the parent job
       const parentJob = jobs.find(j => j.id === resource._jobId);
-      if (parentJob) {
-        setSelectedJob(parentJob);
-        setModal('detail');
-      }
+      if (parentJob) setDrawerJob(parentJob);
     } else {
-      setSelectedJob(resource);
-      setModal('detail');
+      setDrawerJob(resource);
     }
   }
 
   function handleJobCreated(job) {
     setJobs(prev => [job, ...prev]);
     if (job.sessions?.length) {
-      setSessions(prev => [...prev, ...job.sessions.map(s => ({ ...s, job_id: job.id, service_type: job.service_type, client_name: job.client_name }))]);
+      setSessions(prev => [
+        ...prev,
+        ...job.sessions.map(s => ({ ...s, job_id: job.id, service_type: job.service_type, client_name: job.client_name })),
+      ]);
     }
     setModal(null);
   }
@@ -293,29 +413,25 @@ export default function Jobs() {
   function handleJobEdited(updated) {
     setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
     setModal(null);
-    setSelectedJob(null);
+    setDrawerJob(prev => prev ? { ...prev, ...updated } : null);
   }
 
   function handleStatusChange(updated) {
     setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
-    setSelectedJob(prev => ({ ...prev, ...updated }));
+    setDrawerJob(prev => prev ? { ...prev, ...updated } : null);
   }
 
+  // ── Event styles ───────────────────────────────────────────────────────────
   function eventStyleGetter(event) {
-    const resource = event.resource || {};
-    const isSession = resource._type === 'session';
-    const status = isSession
-      ? (resource.status || 'scheduled')
-      : (resource.status || 'scheduled');
-
     if (view === 'agenda') {
       return { style: { background: 'none', backgroundColor: 'transparent', boxShadow: 'none', border: 'none', borderRadius: 0, padding: 0, color: 'var(--navy)' } };
     }
-
-    const bgColor = isSession
-      ? (SESSION_STATUS_COLORS[status] || '#3B82F6')
-      : (STATUS_COLORS[status] || '#5F667A');
-
+    const resource  = event.resource || {};
+    const isSession = resource._type === 'session';
+    const status    = resource.status || 'scheduled';
+    const bgColor   = isSession
+      ? (SESSION_CAL_COLOR[status] || '#8A90A2')
+      : (CAL_STATUS_COLOR[status]  || '#8A90A2');
     return {
       style: {
         backgroundColor: bgColor,
@@ -328,17 +444,74 @@ export default function Jobs() {
     };
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+
   return (
     <div>
-      <div className="calendar-legend">
-        {Object.entries(STATUS_COLORS).map(([s, color]) => (
-          <span key={s} className="legend-item">
-            <span className="legend-dot" style={{ background: color }} />
-            {s.replace('_', ' ')}
+      {/* Legend — 4 canonical statuses only */}
+      <div className="calendar-legend" role="list" aria-label="Job status legend">
+        {LEGEND.map(({ key, label, color }) => (
+          <span key={key} className="legend-item" role="listitem">
+            <span className="legend-dot" style={{ background: color }} aria-hidden="true" />
+            {label}
           </span>
         ))}
+        <span className="cal-legend-session-hint">Dashed border = multi-day session</span>
       </div>
 
+      {/* Filter bar */}
+      <div className="cal-filter-bar" role="group" aria-label="Filter by job status">
+        <span className="cal-filter-label" id="cal-filter-label">Filter:</span>
+        {[{ value: 'all', label: 'All' }, ...LEGEND.map(l => ({ value: l.key, label: l.label, color: l.color }))].map(opt => (
+          <button
+            key={opt.value}
+            className={`cal-filter-chip${statusFilter === opt.value ? ' active' : ''}`}
+            style={statusFilter === opt.value && opt.color ? { background: opt.color, borderColor: opt.color } : {}}
+            onClick={() => setStatusFilter(opt.value)}
+            aria-pressed={statusFilter === opt.value}
+          >
+            {opt.label}
+          </button>
+        ))}
+        {statusFilter !== 'all' && (
+          <span className="cal-filter-count" aria-live="polite">
+            {events.length} event{events.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Today's operational summary strip (day/week only) */}
+      {todaySummary.total > 0 && (view === 'day' || view === 'week') && (
+        <div className="cal-summary-strip" aria-label="Today's job summary">
+          <span className="cal-summary-label">Today</span>
+          {todaySummary.scheduled > 0 && (
+            <span className="cal-summary-item">
+              <span className="cal-summary-dot" style={{ background: '#8A90A2' }} aria-hidden="true" />
+              {todaySummary.scheduled} scheduled
+            </span>
+          )}
+          {todaySummary.inProgress > 0 && (
+            <span className="cal-summary-item">
+              <span className="cal-summary-dot" style={{ background: '#D4A000' }} aria-hidden="true" />
+              {todaySummary.inProgress} in progress
+            </span>
+          )}
+          {todaySummary.completed > 0 && (
+            <span className="cal-summary-item">
+              <span className="cal-summary-dot" style={{ background: '#2E7D32' }} aria-hidden="true" />
+              {todaySummary.completed} completed
+            </span>
+          )}
+          {todaySummary.cancelled > 0 && (
+            <span className="cal-summary-item">
+              <span className="cal-summary-dot" style={{ background: '#C62828' }} aria-hidden="true" />
+              {todaySummary.cancelled} canceled
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Calendar */}
       {loading ? (
         <div style={{ background: 'var(--white)', borderRadius: 12, padding: '48px 24px', textAlign: 'center', border: '1px solid var(--lightgray)', color: 'var(--steel)', fontSize: 14 }}>
           Loading schedule…
@@ -360,12 +533,13 @@ export default function Jobs() {
             max={calMax}
             selectable
             views={{ month: true, week: true, day: true, agenda: FieldCoreAgendaView }}
-            components={{ toolbar: CalendarToolbar }}
-            style={{ height: 'max(560px, calc(100vh - 240px))' }}
+            components={CAL_COMPONENTS}
+            style={{ height: 'max(560px, calc(100vh - 320px))' }}
           />
         </div>
       )}
 
+      {/* Create modal */}
       {modal === 'create' && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -385,20 +559,8 @@ export default function Jobs() {
         </div>
       )}
 
-      {modal === 'detail' && selectedJob && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <JobDetail
-              job={selectedJob}
-              onClose={() => setModal(null)}
-              onStatusChange={handleStatusChange}
-              onEdit={() => setModal('edit')}
-            />
-          </div>
-        </div>
-      )}
-
-      {modal === 'edit' && selectedJob && (
+      {/* Edit modal (opens from drawer) */}
+      {modal === 'edit' && drawerJob && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -407,12 +569,36 @@ export default function Jobs() {
             </div>
             <div className="modal-body">
               <JobForm
-                job={selectedJob}
+                job={drawerJob}
                 onSave={handleJobEdited}
-                onCancel={() => setModal('detail')}
+                onCancel={() => setModal(null)}
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Event detail drawer — right-side panel, non-navigating */}
+      {drawerJob && modal !== 'edit' && (
+        <div
+          className="cal-drawer-overlay"
+          onClick={() => setDrawerJob(null)}
+          role="presentation"
+        >
+          <aside
+            className="cal-drawer"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Job details"
+          >
+            <JobDetail
+              job={drawerJob}
+              onClose={() => setDrawerJob(null)}
+              onStatusChange={handleStatusChange}
+              onEdit={() => setModal('edit')}
+            />
+          </aside>
         </div>
       )}
     </div>

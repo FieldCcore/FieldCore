@@ -26,7 +26,7 @@ const STATUS_COLORS = {
   unscheduled:         '#8A90A2',  // neutral
 };
 
-const PRIORITY_COLOR = { normal: '#5F667A', high: '#D97706', urgent: '#DC2626' };
+const PRIORITY_COLOR = { normal: '#5F667A', high: '#D4A000', urgent: '#DC2626' };
 
 export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit }) {
   const [job,           setJob]           = useState(initialJob);
@@ -130,7 +130,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const remainingMin = Math.max(graceMin - elapsedMin, 0);
   const remSecs     = Math.round(remainingMin * 60);
   const isOverdue   = clockStarted && elapsedMin >= graceMin;
-  const clockColor  = isOverdue ? '#dc2626' : '#d97706';
+  const clockColor  = isOverdue ? '#dc2626' : '#D4A000';
 
   async function declareNoShow() {
     if (!job?.id) return;
@@ -196,14 +196,14 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0 }}>{job.title || job.service_type}</h2>
             {job.is_multi_day && (
-              <span style={{ fontSize: 10, fontWeight: 700, background: '#eff6ff', color: '#1d4ed8',
-                padding: '2px 8px', borderRadius: 99, letterSpacing: '.04em' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--off)', color: 'var(--slate)',
+                padding: '2px 8px', borderRadius: 99, letterSpacing: '.04em', border: '1px solid var(--lightgray)' }}>
                 MULTI-DAY
               </span>
             )}
             {job.priority && job.priority !== 'normal' && (
               <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[job.priority],
-                background: job.priority === 'urgent' ? '#fef2f2' : '#fffbeb',
+                background: job.priority === 'urgent' ? '#fef2f2' : 'var(--yellow-lt)',
                 padding: '2px 8px', borderRadius: 99 }}>
                 {job.priority.toUpperCase()}
               </span>
@@ -333,13 +333,13 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
         {!job.is_multi_day && job.status === 'scheduled' && (
           <div className="jd-section" style={{
             borderColor: clockStarted ? (isOverdue ? '#fca5a5' : '#fde68a') : 'var(--lightgray)',
-            background:  clockStarted ? (isOverdue ? '#fef2f2' : '#fffbeb') : 'var(--off)',
+            background:  clockStarted ? (isOverdue ? '#fef2f2' : 'var(--yellow-lt)') : 'var(--off)',
           }}>
             {clockStarted ? (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <Timer size={14} style={{ color: clockColor, flexShrink: 0, marginTop: 2 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : '#92400e' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: isOverdue ? '#7f1d1d' : 'var(--yellow)' }}>
                     No-show clock {isOverdue ? 'expired' : 'running'}
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: clockColor, fontFamily: 'DM Mono, monospace', marginTop: 3, letterSpacing: '.04em' }}>
