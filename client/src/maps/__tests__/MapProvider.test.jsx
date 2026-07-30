@@ -245,4 +245,55 @@ describe('MapProvider', () => {
     warnSpy.mockRestore();
     errSpy.mockRestore();
   });
+
+  // 13. Smart retry — Maps NOT loaded → bootstrap stub reinstalled ──────────────
+  it('reinstalls bootstrap stub when Maps is not yet loaded on retry', async () => {
+    vi.resetModules();
+    // Ensure no Maps API is present
+    const prevGoogle = window.google;
+    try { delete window.google; } catch {}
+
+    const { MapProvider, useMapRetry } = await import('../MapProvider');
+
+    let retryFn;
+    function Capturer() { retryFn = useMapRetry(); return null; }
+
+    await act(async () => {
+      render(<MapProvider><Capturer /></MapProvider>);
+    });
+
+    await act(async () => { retryFn(); });
+
+    // A fresh bootstrap stub should have been installed
+    expect(typeof window.google?.maps?.importLibrary).toBe('function');
+
+    // Cleanup
+    try { delete window.google; } catch {}
+    if (prevGoogle !== undefined) window.google = prevGoogle;
+  });
+
+  // 14. Smart retry — Maps fully loaded → importLibrary NOT replaced ────────────
+  it('does not replace importLibrary when Maps is fully loaded on retry', async () => {
+    vi.resetModules();
+    // Simulate Maps fully loaded: window.google.maps.Map exists
+    const originalImportLibrary = vi.fn();
+    window.google = { maps: { Map: function GoogleMapsMap() {}, importLibrary: originalImportLibrary } };
+
+    const { MapProvider, useMapRetry } = await import('../MapProvider');
+
+    let retryFn;
+    function Capturer() { retryFn = useMapRetry(); return null; }
+
+    await act(async () => {
+      render(<MapProvider><Capturer /></MapProvider>);
+    });
+
+    await act(async () => { retryFn(); });
+
+    // importLibrary should be unchanged — smart retry preserved it
+    expect(window.google.maps.importLibrary).toBe(originalImportLibrary);
+
+    // Cleanup
+    try { delete window.google; } catch {}
+  });
 });

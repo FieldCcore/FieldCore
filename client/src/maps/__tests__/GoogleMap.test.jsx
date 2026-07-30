@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -7,13 +7,18 @@ import React from 'react';
 
 let mockStatus = 'NOT_LOADED';
 
+// Capture the onIdle callback so tests can fire it manually to simulate map ready.
+let capturedOnIdle = null;
+
 vi.mock('@vis.gl/react-google-maps', () => ({
-  Map: ({ children, style, className }) => (
-    <div data-testid="google-map-rendered" style={style} className={className}>
-      {children}
-    </div>
-  ),
-  // Return null so MapDiagnostics' useMap effect early-returns (avoids getComputedStyle on non-Element)
+  Map: ({ children, style, className, onIdle }) => {
+    capturedOnIdle = onIdle ?? null;
+    return (
+      <div data-testid="google-map-rendered" style={style} className={className}>
+        {children}
+      </div>
+    );
+  },
   useMap:              () => null,
   useApiLoadingStatus: () => mockStatus,
   __resetModuleState:  vi.fn(),
@@ -58,12 +63,19 @@ async function renderMap(props = {}) {
   return result;
 }
 
+async function fireIdle() {
+  await act(async () => {
+    if (capturedOnIdle) capturedOnIdle();
+  });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('GoogleMap', () => {
   beforeEach(() => {
     mockConfigured = true;
     mockStatus     = 'NOT_LOADED';
+    capturedOnIdle = null;
     mockRetry.mockClear();
     vi.resetModules();
   });
@@ -84,15 +96,15 @@ describe('GoogleMap', () => {
     expect(screen.queryByTestId('google-map-rendered')).not.toBeInTheDocument();
   });
 
-  // 3. Loader success renders map ───────────────────────────────────────────────
+  // 3. Renders <Map> when status LOADED (onIdle not yet fired) ─────────────────
   it('renders <Map> when loader status is LOADED', async () => {
     mockStatus = 'LOADED';
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
-  // 4. Loader failure renders MapAuthError fallback ─────────────────────────────
-  it('renders MapAuthError when loader status is FAILED', async () => {
+  // 4. LOAD_ERROR when status FAILED ───────────────────────────────────────────
+  it('renders error fallback when loader status is FAILED', async () => {
     mockStatus = 'FAILED';
     await renderMap();
     await waitFor(() => {
@@ -101,12 +113,14 @@ describe('GoogleMap', () => {
     });
   });
 
-  // 5. MapAuthError via fieldcore:maps:auth-failure event ──────────────────────
-  it('shows MapAuthError on fieldcore:maps:auth-failure event', async () => {
+  // 5. AUTH_ERROR on fieldcore:maps:auth-failure event (before onIdle) ──────────
+  it('shows error fallback on fieldcore:maps:auth-failure event before map is ready', async () => {
     mockStatus = 'LOADED';
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
+    // onIdle has NOT fired (capturedOnIdle exists but we don't call it),
+    // so lifecycle is still LOADING → auth-failure can transition to AUTH_ERROR
     await act(async () => {
       window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
         detail: { code: 'auth-failure' },
@@ -118,7 +132,66 @@ describe('GoogleMap', () => {
     });
   });
 
-  // 6. Retry button calls useMapRetry() ─────────────────────────────────────────
+  // 6. READY is sticky: auth-failure after onIdle does NOT hide the map ─────────
+  it('keeps map visible when auth-failure fires after onIdle (READY is sticky)', async () => {
+    mockStatus = 'LOADED';
+    await renderMap();
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+
+    // Transition to READY
+    await fireIdle();
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+
+    // Stale auth-failure event must not regress the lifecycle
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+        detail: { code: 'auth-failure' },
+      }));
+    });
+
+    // Map should still be visible — READY is sticky
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+    expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
+  });
+
+  // 7. READY is sticky: status FAILED after onIdle does NOT show LOAD_ERROR ─────
+  it('keeps map visible when status becomes FAILED after onIdle (READY is sticky)', async () => {
+    mockStatus = 'LOADED';
+    const GoogleMap = await importGoogleMap();
+    let rerender;
+    await act(async () => {
+      ({ rerender } = render(<GoogleMap center={{ lat: 0, lng: 0 }} />));
+    });
+
+    await fireIdle();
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+
+    // Simulate a late FAILED signal
+    mockStatus = 'FAILED';
+    await act(async () => {
+      rerender(<GoogleMap center={{ lat: 0, lng: 0 }} />);
+    });
+
+    // Map should still be visible — READY is sticky
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+    expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
+  });
+
+  // 8. onIdle → lifecycle READY ─────────────────────────────────────────────────
+  it('transitions to READY when onIdle fires and map remains rendered', async () => {
+    mockStatus = 'LOADED';
+    await renderMap();
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+
+    await fireIdle();
+
+    // Map stays rendered after onIdle
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Map loading')).not.toBeInTheDocument();
+    expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
+  });
+
+  // 9. Retry button calls useMapRetry() ─────────────────────────────────────────
   it('Retry button calls the retry function from MapRetryContext', async () => {
     mockStatus = 'FAILED';
     await renderMap();
@@ -131,30 +204,49 @@ describe('GoogleMap', () => {
     expect(mockRetry).toHaveBeenCalledTimes(1);
   });
 
-  // 7. fieldcore:maps:retry clears auth error ───────────────────────────────────
-  it('clears authError when fieldcore:maps:retry event fires', async () => {
-    mockStatus = 'FAILED';
+  // 10. fieldcore:maps:retry resets AUTH_ERROR → LOADING ────────────────────────
+  it('clears AUTH_ERROR and returns to loading when fieldcore:maps:retry fires', async () => {
+    mockStatus = 'LOADED';
     await renderMap();
 
+    // Trigger AUTH_ERROR (onIdle has not fired)
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure'));
+    });
     await waitFor(() => {
       expect(screen.getByText('Map unavailable')).toBeInTheDocument();
     });
 
-    // Dispatch retry — clears authError; status is still FAILED so the useEffect
-    // re-sets it, but between the clear and the re-set the component shows MapLoading
+    // Now retry — resets lifecycle to LOADING; status still LOADED → Map renders
     await act(async () => {
       window.dispatchEvent(new CustomEvent('fieldcore:maps:retry'));
     });
 
-    // After retry fires, the authError is cleared. Re-check that the button is gone
-    // (authError=null + status=FAILED → effect re-fires → MapAuthError returns).
-    // The important invariant: the retry event DID clear the error (even if it returns).
-    // We verify that the button disappears and then can reappear after re-set.
-    // Just confirm no exception was thrown.
-    expect(true).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
+    });
   });
 
-  // 8. MapConfigMissing when key is absent ──────────────────────────────────────
+  // 11. fieldcore:maps:retry resets LOAD_ERROR → LOADING ────────────────────────
+  it('clears LOAD_ERROR and returns to loading when fieldcore:maps:retry fires', async () => {
+    mockStatus = 'FAILED';
+    await renderMap();
+    await waitFor(() => {
+      expect(screen.getByText('Map unavailable')).toBeInTheDocument();
+    });
+
+    mockStatus = 'NOT_LOADED'; // simulates new load attempt
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:retry'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Map loading')).toBeInTheDocument();
+    });
+  });
+
+  // 12. MapConfigMissing when key is absent ─────────────────────────────────────
   it('renders MapConfigMissing when API key is not configured', async () => {
     mockConfigured = false;
     vi.resetModules();
@@ -167,28 +259,99 @@ describe('GoogleMap', () => {
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
 
-  // 9. Renders with zero jobs (no data prop dependency) ────────────────────────
+  // 13. Renders with zero jobs (no data prop dependency) ────────────────────────
   it('renders without requiring job data', async () => {
     mockStatus = 'LOADED';
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
-  // 10. Renders with zero technicians (no data prop dependency) ────────────────
+  // 14. Renders with zero technicians (no data prop dependency) ─────────────────
   it('renders without requiring technician data', async () => {
     mockStatus = 'LOADED';
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
-  // 11. Renders without mapId (falls back to styles) ────────────────────────────
+  // 15. Renders without mapId (falls back to branded styles) ────────────────────
   it('renders without a mapId and uses branded styles as fallback', async () => {
     mockStatus = 'LOADED';
     await renderMap({ branded: true });
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
-  // 12. Full API key never appears in console output ────────────────────────────
+  // 16. MapLayerErrorBoundary: layer crash does not kill base map ────────────────
+  it('keeps base map visible when an optional layer throws', async () => {
+    function BrokenLayer() { throw new Error('layer crash'); }
+
+    mockStatus = 'LOADED';
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+
+    // Suppress React's console.error for the caught error boundary throw
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await act(async () => {
+      render(
+        <GoogleMap center={{ lat: 0, lng: 0 }}>
+          <BrokenLayer />
+        </GoogleMap>
+      );
+    });
+    errSpy.mockRestore();
+
+    // Base map stays; layer content is silently dropped
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+  });
+
+  // 17. userOnIdle prop is forwarded through handleIdle ─────────────────────────
+  it('calls a userOnIdle prop after transitioning to READY', async () => {
+    mockStatus = 'LOADED';
+    const userOnIdle = vi.fn();
+    await renderMap({ onIdle: userOnIdle });
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+
+    await fireIdle();
+
+    expect(userOnIdle).toHaveBeenCalledTimes(1);
+    // Map still rendered after READY
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+  });
+
+  // 18. UNCONFIGURED shows no Retry button; error fallbacks do ──────────────────
+  it('error fallback shows Retry but MapConfigMissing does not', async () => {
+    // AUTH_ERROR path — has Retry
+    mockStatus = 'LOADED';
+    const { unmount } = await (async () => {
+      const r = await renderMap();
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure'));
+      });
+      return r;
+    })();
+    await waitFor(() => expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument());
+    unmount();
+
+    // UNCONFIGURED path — no Retry
+    mockConfigured = false;
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+    await act(async () => {
+      render(<GoogleMap center={{ lat: 0, lng: 0 }} />);
+    });
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  // 19. LOAD_ERROR shows Retry ───────────────────────────────────────────────────
+  it('renders Retry button in LOAD_ERROR state', async () => {
+    mockStatus = 'FAILED';
+    await renderMap();
+    await waitFor(() => {
+      expect(screen.getByText('Map unavailable')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    });
+  });
+
+  // 20. Full API key never appears in console output ────────────────────────────
   it('never logs the full API key', async () => {
     const logSpy  = vi.spyOn(console, 'log').mockImplementation(() => {});
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

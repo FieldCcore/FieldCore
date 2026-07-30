@@ -1,12 +1,42 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Map, useMap, useApiLoadingStatus } from '@vis.gl/react-google-maps';
+import { useState, useEffect, useMemo, useCallback, Component } from 'react';
+import { Map, useApiLoadingStatus } from '@vis.gl/react-google-maps';
 import { FIELDCORE_MAP_STYLES } from './mapStyles';
 import { getGoogleMapsClientConfig, maskedKey } from './mapsConfig';
 import { useMapRetry } from './MapProvider';
 
 const DEFAULT_CENTER = { lat: 27.9506, lng: -82.4572 };
 
-// ── State 1: API key absent from this build ───────────────────────────────────
+// Explicit lifecycle — single source of truth replacing dual authError+status pattern.
+// READY is sticky: once onIdle fires, neither auth-failure events nor status=FAILED
+// can regress the map to an error state.
+const LC = {
+  UNCONFIGURED: 'UNCONFIGURED',
+  LOADING:      'LOADING',
+  READY:        'READY',
+  AUTH_ERROR:   'AUTH_ERROR',
+  LOAD_ERROR:   'LOAD_ERROR',
+};
+
+// ── Layer isolation ────────────────────────────────────────────────────────────
+// Catches errors from optional children (markers, InfoWindow, overlays) so a
+// broken overlay does not hide the base map.
+class MapLayerErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err) {
+    if (import.meta.env.DEV) {
+      console.error('[GoogleMap] optional map layer crashed (base map preserved):', err.message);
+    }
+  }
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
+
+// ── State: API key absent from this build ──────────────────────────────────────
 function MapConfigMissing({ className, style }) {
   return (
     <div
@@ -28,7 +58,7 @@ function MapConfigMissing({ className, style }) {
   );
 }
 
-// ── State 2: Key present, waiting for Maps JS to load ────────────────────────
+// ── State: Script loading ──────────────────────────────────────────────────────
 function MapLoading({ className, style }) {
   return (
     <div
@@ -39,8 +69,8 @@ function MapLoading({ className, style }) {
   );
 }
 
-// ── State 3: Key rejected or script failed to load ───────────────────────────
-function MapAuthError({ className, style, onRetry, maskedApiKey }) {
+// ── State: AUTH_ERROR or LOAD_ERROR ───────────────────────────────────────────
+function MapErrorFallback({ className, style, onRetry, maskedApiKey, isAuthError }) {
   const isDev = import.meta.env.DEV;
   return (
     <div
@@ -64,11 +94,17 @@ function MapAuthError({ className, style, onRetry, maskedApiKey }) {
       <strong style={{ color: '#1C2333', fontSize: 15 }}>Map unavailable</strong>
       {isDev ? (
         <span style={{ color: '#5F667A', maxWidth: 340, lineHeight: 1.5 }}>
-          API key rejected or script load failed.{' '}
-          Key in this build: <code>{maskedApiKey}</code>.{' '}
-          Check GCP Console: enable Maps JavaScript API, verify HTTP referrer restrictions
-          include <code>{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}</code>,
-          and confirm billing is active.
+          {isAuthError ? (
+            <>
+              API key rejected. Key in this build: <code>{maskedApiKey}</code>.{' '}
+              Check GCP Console: enable Maps JavaScript API, verify HTTP referrer restrictions
+              include{' '}
+              <code>{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}</code>
+              , and confirm billing is active.
+            </>
+          ) : (
+            <>Maps script failed to load. Check your network connection.</>
+          )}
         </span>
       ) : (
         <span style={{ color: '#5F667A' }}>
@@ -91,49 +127,6 @@ function MapAuthError({ className, style, onRetry, maskedApiKey }) {
   );
 }
 
-// ── Diagnostic: runs inside Map context, inspects the live map instance ───────
-function MapDiagnostics({ passedClassName, passedStyle, mapId }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) {
-      console.log('[GoogleMap] map instance null — library not ready yet');
-      return;
-    }
-    const container = map.getDiv();
-    const parent    = container?.parentElement;
-    const gp        = parent?.parentElement;
-    const cs        = container ? getComputedStyle(container) : null;
-    const ps        = parent    ? getComputedStyle(parent)    : null;
-    const gps       = gp        ? getComputedStyle(gp)        : null;
-
-    console.log('[GoogleMap] ── map instance ready ──');
-    console.log('[GoogleMap] props received | className:', passedClassName, '| inlineStyle:', passedStyle);
-    console.log('[GoogleMap] mapId in use:', mapId || '(none — using styles)');
-    console.log('[GoogleMap] container (map.getDiv())', {
-      offsetWidth:  container?.offsetWidth,
-      offsetHeight: container?.offsetHeight,
-      clientWidth:  container?.clientWidth,
-      clientHeight: container?.clientHeight,
-      computed: cs ? { width: cs.width, height: cs.height, position: cs.position, display: cs.display, overflow: cs.overflow, visibility: cs.visibility } : null,
-    });
-    if (parent) {
-      console.log('[GoogleMap] parent (.dispatch-map or wrapper)', {
-        className: parent.className, offsetWidth: parent.offsetWidth, offsetHeight: parent.offsetHeight,
-        computed: { width: ps.width, height: ps.height, position: ps.position, display: ps.display, overflow: ps.overflow },
-      });
-    }
-    if (gp) {
-      console.log('[GoogleMap] grandparent (.dispatch-map-wrap or above)', {
-        className: gp.className, offsetWidth: gp.offsetWidth, offsetHeight: gp.offsetHeight,
-        computed: { width: gps.width, height: gps.height, position: gps.position, display: gps.display },
-      });
-    }
-  }, [map, passedClassName, passedStyle, mapId]);
-
-  return null;
-}
-
 export function GoogleMap({
   center,
   zoom = 13,
@@ -141,74 +134,79 @@ export function GoogleMap({
   className,
   children,
   branded = true,
+  onIdle: userOnIdle,
   ...props
 }) {
-  // ── Runtime config (NOT module scope) ─────────────────────────────────────
-  const cfg = useMemo(() => getGoogleMapsClientConfig(), []);
-
-  // ── Auth error state ───────────────────────────────────────────────────────
-  const [authError, setAuthError] = useState(null);
-
-  // useApiLoadingStatus returns 'NOT_LOADED' when called outside APIProvider.
-  // When MapProvider skips APIProvider (key absent), status is 'NOT_LOADED',
-  // but we return early at the _cfg.configured check before using it.
+  const cfg    = useMemo(() => getGoogleMapsClientConfig(), []);
   const status = useApiLoadingStatus();
+  const retry  = useMapRetry();
 
-  // Retry function from MapProvider's context
-  const retry = useMapRetry();
+  const [lifecycle, setLifecycle] = useState(
+    cfg.configured ? LC.LOADING : LC.UNCONFIGURED
+  );
 
-  // Listen for auth-failure events dispatched by MapProvider or gm_authFailure
+  // vis.gl status FAILED → LOAD_ERROR (network failure, not auth)
+  // READY is sticky — a resolved map cannot regress on late FAILED signals.
   useEffect(() => {
-    function onAuthFailure(e) {
-      setAuthError(e.detail || { code: 'unknown' });
+    if (status === 'FAILED') {
+      setLifecycle(prev => prev === LC.READY ? prev : LC.LOAD_ERROR);
+    }
+  }, [status]);
+
+  // gm_authFailure callback dispatches this event → AUTH_ERROR
+  // READY is sticky — a successfully initialized map ignores stale auth signals.
+  useEffect(() => {
+    function onAuthFailure() {
+      setLifecycle(prev => prev === LC.READY ? prev : LC.AUTH_ERROR);
     }
     window.addEventListener('fieldcore:maps:auth-failure', onAuthFailure);
     return () => window.removeEventListener('fieldcore:maps:auth-failure', onAuthFailure);
   }, []);
 
-  // Clear auth error when retry is triggered (so the loading state shows fresh)
+  // MapProvider retry → reset to LOADING so the map attempts initialization again
   useEffect(() => {
     function onRetry() {
-      setAuthError(null);
+      setLifecycle(cfg.configured ? LC.LOADING : LC.UNCONFIGURED);
     }
     window.addEventListener('fieldcore:maps:retry', onRetry);
     return () => window.removeEventListener('fieldcore:maps:retry', onRetry);
-  }, []);
+  }, [cfg.configured]);
 
-  // Belt-and-suspenders: set authError if useApiLoadingStatus reports FAILED
-  useEffect(() => {
-    if (status === 'FAILED' && !authError) {
-      setAuthError({ code: 'load-failed', ts: new Date().toISOString() });
-    }
-  }, [status, authError]);
+  // onIdle: authoritative signal that the map instance is created and the initial
+  // viewport has finished loading. Transitions to READY permanently.
+  const handleIdle = useCallback(() => {
+    setLifecycle(LC.READY);
+    userOnIdle?.();
+  }, [userOnIdle]);
 
-  // ── State machine ──────────────────────────────────────────────────────────
-  // 1. API key absent from build
-  if (!cfg.configured) {
-    console.log('[GoogleMap] skipped | failureReason:', cfg.failureReason,
-      '| Set VITE_GOOGLE_MAPS_API_KEY in Vercel (Production) and redeploy.');
+  // ── State machine render ────────────────────────────────────────────────────
+
+  if (lifecycle === LC.UNCONFIGURED) {
     return <MapConfigMissing className={className} style={style} />;
   }
 
-  // 2–3. Key present; Maps JS request in flight or not yet started
-  if (status === 'NOT_LOADED' || status === 'LOADING') {
-    return <MapLoading className={className} style={style} />;
-  }
-
-  // 4a. Key rejected or script load error
-  if (authError) {
+  if (lifecycle === LC.AUTH_ERROR || lifecycle === LC.LOAD_ERROR) {
     return (
-      <MapAuthError
+      <MapErrorFallback
         className={className}
         style={style}
         onRetry={retry}
         maskedApiKey={maskedKey(cfg.apiKey)}
+        isAuthError={lifecycle === LC.AUTH_ERROR}
       />
     );
   }
 
-  // 4b. Loaded — render the live map
-  const mapOptions = cfg.mapId ? { mapId: cfg.mapId } : (branded ? { styles: FIELDCORE_MAP_STYLES } : {});
+  // LOADING + script not yet in flight → show placeholder
+  if (lifecycle === LC.LOADING && (status === 'NOT_LOADED' || status === 'LOADING')) {
+    return <MapLoading className={className} style={style} />;
+  }
+
+  // LOADING (status=LOADED) or READY → render live map.
+  // onIdle fires once the map instance is ready, transitioning to READY.
+  const mapOptions = cfg.mapId
+    ? { mapId: cfg.mapId }
+    : (branded ? { styles: FIELDCORE_MAP_STYLES } : {});
 
   return (
     <Map
@@ -222,10 +220,10 @@ export function GoogleMap({
       gestureHandling="greedy"
       style={{ width: '100%', height: '100%', ...style }}
       className={className}
+      onIdle={handleIdle}
       {...props}
     >
-      <MapDiagnostics passedClassName={className} passedStyle={style} mapId={cfg.mapId} />
-      {children}
+      <MapLayerErrorBoundary>{children}</MapLayerErrorBoundary>
     </Map>
   );
 }

@@ -83,20 +83,22 @@ function installGlobalHandlers(apiKey) {
         const src = node.src || '';
         if (!src.includes('maps.googleapis.com/maps/api/js')) continue;
         scriptObserver.disconnect();
-        try {
-          const url = new URL(src);
-          const p = url.searchParams;
-          console.log('[MapProvider][script] Maps script injected');
-          console.table({
-            key:       { value: p.get('key') ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
-            libraries: { value: p.get('libraries') || '(none)' },
-            v:         { value: p.get('v')         || '(none)' },
-            loading:   { value: p.get('loading')   || '(none)' },
-            callback:  { value: p.get('callback')  || '(none)' },
-            language:  { value: p.get('language')  || '(none)' },
-            region:    { value: p.get('region')    || '(none)' },
-          });
-        } catch {}
+        if (import.meta.env.DEV) {
+          try {
+            const url = new URL(src);
+            const p = url.searchParams;
+            console.log('[MapProvider][script] Maps script injected');
+            console.table({
+              key:       { value: p.get('key') ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
+              libraries: { value: p.get('libraries') || '(none)' },
+              v:         { value: p.get('v')         || '(none)' },
+              loading:   { value: p.get('loading')   || '(none)' },
+              callback:  { value: p.get('callback')  || '(none)' },
+              language:  { value: p.get('language')  || '(none)' },
+              region:    { value: p.get('region')    || '(none)' },
+            });
+          } catch {}
+        }
       }
     }
   });
@@ -148,7 +150,9 @@ function MapProviderDiagnostics({ cfg, retryCount }) {
   const isLoaded = useApiIsLoaded();
   const status   = useApiLoadingStatus();
 
+  // DEV-only: full status table written to console and diagnostics global
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const scriptEl = !!document.querySelector('script[src*="maps.googleapis.com"]');
     const diag = {
       configured:               cfg.configured,
@@ -164,35 +168,19 @@ function MapProviderDiagnostics({ cfg, retryCount }) {
       failureCode:              null,
       retryCount,
     };
-
-    if (import.meta.env.DEV) {
-      window.__FIELDCORE_MAPS_DIAGNOSTICS__ = diag;
-      console.group('[FieldCore Maps Diagnostics]');
-      console.table(diag);
-      console.groupEnd();
-    }
-
-    console.log(
-      '[MapProvider] status:', status,
-      '| isLoaded:', isLoaded,
-      '| key:', maskedKey(cfg.apiKey),
-      '| host:', window.location.hostname,
-      '| retry:', retryCount,
-    );
+    window.__FIELDCORE_MAPS_DIAGNOSTICS__ = diag;
+    console.group('[FieldCore Maps Diagnostics]');
+    console.table(diag);
+    console.groupEnd();
   }, [status, isLoaded, cfg, retryCount]);
 
+  // Production-safe: log network-level script load failure.
+  // NOTE: Do NOT dispatch fieldcore:maps:auth-failure here — network failure is not
+  // an auth failure. gm_authFailure (installed in installGlobalHandlers) handles key rejection.
   useEffect(() => {
     if (status !== 'FAILED') return;
     console.error('[MapProvider] Maps JS script failed to load (network error or request blocked)');
-    window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
-      detail: {
-        code:      'load-failed',
-        hostname:  window.location.hostname,
-        maskedKey: maskedKey(cfg.apiKey),
-        ts:        new Date().toISOString(),
-      },
-    }));
-  }, [status, cfg]);
+  }, [status]);
 
   return null;
 }
@@ -215,21 +203,22 @@ export function MapProvider({ children }) {
     //    serializedApiParams → undefined, listeners cleared)
     try { __resetModuleState(); } catch {}
 
-    // 2. Delete the stale importLibrary stub so reinstallMapsBootstrapStub()
-    //    can install a fresh one with a new bootstrapPromise closure
-    try {
-      if (window.google?.maps?.importLibrary) delete window.google.maps.importLibrary;
-      if (window.google?.maps?.__ib__)         delete window.google.maps.__ib__;
-    } catch {}
+    // 2. Only destroy + reinstall the bootstrap stub when Maps is NOT yet fully loaded.
+    //    If window.google.maps.Map exists, the real API is already running — deleting
+    //    importLibrary would force a duplicate <script> injection on the next APIProvider mount.
+    const mapsFullyLoaded = typeof window !== 'undefined' && !!window.google?.maps?.Map;
+    if (!mapsFullyLoaded) {
+      try {
+        if (window.google?.maps?.importLibrary) delete window.google.maps.importLibrary;
+        if (window.google?.maps?.__ib__)         delete window.google.maps.__ib__;
+      } catch {}
+      reinstallMapsBootstrapStub(cfg.apiKey, 'en', 'US');
+    }
 
-    // 3. Install a fresh bootstrap stub so the next APIProvider mount injects
-    //    a new script tag (bypasses the dead bootstrapPromise from the failed load)
-    reinstallMapsBootstrapStub(cfg.apiKey, 'en', 'US');
-
-    // 4. Force APIProvider unmount + remount via key change
+    // 3. Force APIProvider unmount + remount via key change
     setRetryKey(k => k + 1);
 
-    // 5. Signal GoogleMap (and any other children) to clear their error state
+    // 4. Signal GoogleMap (and any other children) to reset their lifecycle state
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('fieldcore:maps:retry'));
     }
@@ -272,8 +261,6 @@ export function MapProvider({ children }) {
   // APIProvider must render whenever key is present AND in browser.
   // It must NOT depend on jobs / technicians / coordinates / mapId / Places.
   if (!cfg.configured) {
-    console.log('[MapProvider] APIProvider skipped | reason:', cfg.failureReason,
-      '| Set VITE_GOOGLE_MAPS_API_KEY in Vercel (Production) and redeploy.');
     return (
       <MapRetryContext.Provider value={retry}>
         {children}
