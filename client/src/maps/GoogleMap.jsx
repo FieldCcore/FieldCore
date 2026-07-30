@@ -1,14 +1,23 @@
-import { useState, useEffect, useMemo, useCallback, Component } from 'react';
-import { Map, useApiLoadingStatus } from '@vis.gl/react-google-maps';
+import { useState, useEffect, useMemo, useCallback, useRef, Component } from 'react';
+import { Map, useMap, useApiLoadingStatus } from '@vis.gl/react-google-maps';
 import { FIELDCORE_MAP_STYLES } from './mapStyles';
 import { getGoogleMapsClientConfig, maskedKey } from './mapsConfig';
 import { useMapRetry } from './MapProvider';
 
-const DEFAULT_CENTER = { lat: 27.9506, lng: -82.4572 };
+// Safe default — continental US, zoom 4
+const DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 
-// Explicit lifecycle — single source of truth replacing dual authError+status pattern.
-// READY is sticky: once onIdle fires, neither auth-failure events nor status=FAILED
-// can regress the map to an error state.
+// Rejects null, undefined, strings, NaN, Infinity
+function safeCenter(val) {
+  if (!val || typeof val !== 'object') return null;
+  const lat = Number(val.lat);
+  const lng = Number(val.lng);
+  return isFinite(lat) && isFinite(lng) ? { lat, lng } : null;
+}
+
+// Explicit lifecycle — single source of truth.
+// READY is sticky: once reached, auth-failure events and FAILED status cannot regress it.
+// READY requires both onIdle AND a confirmed nonzero container.
 const LC = {
   UNCONFIGURED: 'UNCONFIGURED',
   LOADING:      'LOADING',
@@ -28,12 +37,88 @@ class MapLayerErrorBoundary extends Component {
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err) {
     if (import.meta.env.DEV) {
-      console.error('[GoogleMap] optional map layer crashed (base map preserved):', err.message);
+      console.error('[GoogleMap] optional layer crashed (base map preserved):', err.message);
     }
   }
   render() {
     return this.state.hasError ? null : this.props.children;
   }
+}
+
+// ── Container size watcher (must run inside Map context to call useMap) ────────
+// vis.gl's Map applies className to BOTH the outer wrapper div AND the inner div
+// that Google Maps mounts into, but passes style={undefined} to the inner div
+// when className is set (relying on CSS). If Google Maps reads offsetWidth/Height
+// as 0 at init time (layout not yet flushed), tiles never render.
+// This component detects when the container gains real dimensions, triggers a
+// resize event so Google Maps re-reads them, and signals onContainerReady.
+function MapResizeWatcher({ onContainerReady }) {
+  const map        = useMap();
+  const onReadyRef = useRef(onContainerReady);
+  useEffect(() => { onReadyRef.current = onContainerReady; }, [onContainerReady]);
+
+  useEffect(() => {
+    if (!map) return;
+    const container = map.getDiv?.();
+    if (!container) return;
+
+    let notified = false;
+
+    function check() {
+      const w = container.offsetWidth;
+      const h = container.offsetHeight;
+      if (w > 0 && h > 0) {
+        // Re-read container dimensions and re-render tiles
+        try { window.google?.maps?.event?.trigger(map, 'resize'); } catch {}
+        if (!notified) {
+          notified = true;
+          onReadyRef.current?.();
+        }
+      }
+    }
+
+    // Synchronous check after first render (dimensions available once in DOM)
+    check();
+
+    // Observe future changes: sidebar collapse, window resize, split-pane drag
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(check);
+      ro.observe(container);
+      return () => ro.disconnect();
+    }
+  }, [map]);
+
+  return null;
+}
+
+// ── DEV diagnostics (inside Map context, omitted from production) ─────────────
+function MapDevDiagnostics({ lifecycle, idleFired, containerReady, center, zoom }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map?.getDiv?.();
+    const w = container?.offsetWidth  ?? 0;
+    const h = container?.offsetHeight ?? 0;
+    const diag = {
+      lifecycle,
+      idleFired,
+      containerReady,
+      mapInstance:     !!map,
+      containerFound:  !!container,
+      containerWidth:  w,
+      containerHeight: h,
+      center,
+      zoom,
+      googleMapsAvail: !!window.google?.maps?.Map,
+    };
+    window.__FIELDCORE_MAPS_DIAGNOSTICS__ = {
+      ...(window.__FIELDCORE_MAPS_DIAGNOSTICS__ || {}),
+      ...diag,
+    };
+    console.log('[GoogleMap][DEV]', JSON.stringify(diag));
+  }, [map, lifecycle, idleFired, containerReady, center, zoom]);
+
+  return null;
 }
 
 // ── State: API key absent from this build ──────────────────────────────────────
@@ -51,14 +136,12 @@ function MapConfigMissing({ className, style }) {
       }}
     >
       <strong style={{ color: '#1C2333' }}>Map unavailable</strong>
-      <span>
-        Set <code>VITE_GOOGLE_MAPS_API_KEY</code> in Vercel and redeploy.
-      </span>
+      <span>Set <code>VITE_GOOGLE_MAPS_API_KEY</code> in Vercel and redeploy.</span>
     </div>
   );
 }
 
-// ── State: Script loading ──────────────────────────────────────────────────────
+// ── State: Maps script loading ─────────────────────────────────────────────────
 function MapLoading({ className, style }) {
   return (
     <div
@@ -127,6 +210,7 @@ function MapErrorFallback({ className, style, onRetry, maskedApiKey, isAuthError
   );
 }
 
+// ── GoogleMap ──────────────────────────────────────────────────────────────────
 export function GoogleMap({
   center,
   zoom = 13,
@@ -141,20 +225,27 @@ export function GoogleMap({
   const status = useApiLoadingStatus();
   const retry  = useMapRetry();
 
-  const [lifecycle, setLifecycle] = useState(
-    cfg.configured ? LC.LOADING : LC.UNCONFIGURED
-  );
+  const [lifecycle,      setLifecycle]      = useState(cfg.configured ? LC.LOADING : LC.UNCONFIGURED);
+  const [idleFired,      setIdleFired]      = useState(false);
+  const [containerReady, setContainerReady] = useState(false);
 
-  // vis.gl status FAILED → LOAD_ERROR (network failure, not auth)
-  // READY is sticky — a resolved map cannot regress on late FAILED signals.
+  // READY requires BOTH the idle event (map instance created + tiles loaded)
+  // AND confirmed nonzero container dimensions. This prevents a blank-success state
+  // where the map is technically "loaded" but invisible.
+  useEffect(() => {
+    if (lifecycle === LC.LOADING && idleFired && containerReady) {
+      setLifecycle(LC.READY);
+    }
+  }, [lifecycle, idleFired, containerReady]);
+
+  // vis.gl status FAILED → LOAD_ERROR; READY is sticky
   useEffect(() => {
     if (status === 'FAILED') {
       setLifecycle(prev => prev === LC.READY ? prev : LC.LOAD_ERROR);
     }
   }, [status]);
 
-  // gm_authFailure callback dispatches this event → AUTH_ERROR
-  // READY is sticky — a successfully initialized map ignores stale auth signals.
+  // gm_authFailure → AUTH_ERROR; READY is sticky
   useEffect(() => {
     function onAuthFailure() {
       setLifecycle(prev => prev === LC.READY ? prev : LC.AUTH_ERROR);
@@ -163,21 +254,27 @@ export function GoogleMap({
     return () => window.removeEventListener('fieldcore:maps:auth-failure', onAuthFailure);
   }, []);
 
-  // MapProvider retry → reset to LOADING so the map attempts initialization again
+  // Retry event — reset all readiness signals and return to LOADING
   useEffect(() => {
     function onRetry() {
+      setIdleFired(false);
+      setContainerReady(false);
       setLifecycle(cfg.configured ? LC.LOADING : LC.UNCONFIGURED);
     }
     window.addEventListener('fieldcore:maps:retry', onRetry);
     return () => window.removeEventListener('fieldcore:maps:retry', onRetry);
   }, [cfg.configured]);
 
-  // onIdle: authoritative signal that the map instance is created and the initial
-  // viewport has finished loading. Transitions to READY permanently.
+  // onIdle: map instance exists and initial tiles have loaded
   const handleIdle = useCallback(() => {
-    setLifecycle(LC.READY);
+    setIdleFired(true);
     userOnIdle?.();
   }, [userOnIdle]);
+
+  // onContainerReady: MapResizeWatcher confirmed nonzero container dimensions
+  const handleContainerReady = useCallback(() => {
+    setContainerReady(true);
+  }, []);
 
   // ── State machine render ────────────────────────────────────────────────────
 
@@ -197,20 +294,22 @@ export function GoogleMap({
     );
   }
 
-  // LOADING + script not yet in flight → show placeholder
+  // LOADING + script not yet in flight → loading placeholder
   if (lifecycle === LC.LOADING && (status === 'NOT_LOADED' || status === 'LOADING')) {
     return <MapLoading className={className} style={style} />;
   }
 
   // LOADING (status=LOADED) or READY → render live map.
-  // onIdle fires once the map instance is ready, transitioning to READY.
+  // MapResizeWatcher inside triggers resize + signals containerReady.
+  // onIdle + containerReady together transition to READY.
+  const resolvedCenter = safeCenter(center) ?? DEFAULT_CENTER;
   const mapOptions = cfg.mapId
     ? { mapId: cfg.mapId }
     : (branded ? { styles: FIELDCORE_MAP_STYLES } : {});
 
   return (
     <Map
-      defaultCenter={center ?? DEFAULT_CENTER}
+      defaultCenter={resolvedCenter}
       defaultZoom={zoom}
       {...mapOptions}
       mapTypeControl={false}
@@ -223,6 +322,16 @@ export function GoogleMap({
       onIdle={handleIdle}
       {...props}
     >
+      <MapResizeWatcher onContainerReady={handleContainerReady} />
+      {import.meta.env.DEV && (
+        <MapDevDiagnostics
+          lifecycle={lifecycle}
+          idleFired={idleFired}
+          containerReady={containerReady}
+          center={resolvedCenter}
+          zoom={zoom}
+        />
+      )}
       <MapLayerErrorBoundary>{children}</MapLayerErrorBoundary>
     </Map>
   );

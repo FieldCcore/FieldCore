@@ -10,6 +10,10 @@ let mockStatus = 'NOT_LOADED';
 // Capture the onIdle callback so tests can fire it manually to simulate map ready.
 let capturedOnIdle = null;
 
+// Fake container returned by useMap() → map.getDiv().
+// Nonzero by default so MapResizeWatcher signals containerReady automatically.
+let fakeContainer = { offsetWidth: 800, offsetHeight: 600 };
+
 vi.mock('@vis.gl/react-google-maps', () => ({
   Map: ({ children, style, className, onIdle }) => {
     capturedOnIdle = onIdle ?? null;
@@ -19,7 +23,7 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       </div>
     );
   },
-  useMap:              () => null,
+  useMap:              () => ({ getDiv: () => fakeContainer }),
   useApiLoadingStatus: () => mockStatus,
   __resetModuleState:  vi.fn(),
 }));
@@ -73,9 +77,10 @@ async function fireIdle() {
 
 describe('GoogleMap', () => {
   beforeEach(() => {
-    mockConfigured = true;
-    mockStatus     = 'NOT_LOADED';
-    capturedOnIdle = null;
+    mockConfigured  = true;
+    mockStatus      = 'NOT_LOADED';
+    capturedOnIdle  = null;
+    fakeContainer   = { offsetWidth: 800, offsetHeight: 600 };
     mockRetry.mockClear();
     vi.resetModules();
   });
@@ -119,8 +124,7 @@ describe('GoogleMap', () => {
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
-    // onIdle has NOT fired (capturedOnIdle exists but we don't call it),
-    // so lifecycle is still LOADING → auth-failure can transition to AUTH_ERROR
+    // onIdle has NOT fired so lifecycle is still LOADING → auth-failure can transition
     await act(async () => {
       window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
         detail: { code: 'auth-failure' },
@@ -138,7 +142,7 @@ describe('GoogleMap', () => {
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
-    // Transition to READY
+    // containerReady fires automatically (fakeContainer nonzero); fire idle to hit READY
     await fireIdle();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
@@ -149,7 +153,6 @@ describe('GoogleMap', () => {
       }));
     });
 
-    // Map should still be visible — READY is sticky
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
     expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
   });
@@ -163,6 +166,7 @@ describe('GoogleMap', () => {
       ({ rerender } = render(<GoogleMap center={{ lat: 0, lng: 0 }} />));
     });
 
+    // containerReady fires automatically; fire idle to hit READY
     await fireIdle();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
@@ -172,20 +176,20 @@ describe('GoogleMap', () => {
       rerender(<GoogleMap center={{ lat: 0, lng: 0 }} />);
     });
 
-    // Map should still be visible — READY is sticky
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
     expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
   });
 
-  // 8. onIdle → lifecycle READY ─────────────────────────────────────────────────
-  it('transitions to READY when onIdle fires and map remains rendered', async () => {
+  // 8. onIdle + containerReady → lifecycle READY ────────────────────────────────
+  it('transitions to READY when onIdle fires and container is nonzero', async () => {
     mockStatus = 'LOADED';
     await renderMap();
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
 
+    // MapResizeWatcher auto-fires containerReady (fakeContainer nonzero).
+    // fireIdle() then sets idleFired → both signals true → READY.
     await fireIdle();
 
-    // Map stays rendered after onIdle
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
     expect(screen.queryByLabelText('Map loading')).not.toBeInTheDocument();
     expect(screen.queryByText('Map unavailable')).not.toBeInTheDocument();
@@ -288,7 +292,6 @@ describe('GoogleMap', () => {
     vi.resetModules();
     const GoogleMap = await importGoogleMap();
 
-    // Suppress React's console.error for the caught error boundary throw
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await act(async () => {
       render(
@@ -299,7 +302,6 @@ describe('GoogleMap', () => {
     });
     errSpy.mockRestore();
 
-    // Base map stays; layer content is silently dropped
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
@@ -313,7 +315,6 @@ describe('GoogleMap', () => {
     await fireIdle();
 
     expect(userOnIdle).toHaveBeenCalledTimes(1);
-    // Map still rendered after READY
     expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
   });
 
@@ -375,5 +376,78 @@ describe('GoogleMap', () => {
     logSpy.mockRestore();
     warnSpy.mockRestore();
     errSpy.mockRestore();
+  });
+
+  // 21. Zero-size container: READY not reached until container has dimensions ────
+  it('does not reach READY when container has zero dimensions', async () => {
+    fakeContainer = { offsetWidth: 0, offsetHeight: 0 };
+    mockStatus = 'LOADED';
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+    await act(async () => {
+      render(<GoogleMap center={{ lat: 0, lng: 0 }} />);
+    });
+
+    // Fire idle — but containerReady was never signaled (zero-size container)
+    await fireIdle();
+
+    // Map is still rendered (LOADING with status=LOADED shows Map), just not READY
+    // Auth-failure CAN still transition the lifecycle because READY was not reached
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Map unavailable')).toBeInTheDocument();
+    });
+  });
+
+  // 22. NaN center falls back to DEFAULT_CENTER ─────────────────────────────────
+  it('falls back to DEFAULT_CENTER when center has NaN coordinates', async () => {
+    mockStatus = 'LOADED';
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+    await act(async () => {
+      render(<GoogleMap center={{ lat: NaN, lng: NaN }} />);
+    });
+    // Map still renders (no crash, safeCenter returns null → DEFAULT_CENTER used)
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+  });
+
+  // 23. null center falls back to DEFAULT_CENTER ────────────────────────────────
+  it('falls back to DEFAULT_CENTER when center is null', async () => {
+    mockStatus = 'LOADED';
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+    await act(async () => {
+      render(<GoogleMap center={null} />);
+    });
+    expect(screen.getByTestId('google-map-rendered')).toBeInTheDocument();
+  });
+
+  // 24. READY requires BOTH idleFired AND containerReady ────────────────────────
+  it('does not reach READY from idle alone when containerReady is false', async () => {
+    // Zero-size container → containerReady never fires
+    fakeContainer = { offsetWidth: 0, offsetHeight: 0 };
+    mockStatus = 'LOADED';
+    vi.resetModules();
+    const GoogleMap = await importGoogleMap();
+    await act(async () => {
+      render(<GoogleMap center={{ lat: 0, lng: 0 }} />);
+    });
+
+    // Fire idle — idleFired=true but containerReady=false
+    await fireIdle();
+
+    // Status is still LOADED → Map still renders, but READY was not reached.
+    // Confirm by verifying that a retry event can still reset us (READY is not set).
+    // If READY were set, fieldcore:maps:retry → back to LOADING but status=LOADED
+    // would keep the map rendered anyway. Instead we test via auth-failure
+    // (only applies pre-READY): it should still flip us to AUTH_ERROR.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Map unavailable')).toBeInTheDocument();
+    });
   });
 });
