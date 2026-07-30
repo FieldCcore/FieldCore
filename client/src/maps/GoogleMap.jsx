@@ -307,32 +307,40 @@ export function GoogleMap({
     ? { mapId: cfg.mapId }
     : (branded ? { styles: FIELDCORE_MAP_STYLES } : {});
 
+  // Wrap vis.gl's Map in our own div so className and user style land here.
+  // When className is passed directly to vis.gl <Map>, it sets style={undefined} on
+  // the container (src/components/map/index.tsx:231). That causes mapDiv (the div
+  // vis.gl creates and passes to new google.maps.Map()) to resolve height:100% against
+  // a CSS-only parent, which can read as 0 at initialization time. By keeping className
+  // on our wrapper and passing only style to <Map>, vis.gl uses combinedStyle as inline
+  // styles on its container — giving mapDiv an explicit inline parent height.
   return (
-    <Map
-      defaultCenter={resolvedCenter}
-      defaultZoom={zoom}
-      {...mapOptions}
-      mapTypeControl={false}
-      streetViewControl={false}
-      fullscreenControl={false}
-      zoomControl={true}
-      gestureHandling="greedy"
-      style={{ width: '100%', height: '100%', ...style }}
-      className={className}
-      onIdle={handleIdle}
-      {...props}
-    >
-      <MapResizeWatcher onContainerReady={handleContainerReady} />
-      {import.meta.env.DEV && (
-        <MapDevDiagnostics
-          lifecycle={lifecycle}
-          idleFired={idleFired}
-          containerReady={containerReady}
-          center={resolvedCenter}
-          zoom={zoom}
-        />
-      )}
-      <MapLayerErrorBoundary>{children}</MapLayerErrorBoundary>
-    </Map>
+    <div className={className} style={{ width: '100%', height: '100%', ...style }}>
+      <Map
+        defaultCenter={resolvedCenter}
+        defaultZoom={zoom}
+        {...mapOptions}
+        mapTypeControl={false}
+        streetViewControl={false}
+        fullscreenControl={false}
+        zoomControl={true}
+        gestureHandling="greedy"
+        style={{ width: '100%', height: '100%' }}
+        onIdle={handleIdle}
+        {...props}
+      >
+        <MapResizeWatcher onContainerReady={handleContainerReady} />
+        {import.meta.env.DEV && (
+          <MapDevDiagnostics
+            lifecycle={lifecycle}
+            idleFired={idleFired}
+            containerReady={containerReady}
+            center={resolvedCenter}
+            zoom={zoom}
+          />
+        )}
+        <MapLayerErrorBoundary>{children}</MapLayerErrorBoundary>
+      </Map>
+    </div>
   );
 }
