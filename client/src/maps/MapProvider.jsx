@@ -1,15 +1,11 @@
 import { useEffect } from 'react';
 import { APIProvider, useApiIsLoaded, useApiLoadingStatus } from '@vis.gl/react-google-maps';
+import { getGoogleMapsClientConfig, maskedKey } from './mapsConfig';
 
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-const _maskedKey = API_KEY ? API_KEY.slice(0, 8) + '…' : '(empty)';
+const _cfg = getGoogleMapsClientConfig();
 
+// ── Auth-failure handler — registered at module load (before any Maps script runs) ─
 if (typeof window !== 'undefined') {
-  console.log(
-    '[MapProvider] init | hasKey:', API_KEY.length > 0,
-    '| prefix:', _maskedKey,
-  );
-
   function suppressGoogleOverlay() {
     if (document.getElementById('fieldcore-maps-error-suppress')) return;
     const style = document.createElement('style');
@@ -21,15 +17,15 @@ if (typeof window !== 'undefined') {
 
   window.gm_authFailure = function () {
     console.error('[MapProvider] gm_authFailure — Maps JavaScript API key rejected', {
-      maskedKey: _maskedKey,
-      hostname: window.location.hostname,
-      ts: new Date().toISOString(),
+      maskedKey:   maskedKey(_cfg.apiKey),
+      hostname:    window.location.hostname,
+      ts:          new Date().toISOString(),
       likelyCauses: [
         '1. HTTP Referrer restriction: add https://www.getfieldcore.com/* in GCP Console → Credentials',
         '2. Maps JavaScript API not enabled in GCP Console → APIs & Services → Library',
         '3. Billing not active on the GCP project',
-        '4. API key rotated or deleted without redeploying Vercel (key is baked at build time)',
-        '5. VITE_GOOGLE_MAPS_API_KEY set for Preview only, not Production, in Vercel env settings',
+        '4. VITE_GOOGLE_MAPS_API_KEY was changed in Vercel but the project was not redeployed',
+        '5. VITE_GOOGLE_MAPS_API_KEY is scoped to Preview/Development only, not Production',
       ],
     });
 
@@ -37,15 +33,15 @@ if (typeof window !== 'undefined') {
 
     window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
       detail: {
-        code: 'auth-failure',
-        hostname: window.location.hostname,
-        maskedKey: _maskedKey,
-        ts: new Date().toISOString(),
+        code:      'auth-failure',
+        hostname:  window.location.hostname,
+        maskedKey: maskedKey(_cfg.apiKey),
+        ts:        new Date().toISOString(),
       },
     }));
   };
 
-  // Only log maps-related JS errors to avoid drowning out unrelated page errors
+  // Only log maps-related JS errors — don't drown out unrelated page errors
   window.addEventListener('error', function (e) {
     if (e.filename && e.filename.includes('maps.googleapis.com')) {
       console.error('[MapProvider][window.error]', e.message, e.filename, e.lineno);
@@ -62,7 +58,7 @@ if (typeof window !== 'undefined') {
 
   // Intercept the Maps JS script tag the instant APIProvider injects it.
   // Logs the full URL and every query parameter so we can see exactly what
-  // the browser is asking Google for — key, libraries, version, loading mode.
+  // the browser is asking Google for — key prefix, libraries, version, loading mode.
   const scriptObserver = new MutationObserver(function (mutations) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
@@ -81,7 +77,7 @@ if (typeof window !== 'undefined') {
 
         console.log('[MapProvider][script] FULL URL:', src);
         console.table({
-          key:       { value: p.get('key')      ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
+          key:       { value: p.get('key') ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
           libraries: { value: p.get('libraries') || '(none)', note: 'APIs requested at load time' },
           v:         { value: p.get('v')         || '(none)', note: 'Maps JS version' },
           loading:   { value: p.get('loading')   || '(none)', note: 'async/defer mode' },
@@ -99,61 +95,91 @@ if (typeof window !== 'undefined') {
   scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
 }
 
-function MapsDiagnostics() {
+// ── Dev-only diagnostic console group ────────────────────────────────────────
+function DevDiagnostics() {
   const isLoaded = useApiIsLoaded();
   const status   = useApiLoadingStatus();
 
   useEffect(() => {
-    console.log('[MapProvider] status:', status, '| isLoaded:', isLoaded);
+    if (!import.meta.env.DEV) return;
 
-    if (status === 'FAILED') {
-      // Script load failure (network/blocked) — distinct from auth failure (gm_authFailure)
-      console.error('[MapProvider] Maps JS script failed to load — network error or request blocked');
-      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
-        detail: {
-          code: 'load-failed',
-          hostname: window.location.hostname,
-          maskedKey: _maskedKey,
-          ts: new Date().toISOString(),
-        },
-      }));
-    }
+    console.group('[FieldCore Maps Diagnostics]');
+    console.table({
+      'config present':   _cfg.configured,
+      'masked key suffix': _cfg.configured ? maskedKey(_cfg.apiKey) : '(none)',
+      'loader state':     status,
+      'script present':   !!document.querySelector('script[src*="maps.googleapis.com"]'),
+      'google global':    typeof window !== 'undefined' && !!window.google?.maps,
+      'hostname':         typeof window !== 'undefined' ? window.location.hostname : '(ssr)',
+      'retry count':      0,
+      'skipped reason':   _cfg.failureReason || '(none)',
+    });
+    console.groupEnd();
   }, [status, isLoaded]);
+
+  useEffect(() => {
+    if (status === 'FAILED') {
+      console.error('[MapProvider] Maps JS script failed to load (network error or request blocked)');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+          detail: {
+            code:      'load-failed',
+            hostname:  window.location.hostname,
+            maskedKey: maskedKey(_cfg.apiKey),
+            ts:        new Date().toISOString(),
+          },
+        }));
+      }
+    }
+  }, [status]);
 
   return null;
 }
 
-function MissingKeyBanner() {
-  return (
-    <div style={{
-      width: '100%', height: '100%',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#f5f3ef', color: '#1C2333',
-      fontFamily: 'system-ui, sans-serif', fontSize: 13,
-      flexDirection: 'column', gap: 6, padding: 24, textAlign: 'center',
-    }}>
-      <strong>Google Maps API key is missing from frontend build.</strong>
-      <span style={{ color: '#5F667A', fontSize: 12 }}>
-        Set <code>VITE_GOOGLE_MAPS_API_KEY</code> in Vercel → Redeploy.
-        <br />For local dev, add it to <code>client/.env.local</code>.
-      </span>
-    </div>
-  );
+// ── Production diagnostics (status logging only, no console.table overhead) ───
+function ProdDiagnostics() {
+  const isLoaded = useApiIsLoaded();
+  const status   = useApiLoadingStatus();
+
+  useEffect(() => {
+    console.log('[MapProvider] status:', status, '| isLoaded:', isLoaded,
+      '| key:', maskedKey(_cfg.apiKey),
+      '| host:', typeof window !== 'undefined' ? window.location.hostname : '(ssr)');
+  }, [status, isLoaded]);
+
+  useEffect(() => {
+    if (status === 'FAILED') {
+      console.error('[MapProvider] Maps JS script failed to load');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+          detail: {
+            code:      'load-failed',
+            hostname:  window.location.hostname,
+            maskedKey: maskedKey(_cfg.apiKey),
+            ts:        new Date().toISOString(),
+          },
+        }));
+      }
+    }
+  }, [status]);
+
+  return null;
 }
 
 // No global `libraries` prop — the core Maps JS API only.
 // Individual components lazy-load what they need via useMapsLibrary().
 export function MapProvider({ children }) {
-  if (!API_KEY) {
-    // Render the full app normally — map components show a localized placeholder.
+  if (!_cfg.configured) {
+    // Render the full app normally — map components show localized placeholders.
     // This keeps non-map pages (dashboard, billing, etc.) working without the key.
-    console.warn('[MapProvider] VITE_GOOGLE_MAPS_API_KEY not set — map features disabled');
     return <>{children}</>;
   }
 
+  const Diagnostics = import.meta.env.DEV ? DevDiagnostics : ProdDiagnostics;
+
   return (
-    <APIProvider apiKey={API_KEY} language="en" region="US">
-      <MapsDiagnostics />
+    <APIProvider apiKey={_cfg.apiKey} language="en" region="US">
+      <Diagnostics />
       {children}
     </APIProvider>
   );

@@ -1,123 +1,150 @@
 # FieldCore Dispatch — Google Maps Manual QA Checklist
 
-**Date:** 2026-07-29  
+**Date:** 2026-07-30  
 **Page:** `https://www.getfieldcore.com/dispatch`
 
 ---
 
-## Pre-QA: GCP Console Verification
+## Pre-QA: Deploy the repaired build
 
-Before testing the map, confirm these are correct in GCP Console → APIs & Services → Credentials:
+Before testing, confirm the correct variable is set and the project has been redeployed:
 
-- [ ] HTTP Referrer restriction includes `https://www.getfieldcore.com/*`
-- [ ] HTTP Referrer restriction includes `https://getfieldcore.com/*`
-- [ ] Maps JavaScript API is enabled (APIs & Services → Library → search "Maps JavaScript")
-- [ ] Billing is active (Billing → Overview shows no suspended state)
-- [ ] The key used in Vercel (`VITE_GOOGLE_MAPS_API_KEY`) matches the key in GCP Console
+### 1 — Confirm production variable exists and has the correct name
+
+In Vercel Dashboard → Project `field-core-seem` → Settings → Environment Variables:
+
+- [ ] Variable name is exactly `VITE_GOOGLE_MAPS_API_KEY` (must have `VITE_` prefix)
+- [ ] Variable is scoped to **Production** environment
+- [ ] Value contains no surrounding quotes (e.g. `AIzaSy...`, not `"AIzaSy..."`)
+- [ ] Value has no leading or trailing whitespace
+
+> **If the variable is named `GOOGLE_MAPS_API_KEY` (without `VITE_`):** Vite will not expose it in the browser bundle. Rename it or add a new variable with the correct `VITE_` prefix.
+
+### 2 — Confirm variable name matches the Vite framework convention
+
+The frontend is **Vite** (not Next.js, not CRA). Vite requires the `VITE_` prefix. Variables without it are treated as backend-only and produce `undefined` in the browser bundle.
+
+- [ ] Confirmed: framework is Vite
+- [ ] Confirmed: variable is `VITE_GOOGLE_MAPS_API_KEY` (not `NEXT_PUBLIC_`, not `REACT_APP_`)
+
+### 3 — Trigger a clean production redeploy
+
+Saving the Vercel env var does NOT update the live bundle — Vite bakes values at build time.
+
+```sh
+npx vercel --prod
+```
+
+Or: Vercel Dashboard → Deployments → most recent → ⋯ → **Redeploy** → **Without cache**.
+
+- [ ] Redeploy triggered after variable was saved
+- [ ] Deployment completed successfully (no build errors in Vercel logs)
 
 ---
 
-## Section 1 — Map Loads Without Error
+## Section 1 — Confirm Google Maps request in Network tab
 
-- [ ] Navigate to `/dispatch` as an owner or manager
-- [ ] Map renders with FieldCore branded styles (muted tones, no Google default blue water)
-- [ ] No gray "Oops! Something went wrong" overlay from Google
-- [ ] No `[MapProvider] gm_authFailure` log in browser console
+- [ ] Open `https://www.getfieldcore.com/dispatch` (owner or manager account)
+- [ ] Open DevTools → **Network** tab → filter by `maps`
+- [ ] Hard refresh (Cmd/Ctrl+Shift+R)
+- [ ] **A request appears to `maps.googleapis.com/maps/api/js`** ← this is the acceptance criterion
+- [ ] Request status is 200
+
+If NO request appears → the key is still missing from the bundle. Re-check Step 1 above.
+
+---
+
+## Section 2 — Confirm map renders
+
+- [ ] The map renders with FieldCore branded styles (muted tones, off-white background)
+- [ ] No gray Google "Oops! Something went wrong" overlay
+- [ ] No FieldCore "Map unavailable" fallback card
 - [ ] Console shows `[MapProvider] status: LOADED | isLoaded: true`
-- [ ] Console shows `[MapProvider][script] FULL URL:` with the script parameters table
+- [ ] Console shows `[MapProvider][script] FULL URL: https://maps.googleapis.com/maps/api/js?...`
 
 ---
 
-## Section 2 — Auth Failure Fallback (simulate by using wrong key)
+## Section 3 — Confirm retry works
 
-To test without breaking production, temporarily test on a staging/preview deployment with an invalid key:
-
-- [ ] With an invalid/rejected API key, the FieldCore "Map unavailable" card renders instead of Google's gray overlay
-- [ ] The card shows the pin icon and "Map unavailable" text
-- [ ] "Retry" button calls `window.location.reload()`
-- [ ] Google's `.gm-err-container` overlay is hidden (inspect DOM: `display: none` on that element)
-- [ ] Console shows the structured diagnostic including masked key prefix and ordered probable causes
-- [ ] `fieldcore:maps:auth-failure` custom event fires (verify in DevTools → Console → `window.addEventListener('fieldcore:maps:auth-failure', console.log)`)
+- [ ] Simulate a transient failure: in DevTools → Network → set to **Offline**, reload, re-enable Online
+- [ ] "Map unavailable" card appears with a **Retry** button
+- [ ] Clicking Retry performs `window.location.reload()`
+- [ ] After reload with network restored, map loads normally
 
 ---
 
-## Section 3 — Missing Key State
+## Section 4 — Confirm no complete API key appears in logs
 
-- [ ] With `VITE_GOOGLE_MAPS_API_KEY` unset in Vercel (or cleared from `.env.local` for local dev):
-  - [ ] `[MapProvider] VITE_GOOGLE_MAPS_API_KEY not set — map features disabled` logged in console
-  - [ ] `GoogleMap` renders "Map unavailable — Set VITE_GOOGLE_MAPS_API_KEY to enable maps."
-  - [ ] Rest of Dispatch page (tech list, job list) renders normally
-
----
-
-## Section 4 — Map Markers
-
-- [ ] Tech markers appear at technician GPS positions (within 15 min of last ping)
-- [ ] Job markers appear at service address coordinates
-- [ ] Clicking a tech marker selects the tech (panel scrolls/highlights)
-- [ ] Clicking a job marker opens the job detail drawer
-- [ ] Jobs with missing/invalid service coordinates do NOT cause a JS error
-- [ ] Techs with stale GPS (>15 min) do NOT show a marker (no invalid coordinate pin)
+- [ ] Open DevTools → Console
+- [ ] No line shows a full `AIzaSy...` key string (39 characters)
+- [ ] All key references are masked (`AIzaSy…1234` format — first 6 + last 4)
+- [ ] `[MapProvider][script]` table shows only first 8 chars of key in the `key` row
 
 ---
 
-## Section 5 — Map Auto-Center
+## Section 5 — Auth failure fallback (optional — staging only)
 
-- [ ] With active techs with GPS: map centers on live tech positions
-- [ ] Without active techs but with mapped jobs: map centers on job area
-- [ ] Without either: map centers on browser geolocation (if permitted) or HQ or continental US fallback
-- [ ] Centering does not throw errors when the positions array is empty
+Test with an intentionally invalid key on a staging/preview deployment:
 
----
-
-## Section 6 — Dispatch Panel Interactions
-
-- [ ] Assigning a tech to a job from the panel does not break the map
-- [ ] Selecting a tech in the panel highlights their marker
-- [ ] Filtering jobs does not throw map errors
+- [ ] FieldCore `MapAuthError` component renders (pin icon, "Map unavailable", Retry button)
+- [ ] Google's gray `.gm-err-container` overlay is hidden (`display: none` in DevTools Elements)
+- [ ] Console shows `[MapProvider] gm_authFailure` with structured diagnostic
+- [ ] Console shows ordered list of probable causes
+- [ ] `fieldcore:maps:auth-failure` custom event fires (verify: `window.addEventListener('fieldcore:maps:auth-failure', e => console.log(e.detail))`)
+- [ ] In dev mode: error message includes masked key and GCP diagnostic steps
+- [ ] In production mode: error message shows user-safe "Unable to load map" text
 
 ---
 
-## Section 7 — Backend Maps Proxy
+## Section 6 — Map markers (when map is loaded)
 
-- [ ] Unauthenticated `GET /api/maps/geocode?address=Tampa+FL` → 401
-- [ ] Unauthenticated `GET /api/maps/autocomplete?input=Tampa` → 401
-- [ ] Unauthenticated `POST /api/maps/route` → 401
-- [ ] Authenticated `GET /api/maps/geocode?address=1+Main+St+Tampa+FL` → 200 with `{ lat, lng, formatted_address }`
-- [ ] Authenticated `GET /api/maps/autocomplete?input=Tam` → 200 with `{ predictions: [] }` (input too short)
-- [ ] Authenticated `GET /api/maps/autocomplete?input=Tampa` → 200 with predictions array
-- [ ] API responses never contain the raw API key string
+- [ ] Tech markers appear at live GPS positions (within 15 min of last ping)
+- [ ] Job markers appear at valid service address coordinates
+- [ ] Jobs with missing or invalid coordinates show no marker (no console error)
+- [ ] Techs with GPS older than 15 min show no marker
 
 ---
 
-## Section 8 — Error Boundary
+## Section 7 — Zero-data states do not break map
 
-- [ ] If a JavaScript error is thrown inside the map subtree, `CalendarErrorBoundary` (if wrapping dispatch) catches it rather than crashing the page
-- [ ] "Try again" button resets error state
-
----
-
-## Section 9 — Cross-Browser
-
-- [ ] Chrome (latest): map loads and all markers render
-- [ ] Firefox (latest): map loads and all markers render
-- [ ] Safari (latest): map loads and all markers render
-- [ ] Mobile Chrome (iOS/Android): map renders, touch pan/zoom works
+- [ ] With no jobs assigned: map loads, shows empty map (no markers, no error)
+- [ ] With no technicians on duty: map loads normally
+- [ ] Map center defaults to continental US fallback when no positions available
 
 ---
 
-## Section 10 — Performance
+## Section 8 — Backend proxy routes
 
-- [ ] Dispatch page with 20+ jobs renders without noticeable lag
-- [ ] Map pan and zoom are smooth
-- [ ] No memory leaks from marker cleanup (navigate away and back, check DevTools Memory)
+Quick API check (can be done with browser DevTools or curl with a valid token):
+
+- [ ] `GET /api/maps/geocode?address=Tampa+FL` (authenticated) → 200 with lat/lng
+- [ ] `GET /api/maps/geocode` (unauthenticated) → 401
+- [ ] `GET /api/maps/autocomplete?input=Tampa` (unauthenticated) → 401
+- [ ] `POST /api/maps/route` (unauthenticated) → 401
+
+---
+
+## Section 9 — Dev diagnostics (local dev only)
+
+In local dev with `VITE_GOOGLE_MAPS_API_KEY` set in `client/.env.local`:
+
+- [ ] Console shows `[FieldCore Maps Diagnostics]` group on page load
+- [ ] Group shows: config present = true, loader state, script present, google global, hostname
+- [ ] Key suffix is masked (last 4 chars visible, full key never shown)
+
+With key NOT set:
+
+- [ ] Console warns `[FieldCore Maps] Loader skipped — MAP_CONFIG_MISSING_API_KEY`
+- [ ] Warning includes exact instructions: set `VITE_GOOGLE_MAPS_API_KEY` in `client/.env.local`
 
 ---
 
 ## Pass Criteria
 
-All checkboxes in Sections 1, 3, 4, 5, 6, and 7 must pass for the repair to be considered complete.
+**Blocking for release:**
+- Section 1: Network tab shows request to `maps.googleapis.com`
+- Section 2: Map renders without Google or FieldCore error overlay
+- Section 4: No full API key in console logs
 
-Section 2 requires a staging/preview environment with an intentionally invalid key.
-
-Sections 8–10 are recommended but not blocking for the initial repair release.
+**Recommended (non-blocking):**
+- Sections 3, 5, 6, 7, 8, 9
