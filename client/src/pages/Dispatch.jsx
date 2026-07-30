@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import api from '../api';
 import { useGeocoder } from '../maps';
-import { DispatchMap } from '../maps/DispatchMap';
+import { DirectDispatchMap } from '../maps/DirectDispatchMap';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -287,7 +287,7 @@ export default function Dispatch() {
 
       {/* ── Map ── */}
       <div className="dispatch-map-wrap">
-        <DispatchMap />
+        <DirectDispatchMap />
 
         {/* Legend */}
         <div className="dispatch-legend">
