@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Camera, Timer, MessageSquare, CheckCircle, CalendarDays } from 'lucide-react';
 import { format, addMinutes } from 'date-fns';
 import { formatDuration } from '../utils/normalizeJob';
+import { formatTZ, resolveCalendarTimeZone } from '../utils/calendarTimezone';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from './StatusBadge';
@@ -49,7 +50,8 @@ function fmtHistorical(min) {
   return `${days} days ago`;
 }
 
-export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit }) {
+export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit, calendarTZ }) {
+  const tz = resolveCalendarTimeZone({ businessTimezone: calendarTZ }).timezone;
   const [job,           setJob]           = useState(initialJob);
   const [sessions,      setSessions]      = useState(initialJob.sessions || []);
   const [sessionsLoaded,setSessLoaded]    = useState(!!initialJob.sessions);
@@ -347,12 +349,12 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             <>
               <div className="detail-row">
                 <label>Start</label>
-                <span>{job.scheduled_at ? format(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a') : '—'}</span>
+                <span>{job.scheduled_at ? formatTZ(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a', tz) : '—'}</span>
               </div>
               {job.scheduled_at && job.duration_minutes ? (
                 <div className="detail-row">
                   <label>End</label>
-                  <span>{format(addMinutes(new Date(job.scheduled_at), job.duration_minutes), 'h:mm a')}</span>
+                  <span>{formatTZ(addMinutes(new Date(job.scheduled_at), job.duration_minutes), 'h:mm a', tz)}</span>
                 </div>
               ) : null}
               {job.duration_minutes ? (
@@ -383,7 +385,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             <div className="detail-row">
               <label>Check-in</label>
               <span>
-                {format(new Date(job.checkin_at), 'h:mm a')}
+                {formatTZ(new Date(job.checkin_at), 'h:mm a', tz)}
                 {job.checkin_lat ? ` · ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}
               </span>
             </div>
@@ -583,7 +585,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                   {isAdmin && job.checkin_lat && (
                     <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
                       Tech GPS: {parseFloat(job.checkin_lat).toFixed(4)}°, {parseFloat(job.checkin_lng || 0).toFixed(4)}°
-                      {job.checkin_at ? ` · Arrived ${format(new Date(job.checkin_at), 'h:mm a')}` : ''}
+                      {job.checkin_at ? ` · Arrived ${formatTZ(new Date(job.checkin_at), 'h:mm a', tz)}` : ''}
                     </div>
                   )}
                   {isAdmin && (

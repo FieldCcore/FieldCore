@@ -8,6 +8,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../api';
 import JobForm from '../components/JobForm';
 import JobDetail from '../components/JobDetail';
+import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 
 // ─── Calendar status color system ────────────────────────────────────────────
 // Four canonical statuses in the Calendar view.
@@ -217,6 +218,7 @@ export default function Jobs() {
   const [jobs,            setJobs]            = useState([]);
   const [sessions,        setSessions]        = useState([]);
   const [businessHours,   setBusinessHours]   = useState([]);
+  const [calendarTZ,      setCalendarTZ]      = useState(() => resolveCalendarTimeZone({}).timezone);
   const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'month');
   const [date,            setDate]            = useState(new Date());
   const [modal,           setModal]           = useState(null);    // 'create' | 'edit'
@@ -244,6 +246,8 @@ export default function Jobs() {
   useEffect(() => {
     api.get('/business-settings').then(r => {
       if (r.data?.hours) setBusinessHours(r.data.hours);
+      const { timezone } = resolveCalendarTimeZone({ businessTimezone: r.data?.profile?.timezone });
+      setCalendarTZ(timezone);
     }).catch(() => {});
   }, []);
 
@@ -457,14 +461,23 @@ export default function Jobs() {
 
   return (
     <div>
-      {/* Legend — 4 canonical statuses only */}
-      <div className="calendar-legend" role="list" aria-label="Job status legend">
-        {LEGEND.map(({ key, label, color }) => (
-          <span key={key} className="legend-item" role="listitem">
-            <span className="legend-dot" style={{ background: color }} aria-hidden="true" />
-            {label}
-          </span>
-        ))}
+      {/* Legend — 4 canonical statuses only + timezone indicator */}
+      <div className="calendar-legend" role="list" aria-label="Job status legend" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          {LEGEND.map(({ key, label, color }) => (
+            <span key={key} className="legend-item" role="listitem">
+              <span className="legend-dot" style={{ background: color }} aria-hidden="true" />
+              {label}
+            </span>
+          ))}
+        </div>
+        <span
+          title="Calendar display timezone"
+          style={{ fontSize: 11, color: 'var(--steel)', letterSpacing: '.02em',
+            fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          {calendarTZ}
+        </span>
       </div>
 
       {/* Filter bar — 4 status chips only; clicking an active chip deselects (shows all) */}
@@ -605,6 +618,7 @@ export default function Jobs() {
               onClose={closeDrawer}
               onStatusChange={handleStatusChange}
               onEdit={() => setModal('edit')}
+              calendarTZ={calendarTZ}
             />
           </aside>
         </div>
