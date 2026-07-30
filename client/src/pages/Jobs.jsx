@@ -8,6 +8,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../api';
 import JobForm from '../components/JobForm';
 import JobDetail from '../components/JobDetail';
+import CalendarErrorBoundary from '../components/CalendarErrorBoundary';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 
 // ─── Calendar status color system ────────────────────────────────────────────
@@ -218,6 +219,7 @@ export default function Jobs() {
   const [jobs,            setJobs]            = useState([]);
   const [sessions,        setSessions]        = useState([]);
   const [businessHours,   setBusinessHours]   = useState([]);
+  const [techs,           setTechs]           = useState([]);
   const [calendarTZ,      setCalendarTZ]      = useState(() => resolveCalendarTimeZone({}).timezone);
   const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'month');
   const [date,            setDate]            = useState(new Date());
@@ -227,6 +229,7 @@ export default function Jobs() {
   const [defaultMultiDay, setDefaultMultiDay] = useState(false);
   const [loading,         setLoading]         = useState(true);
   const [statusFilter,    setStatusFilter]    = useState(() => VALID_FILTERS.includes(initFilter) ? initFilter : 'all');
+  const [techFilter,      setTechFilter]      = useState(null);
 
   const viewScrolled = useRef(false);
 
@@ -248,6 +251,13 @@ export default function Jobs() {
       if (r.data?.hours) setBusinessHours(r.data.hours);
       const { timezone } = resolveCalendarTimeZone({ businessTimezone: r.data?.profile?.timezone });
       setCalendarTZ(timezone);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.get('/users').then(r => {
+      const techUsers = (r.data || []).filter(u => u.role === 'tech' || u.role === 'manager' || u.role === 'owner');
+      setTechs(techUsers);
     }).catch(() => {});
   }, []);
 
@@ -359,14 +369,29 @@ export default function Jobs() {
     return [...jobEvents, ...sessionEvents];
   }, [jobs, sessions]);
 
-  // ── Filter events by status ────────────────────────────────────────────────
+  // ── Filter events by status and/or tech ───────────────────────────────────
   const events = useMemo(() => {
-    if (statusFilter === 'all') return allEvents;
-    const match = statusFilter === 'in_progress'
-      ? ['in_progress', 'partially_completed']
-      : [statusFilter];
-    return allEvents.filter(ev => match.includes(ev.resource?.status || 'scheduled'));
-  }, [allEvents, statusFilter]);
+    let filtered = allEvents;
+
+    if (statusFilter !== 'all') {
+      const match = statusFilter === 'in_progress'
+        ? ['in_progress', 'partially_completed']
+        : [statusFilter];
+      filtered = filtered.filter(ev => match.includes(ev.resource?.status || 'scheduled'));
+    }
+
+    if (techFilter) {
+      filtered = filtered.filter(ev => {
+        const r = ev.resource || {};
+        if (r._type === 'session') {
+          return r.lead_tech_id === techFilter || (r.techs || []).some(t => t.tech_id === techFilter);
+        }
+        return r.tech_id === techFilter;
+      });
+    }
+
+    return filtered;
+  }, [allEvents, statusFilter, techFilter]);
 
   // ── Today's operational summary ────────────────────────────────────────────
   const todaySummary = useMemo(() => {
@@ -480,8 +505,8 @@ export default function Jobs() {
         </span>
       </div>
 
-      {/* Filter bar — 4 status chips only; clicking an active chip deselects (shows all) */}
-      <div className="cal-filter-bar" role="group" aria-label="Filter by job status">
+      {/* Filter bar — status chips + technician filter; filters stack */}
+      <div className="cal-filter-bar" role="group" aria-label="Filter calendar events">
         <span className="cal-filter-label">Filter:</span>
         {LEGEND.map(opt => (
           <button
@@ -494,7 +519,29 @@ export default function Jobs() {
             {opt.label}
           </button>
         ))}
-        {statusFilter !== 'all' && (
+        {techs.length > 0 && (
+          <select
+            value={techFilter || ''}
+            onChange={e => setTechFilter(e.target.value || null)}
+            aria-label="Filter by technician"
+            style={{
+              marginLeft: 8,
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid var(--lightgray)',
+              fontSize: 13,
+              color: techFilter ? 'var(--navy)' : 'var(--steel)',
+              background: techFilter ? 'var(--off)' : 'transparent',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">All technicians</option>
+            {techs.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        )}
+        {(statusFilter !== 'all' || techFilter) && (
           <span className="cal-filter-count" aria-live="polite">
             {events.length} event{events.length !== 1 ? 's' : ''}
           </span>
@@ -538,26 +585,28 @@ export default function Jobs() {
           Loading schedule…
         </div>
       ) : (
-        <div className="calendar-wrap">
-          <Calendar
-            localizer={localizer}
-            events={events}
-            view={view}
-            date={date}
-            onView={setView}
-            onNavigate={setDate}
-            onSelectSlot={handleSelectSlot}
-            onSelectEvent={handleSelectEvent}
-            eventPropGetter={eventStyleGetter}
-            slotPropGetter={businessHours.length > 0 ? slotPropGetter : undefined}
-            min={calMin}
-            max={calMax}
-            selectable
-            views={{ month: true, week: true, day: true, agenda: FieldCoreAgendaView }}
-            components={CAL_COMPONENTS}
-            style={{ height: 'max(560px, calc(100vh - 320px))' }}
-          />
-        </div>
+        <CalendarErrorBoundary>
+          <div className="calendar-wrap">
+            <Calendar
+              localizer={localizer}
+              events={events}
+              view={view}
+              date={date}
+              onView={setView}
+              onNavigate={setDate}
+              onSelectSlot={handleSelectSlot}
+              onSelectEvent={handleSelectEvent}
+              eventPropGetter={eventStyleGetter}
+              slotPropGetter={businessHours.length > 0 ? slotPropGetter : undefined}
+              min={calMin}
+              max={calMax}
+              selectable
+              views={{ month: true, week: true, day: true, agenda: FieldCoreAgendaView }}
+              components={CAL_COMPONENTS}
+              style={{ height: 'max(560px, calc(100vh - 320px))' }}
+            />
+          </div>
+        </CalendarErrorBoundary>
       )}
 
       {/* Create modal */}

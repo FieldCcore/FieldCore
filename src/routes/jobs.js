@@ -55,6 +55,145 @@ async function getSessionsForJob(jobId, accountId) {
   return sessions;
 }
 
+// ── POST /api/jobs/check-conflicts ───────────────────────────────────────────
+// Scheduling engine: detect overlapping jobs or availability blocks for a tech.
+// Must be declared before /:id to avoid route shadowing.
+router.post('/check-conflicts', requireAuth, async (req, res) => {
+  const { tech_id, starts_at, ends_at, exclude_job_id } = req.body;
+  if (!tech_id || !starts_at || !ends_at) {
+    return res.status(400).json({ error: 'tech_id, starts_at, and ends_at are required' });
+  }
+
+  const start = new Date(starts_at);
+  const end   = new Date(ends_at);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    return res.status(400).json({ error: 'Invalid date range: ends_at must be after starts_at' });
+  }
+
+  try {
+    // Verify tech belongs to this account
+    const { rows: techRows } = await pool.query(
+      `SELECT id, name FROM users WHERE id = $1 AND account_id = $2`,
+      [tech_id, req.accountId]
+    );
+    if (!techRows.length) return res.status(404).json({ error: 'Technician not found' });
+
+    const conflicts  = [];
+    const warnings   = [];
+
+    // 1. Overlapping single-day jobs assigned to this tech
+    const jobConflictQuery = `
+      SELECT j.id, j.service_type, j.scheduled_at, j.duration_minutes, j.status, c.name AS client_name
+      FROM   jobs j
+      JOIN   clients c ON c.id = j.client_id
+      WHERE  j.account_id     = $1
+        AND  j.tech_id        = $2
+        AND  j.status         NOT IN ('cancelled','complete','no_show')
+        AND  j.scheduled_at   IS NOT NULL
+        AND  j.scheduled_at  <  $4
+        AND  (j.scheduled_at + (COALESCE(j.duration_minutes,60) * interval '1 minute')) > $3
+        ${exclude_job_id ? 'AND j.id != $5' : ''}
+    `;
+    const jobConflictValues = exclude_job_id
+      ? [req.accountId, tech_id, starts_at, ends_at, exclude_job_id]
+      : [req.accountId, tech_id, starts_at, ends_at];
+
+    const { rows: jobConflicts } = await pool.query(jobConflictQuery, jobConflictValues);
+
+    for (const j of jobConflicts) {
+      conflicts.push({
+        type:        'job',
+        id:          j.id,
+        title:       `${j.service_type} — ${j.client_name}`,
+        starts_at:   j.scheduled_at,
+        ends_at:     new Date(new Date(j.scheduled_at).getTime() + (j.duration_minutes || 60) * 60000),
+        status:      j.status,
+        severity:    'error',
+        message:     `Conflicts with "${j.service_type}" for ${j.client_name}`,
+      });
+    }
+
+    // 2. Overlapping multi-day sessions assigned to this tech
+    const sessionConflictQuery = `
+      SELECT s.id, s.scheduled_date, s.start_time, s.end_time,
+             j.service_type, c.name AS client_name
+      FROM   job_sessions s
+      JOIN   jobs j    ON j.id = s.job_id
+      JOIN   clients c ON c.id = j.client_id
+      WHERE  s.account_id = $1
+        AND  s.status NOT IN ('cancelled','missed')
+        AND  (
+          s.lead_tech_id = $2
+          OR EXISTS (
+            SELECT 1 FROM job_session_techs jst
+            WHERE jst.session_id = s.id AND jst.tech_id = $2
+          )
+        )
+        AND  (s.scheduled_date + COALESCE(s.start_time,'08:00'::time))::timestamptz < $4
+        AND  (s.scheduled_date + COALESCE(s.end_time,'17:00'::time))::timestamptz  > $3
+    `;
+    const { rows: sessionConflicts } = await pool.query(sessionConflictQuery,
+      [req.accountId, tech_id, starts_at, ends_at]);
+
+    for (const s of sessionConflicts) {
+      conflicts.push({
+        type:      'session',
+        id:        s.id,
+        title:     `${s.service_type} — ${s.client_name} (${s.scheduled_date})`,
+        starts_at: `${s.scheduled_date}T${s.start_time || '08:00'}:00`,
+        ends_at:   `${s.scheduled_date}T${s.end_time   || '17:00'}:00`,
+        severity:  'error',
+        message:   `Session conflict: ${s.service_type} for ${s.client_name} on ${s.scheduled_date}`,
+      });
+    }
+
+    // 3. Availability blocks (vacation, break, blocked time)
+    const { rows: blocks } = await pool.query(
+      `SELECT id, block_type, title, starts_at, ends_at
+       FROM   tech_availability_blocks
+       WHERE  account_id = $1
+         AND  user_id    = $2
+         AND  starts_at  < $4
+         AND  ends_at    > $3`,
+      [req.accountId, tech_id, starts_at, ends_at]
+    );
+
+    for (const b of blocks) {
+      const isVacation = b.block_type === 'vacation';
+      warnings.push({
+        type:      'availability_block',
+        id:        b.id,
+        block_type: b.block_type,
+        title:     b.title || b.block_type,
+        starts_at: b.starts_at,
+        ends_at:   b.ends_at,
+        severity:  isVacation ? 'error' : 'warning',
+        message:   isVacation
+          ? `Tech is on vacation during this time`
+          : `Tech has a "${b.block_type}" block: ${b.title || ''}`,
+      });
+    }
+
+    const hasErrors   = conflicts.length > 0 || warnings.some(w => w.severity === 'error');
+    const hasWarnings = warnings.some(w => w.severity === 'warning');
+
+    res.json({
+      has_conflicts: hasErrors,
+      has_warnings:  hasWarnings,
+      tech_name:     techRows[0].name,
+      conflicts,
+      warnings,
+      summary: hasErrors
+        ? `${conflicts.length + warnings.filter(w => w.severity === 'error').length} scheduling conflict(s) detected`
+        : hasWarnings
+          ? `${warnings.length} scheduling warning(s)`
+          : 'No conflicts detected',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/jobs ─────────────────────────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
   const { date, date_from, date_to, tech_id, status, client_id } = req.query;
@@ -418,6 +557,10 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
         job = { ...job, service_lat: geo.lat, service_lng: geo.lng, service_address: geo.formatted_address || job.service_address };
       }
     }
+
+    const updatedFields = {};
+    PATCHABLE_JOB_FIELDS.forEach(f => { if (req.body[f] !== undefined) updatedFields[f] = req.body[f]; });
+    audit.log(req.accountId, req.userId, 'job.updated', 'job', job.id, updatedFields, req.ip);
 
     res.json(job);
   } catch (err) {

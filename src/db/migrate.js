@@ -924,12 +924,45 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_job_photos_category ON job_photos(job_id, photo_category)`,
 
   // ── CANONICAL JOB FIELDS ───────────────────────────────────────────────────
-  // duration_minutes: how long the job is expected to take (used for calendar end time).
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 60`,
-  // description: free-text service description shown to the client (distinct from notes).
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT`,
-  // grace_period_minutes: per-job override for no-show grace window (falls back to account setting).
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS grace_period_minutes INT`,
+
+  // ── SCHEDULING ENGINE ───────────────────────────────────────────────────────
+  // noshow_declared_at: timestamp when admin officially declares a no-show
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS noshow_declared_at TIMESTAMPTZ`,
+
+  // Performance indexes for calendar date-range queries (thousands of jobs)
+  `CREATE INDEX IF NOT EXISTS idx_jobs_account_scheduled ON jobs(account_id, scheduled_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_account_status    ON jobs(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_account_tech      ON jobs(account_id, tech_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_account_client    ON jobs(account_id, client_id)`,
+
+  // Expand recurring options: daily and quarterly added to the existing set
+  `ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_recurring_check`,
+  `ALTER TABLE jobs ADD CONSTRAINT jobs_recurring_check
+     CHECK (recurring IN ('none','daily','weekly','biweekly','monthly','quarterly'))`,
+
+  // Tech availability blocks — vacation, personal time, breaks, training, blocked slots
+  `CREATE TABLE IF NOT EXISTS tech_availability_blocks (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     user_id        UUID NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+     block_type     TEXT NOT NULL DEFAULT 'blocked'
+                      CHECK (block_type IN ('vacation','blocked','break','training','personal')),
+     title          TEXT,
+     starts_at      TIMESTAMPTZ NOT NULL,
+     ends_at        TIMESTAMPTZ NOT NULL,
+     is_all_day     BOOLEAN NOT NULL DEFAULT FALSE,
+     notes          TEXT,
+     created_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     CONSTRAINT tech_blocks_dates_check CHECK (ends_at > starts_at)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_tech_blocks_account ON tech_availability_blocks(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_tech_blocks_user    ON tech_availability_blocks(account_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_tech_blocks_time    ON tech_availability_blocks(account_id, starts_at, ends_at)`,
 ];
 
 async function runMigrations() {
