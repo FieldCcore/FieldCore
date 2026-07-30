@@ -922,6 +922,14 @@ const MIGRATIONS = [
   // 'general' default covers all photos uploaded before this migration.
   `ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS photo_category TEXT NOT NULL DEFAULT 'general'`,
   `CREATE INDEX IF NOT EXISTS idx_job_photos_category ON job_photos(job_id, photo_category)`,
+
+  // ── CANONICAL JOB FIELDS ───────────────────────────────────────────────────
+  // duration_minutes: how long the job is expected to take (used for calendar end time).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 60`,
+  // description: free-text service description shown to the client (distinct from notes).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT`,
+  // grace_period_minutes: per-job override for no-show grace window (falls back to account setting).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS grace_period_minutes INT`,
 ];
 
 async function runMigrations() {

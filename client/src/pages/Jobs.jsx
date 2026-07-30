@@ -65,27 +65,21 @@ function scrollToNow() {
 // ─── Custom event card ────────────────────────────────────────────────────────
 // react-big-calendar calls this with { event, title, isAllDay, ... }
 function CalEventCard({ event }) {
-  const isSession = event.resource?._type === 'session';
-  const raw       = event.title || '';
-
-  let dayLabel = '', service = '', client = '';
-  if (isSession) {
-    const m = raw.match(/^\[([^\]]+)\]\s*(.*)/);
-    if (m) {
-      dayLabel = m[1];
-      [service, client] = m[2].split(' — ');
-    } else {
-      [service, client] = raw.split(' — ');
-    }
-  } else {
-    [service, client] = raw.split(' — ');
-  }
+  const resource   = event.resource || {};
+  const isSession  = resource._type === 'session';
+  const clientName = resource.client_name || '';
+  const svcName    = resource.service_type || resource.title || '';
+  const dayLabel   = isSession
+    ? (resource.total_sessions > 1
+        ? `Day ${resource.day_number} of ${resource.total_sessions}`
+        : 'Multi-Day')
+    : '';
 
   return (
     <div className="cal-event-card">
-      {isSession && dayLabel && <span className="cal-event-day">{dayLabel}</span>}
-      <span className="cal-event-svc">{service}</span>
-      {client && <span className="cal-event-cli">{client}</span>}
+      {dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+      {clientName && <span className="cal-event-cli">{clientName}</span>}
+      {svcName    && <span className="cal-event-svc">{svcName}</span>}
     </div>
   );
 }
@@ -167,7 +161,6 @@ function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
         const end    = new Date(event.end);
         const status = event.resource?.status || 'scheduled';
         const color  = CAL_STATUS_COLOR[status] || '#5F667A';
-        const [service, client] = (event.title || '').split(' — ');
         return (
           <div
             key={event.id ?? idx}
@@ -185,8 +178,10 @@ function FieldCoreAgendaView({ date, events, length = 30, onSelectEvent }) {
             </div>
             <div className="fc-agenda-cell fc-agenda-event" role="cell">
               <span className="fc-agenda-dot" style={{ background: color }} aria-hidden="true" />
-              <span className="fc-agenda-svc">{service}</span>
-              {client && <span className="fc-agenda-cli">— {client}</span>}
+              {(event.resource?.client_name) && (
+                <span className="fc-agenda-cli">{event.resource.client_name} —</span>
+              )}
+              <span className="fc-agenda-svc">{event.resource?.service_type || event.resource?.title || ''}</span>
             </div>
           </div>
         );
@@ -261,12 +256,14 @@ export default function Jobs() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Persist view + filter to URL ────────────────────────────────────────────
+  // ── Persist view + filter to URL (merges — never clobbers ?job=) ────────────
   useEffect(() => {
-    const p = {};
-    if (view !== 'week')    p.view   = view;
-    if (statusFilter !== 'all') p.filter = statusFilter;
-    setSearchParams(p, { replace: true });
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      if (view !== 'week')         p.set('view', view);   else p.delete('view');
+      if (statusFilter !== 'all')  p.set('filter', statusFilter); else p.delete('filter');
+      return p;
+    }, { replace: true });
   }, [view, statusFilter, setSearchParams]);
 
   // ── Scroll to current time when entering day/week view ──────────────────────
@@ -279,13 +276,35 @@ export default function Jobs() {
     if (view === 'day' || view === 'week') setTimeout(scrollToNow, 300);
   }, [view]);
 
+  // ── Drawer URL sync — close removes ?job=, open sets it ─────────────────────
+  const closeDrawer = useCallback(() => {
+    setDrawerJob(null);
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.delete('job');
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // ── Auto-open drawer from ?job= URL param (runs once after initial load) ────
+  const autoOpenDone = useRef(false);
+  useEffect(() => {
+    if (loading || autoOpenDone.current) return;
+    const jobId = searchParams.get('job');
+    autoOpenDone.current = true;
+    if (!jobId) return;
+    const found = jobs.find(j => j.id === jobId);
+    if (found) setDrawerJob(found);
+    else api.get(`/jobs/${jobId}`).then(r => setDrawerJob(r.data)).catch(() => {});
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Close drawer on Escape ──────────────────────────────────────────────────
   useEffect(() => {
     if (!drawerJob) return;
-    const handleKey = (e) => { if (e.key === 'Escape') setDrawerJob(null); };
+    const handleKey = (e) => { if (e.key === 'Escape') closeDrawer(); };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [drawerJob]);
+  }, [drawerJob, closeDrawer]);
 
   // ── Business hours → calendar time range ───────────────────────────────────
   const { calMin, calMax } = useMemo(() => {
@@ -377,12 +396,16 @@ export default function Jobs() {
 
   function handleSelectEvent(event) {
     const resource = event.resource;
-    if (resource._type === 'session') {
-      const parentJob = jobs.find(j => j.id === resource._jobId);
-      if (parentJob) setDrawerJob(parentJob);
-    } else {
-      setDrawerJob(resource);
-    }
+    const jobToOpen = resource._type === 'session'
+      ? jobs.find(j => j.id === resource._jobId)
+      : resource;
+    if (!jobToOpen) return;
+    setDrawerJob(jobToOpen);
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('job', jobToOpen.id);
+      return p;
+    }, { replace: true });
   }
 
   function handleJobCreated(job) {
@@ -567,7 +590,7 @@ export default function Jobs() {
       {drawerJob && modal !== 'edit' && (
         <div
           className="cal-drawer-overlay"
-          onClick={() => setDrawerJob(null)}
+          onClick={closeDrawer}
           role="presentation"
         >
           <aside
@@ -579,7 +602,7 @@ export default function Jobs() {
           >
             <JobDetail
               job={drawerJob}
-              onClose={() => setDrawerJob(null)}
+              onClose={closeDrawer}
               onStatusChange={handleStatusChange}
               onEdit={() => setModal('edit')}
             />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Timer, MessageSquare, CheckCircle, CalendarDays } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, addMinutes } from 'date-fns';
+import { formatDuration } from '../utils/normalizeJob';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from './StatusBadge';
@@ -291,8 +292,12 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
         {/* ── Core detail rows ── */}
         <div className="job-detail-body">
           <div className="detail-row">
-            <label>{job.is_multi_day ? 'Job Manager' : 'Tech'}</label>
-            <span>{job.job_manager_name || job.tech_name || 'Unassigned'}</span>
+            <label>Assigned Team</label>
+            <span>
+              {job.is_multi_day
+                ? (job.job_manager_name || 'Unassigned')
+                : (job.tech_name || 'Unassigned')}
+            </span>
           </div>
 
           {job.is_multi_day ? (
@@ -339,10 +344,24 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
               )}
             </>
           ) : (
-            <div className="detail-row">
-              <label>Scheduled</label>
-              <span>{job.scheduled_at ? format(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a') : '—'}</span>
-            </div>
+            <>
+              <div className="detail-row">
+                <label>Start</label>
+                <span>{job.scheduled_at ? format(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a') : '—'}</span>
+              </div>
+              {job.scheduled_at && job.duration_minutes ? (
+                <div className="detail-row">
+                  <label>End</label>
+                  <span>{format(addMinutes(new Date(job.scheduled_at), job.duration_minutes), 'h:mm a')}</span>
+                </div>
+              ) : null}
+              {job.duration_minutes ? (
+                <div className="detail-row">
+                  <label>Duration</label>
+                  <span>{formatDuration(job.duration_minutes)}</span>
+                </div>
+              ) : null}
+            </>
           )}
 
           {/* Financial — owner / manager only */}
@@ -655,8 +674,15 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        <div className="form-actions" style={{ marginTop: 16 }}>
+        <div className="form-actions" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
+          <button
+            className="btn-secondary"
+            onClick={() => window.open(`/jobs?job=${job.id}`, '_blank', 'noopener')}
+            title="Open this job with a shareable URL"
+          >
+            Open Job ↗
+          </button>
         </div>
       </div>
     </div>
