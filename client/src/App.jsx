@@ -374,6 +374,17 @@ function AppShell() {
     return () => { cancelled = true; clearInterval(iv); };
   }, [user]);
 
+  // Track accountId changes — a key change here remounts all routes including Dispatch
+  const prevAccountId = useRef(user?.accountId);
+  useEffect(() => {
+    const prev = prevAccountId.current;
+    const curr = user?.accountId;
+    if (prev !== curr) {
+      console.log('[FC-APP] accountId changed', { from: prev, to: curr, t: Date.now() });
+      prevAccountId.current = curr;
+    }
+  });
+
   // Onboarding gate — owners who haven't completed setup
   if (pathname === '/onboarding') {
     return <Routes><Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} /></Routes>;

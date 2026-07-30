@@ -83,6 +83,12 @@ export default function Dispatch() {
   const [loading,  setLoading]  = useState(true);
   const [, forceUpdate]         = useState(0);
 
+  useEffect(() => {
+    const t0 = Date.now();
+    console.log('[FC-DISPATCH] MOUNT', { t: t0 });
+    return () => console.log('[FC-DISPATCH] UNMOUNT', { elapsed: Date.now() - t0 });
+  }, []);
+
   const geocacheRef = useRef({});
   const { geocode } = useGeocoder();
 
