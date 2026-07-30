@@ -217,7 +217,7 @@ export default function Jobs() {
   const [jobs,            setJobs]            = useState([]);
   const [sessions,        setSessions]        = useState([]);
   const [businessHours,   setBusinessHours]   = useState([]);
-  const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'week');
+  const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'month');
   const [date,            setDate]            = useState(new Date());
   const [modal,           setModal]           = useState(null);    // 'create' | 'edit'
   const [drawerJob,       setDrawerJob]       = useState(null);    // event detail drawer
@@ -260,7 +260,7 @@ export default function Jobs() {
   useEffect(() => {
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
-      if (view !== 'week')         p.set('view', view);   else p.delete('view');
+      if (view !== 'month')        p.set('view', view);   else p.delete('view');
       if (statusFilter !== 'all')  p.set('filter', statusFilter); else p.delete('filter');
       return p;
     }, { replace: true });

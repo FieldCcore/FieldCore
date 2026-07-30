@@ -516,7 +516,7 @@ function AppShell() {
                 {/* Operations — all roles see Dashboard + Calendar; Dispatch hidden from tech/staff */}
                 <div className="nav-section">Operations</div>
                 {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
-                {ni('/jobs',      false, IcoCalendar, 'Calendar',  null)}
+                {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
                 {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
 
                 {/* Finance — owner + manager see all; staff sees invoices only */}
@@ -646,7 +646,7 @@ function AppShell() {
           <NavLink to="/dispatch" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
             <IcoDispatch /><span>Dispatch</span>
           </NavLink>
-          <NavLink to="/jobs" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+          <NavLink to="/jobs?view=month" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
             <IcoCalendar /><span>Calendar</span>
           </NavLink>
           <NavLink to="/clients" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
