@@ -11,6 +11,7 @@ export function Marker({ position, title, onClick, icon }) {
 
   useEffect(() => {
     if (!map || !window.google?.maps?.Marker) return;
+    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
     const marker = new window.google.maps.Marker({ position, map, title, icon });
     markerRef.current = marker;
     const listener = marker.addListener('click', () => onClickRef.current?.());
@@ -21,7 +22,10 @@ export function Marker({ position, title, onClick, icon }) {
     };
   }, [map]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { markerRef.current?.setPosition(position); }, [position]);
+  useEffect(() => {
+    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
+    markerRef.current?.setPosition(position);
+  }, [position]);
   useEffect(() => { markerRef.current?.setIcon(icon ?? null); }, [icon]);
   useEffect(() => { markerRef.current?.setTitle(title ?? ''); }, [title]);
 

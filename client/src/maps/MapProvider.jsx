@@ -2,30 +2,68 @@ import { useEffect } from 'react';
 import { APIProvider, useApiIsLoaded, useApiLoadingStatus } from '@vis.gl/react-google-maps';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+const _maskedKey = API_KEY ? API_KEY.slice(0, 8) + '…' : '(empty)';
 
 if (typeof window !== 'undefined') {
-  const hasKey = API_KEY.length > 0;
   console.log(
-    '[MapProvider] init | hasKey:', hasKey,
-    '| prefix:', hasKey ? API_KEY.slice(0, 8) + '…' : '(empty)',
+    '[MapProvider] init | hasKey:', API_KEY.length > 0,
+    '| prefix:', _maskedKey,
   );
 
-  window.gm_authFailure = function() {
-    console.error('[MapProvider] gm_authFailure — key rejected by Google');
+  function suppressGoogleOverlay() {
+    if (document.getElementById('fieldcore-maps-error-suppress')) return;
+    const style = document.createElement('style');
+    style.id = 'fieldcore-maps-error-suppress';
+    // Hide Google's native auth-failure overlay so our FieldCore UI shows instead
+    style.textContent = '.gm-err-container,.gm-style-cc{display:none!important}';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  window.gm_authFailure = function () {
+    console.error('[MapProvider] gm_authFailure — Maps JavaScript API key rejected', {
+      maskedKey: _maskedKey,
+      hostname: window.location.hostname,
+      ts: new Date().toISOString(),
+      likelyCauses: [
+        '1. HTTP Referrer restriction: add https://www.getfieldcore.com/* in GCP Console → Credentials',
+        '2. Maps JavaScript API not enabled in GCP Console → APIs & Services → Library',
+        '3. Billing not active on the GCP project',
+        '4. API key rotated or deleted without redeploying Vercel (key is baked at build time)',
+        '5. VITE_GOOGLE_MAPS_API_KEY set for Preview only, not Production, in Vercel env settings',
+      ],
+    });
+
+    suppressGoogleOverlay();
+
+    window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+      detail: {
+        code: 'auth-failure',
+        hostname: window.location.hostname,
+        maskedKey: _maskedKey,
+        ts: new Date().toISOString(),
+      },
+    }));
   };
 
-  window.addEventListener('error', function(e) {
-    console.error('[MapProvider][window.error]', e.message, e.filename, e.lineno);
+  // Only log maps-related JS errors to avoid drowning out unrelated page errors
+  window.addEventListener('error', function (e) {
+    if (e.filename && e.filename.includes('maps.googleapis.com')) {
+      console.error('[MapProvider][window.error]', e.message, e.filename, e.lineno);
+    }
   });
 
-  window.addEventListener('unhandledrejection', function(e) {
-    console.error('[MapProvider][unhandledrejection]', e.reason);
+  // Only log maps-related promise rejections
+  window.addEventListener('unhandledrejection', function (e) {
+    const reason = String(e.reason || '').toLowerCase();
+    if (reason.includes('google') || reason.includes('maps') || reason.includes('gm_')) {
+      console.error('[MapProvider][unhandledrejection]', e.reason);
+    }
   });
 
   // Intercept the Maps JS script tag the instant APIProvider injects it.
   // Logs the full URL and every query parameter so we can see exactly what
   // the browser is asking Google for — key, libraries, version, loading mode.
-  const scriptObserver = new MutationObserver(function(mutations) {
+  const scriptObserver = new MutationObserver(function (mutations) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeName !== 'SCRIPT') continue;
@@ -43,17 +81,16 @@ if (typeof window !== 'undefined') {
 
         console.log('[MapProvider][script] FULL URL:', src);
         console.table({
-          key:       { value: p.get('key')      ? p.get('key').slice(0, 8) + '…'  : '(none)', note: 'first 8 chars only' },
-          libraries: { value: p.get('libraries') || '(none)',  note: 'APIs requested at load time' },
-          v:         { value: p.get('v')         || '(none)',  note: 'Maps JS version' },
-          loading:   { value: p.get('loading')   || '(none)',  note: 'async/defer mode' },
-          callback:  { value: p.get('callback')  || '(none)',  note: 'internal bootstrap fn' },
-          language:  { value: p.get('language')  || '(none)',  note: '' },
-          region:    { value: p.get('region')    || '(none)',  note: '' },
+          key:       { value: p.get('key')      ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
+          libraries: { value: p.get('libraries') || '(none)', note: 'APIs requested at load time' },
+          v:         { value: p.get('v')         || '(none)', note: 'Maps JS version' },
+          loading:   { value: p.get('loading')   || '(none)', note: 'async/defer mode' },
+          callback:  { value: p.get('callback')  || '(none)', note: 'internal bootstrap fn' },
+          language:  { value: p.get('language')  || '(none)', note: '' },
+          region:    { value: p.get('region')    || '(none)', note: '' },
         });
 
-        // Also log any parameters not in the known list
-        const known = new Set(['key','libraries','v','loading','callback','language','region']);
+        const known = new Set(['key', 'libraries', 'v', 'loading', 'callback', 'language', 'region']);
         const extra = Object.fromEntries(Object.entries(allParams).filter(([k]) => !known.has(k)));
         if (Object.keys(extra).length) console.log('[MapProvider][script] extra params:', extra);
       }
@@ -68,6 +105,19 @@ function MapsDiagnostics() {
 
   useEffect(() => {
     console.log('[MapProvider] status:', status, '| isLoaded:', isLoaded);
+
+    if (status === 'FAILED') {
+      // Script load failure (network/blocked) — distinct from auth failure (gm_authFailure)
+      console.error('[MapProvider] Maps JS script failed to load — network error or request blocked');
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+        detail: {
+          code: 'load-failed',
+          hostname: window.location.hostname,
+          maskedKey: _maskedKey,
+          ts: new Date().toISOString(),
+        },
+      }));
+    }
   }, [status, isLoaded]);
 
   return null;
