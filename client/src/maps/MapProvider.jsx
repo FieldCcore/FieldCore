@@ -1,54 +1,73 @@
-import { useEffect } from 'react';
-import { APIProvider, useApiIsLoaded, useApiLoadingStatus } from '@vis.gl/react-google-maps';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
+import {
+  APIProvider,
+  useApiIsLoaded,
+  useApiLoadingStatus,
+  __resetModuleState,
+} from '@vis.gl/react-google-maps';
 import { getGoogleMapsClientConfig, maskedKey } from './mapsConfig';
 
-const _cfg = getGoogleMapsClientConfig();
+// Stable empty array — prevents APIProvider's loader effect from re-running on every render.
+// Without this, the default-parameter `libraries = []` inside useGoogleMapsApiLoader creates
+// a new array reference on every render, invalidating the effect dep and re-running the effect.
+const STABLE_EMPTY_LIBRARIES = Object.freeze([]);
 
-// ── Auth-failure handler — registered at module load (before any Maps script runs) ─
-if (typeof window !== 'undefined') {
+// Default solution channel that vis.gl includes in the Maps JS URL
+const SOLUTION_CHANNEL = 'GMP_visgl_rgmlibrary_v1_default';
+
+// ── Retry context ────────────────────────────────────────────────────────────
+// MapProvider populates this so GoogleMap can trigger a loader reset without
+// knowing about MapProvider's internal retryKey state.
+const MapRetryContext = createContext(() => { if (typeof window !== 'undefined') window.location.reload(); });
+export function useMapRetry() { return useContext(MapRetryContext); }
+
+// ── Global handler guard ─────────────────────────────────────────────────────
+// gm_authFailure and the MutationObserver must survive retries (APIProvider
+// remounts); registering them once at module scope (behind a guard) is correct.
+let _handlersInstalled = false;
+
+function installGlobalHandlers(apiKey) {
+  if (_handlersInstalled || typeof window === 'undefined') return;
+  _handlersInstalled = true;
+
   function suppressGoogleOverlay() {
     if (document.getElementById('fieldcore-maps-error-suppress')) return;
     const style = document.createElement('style');
     style.id = 'fieldcore-maps-error-suppress';
-    // Hide Google's native auth-failure overlay so our FieldCore UI shows instead
     style.textContent = '.gm-err-container,.gm-style-cc{display:none!important}';
     (document.head || document.documentElement).appendChild(style);
   }
 
   window.gm_authFailure = function () {
     console.error('[MapProvider] gm_authFailure — Maps JavaScript API key rejected', {
-      maskedKey:   maskedKey(_cfg.apiKey),
+      maskedKey:   maskedKey(apiKey),
       hostname:    window.location.hostname,
       ts:          new Date().toISOString(),
       likelyCauses: [
-        '1. HTTP Referrer restriction: add https://www.getfieldcore.com/* in GCP Console → Credentials',
-        '2. Maps JavaScript API not enabled in GCP Console → APIs & Services → Library',
+        '1. HTTP Referrer restriction — add https://www.getfieldcore.com/* in GCP Console → Credentials',
+        '2. Maps JavaScript API not enabled — GCP Console → APIs & Services → Library',
         '3. Billing not active on the GCP project',
-        '4. VITE_GOOGLE_MAPS_API_KEY was changed in Vercel but the project was not redeployed',
-        '5. VITE_GOOGLE_MAPS_API_KEY is scoped to Preview/Development only, not Production',
+        '4. VITE_GOOGLE_MAPS_API_KEY changed in Vercel but project was not redeployed',
+        '5. VITE_GOOGLE_MAPS_API_KEY scoped to Preview/Development only (not Production)',
       ],
     });
-
     suppressGoogleOverlay();
-
     window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
       detail: {
         code:      'auth-failure',
         hostname:  window.location.hostname,
-        maskedKey: maskedKey(_cfg.apiKey),
+        maskedKey: maskedKey(apiKey),
         ts:        new Date().toISOString(),
       },
     }));
   };
 
-  // Only log maps-related JS errors — don't drown out unrelated page errors
   window.addEventListener('error', function (e) {
     if (e.filename && e.filename.includes('maps.googleapis.com')) {
       console.error('[MapProvider][window.error]', e.message, e.filename, e.lineno);
     }
   });
 
-  // Only log maps-related promise rejections
   window.addEventListener('unhandledrejection', function (e) {
     const reason = String(e.reason || '').toLowerCase();
     if (reason.includes('google') || reason.includes('maps') || reason.includes('gm_')) {
@@ -56,131 +75,230 @@ if (typeof window !== 'undefined') {
     }
   });
 
-  // Intercept the Maps JS script tag the instant APIProvider injects it.
-  // Logs the full URL and every query parameter so we can see exactly what
-  // the browser is asking Google for — key prefix, libraries, version, loading mode.
+  // Observe Maps script injection — logs params the moment the script tag is added
   const scriptObserver = new MutationObserver(function (mutations) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeName !== 'SCRIPT') continue;
         const src = node.src || '';
         if (!src.includes('maps.googleapis.com/maps/api/js')) continue;
-
         scriptObserver.disconnect();
-
-        let url;
-        try { url = new URL(src); } catch { console.error('[MapProvider][script] bad URL:', src); continue; }
-
-        const p = url.searchParams;
-        const allParams = {};
-        p.forEach((v, k) => { allParams[k] = v; });
-
-        console.log('[MapProvider][script] FULL URL:', src);
-        console.table({
-          key:       { value: p.get('key') ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
-          libraries: { value: p.get('libraries') || '(none)', note: 'APIs requested at load time' },
-          v:         { value: p.get('v')         || '(none)', note: 'Maps JS version' },
-          loading:   { value: p.get('loading')   || '(none)', note: 'async/defer mode' },
-          callback:  { value: p.get('callback')  || '(none)', note: 'internal bootstrap fn' },
-          language:  { value: p.get('language')  || '(none)', note: '' },
-          region:    { value: p.get('region')    || '(none)', note: '' },
-        });
-
-        const known = new Set(['key', 'libraries', 'v', 'loading', 'callback', 'language', 'region']);
-        const extra = Object.fromEntries(Object.entries(allParams).filter(([k]) => !known.has(k)));
-        if (Object.keys(extra).length) console.log('[MapProvider][script] extra params:', extra);
+        try {
+          const url = new URL(src);
+          const p = url.searchParams;
+          console.log('[MapProvider][script] Maps script injected');
+          console.table({
+            key:       { value: p.get('key') ? p.get('key').slice(0, 8) + '…' : '(none)', note: 'first 8 chars only' },
+            libraries: { value: p.get('libraries') || '(none)' },
+            v:         { value: p.get('v')         || '(none)' },
+            loading:   { value: p.get('loading')   || '(none)' },
+            callback:  { value: p.get('callback')  || '(none)' },
+            language:  { value: p.get('language')  || '(none)' },
+            region:    { value: p.get('region')    || '(none)' },
+          });
+        } catch {}
       }
     }
   });
   scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
 }
 
-// ── Dev-only diagnostic console group ────────────────────────────────────────
-function DevDiagnostics() {
+// ── Bootstrap stub reinstall ─────────────────────────────────────────────────
+// After __resetModuleState() clears the vis.gl singleton, the old importLibrary
+// stub (from the failed load) is still at window.google.maps.importLibrary.
+// We delete the stale stub in retry(), then reinstall a fresh one here so the
+// next APIProvider mount picks up the fast-path and injects a new script tag.
+function reinstallMapsBootstrapStub(apiKey, language, region) {
+  if (typeof window === 'undefined') return;
+  const g = (window.google = window.google || {});
+  const maps = (g.maps = g.maps || {});
+  if (maps.importLibrary) return; // stub already present (shouldn't happen after delete)
+
+  const libs = new Set();
+  const sp = new URLSearchParams();
+  sp.set('key', apiKey);
+  if (language) sp.set('language', language);
+  if (region)   sp.set('region', region);
+  sp.set('solution_channel', SOLUTION_CHANNEL);
+
+  let bootstrapPromise;
+  const triggerBootstrap = () =>
+    bootstrapPromise ||
+    (bootstrapPromise = new Promise(async (resolve, reject) => {
+      // One microtask pause: allows concurrent importLibrary(name) calls
+      // (from Promise.all(['core','maps'])) to register names before URL is built.
+      await Promise.resolve();
+      sp.set('libraries', [...libs].join(','));
+      sp.set('callback', 'google.maps.__ib__');
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?${sp}`;
+      maps.__ib__ = resolve;
+      script.onerror = () => reject(new Error('Google Maps JavaScript API could not load.'));
+      document.head.appendChild(script);
+    }));
+
+  maps.importLibrary = (name, ...args) => {
+    libs.add(name);
+    return triggerBootstrap().then(() => maps.importLibrary(name, ...args));
+  };
+}
+
+// ── Inner diagnostics component (rendered inside APIProvider context) ─────────
+function MapProviderDiagnostics({ cfg, retryCount }) {
   const isLoaded = useApiIsLoaded();
   const status   = useApiLoadingStatus();
 
+  useEffect(() => {
+    const scriptEl = !!document.querySelector('script[src*="maps.googleapis.com"]');
+    const diag = {
+      configured:               cfg.configured,
+      keyLength:                cfg.apiKey.length,
+      keySuffix:                cfg.configured ? maskedKey(cfg.apiKey) : '(none)',
+      hostname:                 window.location.hostname,
+      providerRendered:         true,
+      loaderEntered:            status !== 'NOT_LOADED',
+      scriptInjectionAttempted: scriptEl,
+      scriptPresent:            scriptEl,
+      googleMapsAvailable:      !!window.google?.maps,
+      loaderState:              status,
+      failureCode:              null,
+      retryCount,
+    };
+
+    if (import.meta.env.DEV) {
+      window.__FIELDCORE_MAPS_DIAGNOSTICS__ = diag;
+      console.group('[FieldCore Maps Diagnostics]');
+      console.table(diag);
+      console.groupEnd();
+    }
+
+    console.log(
+      '[MapProvider] status:', status,
+      '| isLoaded:', isLoaded,
+      '| key:', maskedKey(cfg.apiKey),
+      '| host:', window.location.hostname,
+      '| retry:', retryCount,
+    );
+  }, [status, isLoaded, cfg, retryCount]);
+
+  useEffect(() => {
+    if (status !== 'FAILED') return;
+    console.error('[MapProvider] Maps JS script failed to load (network error or request blocked)');
+    window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+      detail: {
+        code:      'load-failed',
+        hostname:  window.location.hostname,
+        maskedKey: maskedKey(cfg.apiKey),
+        ts:        new Date().toISOString(),
+      },
+    }));
+  }, [status, cfg]);
+
+  return null;
+}
+
+// ── MapProvider ───────────────────────────────────────────────────────────────
+export function MapProvider({ children }) {
+  // ── Runtime config (NOT module scope) ────────────────────────────────────
+  // getGoogleMapsClientConfig() reads import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+  // which Vite replaces with the literal build-time value. useMemo prevents
+  // repeated calls on re-renders; the result is always the same within a session.
+  const cfg = useMemo(() => getGoogleMapsClientConfig(), []);
+
+  // ── Retry mechanism ───────────────────────────────────────────────────────
+  // Incrementing retryKey unmounts and remounts APIProvider, giving the vis.gl
+  // loader a fresh mount with clean module-state (after __resetModuleState()).
+  const [retryKey, setRetryKey] = useState(0);
+
+  const retry = useCallback(() => {
+    // 1. Reset vis.gl module-scope singletons (loadingStatus → NOT_LOADED,
+    //    serializedApiParams → undefined, listeners cleared)
+    try { __resetModuleState(); } catch {}
+
+    // 2. Delete the stale importLibrary stub so reinstallMapsBootstrapStub()
+    //    can install a fresh one with a new bootstrapPromise closure
+    try {
+      if (window.google?.maps?.importLibrary) delete window.google.maps.importLibrary;
+      if (window.google?.maps?.__ib__)         delete window.google.maps.__ib__;
+    } catch {}
+
+    // 3. Install a fresh bootstrap stub so the next APIProvider mount injects
+    //    a new script tag (bypasses the dead bootstrapPromise from the failed load)
+    reinstallMapsBootstrapStub(cfg.apiKey, 'en', 'US');
+
+    // 4. Force APIProvider unmount + remount via key change
+    setRetryKey(k => k + 1);
+
+    // 5. Signal GoogleMap (and any other children) to clear their error state
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:retry'));
+    }
+  }, [cfg.apiKey]);
+
+  // ── Global handlers ───────────────────────────────────────────────────────
+  // Run after client mount, once per session (module-scope guard).
+  useEffect(() => {
+    if (cfg.configured) installGlobalHandlers(cfg.apiKey);
+  }, [cfg]);
+
+  // ── Dev diagnostics ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!import.meta.env.DEV) return;
+    window.__FIELDCORE_MAPS_DIAGNOSTICS__ = {
+      configured:               cfg.configured,
+      keyLength:                cfg.apiKey.length,
+      keySuffix:                cfg.configured ? maskedKey(cfg.apiKey) : '(none)',
+      hostname:                 window.location.hostname,
+      providerRendered:         false,
+      loaderEntered:            false,
+      scriptInjectionAttempted: false,
+      scriptPresent:            false,
+      googleMapsAvailable:      false,
+      loaderState:              'NOT_LOADED',
+      failureCode:              cfg.failureReason,
+      retryCount:               retryKey,
+    };
+    console.log(
+      '[MapProvider] init | configured:', cfg.configured,
+      '| keyLength:', cfg.apiKey.length,
+      '| keySuffix:', cfg.configured ? maskedKey(cfg.apiKey) : '(none)',
+      '| hostname:', window.location.hostname,
+      '| failureReason:', cfg.failureReason,
+    );
+  }, [cfg, retryKey]);
 
-    console.group('[FieldCore Maps Diagnostics]');
-    console.table({
-      'config present':   _cfg.configured,
-      'masked key suffix': _cfg.configured ? maskedKey(_cfg.apiKey) : '(none)',
-      'loader state':     status,
-      'script present':   !!document.querySelector('script[src*="maps.googleapis.com"]'),
-      'google global':    typeof window !== 'undefined' && !!window.google?.maps,
-      'hostname':         typeof window !== 'undefined' ? window.location.hostname : '(ssr)',
-      'retry count':      0,
-      'skipped reason':   _cfg.failureReason || '(none)',
-    });
-    console.groupEnd();
-  }, [status, isLoaded]);
-
-  useEffect(() => {
-    if (status === 'FAILED') {
-      console.error('[MapProvider] Maps JS script failed to load (network error or request blocked)');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
-          detail: {
-            code:      'load-failed',
-            hostname:  window.location.hostname,
-            maskedKey: maskedKey(_cfg.apiKey),
-            ts:        new Date().toISOString(),
-          },
-        }));
-      }
-    }
-  }, [status]);
-
-  return null;
-}
-
-// ── Production diagnostics (status logging only, no console.table overhead) ───
-function ProdDiagnostics() {
-  const isLoaded = useApiIsLoaded();
-  const status   = useApiLoadingStatus();
-
-  useEffect(() => {
-    console.log('[MapProvider] status:', status, '| isLoaded:', isLoaded,
-      '| key:', maskedKey(_cfg.apiKey),
-      '| host:', typeof window !== 'undefined' ? window.location.hostname : '(ssr)');
-  }, [status, isLoaded]);
-
-  useEffect(() => {
-    if (status === 'FAILED') {
-      console.error('[MapProvider] Maps JS script failed to load');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
-          detail: {
-            code:      'load-failed',
-            hostname:  window.location.hostname,
-            maskedKey: maskedKey(_cfg.apiKey),
-            ts:        new Date().toISOString(),
-          },
-        }));
-      }
-    }
-  }, [status]);
-
-  return null;
-}
-
-// No global `libraries` prop — the core Maps JS API only.
-// Individual components lazy-load what they need via useMapsLibrary().
-export function MapProvider({ children }) {
-  if (!_cfg.configured) {
-    // Render the full app normally — map components show localized placeholders.
-    // This keeps non-map pages (dashboard, billing, etc.) working without the key.
-    return <>{children}</>;
+  // ── Gate: no API key → render children with retry context ────────────────
+  // Map components render their own placeholder; no APIProvider is mounted.
+  // APIProvider must render whenever key is present AND in browser.
+  // It must NOT depend on jobs / technicians / coordinates / mapId / Places.
+  if (!cfg.configured) {
+    console.log('[MapProvider] APIProvider skipped | reason:', cfg.failureReason,
+      '| Set VITE_GOOGLE_MAPS_API_KEY in Vercel (Production) and redeploy.');
+    return (
+      <MapRetryContext.Provider value={retry}>
+        {children}
+      </MapRetryContext.Provider>
+    );
   }
 
-  const Diagnostics = import.meta.env.DEV ? DevDiagnostics : ProdDiagnostics;
-
   return (
-    <APIProvider apiKey={_cfg.apiKey} language="en" region="US">
-      <Diagnostics />
-      {children}
-    </APIProvider>
+    <MapRetryContext.Provider value={retry}>
+      {/*
+       * key={retryKey} forces a full unmount + remount on retry.
+       * libraries={STABLE_EMPTY_LIBRARIES} provides a stable array reference so
+       * APIProvider's loader useEffect doesn't re-run on every re-render.
+       * APIProvider always loads 'core' and 'maps' regardless of the libraries prop.
+       */}
+      <APIProvider
+        key={retryKey}
+        apiKey={cfg.apiKey}
+        language="en"
+        region="US"
+        libraries={STABLE_EMPTY_LIBRARIES}
+      >
+        <MapProviderDiagnostics cfg={cfg} retryCount={retryKey} />
+        {children}
+      </APIProvider>
+    </MapRetryContext.Provider>
   );
 }

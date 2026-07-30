@@ -1,61 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Map, useMap, useApiLoadingStatus } from '@vis.gl/react-google-maps';
 import { FIELDCORE_MAP_STYLES } from './mapStyles';
 import { getGoogleMapsClientConfig, maskedKey } from './mapsConfig';
-
-const _cfg = getGoogleMapsClientConfig();
+import { useMapRetry } from './MapProvider';
 
 const DEFAULT_CENTER = { lat: 27.9506, lng: -82.4572 };
 
-function resolveMapOptions(branded) {
-  if (_cfg.mapId) return { mapId: _cfg.mapId };
-  return branded ? { styles: FIELDCORE_MAP_STYLES } : {};
-}
-
-// ── Diagnostic: runs inside Map context, inspects the live map instance ────────
-function MapDiagnostics({ passedClassName, passedStyle }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) {
-      console.log('[GoogleMap] map instance null — library not ready yet');
-      return;
-    }
-    const container = map.getDiv();
-    const parent    = container?.parentElement;
-    const gp        = parent?.parentElement;
-    const cs        = container ? getComputedStyle(container) : null;
-    const ps        = parent    ? getComputedStyle(parent)    : null;
-    const gps       = gp        ? getComputedStyle(gp)        : null;
-
-    console.log('[GoogleMap] ── map instance ready ──');
-    console.log('[GoogleMap] props received | className:', passedClassName, '| inlineStyle:', passedStyle);
-    console.log('[GoogleMap] mapId in use:', _cfg.mapId || '(none — using styles)');
-    console.log('[GoogleMap] container (map.getDiv())', {
-      offsetWidth:  container?.offsetWidth,
-      offsetHeight: container?.offsetHeight,
-      clientWidth:  container?.clientWidth,
-      clientHeight: container?.clientHeight,
-      computed: cs ? { width: cs.width, height: cs.height, position: cs.position, display: cs.display, overflow: cs.overflow, visibility: cs.visibility } : null,
-    });
-    if (parent) {
-      console.log('[GoogleMap] parent (.dispatch-map or wrapper)', {
-        className: parent.className, offsetWidth: parent.offsetWidth, offsetHeight: parent.offsetHeight,
-        computed: { width: ps.width, height: ps.height, position: ps.position, display: ps.display, overflow: ps.overflow },
-      });
-    }
-    if (gp) {
-      console.log('[GoogleMap] grandparent (.dispatch-map-wrap or above)', {
-        className: gp.className, offsetWidth: gp.offsetWidth, offsetHeight: gp.offsetHeight,
-        computed: { width: gps.width, height: gps.height, position: gps.position, display: gps.display },
-      });
-    }
-  }, [map, passedClassName, passedStyle]);
-
-  return null;
-}
-
-// ── State 1: API key is absent from this build ────────────────────────────────
+// ── State 1: API key absent from this build ───────────────────────────────────
 function MapConfigMissing({ className, style }) {
   return (
     <div
@@ -77,7 +28,7 @@ function MapConfigMissing({ className, style }) {
   );
 }
 
-// ── State 2: Key present, waiting for Maps JS to load ─────────────────────────
+// ── State 2: Key present, waiting for Maps JS to load ────────────────────────
 function MapLoading({ className, style }) {
   return (
     <div
@@ -88,8 +39,8 @@ function MapLoading({ className, style }) {
   );
 }
 
-// ── State 3: Key was rejected or script failed to load ────────────────────────
-function MapAuthError({ className, style, onRetry }) {
+// ── State 3: Key rejected or script failed to load ───────────────────────────
+function MapAuthError({ className, style, onRetry, maskedApiKey }) {
   const isDev = import.meta.env.DEV;
   return (
     <div
@@ -114,7 +65,7 @@ function MapAuthError({ className, style, onRetry }) {
       {isDev ? (
         <span style={{ color: '#5F667A', maxWidth: 340, lineHeight: 1.5 }}>
           API key rejected or script load failed.{' '}
-          Key in this build: <code>{maskedKey(_cfg.apiKey)}</code>.{' '}
+          Key in this build: <code>{maskedApiKey}</code>.{' '}
           Check GCP Console: enable Maps JavaScript API, verify HTTP referrer restrictions
           include <code>{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}</code>,
           and confirm billing is active.
@@ -140,6 +91,49 @@ function MapAuthError({ className, style, onRetry }) {
   );
 }
 
+// ── Diagnostic: runs inside Map context, inspects the live map instance ───────
+function MapDiagnostics({ passedClassName, passedStyle, mapId }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) {
+      console.log('[GoogleMap] map instance null — library not ready yet');
+      return;
+    }
+    const container = map.getDiv();
+    const parent    = container?.parentElement;
+    const gp        = parent?.parentElement;
+    const cs        = container ? getComputedStyle(container) : null;
+    const ps        = parent    ? getComputedStyle(parent)    : null;
+    const gps       = gp        ? getComputedStyle(gp)        : null;
+
+    console.log('[GoogleMap] ── map instance ready ──');
+    console.log('[GoogleMap] props received | className:', passedClassName, '| inlineStyle:', passedStyle);
+    console.log('[GoogleMap] mapId in use:', mapId || '(none — using styles)');
+    console.log('[GoogleMap] container (map.getDiv())', {
+      offsetWidth:  container?.offsetWidth,
+      offsetHeight: container?.offsetHeight,
+      clientWidth:  container?.clientWidth,
+      clientHeight: container?.clientHeight,
+      computed: cs ? { width: cs.width, height: cs.height, position: cs.position, display: cs.display, overflow: cs.overflow, visibility: cs.visibility } : null,
+    });
+    if (parent) {
+      console.log('[GoogleMap] parent (.dispatch-map or wrapper)', {
+        className: parent.className, offsetWidth: parent.offsetWidth, offsetHeight: parent.offsetHeight,
+        computed: { width: ps.width, height: ps.height, position: ps.position, display: ps.display, overflow: ps.overflow },
+      });
+    }
+    if (gp) {
+      console.log('[GoogleMap] grandparent (.dispatch-map-wrap or above)', {
+        className: gp.className, offsetWidth: gp.offsetWidth, offsetHeight: gp.offsetHeight,
+        computed: { width: gps.width, height: gps.height, position: gps.position, display: gps.display },
+      });
+    }
+  }, [map, passedClassName, passedStyle, mapId]);
+
+  return null;
+}
+
 export function GoogleMap({
   center,
   zoom = 13,
@@ -149,14 +143,21 @@ export function GoogleMap({
   branded = true,
   ...props
 }) {
+  // ── Runtime config (NOT module scope) ─────────────────────────────────────
+  const cfg = useMemo(() => getGoogleMapsClientConfig(), []);
+
+  // ── Auth error state ───────────────────────────────────────────────────────
   const [authError, setAuthError] = useState(null);
 
-  // useApiLoadingStatus returns 'NOT_LOADED' when called outside APIProvider context.
-  // When MapProvider skips APIProvider (key absent), status stays 'NOT_LOADED'
-  // which is safe because we return early before using the status value.
+  // useApiLoadingStatus returns 'NOT_LOADED' when called outside APIProvider.
+  // When MapProvider skips APIProvider (key absent), status is 'NOT_LOADED',
+  // but we return early at the _cfg.configured check before using it.
   const status = useApiLoadingStatus();
 
-  // Listen for auth failure events dispatched by MapProvider
+  // Retry function from MapProvider's context
+  const retry = useMapRetry();
+
+  // Listen for auth-failure events dispatched by MapProvider or gm_authFailure
   useEffect(() => {
     function onAuthFailure(e) {
       setAuthError(e.detail || { code: 'unknown' });
@@ -165,7 +166,16 @@ export function GoogleMap({
     return () => window.removeEventListener('fieldcore:maps:auth-failure', onAuthFailure);
   }, []);
 
-  // Belt-and-suspenders: set authError directly if useApiLoadingStatus reports FAILED
+  // Clear auth error when retry is triggered (so the loading state shows fresh)
+  useEffect(() => {
+    function onRetry() {
+      setAuthError(null);
+    }
+    window.addEventListener('fieldcore:maps:retry', onRetry);
+    return () => window.removeEventListener('fieldcore:maps:retry', onRetry);
+  }, []);
+
+  // Belt-and-suspenders: set authError if useApiLoadingStatus reports FAILED
   useEffect(() => {
     if (status === 'FAILED' && !authError) {
       setAuthError({ code: 'load-failed', ts: new Date().toISOString() });
@@ -173,38 +183,33 @@ export function GoogleMap({
   }, [status, authError]);
 
   // ── State machine ──────────────────────────────────────────────────────────
-  // 1. Configuration check — key absent from build
-  if (!_cfg.configured) {
-    console.log('[GoogleMap] skipped — failureReason:', _cfg.failureReason,
+  // 1. API key absent from build
+  if (!cfg.configured) {
+    console.log('[GoogleMap] skipped | failureReason:', cfg.failureReason,
       '| Set VITE_GOOGLE_MAPS_API_KEY in Vercel (Production) and redeploy.');
     return <MapConfigMissing className={className} style={style} />;
   }
 
-  // 2–3. Loading — key present, Maps JS request in flight
+  // 2–3. Key present; Maps JS request in flight or not yet started
   if (status === 'NOT_LOADED' || status === 'LOADING') {
     return <MapLoading className={className} style={style} />;
   }
 
-  // 4a. Failed — key rejected or script load error
+  // 4a. Key rejected or script load error
   if (authError) {
     return (
       <MapAuthError
         className={className}
         style={style}
-        onRetry={() => window.location.reload()}
+        onRetry={retry}
+        maskedApiKey={maskedKey(cfg.apiKey)}
       />
     );
   }
 
   // 4b. Loaded — render the live map
-  const mapOptions = resolveMapOptions(branded);
+  const mapOptions = cfg.mapId ? { mapId: cfg.mapId } : (branded ? { styles: FIELDCORE_MAP_STYLES } : {});
 
-  // DIAGNOSTIC NOTE:
-  // @vis.gl/react-google-maps Map renders:
-  //   style={className ? undefined : combinedStyle}
-  // When className is provided, combinedStyle (which includes position:relative,
-  // width:100%, height:100%) is DROPPED. Only the CSS class controls dimensions.
-  // If the CSS class lacks position:relative, map layers may not render correctly.
   return (
     <Map
       defaultCenter={center ?? DEFAULT_CENTER}
@@ -219,7 +224,7 @@ export function GoogleMap({
       className={className}
       {...props}
     >
-      <MapDiagnostics passedClassName={className} passedStyle={style} />
+      <MapDiagnostics passedClassName={className} passedStyle={style} mapId={cfg.mapId} />
       {children}
     </Map>
   );

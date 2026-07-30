@@ -1,4 +1,4 @@
-export { MapProvider }                         from './MapProvider';
+export { MapProvider, useMapRetry }            from './MapProvider';
 export { GoogleMap }                           from './GoogleMap';
 export { Marker }                              from './Marker';
 export { Polyline }                            from './Polyline';
