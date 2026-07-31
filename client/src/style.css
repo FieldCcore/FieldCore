@@ -2222,11 +2222,49 @@ body {
 .dispatch-job-name { font-size: 12px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dispatch-job-meta { font-size: 11px; color: var(--steel); }
 .dispatch-job-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 99px; flex-shrink: 0; }
-.dispatch-map-wrap { flex: 1 1 auto; min-height: 600px; position: relative; overflow: hidden; }
-.dispatch-map-stage { position: absolute; inset: 0; min-height: 600px; }
-.dispatch-direct-map { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 600px; }
-.dispatch-map-overlays { position: absolute; inset: 0; pointer-events: none; background: transparent; z-index: 10; }
-.dispatch-map { width: 100%; height: 100%; }
+.dispatch-map-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 600px;
+  overflow: hidden;
+  background: transparent;
+}
+.dispatch-base-map-root {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 600px;
+  background: transparent;
+}
+.dispatch-base-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 600px;
+  background: transparent;
+}
+/* Narrowly scoped override: prevent global max-width resets from clipping Google tile images. */
+.dispatch-base-map-canvas .gm-style img { max-width: none; }
+.dispatch-map-overlays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+  z-index: 10;
+}
+.dispatch-map-loading,
+.dispatch-map-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 243, 239, 0.92);
+  z-index: 20;
+}
 .dispatch-legend {
   position: absolute;
   bottom: 20px; right: 20px;
@@ -2964,7 +3002,8 @@ body {
     position: relative !important;
     overflow: hidden !important;
   }
-  .dispatch-map { width: 100% !important; height: 100% !important; }
+  .dispatch-base-map-root,
+  .dispatch-base-map-canvas { width: 100% !important; height: 100% !important; }
   /* Legend: compact in bottom-right corner of map */
   .dispatch-legend {
     bottom: 8px !important;

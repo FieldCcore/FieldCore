@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../api';
-import { useGeocoder } from '../maps';
-import { DirectDispatchMap } from '../maps/DirectDispatchMap';
+import DispatchBaseMap from '../maps/DispatchBaseMap';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -56,12 +55,6 @@ function fmtAgeShort(ts) {
   return m > 0 ? `${m}m ago` : `${s}s ago`;
 }
 
-function toCoord(val) {
-  if (val == null || val === '') return null;
-  const n = Number(val);
-  return isFinite(n) ? n : null;
-}
-
 function getTechStatus(tech, jobs, techLocs) {
   if (!tech.is_available) return { label: 'Off Duty',  color: '#8A90A2', bg: '#f1f5f9' };
   const loc    = techLocs.find(l => l.user_id === tech.id);
@@ -81,16 +74,6 @@ export default function Dispatch() {
   const [techLocs, setTechLocs] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading,  setLoading]  = useState(true);
-  const [, forceUpdate]         = useState(0);
-
-  useEffect(() => {
-    const t0 = Date.now();
-    console.log('[FC-DISPATCH] MOUNT', { t: t0 });
-    return () => console.log('[FC-DISPATCH] UNMOUNT', { elapsed: Date.now() - t0 });
-  }, []);
-
-  const geocacheRef = useRef({});
-  const { geocode } = useGeocoder();
 
   // ── Initial data load ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -117,36 +100,6 @@ export default function Dispatch() {
     }, 15000);
     return () => clearInterval(id);
   }, []);
-
-  // ── Client-side geocoding fallback for jobs without stored coords ─────────────
-  // Only needed for the "Address not mapped" warning in the job queue panel.
-  useEffect(() => {
-    if (!jobs.length) return;
-    const cache   = geocacheRef.current;
-    const pending = jobs.filter(j =>
-      !j.service_lat && !j.service_lng &&
-      j.service_address &&
-      !(j.service_address in cache)
-    );
-    if (!pending.length) return;
-    pending.forEach(j => {
-      cache[j.service_address] = null;
-      geocode(j.service_address)
-        .then(r => {
-          cache[j.service_address] = { lat: r.lat, lng: r.lng };
-          forceUpdate(n => n + 1);
-        })
-        .catch(() => {});
-    });
-  }, [jobs, geocode]);
-
-  function jobPos(j) {
-    const slat = toCoord(j.service_lat);
-    const slng = toCoord(j.service_lng);
-    if (slat !== null && slng !== null) return { lat: slat, lng: slng };
-    if (j.service_address) return geocacheRef.current[j.service_address] || null;
-    return null;
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -224,8 +177,6 @@ export default function Dispatch() {
         ) : null}
 
         {jobs.map((j, idx) => {
-          const pos       = jobPos(j);
-          const notMapped = j.service_address && !pos;
           const statusStyle = JOB_STATUS_STYLE[j.status] || JOB_STATUS_STYLE.scheduled;
           const statusLabel = JOB_STATUS_LABEL[j.status] || j.status;
           return (
@@ -238,11 +189,6 @@ export default function Dispatch() {
                 <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>
                 <div className="dispatch-job-meta">
                   {j.tech_name || 'Unassigned'} · {fmtTime(j.scheduled_at)}
-                  {notMapped && (
-                    <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: 11, fontWeight: 500 }}>
-                      ⚠ Address not mapped
-                    </span>
-                  )}
                 </div>
               </div>
               <span className="dispatch-job-badge" style={statusStyle}>
@@ -287,23 +233,27 @@ export default function Dispatch() {
 
       {/* ── Map ── */}
       <div className="dispatch-map-wrap">
-        <DirectDispatchMap />
+        {/* DispatchBaseMap mounts once and holds its map instance for the
+            lifetime of the Dispatch page. Data polling never remounts it. */}
+        <DispatchBaseMap />
 
-        {/* Legend */}
-        <div className="dispatch-legend">
-          {[
-            { color: '#2E7D32',  label: 'Tech — live GPS'  },
-            { color: '#D97706',  label: 'Tech — GPS stale' },
-            { color: '#1565C0',  label: 'Job — active'     },
-            { color: '#2E7D32',  label: 'Job — complete'   },
-            { color: '#C62828',  label: 'Job — cancelled'  },
-            { color: '#8A90A2',  label: 'Job — scheduled'  },
-          ].map((l, i) => (
-            <div key={i} className="dispatch-legend-item">
-              <div className="dispatch-legend-dot" style={{ background: l.color }} />
-              <span>{l.label}</span>
-            </div>
-          ))}
+        {/* Overlay layer — legend only for now; markers added after basemap confirmed */}
+        <div className="dispatch-map-overlays">
+          <div className="dispatch-legend">
+            {[
+              { color: '#2E7D32', label: 'Tech — live GPS'  },
+              { color: '#D97706', label: 'Tech — GPS stale' },
+              { color: '#1565C0', label: 'Job — active'     },
+              { color: '#2E7D32', label: 'Job — complete'   },
+              { color: '#C62828', label: 'Job — cancelled'  },
+              { color: '#8A90A2', label: 'Job — scheduled'  },
+            ].map((l, i) => (
+              <div key={i} className="dispatch-legend-item">
+                <div className="dispatch-legend-dot" style={{ background: l.color }} />
+                <span>{l.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
