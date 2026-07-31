@@ -44,7 +44,8 @@ const bannersRouter        = require('./routes/banners');
 const googleReviewsRouter  = require('./routes/google-reviews');
 const reviewSettingsRouter = require('./routes/review-settings');
 const projectsRouter       = require('./routes/projects');
-const availabilityRouter   = require('./routes/availability');
+const availabilityRouter       = require('./routes/availability');
+const dispatchSettingsRouter   = require('./routes/dispatch-settings');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -202,7 +203,8 @@ app.use('/api/banners',         generalLimiter, bannersRouter);
 app.use('/api/google-reviews',  generalLimiter, googleReviewsRouter);
 app.use('/api/review-settings', generalLimiter, reviewSettingsRouter);
 app.use('/api/projects',        generalLimiter, projectsRouter);
-app.use('/api/availability',    generalLimiter, availabilityRouter);
+app.use('/api/availability',        generalLimiter, availabilityRouter);
+app.use('/api/dispatch-settings',   generalLimiter, dispatchSettingsRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', async (req, res) => {

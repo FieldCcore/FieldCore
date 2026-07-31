@@ -263,6 +263,74 @@ export default function BusinessSettings() {
     finally { setSaving(false); }
   }
 
+  // ── Dispatch / service-area settings ─────────────────────────────────────
+  const [dispatchSettings, setDispatchSettings] = useState({
+    dispatch_service_area_type:     'business_address',
+    dispatch_center_lat:            '',
+    dispatch_center_lng:            '',
+    dispatch_default_zoom:          11,
+    dispatch_service_radius_miles:  '',
+    dispatch_preferred_postal_codes: '',
+    dispatch_auto_fit_live_techs:   true,
+    dispatch_auto_fit_today_jobs:   true,
+    dispatch_include_scheduled:     true,
+    dispatch_include_completed:     false,
+    dispatch_include_cancelled:     false,
+  });
+  const [dsSaving, setDsSaving] = useState(false);
+  const [dsSaved,  setDsSaved]  = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'dispatch') return;
+    api.get('/dispatch-settings').then(r => {
+      const s = r.data.settings || {};
+      setDispatchSettings({
+        dispatch_service_area_type:     s.dispatch_service_area_type     || 'business_address',
+        dispatch_center_lat:            s.dispatch_center_lat            != null ? String(s.dispatch_center_lat) : '',
+        dispatch_center_lng:            s.dispatch_center_lng            != null ? String(s.dispatch_center_lng) : '',
+        dispatch_default_zoom:          s.dispatch_default_zoom          ?? 11,
+        dispatch_service_radius_miles:  s.dispatch_service_radius_miles  != null ? String(s.dispatch_service_radius_miles) : '',
+        dispatch_preferred_postal_codes: Array.isArray(s.dispatch_preferred_postal_codes)
+          ? s.dispatch_preferred_postal_codes.join('\n')
+          : (s.dispatch_preferred_postal_codes || ''),
+        dispatch_auto_fit_live_techs:   s.dispatch_auto_fit_live_techs  !== false,
+        dispatch_auto_fit_today_jobs:   s.dispatch_auto_fit_today_jobs  !== false,
+        dispatch_include_scheduled:     s.dispatch_include_scheduled    !== false,
+        dispatch_include_completed:     !!s.dispatch_include_completed,
+        dispatch_include_cancelled:     !!s.dispatch_include_cancelled,
+      });
+    }).catch(() => {});
+  }, [tab]);
+
+  async function saveDispatchSettings() {
+    setDsSaving(true);
+    try {
+      const postalCodes = dispatchSettings.dispatch_preferred_postal_codes
+        ? dispatchSettings.dispatch_preferred_postal_codes
+            .split(/[\n,]+/)
+            .map(p => p.trim())
+            .filter(Boolean)
+        : null;
+
+      await api.put('/dispatch-settings', {
+        dispatch_service_area_type:    dispatchSettings.dispatch_service_area_type,
+        dispatch_center_lat:           dispatchSettings.dispatch_center_lat !== '' ? parseFloat(dispatchSettings.dispatch_center_lat) : null,
+        dispatch_center_lng:           dispatchSettings.dispatch_center_lng !== '' ? parseFloat(dispatchSettings.dispatch_center_lng) : null,
+        dispatch_default_zoom:         parseInt(dispatchSettings.dispatch_default_zoom, 10) || 11,
+        dispatch_service_radius_miles: dispatchSettings.dispatch_service_radius_miles !== '' ? parseFloat(dispatchSettings.dispatch_service_radius_miles) : null,
+        dispatch_preferred_postal_codes: postalCodes,
+        dispatch_auto_fit_live_techs:  dispatchSettings.dispatch_auto_fit_live_techs,
+        dispatch_auto_fit_today_jobs:  dispatchSettings.dispatch_auto_fit_today_jobs,
+        dispatch_include_scheduled:    dispatchSettings.dispatch_include_scheduled,
+        dispatch_include_completed:    dispatchSettings.dispatch_include_completed,
+        dispatch_include_cancelled:    dispatchSettings.dispatch_include_cancelled,
+      });
+      setDsSaved(true);
+      setTimeout(() => setDsSaved(false), 2500);
+    } catch { setError('Failed to save dispatch settings.'); }
+    finally { setDsSaving(false); }
+  }
+
   const bssInput = { width: '100%', padding: '8px 10px', border: '1px solid var(--lightgray)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', background: 'var(--white)', color: 'var(--navy)', boxSizing: 'border-box' };
   const bssLabel = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 };
 
@@ -270,7 +338,7 @@ export default function BusinessSettings() {
     <div>
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--lightgray)', marginBottom: 24 }}>
-        {[['settings','Settings'],['integrations','Integrations']].map(([key, label]) => (
+        {[['settings','Settings'],['integrations','Integrations'],['dispatch','Service Area']].map(([key, label]) => (
           <button key={key}
             onClick={() => setSearchParams({ tab: key })}
             style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: tab === key ? '2px solid var(--navy)' : '2px solid transparent',
@@ -714,6 +782,176 @@ export default function BusinessSettings() {
         </div>
         <SaveBar saving={saving} saved={saved === 'noshow'} onSave={saveNsSettings} label="Save no-show settings" />
       </Section>
+        </div>
+      )}
+
+      {/* ── DISPATCH / SERVICE AREA TAB ── */}
+      {tab === 'dispatch' && (
+        <div>
+          <Section title="Default Map Viewport">
+            <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.5 }}>
+              Controls where the Dispatch map opens when there are no active technicians or jobs.
+              When live data exists, the map always fits to your active field.
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={bssLabel}>Service Area Type</label>
+              <select
+                style={bssInput}
+                value={dispatchSettings.dispatch_service_area_type}
+                onChange={e => setDispatchSettings(s => ({ ...s, dispatch_service_area_type: e.target.value }))}
+              >
+                <option value="business_address">Business Address (default)</option>
+                <option value="radius">Radius around a point</option>
+                <option value="postal_codes">Postal / ZIP codes</option>
+                <option value="custom_center">Custom center + zoom</option>
+              </select>
+            </div>
+
+            {/* Radius and Custom Center: show lat/lng */}
+            {(dispatchSettings.dispatch_service_area_type === 'radius' ||
+              dispatchSettings.dispatch_service_area_type === 'custom_center') && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div>
+                  <label style={bssLabel}>Center Latitude</label>
+                  <input
+                    type="number" step="0.000001" min="-90" max="90"
+                    style={bssInput}
+                    placeholder="e.g. 25.7617"
+                    value={dispatchSettings.dispatch_center_lat}
+                    onChange={e => setDispatchSettings(s => ({ ...s, dispatch_center_lat: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label style={bssLabel}>Center Longitude</label>
+                  <input
+                    type="number" step="0.000001" min="-180" max="180"
+                    style={bssInput}
+                    placeholder="e.g. -80.1918"
+                    value={dispatchSettings.dispatch_center_lng}
+                    onChange={e => setDispatchSettings(s => ({ ...s, dispatch_center_lng: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Radius */}
+            {dispatchSettings.dispatch_service_area_type === 'radius' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={bssLabel}>Service Radius (miles)</label>
+                <input
+                  type="number" min="1" max="5000" step="1"
+                  style={{ ...bssInput, maxWidth: 160 }}
+                  placeholder="e.g. 50"
+                  value={dispatchSettings.dispatch_service_radius_miles}
+                  onChange={e => setDispatchSettings(s => ({ ...s, dispatch_service_radius_miles: e.target.value }))}
+                />
+              </div>
+            )}
+
+            {/* Postal codes */}
+            {dispatchSettings.dispatch_service_area_type === 'postal_codes' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={bssLabel}>Preferred ZIP / Postal Codes</label>
+                <textarea
+                  style={{ ...bssInput, height: 100, resize: 'vertical' }}
+                  placeholder={"One per line or comma-separated\ne.g.\n33101\n33102\n33103"}
+                  value={dispatchSettings.dispatch_preferred_postal_codes}
+                  onChange={e => setDispatchSettings(s => ({ ...s, dispatch_preferred_postal_codes: e.target.value }))}
+                />
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                  When no live technicians or jobs exist, the map will center on your configured default
+                  center and zoom rather than geocoding each ZIP on every page load.
+                </div>
+              </div>
+            )}
+
+            {/* Default zoom — shown for custom_center and postal_codes */}
+            {(dispatchSettings.dispatch_service_area_type === 'custom_center' ||
+              dispatchSettings.dispatch_service_area_type === 'postal_codes') && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={bssLabel}>Default Zoom Level (1–22)</label>
+                <input
+                  type="number" min="1" max="22" step="1"
+                  style={{ ...bssInput, maxWidth: 100 }}
+                  value={dispatchSettings.dispatch_default_zoom}
+                  onChange={e => setDispatchSettings(s => ({ ...s, dispatch_default_zoom: e.target.value }))}
+                />
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                  11 = city view · 13 = neighborhood · 15 = street level
+                </div>
+              </div>
+            )}
+
+            {dispatchSettings.dispatch_service_area_type === 'business_address' && (
+              <div style={{ padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 12, color: '#0369a1', lineHeight: 1.5 }}>
+                The map will open centered on your business address coordinates.
+                Make sure your address is saved in the <button onClick={() => setSearchParams({ tab: 'settings' })}
+                  style={{ background: 'none', border: 'none', color: '#0369a1', textDecoration: 'underline', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                  Settings tab
+                </button>.
+              </div>
+            )}
+          </Section>
+
+          <Section title="Auto-Fit Behavior">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                ['dispatch_auto_fit_live_techs', 'Auto-fit to live technician locations'],
+                ['dispatch_auto_fit_today_jobs', "Auto-fit to today's job locations"],
+              ].map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!dispatchSettings[key]}
+                    onChange={e => setDispatchSettings(s => ({ ...s, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Job Status Inclusion">
+            <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 10, lineHeight: 1.5 }}>
+              Choose which job statuses appear on the Dispatch map.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                ['dispatch_include_scheduled', 'Scheduled jobs (default on)'],
+                ['dispatch_include_completed', 'Completed jobs (default off)'],
+                ['dispatch_include_cancelled', 'Cancelled / no-show jobs (default off)'],
+              ].map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!dispatchSettings[key]}
+                    onChange={e => setDispatchSettings(s => ({ ...s, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </Section>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <button
+              onClick={saveDispatchSettings}
+              disabled={dsSaving}
+              className="btn-primary"
+              style={{ opacity: dsSaving ? .6 : 1 }}
+            >
+              {dsSaving ? 'Saving…' : 'Save dispatch settings'}
+            </button>
+            {dsSaved && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13 }}>
+                  <path d="M3 8l3.5 3.5 6.5-7" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Saved
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>

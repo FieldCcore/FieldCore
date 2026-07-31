@@ -963,6 +963,30 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_tech_blocks_account ON tech_availability_blocks(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_tech_blocks_user    ON tech_availability_blocks(account_id, user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_tech_blocks_time    ON tech_availability_blocks(account_id, starts_at, ends_at)`,
+
+  // ── DISPATCH VIEWPORT ENGINE ─────────────────────────────────────────────────
+  // Per-tenant Dispatch map viewport and service-area configuration.
+  // Safe defaults: business_address type + auto-fit live techs and today's jobs.
+  `CREATE TABLE IF NOT EXISTS dispatch_settings (
+     account_id                      UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+     dispatch_center_lat             NUMERIC(10,6),
+     dispatch_center_lng             NUMERIC(10,6),
+     dispatch_default_zoom           INTEGER DEFAULT 11
+                                       CHECK (dispatch_default_zoom BETWEEN 1 AND 22),
+     dispatch_service_area_type      TEXT NOT NULL DEFAULT 'business_address'
+                                       CHECK (dispatch_service_area_type IN (
+                                         'business_address','radius','postal_codes','custom_center'
+                                       )),
+     dispatch_service_radius_miles   NUMERIC(8,2)
+                                       CHECK (dispatch_service_radius_miles > 0),
+     dispatch_preferred_postal_codes TEXT[],
+     dispatch_auto_fit_live_techs    BOOLEAN NOT NULL DEFAULT TRUE,
+     dispatch_auto_fit_today_jobs    BOOLEAN NOT NULL DEFAULT TRUE,
+     dispatch_include_scheduled      BOOLEAN NOT NULL DEFAULT TRUE,
+     dispatch_include_completed      BOOLEAN NOT NULL DEFAULT FALSE,
+     dispatch_include_cancelled      BOOLEAN NOT NULL DEFAULT FALSE,
+     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
 ];
 
 async function runMigrations() {

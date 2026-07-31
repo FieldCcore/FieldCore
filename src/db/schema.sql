@@ -617,3 +617,42 @@ ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
 
 -- no_show_records: service_type column (present in migrate.js definition)
 ALTER TABLE no_show_records ADD COLUMN IF NOT EXISTS service_type TEXT;
+
+-- ── Live technician GPS positions (upserted ~every 20 s by TechApp) ────────────
+CREATE TABLE IF NOT EXISTS tech_locations (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id    UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lat           NUMERIC(10,6) NOT NULL,
+  lng           NUMERIC(10,6) NOT NULL,
+  accuracy      NUMERIC(8,2),
+  heading       NUMERIC(6,2),
+  speed         NUMERIC(8,2),
+  battery_level INTEGER,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (account_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tech_locations_account ON tech_locations(account_id);
+CREATE INDEX IF NOT EXISTS idx_tech_locations_user    ON tech_locations(user_id);
+
+-- ── Per-tenant Dispatch viewport and service-area settings ──────────────────────
+CREATE TABLE IF NOT EXISTS dispatch_settings (
+  account_id                      UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  dispatch_center_lat             NUMERIC(10,6),
+  dispatch_center_lng             NUMERIC(10,6),
+  dispatch_default_zoom           INTEGER DEFAULT 11
+                                    CHECK (dispatch_default_zoom BETWEEN 1 AND 22),
+  dispatch_service_area_type      TEXT NOT NULL DEFAULT 'business_address'
+                                    CHECK (dispatch_service_area_type IN (
+                                      'business_address','radius','postal_codes','custom_center'
+                                    )),
+  dispatch_service_radius_miles   NUMERIC(8,2)
+                                    CHECK (dispatch_service_radius_miles > 0),
+  dispatch_preferred_postal_codes TEXT[],
+  dispatch_auto_fit_live_techs    BOOLEAN NOT NULL DEFAULT TRUE,
+  dispatch_auto_fit_today_jobs    BOOLEAN NOT NULL DEFAULT TRUE,
+  dispatch_include_scheduled      BOOLEAN NOT NULL DEFAULT TRUE,
+  dispatch_include_completed      BOOLEAN NOT NULL DEFAULT FALSE,
+  dispatch_include_cancelled      BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

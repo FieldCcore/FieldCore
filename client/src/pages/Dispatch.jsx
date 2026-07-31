@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
+import DispatchMapControls from '../maps/DispatchMapControls';
+import { resolveDispatchViewport } from '../maps/dispatchViewport';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -27,6 +29,11 @@ const JOB_STATUS_LABEL = {
 
 const GPS_STALE_MS   = 2  * 60 * 1000;
 const GPS_OFFLINE_MS = 15 * 60 * 1000;
+
+// Padding applied to fitBounds (pixels). Keeps markers away from panel + controls.
+const FIT_PADDING = { top: 60, right: 60, bottom: 60, left: 60 };
+// Never zoom closer than this after fitBounds (prevents over-zoom on one tight cluster).
+const MAX_AUTO_ZOOM = 15;
 
 const SESSION_COLORS = {
   scheduled:         '#8A90A2',
@@ -62,20 +69,97 @@ function getTechStatus(tech, jobs, techLocs) {
   if (isBusy) return { label: 'Busy',      color: '#2E7D32', bg: 'rgba(46,125,50,.10)' };
   if (!loc)   return { label: 'Available', color: '#2E7D32', bg: 'rgba(46,125,50,.10)' };
   const age = Date.now() - new Date(loc.updated_at).getTime();
-  if (age > GPS_OFFLINE_MS) return { label: 'No GPS',   color: '#8A90A2', bg: '#f1f5f9' };
+  if (age > GPS_OFFLINE_MS) return { label: 'No GPS',    color: '#8A90A2', bg: '#f1f5f9' };
   if (age > GPS_STALE_MS)   return { label: 'Available', color: '#D97706', bg: 'rgba(217,119,6,.10)' };
   return { label: 'Available', color: '#2E7D32', bg: 'rgba(46,125,50,.10)' };
 }
 
 export default function Dispatch() {
-  const [jobs,     setJobs]     = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [techs,    setTechs]    = useState([]);
-  const [techLocs, setTechLocs] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [loading,  setLoading]  = useState(true);
+  const [jobs,             setJobs]             = useState([]);
+  const [sessions,         setSessions]         = useState([]);
+  const [techs,            setTechs]            = useState([]);
+  const [techLocs,         setTechLocs]         = useState([]);
+  const [selected,         setSelected]         = useState(null);
+  const [loading,          setLoading]          = useState(true);
+  const [dispatchSettings, setDispatchSettings] = useState(null);
+  const [accountLocation,  setAccountLocation]  = useState(null);
+  const [locating,         setLocating]         = useState(false);
+  const [locationError,    setLocationError]    = useState(null);
+  const [hasInteracted,    setHasInteracted]    = useState(false);
 
-  // ── Initial data load ────────────────────────────────────────────────────────
+  // Google Maps instance received from DispatchBaseMap via onMapReady callback.
+  const mapRef             = useRef(null);
+  // True while we are programmatically moving the map (suppress interaction detection).
+  const programmaticRef    = useRef(false);
+  // True once the initial auto-fit has been applied for this page load.
+  const initialFitDoneRef  = useRef(false);
+  // Stable refs so viewport callbacks always see latest state.
+  const jobsRef            = useRef([]);
+  const techLocsRef        = useRef([]);
+  const dispatchSettingsRef = useRef(null);
+  const accountLocationRef = useRef(null);
+
+  jobsRef.current             = jobs;
+  techLocsRef.current         = techLocs;
+  dispatchSettingsRef.current = dispatchSettings;
+  accountLocationRef.current  = accountLocation;
+
+  // ── Viewport application ──────────────────────────────────────────────────
+  const applyViewport = useCallback((viewport, { force = false } = {}) => {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps) return;
+    if (!force && initialFitDoneRef.current) return; // only auto-fit once
+
+    programmaticRef.current = true;
+
+    if (viewport.mode === 'fit_bounds' && viewport.bounds?.length > 0) {
+      const bounds = new window.google.maps.LatLngBounds();
+      viewport.bounds.forEach(pt => bounds.extend(pt));
+      map.fitBounds(bounds, FIT_PADDING);
+      // Cap zoom after the map settles so tightly-clustered points don't zoom to street level.
+      window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        if ((map.getZoom() ?? 0) > MAX_AUTO_ZOOM) map.setZoom(MAX_AUTO_ZOOM);
+        programmaticRef.current = false;
+      });
+    } else if (viewport.mode === 'center_zoom' && viewport.center) {
+      map.setCenter(viewport.center);
+      map.setZoom(viewport.zoom ?? 11);
+      programmaticRef.current = false;
+    } else {
+      programmaticRef.current = false;
+    }
+  }, []);
+
+  const computeAndApplyViewport = useCallback(({ force = false } = {}) => {
+    const viewport = resolveDispatchViewport({
+      technicians:      techLocsRef.current,
+      jobs:             jobsRef.current,
+      dispatchSettings: dispatchSettingsRef.current,
+      accountLocation:  accountLocationRef.current,
+    });
+    applyViewport(viewport, { force });
+    initialFitDoneRef.current = true;
+  }, [applyViewport]);
+
+  // ── Map ready callback ────────────────────────────────────────────────────
+  const handleMapReady = useCallback((mapInstance) => {
+    mapRef.current = mapInstance;
+
+    // Detect user pan/zoom — suppress during programmatic moves.
+    mapInstance.addListener('dragstart', () => {
+      if (!programmaticRef.current) setHasInteracted(true);
+    });
+    mapInstance.addListener('zoom_changed', () => {
+      if (!programmaticRef.current) setHasInteracted(true);
+    });
+
+    // Apply viewport immediately if data is already loaded.
+    if (!initialFitDoneRef.current) {
+      computeAndApplyViewport();
+    }
+  }, [computeAndApplyViewport]);
+
+  // ── Initial data load ─────────────────────────────────────────────────────
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     Promise.all([
@@ -83,25 +167,91 @@ export default function Dispatch() {
       api.get('/users'),
       api.get(`/jobs/sessions?date_from=${today}&date_to=${today}`).catch(() => ({ data: [] })),
       api.get('/mobile/locations').catch(() => null),
-    ]).then(([jobsRes, usersRes, sessionsRes, locsRes]) => {
-      setJobs(jobsRes.data);
+      api.get('/dispatch-settings').catch(() => null),
+    ]).then(([jobsRes, usersRes, sessionsRes, locsRes, dsRes]) => {
+      const fetchedJobs  = jobsRes.data || [];
+      const fetchedLocs  = locsRes?.data || [];
+      const fetchedDS    = dsRes?.data?.settings || null;
+      const fetchedAcct  = dsRes?.data?.account  || null;
+
+      setJobs(fetchedJobs);
       setSessions(sessionsRes.data || []);
       setTechs(usersRes.data.filter(u => u.role === 'tech'));
-      setTechLocs(locsRes?.data || []);
-    }).finally(() => setLoading(false));
-  }, []);
+      setTechLocs(fetchedLocs);
+      setDispatchSettings(fetchedDS);
 
-  // ── Live-poll tech locations every 15 s ──────────────────────────────────────
+      // Use accounts.lat/lng if present; otherwise no account location available.
+      if (fetchedAcct?.lat != null && fetchedAcct?.lng != null) {
+        setAccountLocation({ lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) });
+      }
+
+      // Update refs synchronously so computeAndApplyViewport sees latest data.
+      jobsRef.current             = fetchedJobs;
+      techLocsRef.current         = fetchedLocs;
+      dispatchSettingsRef.current = fetchedDS;
+      accountLocationRef.current  = (fetchedAcct?.lat != null && fetchedAcct?.lng != null)
+        ? { lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) }
+        : null;
+
+      // If map is already ready, apply viewport now.
+      if (mapRef.current && !initialFitDoneRef.current) {
+        computeAndApplyViewport();
+      }
+    }).finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Live-poll tech locations every 15 s ──────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
       api.get('/mobile/locations')
-        .then(r => setTechLocs(r.data))
+        .then(r => { setTechLocs(r.data); techLocsRef.current = r.data; })
         .catch(() => {});
     }, 15000);
     return () => clearInterval(id);
   }, []);
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Map control handlers ──────────────────────────────────────────────────
+  const handleFitAll = useCallback(() => {
+    initialFitDoneRef.current = false;
+    setHasInteracted(false);
+    computeAndApplyViewport({ force: true });
+  }, [computeAndApplyViewport]);
+
+  const handleRecenter = handleFitAll;
+
+  const handleCenterOnMe = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by this browser.');
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const map = mapRef.current;
+        if (!map || !window.google?.maps) return;
+        programmaticRef.current = true;
+        map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        map.setZoom(14);
+        // Deliberately mark as interacted — user chose their location manually.
+        setHasInteracted(true);
+        programmaticRef.current = false;
+      },
+      (err) => {
+        setLocating(false);
+        if (err.code === 1)
+          setLocationError('Location access denied. Enable it in browser settings.');
+        else if (err.code === 2)
+          setLocationError('Location unavailable. Check device settings.');
+        else
+          setLocationError('Location request timed out.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="dispatch-layout">
 
@@ -233,12 +383,23 @@ export default function Dispatch() {
 
       {/* ── Map ── */}
       <div className="dispatch-map-wrap">
-        {/* DispatchBaseMap mounts once and holds its map instance for the
-            lifetime of the Dispatch page. Data polling never remounts it. */}
-        <DispatchBaseMap />
+        {/* DispatchBaseMap mounts once for the lifetime of the Dispatch page.
+            Data polling never remounts it. Viewport is applied externally via
+            the map instance returned through onMapReady. */}
+        <DispatchBaseMap onMapReady={handleMapReady} />
 
-        {/* Overlay layer — legend only for now; markers added after basemap confirmed */}
         <div className="dispatch-map-overlays">
+          {/* Map controls — top-right, above Google UI chrome */}
+          <DispatchMapControls
+            onFitAll={handleFitAll}
+            onCenterOnMe={handleCenterOnMe}
+            onRecenter={handleRecenter}
+            locating={locating}
+            locationError={locationError}
+            hasInteracted={hasInteracted}
+          />
+
+          {/* Legend — bottom positioning handled by existing CSS */}
           <div className="dispatch-legend">
             {[
               { color: '#2E7D32', label: 'Tech — live GPS'  },
