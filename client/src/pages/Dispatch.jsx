@@ -285,9 +285,26 @@ export default function Dispatch() {
         )}
       </div>
 
-      {/* ── Map ── Step 12 diagnostic: legend stripped, map only */}
+      {/* ── Map ── */}
       <div className="dispatch-map-wrap">
         <DirectDispatchMap />
+
+        {/* Legend */}
+        <div className="dispatch-legend">
+          {[
+            { color: '#2E7D32',  label: 'Tech — live GPS'  },
+            { color: '#D97706',  label: 'Tech — GPS stale' },
+            { color: '#1565C0',  label: 'Job — active'     },
+            { color: '#2E7D32',  label: 'Job — complete'   },
+            { color: '#C62828',  label: 'Job — cancelled'  },
+            { color: '#8A90A2',  label: 'Job — scheduled'  },
+          ].map((l, i) => (
+            <div key={i} className="dispatch-legend-item">
+              <div className="dispatch-legend-dot" style={{ background: l.color }} />
+              <span>{l.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
     </div>
