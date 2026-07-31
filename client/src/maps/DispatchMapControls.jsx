@@ -4,6 +4,9 @@ import React from 'react';
 // Must set pointerEvents: 'auto' — parent .dispatch-map-overlays uses
 // pointer-events: none so the Google map remains pannable everywhere
 // outside this card. Without auto here, buttons are unclickable.
+//
+// Location errors (denied/unavailable) are shown in LocationPermissionBanner,
+// not here. This card stays clean regardless of permission state.
 
 const CARD_STYLE = {
   position:      'absolute',
@@ -54,6 +57,15 @@ const ICONS = {
   recenter: 'M8 1v2M8 13v2M1 8h2M13 8h2M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
 };
 
+// Small dot indicating location permission status
+const PERM_DOT = {
+  granted:    { color: '#2E7D32', title: 'Location on'        },
+  prompt:     { color: '#D97706', title: 'Location not set up' },
+  denied:     { color: '#C62828', title: 'Location blocked'    },
+  unavailable:{ color: '#8A90A2', title: 'Location unavailable' },
+  unsupported:{ color: '#8A90A2', title: 'Location unsupported' },
+};
+
 function CtrlBtn({ label, iconPath, onClick, disabled, title }) {
   const [hover, setHover] = React.useState(false);
   return (
@@ -83,22 +95,25 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title }) {
  *
  * Props:
  *  onFitAll()        — recompute + apply viewport from all current data
- *  onCenterOnMe()    — request browser geolocation and center map
+ *  onCenterOnMe()    — smart handler: requests location or opens help panel
  *  onRecenter()      — restore automatic tenant-aware viewport
  *  locating          — bool: geolocation request in progress
- *  locationError     — string | null: error message from geolocation
  *  hasInteracted     — bool: user has manually panned/zoomed (shows Recenter)
  *  mapReady          — bool: map instance is live (disables buttons while loading)
+ *  permState         — 'unknown'|'prompt'|'granted'|'denied'|'unavailable'|'unsupported'
  */
 export default function DispatchMapControls({
   onFitAll,
   onCenterOnMe,
   onRecenter,
   locating,
-  locationError,
   hasInteracted,
-  mapReady = true,
+  mapReady  = true,
+  permState = 'unknown',
 }) {
+  const centerLabel = locating ? 'Locating…' : 'Center on Me';
+  const dot         = PERM_DOT[permState];
+
   return (
     <div style={CARD_STYLE} role="group" aria-label="Map controls">
       <div style={{ padding: '4px 0' }}>
@@ -123,24 +138,33 @@ export default function DispatchMapControls({
         <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
 
         <CtrlBtn
-          label={locating ? 'Locating…' : 'Center on Me'}
+          label={centerLabel}
           iconPath={ICONS.centerMe}
           onClick={onCenterOnMe}
           disabled={locating || !mapReady}
-          title="Center map on your current location"
+          title={
+            permState === 'denied'      ? 'Location blocked — click for help' :
+            permState === 'unsupported' ? 'Geolocation not supported in this browser' :
+            'Center map on your current location'
+          }
         />
       </div>
 
-      {locationError && (
+      {/* Compact permission status row — shown when not granted/unknown */}
+      {dot && permState !== 'granted' && permState !== 'unknown' && (
         <div style={{
-          padding:   '6px 11px 7px',
-          fontSize:  11,
-          color:     'var(--red, #C62828)',
-          borderTop: '1px solid var(--lightgray, #e6e6e6)',
-          lineHeight: 1.4,
-          maxWidth:  220,
+          padding:    '5px 11px 6px',
+          fontSize:   10,
+          color:      dot.color,
+          borderTop:  '1px solid var(--lightgray, #e6e6e6)',
+          display:    'flex',
+          alignItems: 'center',
+          gap:        5,
         }}>
-          {locationError}
+          <svg viewBox="0 0 8 8" style={{ width: 7, height: 7, flexShrink: 0 }}>
+            <circle cx="4" cy="4" r="3.5" fill={dot.color} />
+          </svg>
+          {dot.title}
         </div>
       )}
     </div>

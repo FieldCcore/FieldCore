@@ -1052,6 +1052,23 @@ function DayCloseoutScreen({ session, onBack, onComplete }) {
   );
 }
 
+const LOC_REQUIRED_MSG =
+  'Location access is required for technician activity. Enable location in your browser or device settings to continue.';
+
+// Check Permissions API before calling getCurrentPosition so we can show a clear
+// message without triggering the browser prompt after it has already been denied.
+async function checkLocPermission() {
+  if (!navigator.geolocation) throw Object.assign(new Error('no geo'), { _fcCode: 'UNSUPPORTED' });
+  if (!navigator.permissions) return; // Can't check — proceed and let browser handle it
+  try {
+    const s = await navigator.permissions.query({ name: 'geolocation' });
+    if (s.state === 'denied') throw Object.assign(new Error('denied'), { _fcCode: 'DENIED' });
+  } catch (e) {
+    if (e._fcCode) throw e; // Re-throw our own error
+    // permissions.query threw for another reason — proceed anyway
+  }
+}
+
 /* ── Session Detail (multi-day) ───────────────────────────────── */
 function SessionDetail({ session: initSession, onBack, onUpdate }) {
   const [session,    setSession]    = useState(initSession);
@@ -1068,18 +1085,23 @@ function SessionDetail({ session: initSession, onBack, onUpdate }) {
     setLoading(true);
     setMsg(null);
     try {
+      await checkLocPermission();
       const pos = await new Promise((res, rej) =>
-        navigator.geolocation
-          ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
-          : rej(new Error('no geo'))
-      ).catch(() => ({ coords: { latitude: 0, longitude: 0 } }));
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
+      );
       const r = await api.post(`/mobile/sessions/${session.id}/checkin`, {
         lat: pos.coords.latitude, lng: pos.coords.longitude,
       });
       update(r.data);
       setMsg({ type: 'ok', text: 'Checked in — GPS recorded' });
     } catch (err) {
-      setMsg({ type: 'err', text: err.response?.data?.error || 'Check-in failed.' });
+      if (err._fcCode === 'DENIED' || err.code === 1) {
+        setMsg({ type: 'err', text: LOC_REQUIRED_MSG });
+      } else if (err._fcCode === 'UNSUPPORTED') {
+        setMsg({ type: 'err', text: 'Location is not supported by this browser.' });
+      } else {
+        setMsg({ type: 'err', text: err.response?.data?.error || 'Check-in failed.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -1234,18 +1256,23 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
     setLoading(true);
     setMsg(null);
     try {
+      await checkLocPermission();
       const pos = await new Promise((res, rej) =>
-        navigator.geolocation
-          ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
-          : rej(new Error('no geo'))
-      ).catch(() => ({ coords: { latitude: 0, longitude: 0 } }));
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
+      );
       const r = await api.post(`/mobile/jobs/${job.id}/checkin`, {
         lat: pos.coords.latitude, lng: pos.coords.longitude,
       });
       update(r.data);
       setMsg({ type: 'ok', text: 'Checked in — GPS recorded' });
     } catch (err) {
-      setMsg({ type: 'err', text: err.response?.data?.error || 'Check-in failed.' });
+      if (err._fcCode === 'DENIED' || err.code === 1) {
+        setMsg({ type: 'err', text: LOC_REQUIRED_MSG });
+      } else if (err._fcCode === 'UNSUPPORTED') {
+        setMsg({ type: 'err', text: 'Location is not supported by this browser.' });
+      } else {
+        setMsg({ type: 'err', text: err.response?.data?.error || 'Check-in failed.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -1521,6 +1548,18 @@ export default function TechApp() {
 
   async function handleAvail() {
     if (availLoading) return;
+    // Only require location permission when going AVAILABLE (not when going off-duty)
+    const goingAvailable = !avail;
+    if (goingAvailable) {
+      try {
+        await checkLocPermission();
+      } catch (e) {
+        if (e._fcCode === 'DENIED' || e._fcCode === 'UNSUPPORTED') {
+          setAvailErr('Location access is required to go available. Enable location in your browser or device settings.');
+          return;
+        }
+      }
+    }
     setAvailLoading(true);
     setAvailErr(null);
     try {

@@ -8,9 +8,9 @@ function defaultProps(overrides = {}) {
     onCenterOnMe:  vi.fn(),
     onRecenter:    vi.fn(),
     locating:      false,
-    locationError: null,
     hasInteracted: false,
     mapReady:      true,
+    permState:     'unknown',
     ...overrides,
   };
 }
@@ -43,13 +43,23 @@ describe('DispatchMapControls — rendering', () => {
     expect(screen.getByRole('button', { name: /locating/i })).toBeInTheDocument();
   });
 
-  it('shows locationError message', () => {
-    render(<DispatchMapControls {...defaultProps({ locationError: 'Location access is off.' })} />);
-    expect(screen.getByText(/location access is off/i)).toBeInTheDocument();
+  it('shows "Location blocked" status row when permState is denied', () => {
+    render(<DispatchMapControls {...defaultProps({ permState: 'denied' })} />);
+    expect(screen.getByText(/location blocked/i)).toBeInTheDocument();
   });
 
-  it('does not show error div when locationError is null', () => {
-    render(<DispatchMapControls {...defaultProps()} />);
+  it('shows "Location not set up" status row when permState is prompt', () => {
+    render(<DispatchMapControls {...defaultProps({ permState: 'prompt' })} />);
+    expect(screen.getByText(/location not set up/i)).toBeInTheDocument();
+  });
+
+  it('does not show status row when permState is granted', () => {
+    render(<DispatchMapControls {...defaultProps({ permState: 'granted' })} />);
+    expect(screen.queryByText(/location/i)).not.toBeInTheDocument();
+  });
+
+  it('does not show status row when permState is unknown', () => {
+    render(<DispatchMapControls {...defaultProps({ permState: 'unknown' })} />);
     expect(screen.queryByText(/location/i)).not.toBeInTheDocument();
   });
 });

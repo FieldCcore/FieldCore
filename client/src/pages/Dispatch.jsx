@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
+import LocationPermissionBanner from '../maps/LocationPermissionBanner';
+import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
+import { useLocationPermission, getLocPrefs, saveLocPrefs } from '../hooks/useLocationPermission';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -83,10 +86,18 @@ export default function Dispatch() {
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
-  const [locating,         setLocating]         = useState(false);
-  const [locationError,    setLocationError]    = useState(null);
-  const [hasInteracted,    setHasInteracted]    = useState(false);
-  const [mapReady,         setMapReady]         = useState(false);
+  const [hasInteracted,       setHasInteracted]       = useState(false);
+  const [mapReady,            setMapReady]            = useState(false);
+  const [locating,            setLocating]            = useState(false);
+  const [showInstructions,    setShowInstructions]    = useState(false);
+  // Banner dismissed for this session (office users only)
+  const [bannerDismissed,     setBannerDismissed]     = useState(false);
+  // First-visit prompt: shown when permState==='prompt' and not yet completed
+  const [firstVisitDone,      setFirstVisitDone]      = useState(
+    () => !!getLocPrefs().locationOnboardingCompleted
+  );
+
+  const { permState, requestLocation, recheck } = useLocationPermission();
 
   // Google Maps instance received from DispatchBaseMap via onMapReady callback.
   const mapRef              = useRef(null);
@@ -224,6 +235,38 @@ export default function Dispatch() {
     return () => clearInterval(id);
   }, []);
 
+  // ── First-visit permission prompt handlers ────────────────────────────────
+  const handleEnableLocation = useCallback(() => {
+    setLocating(true);
+    setFirstVisitDone(true);
+    saveLocPrefs({ locationOnboardingCompleted: true });
+    requestLocation()
+      .then(pos => { setLocating(false); applyPositionToMap(pos); })
+      .catch(() => { setLocating(false); });
+  }, [requestLocation, applyPositionToMap]);
+
+  const handleSkipLocation = useCallback(() => {
+    setFirstVisitDone(true);
+    saveLocPrefs({ locationOnboardingCompleted: true });
+  }, []);
+
+  // Auto-use location when permission is already granted on page load.
+  // Only applies once (initialFitDoneRef guard) and only when we haven't
+  // already applied a stronger tenant-data viewport.
+  const autoLocationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (permState !== 'granted') return;
+    if (autoLocationAppliedRef.current) return;
+    if (!mapRef.current || !dataLoadedRef.current) return;
+    // Only use auto-location if no meaningful tenant viewport was applied
+    // (initialFitDoneRef means tenant data already positioned the map).
+    if (initialFitDoneRef.current) return;
+    autoLocationAppliedRef.current = true;
+    requestLocation()
+      .then(pos => applyPositionToMap(pos))
+      .catch(() => {});
+  }, [permState, requestLocation, applyPositionToMap]);
+
   // ── Map control handlers ──────────────────────────────────────────────────
   const handleFitAll = useCallback(() => {
     initialFitDoneRef.current = false;
@@ -233,42 +276,30 @@ export default function Dispatch() {
 
   const handleRecenter = handleFitAll;
 
-  const handleCenterOnMe = useCallback(() => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by this browser.');
-      return;
-    }
-    setLocating(true);
-    setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        const map = mapRef.current;
-        if (!map || !window.google?.maps) return;
-        programmaticRef.current = true;
-        map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        map.setZoom(14);
-        // Deliberately mark as interacted — user chose their location manually.
-        setHasInteracted(true);
-        programmaticRef.current = false;
-      },
-      (err) => {
-        setLocating(false);
-        if (err.code === 1)
-          setLocationError('Location access is off. Allow location access in your browser to center the map on you.');
-        else if (err.code === 2)
-          setLocationError('Your current location could not be determined.');
-        else if (err.code === 3)
-          setLocationError('Location lookup timed out. Please try again.');
-        else
-          setLocationError('Current location is not supported by this browser.');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    );
+  const applyPositionToMap = useCallback((pos) => {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps) return;
+    programmaticRef.current = true;
+    map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+    map.setZoom(14);
+    setHasInteracted(true);
+    programmaticRef.current = false;
   }, []);
+
+  const handleCenterOnMe = useCallback(() => {
+    // If already denied: open help panel instead of calling getCurrentPosition again.
+    if (permState === 'denied') { setShowInstructions(true); return; }
+    if (permState === 'unsupported') return;
+
+    setLocating(true);
+    requestLocation()
+      .then(pos => { setLocating(false); applyPositionToMap(pos); })
+      .catch(() => { setLocating(false); });
+  }, [permState, requestLocation, applyPositionToMap]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
+    <>
     <div className="dispatch-layout">
 
       {/* ── Left panel ── */}
@@ -411,10 +442,31 @@ export default function Dispatch() {
             onCenterOnMe={handleCenterOnMe}
             onRecenter={handleRecenter}
             locating={locating}
-            locationError={locationError}
             hasInteracted={hasInteracted}
             mapReady={mapReady}
+            permState={permState}
           />
+
+          {/* First-visit location prompt (permission=prompt, not yet asked) */}
+          {!firstVisitDone && permState === 'prompt' && (
+            <LocationPermissionBanner
+              variant="first_visit"
+              onEnable={handleEnableLocation}
+              onSkip={handleSkipLocation}
+              isEnabling={locating}
+            />
+          )}
+
+          {/* Persistent denied/unavailable banner (replaces inline dropdown error) */}
+          {!bannerDismissed && (permState === 'denied' || permState === 'unavailable') && (
+            <LocationPermissionBanner
+              variant={permState}
+              onTryAgain={recheck}
+              onOpenHelp={() => setShowInstructions(true)}
+              onDismiss={() => setBannerDismissed(true)}
+              dismissable
+            />
+          )}
 
           {/* Legend — bottom positioning handled by existing CSS */}
           <div className="dispatch-legend">
@@ -436,5 +488,11 @@ export default function Dispatch() {
       </div>
 
     </div>
+
+      {/* Browser instructions modal — rendered outside layout so it sits above everything */}
+      {showInstructions && (
+        <LocationInstructionsModal onClose={() => setShowInstructions(false)} />
+      )}
+    </>
   );
 }
