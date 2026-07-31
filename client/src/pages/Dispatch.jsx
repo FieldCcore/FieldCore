@@ -5,7 +5,7 @@ import DispatchMapControls from '../maps/DispatchMapControls';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
-import { useLocationPermission } from '../hooks/useLocationPermission';
+import { useDispatchLocation } from '../hooks/useDispatchLocation';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -86,32 +86,23 @@ export default function Dispatch() {
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
-  const [hasInteracted,       setHasInteracted]       = useState(false);
-  const [mapReady,            setMapReady]            = useState(false);
-  const [locating,            setLocating]            = useState(false);
-  const [showInstructions,    setShowInstructions]    = useState(false);
-  // Dismissed for the current session only — resets on next page load
-  const [bannerDismissed,     setBannerDismissed]     = useState(false);
-  // Prompt banner dismissed for this session via "Not Now" — not persisted
-  const [promptDismissed,     setPromptDismissed]     = useState(false);
+  const [hasInteracted,    setHasInteracted]    = useState(false);
+  const [mapReady,         setMapReady]         = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [bannerDismissed,  setBannerDismissed]  = useState(false);
+  const [promptDismissed,  setPromptDismissed]  = useState(false);
 
-  const { permState, requestLocation, recheck } = useLocationPermission();
-
-  // Google Maps instance received from DispatchBaseMap via onMapReady callback.
-  const mapRef              = useRef(null);
-  // True once the map instance is live and ready to receive viewport commands.
-  const mapReadyRef         = useRef(false);
-  // True once the initial data fetch (jobs + locs + settings) has resolved.
-  const dataLoadedRef       = useRef(false);
-  // True while we are programmatically moving the map (suppress interaction detection).
-  const programmaticRef     = useRef(false);
-  // True once the initial auto-fit has been applied for this page load.
-  const initialFitDoneRef   = useRef(false);
-  // Stable refs so viewport callbacks always see latest state.
-  const jobsRef             = useRef([]);
-  const techLocsRef         = useRef([]);
-  const dispatchSettingsRef = useRef(null);
-  const accountLocationRef  = useRef(null);
+  // ── Refs (all declared before location hook so applyPositionToMap can be stable) ──
+  const mapRef                 = useRef(null);
+  const mapReadyRef            = useRef(false);
+  const dataLoadedRef          = useRef(false);
+  const programmaticRef        = useRef(false);
+  const initialFitDoneRef      = useRef(false);
+  const autoLocationAppliedRef = useRef(false);
+  const jobsRef                = useRef([]);
+  const techLocsRef            = useRef([]);
+  const dispatchSettingsRef    = useRef(null);
+  const accountLocationRef     = useRef(null);
 
   jobsRef.current             = jobs;
   techLocsRef.current         = techLocs;
@@ -234,17 +225,35 @@ export default function Dispatch() {
   }, []);
 
   // ── Map control handlers ──────────────────────────────────────────────────
-  // Declared before any callback that references it in a dependency array.
+  // ── Position-to-map ───────────────────────────────────────────────────────
+  // Declared before useDispatchLocation so it can be passed as onLocated.
+  // Wraps map.panTo/setZoom with programmaticRef so zoom_changed doesn't
+  // trigger hasInteracted; then manually marks interaction so Recenter appears.
   const applyPositionToMap = useCallback((pos) => {
     const map = mapRef.current;
     if (!map || !window.google?.maps) return;
     programmaticRef.current = true;
-    map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    map.setZoom(14);
-    setHasInteracted(true);
+    map.panTo({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+    map.setZoom(13);
     programmaticRef.current = false;
+    setHasInteracted(true);
   }, []);
 
+  // ── Location hook ─────────────────────────────────────────────────────────
+  // Single source of truth for permission state + all location requests.
+  // Focus/visibility listeners, permission change events, and error handling
+  // are all managed inside the hook. Dispatch only wires map interaction.
+  const {
+    permissionState,
+    status:   locationStatus,
+    tryAgain,
+    centerOnMe,
+  } = useDispatchLocation({
+    onLocated: applyPositionToMap,
+    onDenied:  () => setShowInstructions(true),
+  });
+
+  // ── Map control handlers ──────────────────────────────────────────────────
   const handleFitAll = useCallback(() => {
     initialFitDoneRef.current = false;
     setHasInteracted(false);
@@ -253,72 +262,29 @@ export default function Dispatch() {
 
   const handleRecenter = handleFitAll;
 
-  // Shared function: calls getCurrentPosition directly, syncs permState via recheck,
-  // centers map on success, opens instructions on PERMISSION_DENIED.
-  const requestPositionAndCenter = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        applyPositionToMap(pos);
-        recheck();
-      },
-      (err) => {
-        setLocating(false);
-        recheck();
-        if (err.code === 1 /* PERMISSION_DENIED */) setShowInstructions(true);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, [applyPositionToMap, recheck]);
-
   const handleCenterOnMe = useCallback(() => {
-    if (permState === 'unsupported') return;
-    requestPositionAndCenter();
-  }, [permState, requestPositionAndCenter]);
+    if (permissionState === 'unsupported' || permissionState === 'insecure_context') return;
+    centerOnMe();
+  }, [permissionState, centerOnMe]);
 
   // ── First-visit permission prompt handlers ────────────────────────────────
   const handleEnableLocation = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setLocating(false); applyPositionToMap(pos); recheck(); },
-      ()    => { setLocating(false); recheck(); },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, [applyPositionToMap, recheck]);
+    centerOnMe();
+  }, [centerOnMe]);
 
-  // "Not Now" dismisses for this session only — no localStorage write.
-  // The prompt banner reappears on next Dispatch load as long as permState is 'prompt'.
   const handleSkipLocation = useCallback(() => {
     setPromptDismissed(true);
   }, []);
 
-  // Recheck permission when user returns to tab (e.g. after granting in browser settings).
+  // Auto-use location when already granted on page load (first visit only).
   useEffect(() => {
-    function onFocus() { recheck(); }
-    function onVisibility() { if (document.visibilityState === 'visible') recheck(); }
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [recheck]);
-
-  // Auto-use location when permission is already granted on page load.
-  const autoLocationAppliedRef = useRef(false);
-  useEffect(() => {
-    if (permState !== 'granted') return;
+    if (permissionState !== 'granted') return;
     if (autoLocationAppliedRef.current) return;
     if (!mapRef.current || !dataLoadedRef.current) return;
     if (initialFitDoneRef.current) return;
     autoLocationAppliedRef.current = true;
-    requestLocation()
-      .then(pos => applyPositionToMap(pos))
-      .catch(() => {});
-  }, [permState, requestLocation, applyPositionToMap]);
+    centerOnMe();
+  }, [permissionState, centerOnMe]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -464,27 +430,27 @@ export default function Dispatch() {
             onFitAll={handleFitAll}
             onCenterOnMe={handleCenterOnMe}
             onRecenter={handleRecenter}
-            locating={locating}
+            locating={locationStatus === 'checking'}
             hasInteracted={hasInteracted}
             mapReady={mapReady}
-            permState={permState}
+            permState={permissionState}
           />
 
           {/* Location prompt shown whenever permission is 'prompt' and not dismissed this session */}
-          {!promptDismissed && permState === 'prompt' && (
+          {!promptDismissed && permissionState === 'prompt' && (
             <LocationPermissionBanner
               variant="first_visit"
               onEnable={handleEnableLocation}
               onSkip={handleSkipLocation}
-              isEnabling={locating}
+              isEnabling={locationStatus === 'checking'}
             />
           )}
 
-          {/* Persistent denied/unavailable banner (replaces inline dropdown error) */}
-          {!bannerDismissed && (permState === 'denied' || permState === 'unavailable') && (
+          {/* Persistent denied/unavailable banner — no status dot in controls for these states */}
+          {!bannerDismissed && (permissionState === 'denied' || permissionState === 'unavailable') && (
             <LocationPermissionBanner
-              variant={permState}
-              onTryAgain={requestPositionAndCenter}
+              variant={permissionState}
+              onTryAgain={tryAgain}
               onOpenHelp={() => setShowInstructions(true)}
               onDismiss={() => setBannerDismissed(true)}
               dismissable
