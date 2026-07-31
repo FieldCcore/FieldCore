@@ -217,6 +217,18 @@ describe('DispatchBaseMap', () => {
     }
   });
 
+  it('auth-failure prevents idle from overriding error state', async () => {
+    render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    // Auth failure fires first, then idle fires (mirrors the ApiTargetBlockedMapError timeline)
+    act(() => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure'));
+      mocks.fireIdle();
+    });
+    await waitFor(() => expect(screen.getByText('Map unavailable')).toBeTruthy());
+    expect(screen.queryByText('Loading map…')).toBeNull();
+  });
+
   it('polling does not return to loading after ready', async () => {
     const { rerender } = render(<DispatchBaseMap />);
     await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());

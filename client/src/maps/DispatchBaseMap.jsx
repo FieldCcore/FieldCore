@@ -23,6 +23,7 @@ export default function DispatchBaseMap({ onMapReady }) {
   const mapRef        = useRef(null);
   const onReadyRef    = useRef(onMapReady);
   const readyRef      = useRef(false);
+  const authFailedRef = useRef(false);
   const [status,    setStatus]    = useState('loading');
   const [errorCode, setErrorCode] = useState(null);
 
@@ -30,8 +31,11 @@ export default function DispatchBaseMap({ onMapReady }) {
   onReadyRef.current = onMapReady;
 
   // Detect auth failure dispatched by MapProvider's gm_authFailure handler.
+  // authFailedRef prevents markReady from overriding the error state if idle
+  // fires after gm_authFailure (an empty restricted map is immediately "idle").
   useEffect(() => {
     function onAuthFailure() {
+      authFailedRef.current = true;
       setStatus('error');
       setErrorCode(
         'ApiTargetBlockedMapError — add www.getfieldcore.com/* to HTTP referrer restrictions ' +
@@ -48,9 +52,10 @@ export default function DispatchBaseMap({ onMapReady }) {
     let fallbackId = null;
 
     // markReady is idempotent — only the first caller wins.
-    // Accepts idle, tilesloaded, or dom-fallback as the source.
+    // Skips if auth failure already fired (idle on a restricted map fires immediately
+    // with empty tiles; we must not override the error state with ready).
     function markReady(_source) {
-      if (readyRef.current || cancelled) return;
+      if (readyRef.current || cancelled || authFailedRef.current) return;
       readyRef.current = true;
       setStatus('ready');
       setErrorCode(null);
