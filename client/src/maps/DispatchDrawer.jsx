@@ -1,0 +1,342 @@
+import { useMemo } from 'react';
+
+const GPS_LIVE_MS  = 2  * 60 * 1000;
+const GPS_STALE_MS = 15 * 60 * 1000;
+const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
+
+function initials(name) {
+  return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function fmtAge(ts) {
+  if (!ts) return 'No GPS';
+  const ms = Date.now() - new Date(ts).getTime();
+  const m  = Math.floor(ms / 60000);
+  if (m >= 60) return `${Math.floor(m / 60)}h ago`;
+  return m > 0 ? `${m}m ago` : 'just now';
+}
+
+const JOB_STATUS_STYLE = {
+  scheduled:           { background: 'var(--off)',       color: 'var(--steel)'  },
+  in_progress:         { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
+  complete:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
+  cancelled:           { background: 'var(--red-lt)',    color: 'var(--red)'    },
+  no_show:             { background: 'var(--red-lt)',    color: 'var(--red)'    },
+  paused:              { background: 'var(--amber-lt)',  color: 'var(--amber)'  },
+  en_route:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
+  awaiting_client:     { background: 'var(--yellow-lt)', color: 'var(--yellow)' },
+  partially_completed: { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
+};
+
+const JOB_STATUS_LABEL = {
+  scheduled: 'Scheduled', in_progress: 'Active', complete: 'Done',
+  cancelled: 'Cancelled', no_show: 'No-show', paused: 'Paused',
+  en_route: 'En Route', awaiting_client: 'Awaiting', partially_completed: 'Partial',
+};
+
+/**
+ * Contextual drawer that slides in from the right of the map when a tech or
+ * job is selected. Must live inside .dispatch-map-overlays (pointer-events:none)
+ * and sets pointer-events:auto on itself via CSS (.dispatch-drawer).
+ *
+ * Props:
+ *   item         — { type: 'tech'|'job', id: string } | null
+ *   techs        — array from GET /api/users
+ *   techLocs     — array from GET /api/mobile/locations
+ *   jobs         — array from GET /api/jobs
+ *   onClose      — () => void
+ *   onCenterTech — (techId: string) => void
+ *   onCenterJob  — (job: object) => void
+ */
+export default function DispatchDrawer({
+  item,
+  techs    = [],
+  techLocs = [],
+  jobs     = [],
+  onClose,
+  onCenterTech,
+  onCenterJob,
+}) {
+  const isOpen = item != null;
+
+  const tech = useMemo(() => {
+    if (item?.type !== 'tech') return null;
+    return techs.find(t => t.id === item.id) ?? null;
+  }, [item, techs]);
+
+  const job = useMemo(() => {
+    if (item?.type !== 'job') return null;
+    return jobs.find(j => j.id === item.id) ?? null;
+  }, [item, jobs]);
+
+  const techLoc = useMemo(() => {
+    if (!tech) return null;
+    return techLocs.find(l => l.user_id === tech.id) ?? null;
+  }, [tech, techLocs]);
+
+  const techActiveJob = useMemo(() => {
+    if (!tech) return null;
+    return jobs.find(j => j.tech_id === tech.id && j.status === 'in_progress') ?? null;
+  }, [tech, jobs]);
+
+  const techNextJob = useMemo(() => {
+    if (!tech) return null;
+    return jobs.find(j => j.tech_id === tech.id && j.status === 'scheduled') ?? null;
+  }, [tech, jobs]);
+
+  const jobTech = useMemo(() => {
+    if (!job?.tech_id) return null;
+    return techs.find(t => t.id === job.tech_id) ?? null;
+  }, [job, techs]);
+
+  const avatarColor = useMemo(() => {
+    if (!tech) return AVATAR_COLORS[0];
+    const idx = techs.findIndex(t => t.id === tech.id);
+    return AVATAR_COLORS[Math.max(0, idx) % AVATAR_COLORS.length];
+  }, [tech, techs]);
+
+  return (
+    <div
+      className={`dispatch-drawer${isOpen ? ' open' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={item?.type === 'tech' ? 'Technician details' : 'Job details'}
+      aria-hidden={!isOpen}
+    >
+      <div className="dispatch-drawer-hdr">
+        <span className="dispatch-drawer-title">
+          {item?.type === 'tech' ? 'Technician' : 'Job Details'}
+        </span>
+        <button
+          type="button"
+          className="dispatch-drawer-close"
+          onClick={onClose}
+          aria-label="Close details panel"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="dispatch-drawer-body">
+        {item?.type === 'tech' && tech && (
+          <TechView
+            tech={tech}
+            loc={techLoc}
+            activeJob={techActiveJob}
+            nextJob={techNextJob}
+            avatarColor={avatarColor}
+            onCenter={() => onCenterTech?.(tech.id)}
+          />
+        )}
+
+        {item?.type === 'job' && job && (
+          <JobView
+            job={job}
+            jobTech={jobTech}
+            onCenter={() => onCenterJob?.(job)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Tech detail view ──────────────────────────────────────────────────────────
+
+function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter }) {
+  const age      = loc ? Date.now() - new Date(loc.updated_at).getTime() : null;
+  const isLive   = age !== null && age < GPS_LIVE_MS;
+  const isStale  = age !== null && age >= GPS_LIVE_MS && age < GPS_STALE_MS;
+  const isOffline = age !== null && age >= GPS_STALE_MS;
+
+  const gpsLabel = !tech.is_available ? 'Off Duty'
+    : !loc             ? 'No GPS'
+    : isLive           ? 'Live GPS'
+    : isStale          ? 'GPS Stale'
+    :                    'Offline';
+
+  const gpsColor = (!tech.is_available || isOffline) ? '#8A90A2'
+    : isStale ? '#D97706' : '#2E7D32';
+
+  const hasLoc = !!loc && isLive;
+
+  return (
+    <>
+      <div className="dispatch-drawer-avatar-row">
+        <div
+          className="dispatch-drawer-avatar"
+          style={{ background: avatarColor }}
+          aria-hidden="true"
+        >
+          {initials(tech.name)}
+        </div>
+        <div>
+          <div className="dispatch-drawer-name">{tech.name}</div>
+          <div className="dispatch-drawer-role">{tech.role}</div>
+        </div>
+      </div>
+
+      <div className="dispatch-drawer-stat-row">
+        <span className="dispatch-drawer-stat-label">Status</span>
+        <span style={{ color: gpsColor, fontWeight: 600, fontSize: 12 }}>{gpsLabel}</span>
+      </div>
+
+      {loc && (
+        <div className="dispatch-drawer-stat-row">
+          <span className="dispatch-drawer-stat-label">Last seen</span>
+          <span style={{ fontSize: 12 }}>{fmtAge(loc.updated_at)}</span>
+        </div>
+      )}
+
+      {loc?.speed != null && loc.speed > 2 && (
+        <div className="dispatch-drawer-stat-row">
+          <span className="dispatch-drawer-stat-label">Speed</span>
+          <span style={{ fontSize: 12 }}>{Math.round(loc.speed * 2.237)} mph</span>
+        </div>
+      )}
+
+      {activeJob && (
+        <div className="dispatch-drawer-job-card">
+          <div className="dispatch-drawer-job-lbl">Current Job</div>
+          <div className="dispatch-drawer-job-name">{activeJob.client_name}</div>
+          <div className="dispatch-drawer-job-meta">{activeJob.service_type}</div>
+          {activeJob.service_address && (
+            <div className="dispatch-drawer-job-meta">
+              {activeJob.service_address}
+              {activeJob.service_city ? `, ${activeJob.service_city}` : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      {nextJob && (
+        <div className="dispatch-drawer-job-card">
+          <div className="dispatch-drawer-job-lbl">Next Job</div>
+          <div className="dispatch-drawer-job-name">{nextJob.client_name}</div>
+          <div className="dispatch-drawer-job-meta">
+            {nextJob.service_type} · {fmtTime(nextJob.scheduled_at)}
+          </div>
+        </div>
+      )}
+
+      <div className="dispatch-drawer-actions">
+        {hasLoc && (
+          <button type="button" className="dispatch-drawer-btn primary" onClick={onCenter}>
+            Center Map
+          </button>
+        )}
+        {tech.phone && (
+          <a href={`tel:${tech.phone}`} className="dispatch-drawer-btn" aria-label={`Call ${tech.name}`}>
+            Call
+          </a>
+        )}
+        <a href="/team" className="dispatch-drawer-btn">
+          Profile
+        </a>
+      </div>
+    </>
+  );
+}
+
+// ── Job detail view ───────────────────────────────────────────────────────────
+
+function JobView({ job, jobTech, onCenter }) {
+  const sStyle   = JOB_STATUS_STYLE[job.status] || JOB_STATUS_STYLE.scheduled;
+  const sLabel   = JOB_STATUS_LABEL[job.status] || job.status;
+  const hasCoords = job.service_lat && job.service_lng;
+
+  return (
+    <>
+      <div className="dispatch-drawer-job-header">
+        <span
+          className="dispatch-job-badge"
+          style={{ ...sStyle, fontSize: 10, padding: '2px 8px' }}
+          aria-label={`Status: ${sLabel}`}
+        >
+          {sLabel}
+        </span>
+        {job.priority === 'high' && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, color: 'var(--red)',
+            background: 'var(--red-lt)', borderRadius: 99, padding: '2px 8px',
+          }}>
+            High Priority
+          </span>
+        )}
+      </div>
+
+      <div className="dispatch-drawer-name" style={{ marginTop: 10 }}>
+        {job.client_name}
+      </div>
+      <div className="dispatch-drawer-role">{job.service_type}</div>
+
+      <div className="dispatch-drawer-divider" />
+
+      <div className="dispatch-drawer-stat-row">
+        <span className="dispatch-drawer-stat-label">Scheduled</span>
+        <span style={{ fontSize: 12 }}>
+          {fmtDate(job.scheduled_at)} {fmtTime(job.scheduled_at)}
+        </span>
+      </div>
+
+      {job.service_address && (
+        <div className="dispatch-drawer-stat-row">
+          <span className="dispatch-drawer-stat-label">Address</span>
+          <span style={{ fontSize: 12, textAlign: 'right', flex: 1 }}>
+            {job.service_address}
+            {job.service_city  ? `, ${job.service_city}`  : ''}
+            {job.service_state ? ` ${job.service_state}`  : ''}
+            {job.service_zip   ? ` ${job.service_zip}`    : ''}
+          </span>
+        </div>
+      )}
+
+      <div className="dispatch-drawer-stat-row">
+        <span className="dispatch-drawer-stat-label">Assigned</span>
+        <span style={{ fontSize: 12, color: jobTech ? 'var(--navy)' : 'var(--amber)' }}>
+          {jobTech?.name ?? 'Unassigned'}
+        </span>
+      </div>
+
+      {job.amount != null && (
+        <div className="dispatch-drawer-stat-row">
+          <span className="dispatch-drawer-stat-label">Amount</span>
+          <span style={{ fontSize: 12 }}>
+            ${(job.amount / 100).toFixed(2)}
+          </span>
+        </div>
+      )}
+
+      {job.notes && (
+        <div style={{
+          margin: '10px 0', padding: '8px 10px',
+          background: 'var(--off)', borderRadius: 6,
+          fontSize: 11, color: 'var(--slate)', lineHeight: 1.5,
+        }}>
+          {job.notes}
+        </div>
+      )}
+
+      <div className="dispatch-drawer-actions">
+        {hasCoords && (
+          <button type="button" className="dispatch-drawer-btn primary" onClick={onCenter}>
+            Center Map
+          </button>
+        )}
+        <a href="/jobs" className="dispatch-drawer-btn">
+          Open Job
+        </a>
+      </div>
+    </>
+  );
+}

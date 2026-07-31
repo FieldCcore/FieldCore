@@ -11,6 +11,8 @@ function defaultProps(overrides = {}) {
     hasInteracted: false,
     mapReady:      true,
     permState:     'unknown',
+    layers:        { techs: true, jobs: true, traffic: false },
+    onLayerToggle: vi.fn(),
     ...overrides,
   };
 }
@@ -136,6 +138,77 @@ describe('DispatchMapControls — accessibility', () => {
     const { container } = render(<DispatchMapControls {...defaultProps()} />);
     const card = container.firstChild;
     expect(card.style.pointerEvents).toBe('auto');
+  });
+});
+
+// ── Layers dropdown ───────────────────────────────────────────────────────────
+
+describe('DispatchMapControls — layers dropdown', () => {
+  it('renders Layers button', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    expect(screen.getByRole('button', { name: /layers/i })).toBeInTheDocument();
+  });
+
+  it('opens dropdown when Layers is clicked', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    expect(screen.getByText('Technicians')).toBeInTheDocument();
+    expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByText('Traffic')).toBeInTheDocument();
+  });
+
+  it('calls onLayerToggle with "techs" when Technicians is clicked', () => {
+    const onLayerToggle = vi.fn();
+    render(<DispatchMapControls {...defaultProps({ onLayerToggle })} />);
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    fireEvent.click(screen.getByText('Technicians'));
+    expect(onLayerToggle).toHaveBeenCalledWith('techs');
+  });
+
+  it('calls onLayerToggle with "jobs" when Jobs is clicked', () => {
+    const onLayerToggle = vi.fn();
+    render(<DispatchMapControls {...defaultProps({ onLayerToggle })} />);
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    fireEvent.click(screen.getByText('Jobs'));
+    expect(onLayerToggle).toHaveBeenCalledWith('jobs');
+  });
+
+  it('calls onLayerToggle with "traffic" when Traffic is clicked', () => {
+    const onLayerToggle = vi.fn();
+    render(<DispatchMapControls {...defaultProps({ onLayerToggle })} />);
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    fireEvent.click(screen.getByText('Traffic'));
+    expect(onLayerToggle).toHaveBeenCalledWith('traffic');
+  });
+
+  it('shows active state on Layers button when traffic is on', () => {
+    render(<DispatchMapControls {...defaultProps({ layers: { techs: true, jobs: true, traffic: true } })} />);
+    const btn = screen.getByRole('button', { name: /layers/i });
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows active state on Layers button when a layer is off', () => {
+    render(<DispatchMapControls {...defaultProps({ layers: { techs: false, jobs: true, traffic: false } })} />);
+    const btn = screen.getByRole('button', { name: /layers/i });
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Layers button is disabled when mapReady is false', () => {
+    render(<DispatchMapControls {...defaultProps({ mapReady: false })} />);
+    expect(screen.getByRole('button', { name: /layers/i })).toBeDisabled();
+  });
+
+  it('closes dropdown when clicking outside', () => {
+    render(
+      <div>
+        <DispatchMapControls {...defaultProps()} />
+        <div data-testid="outside">Outside</div>
+      </div>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    expect(screen.getByText('Technicians')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId('outside'));
+    expect(screen.queryByText('Technicians')).not.toBeInTheDocument();
   });
 });
 
