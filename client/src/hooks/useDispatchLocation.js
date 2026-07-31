@@ -25,15 +25,16 @@ export function saveLocPrefs(updates) {
 // 'unsupported'       — navigator.geolocation not present
 // 'insecure_context'  — page is not served over HTTPS
 
-const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
+// maximumAge: 0 forces a fresh fix — no cached result accepted.
+const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
 
 function locationErrorMessage(err) {
-  if (!err) return 'Your current location could not be determined.';
+  if (!err) return 'Your device could not determine its current location.';
   switch (err.code) {
-    case 1:  return 'Location is blocked in your browser settings.';
-    case 2:  return 'Your current location could not be determined.';
-    case 3:  return 'Location lookup timed out. Please try again.';
-    default: return 'Your current location could not be determined.';
+    case 1:  return 'Location permission was denied or blocked by browser, operating-system, or site policy.';
+    case 2:  return 'Your device could not determine its current location.';
+    case 3:  return 'Location lookup timed out.';
+    default: return 'Your device could not determine its current location.';
   }
 }
 
@@ -129,20 +130,14 @@ export function useDispatchLocation({ onLocated, onDenied } = {}) {
   }, []); // stable — all external references go through refs
 
   // ── Try Again ───────────────────────────────────────────────────────────────
-  // Re-queries permission first. Shows a message if still denied (avoids burning
-  // a getCurrentPosition call that will immediately reject with PERMISSION_DENIED).
-  // If not denied, calls getCurrentPosition to attempt the actual fix.
-  const tryAgain = useCallback(async () => {
-    setStatus('checking');
-    setMessage(null);
-    const state = await refreshPermission();
-    if (state === 'denied') {
-      setStatus('error');
-      setMessage('Location is still blocked. Allow it in your browser settings, then try again.');
-      return;
-    }
+  // Calls getCurrentPosition directly from the user's click event — no async
+  // permission pre-check that could lose user activation or bail out because a
+  // Permissions-Policy header made the Permissions API report 'denied' while the
+  // actual browser site permission is Allow. The real result from the OS / browser
+  // always comes through the success/error callbacks below.
+  const tryAgain = useCallback(() => {
     requestCurrentLocation();
-  }, [refreshPermission, requestCurrentLocation]);
+  }, [requestCurrentLocation]);
 
   // ── Initialize: query permission + subscribe to change event ───────────────
   useEffect(() => {

@@ -322,7 +322,7 @@ describe('useDispatchLocation — centerOnMe', () => {
     await act(async () => {});
 
     await act(async () => { result.current.centerOnMe(); });
-    expect(result.current.message).toMatch(/could not be determined/i);
+    expect(result.current.message).toMatch(/could not determine/i);
   });
 
   it('sets error message on TIMEOUT', async () => {
@@ -357,99 +357,89 @@ describe('useDispatchLocation — centerOnMe', () => {
 });
 
 // ── tryAgain ──────────────────────────────────────────────────────────────────
+// tryAgain calls getCurrentPosition directly — no async permission pre-check
+// that could lose user activation or bail out because a Permissions-Policy
+// header caused the Permissions API to return 'denied' while the browser
+// site permission is actually Allow. The actual browser/OS result is authoritative.
 
 describe('useDispatchLocation — tryAgain', () => {
-  it('sets status to checking while re-querying permission', async () => {
-    const status = setupPermissionsApi('denied');
-    const { result } = renderHook(() => useDispatchLocation());
-    await act(async () => {});
-
-    // Mock permission still denied
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ ...status, state: 'denied' }) },
-      configurable: true, writable: true,
-    });
-
-    act(() => { result.current.tryAgain(); });
-    expect(result.current.status).toBe('checking');
-  });
-
-  it('shows blocked message without calling getCurrentPosition when still denied', async () => {
-    setupPermissionsApi('denied');
-    const { result } = renderHook(() => useDispatchLocation());
-    await act(async () => {});
-
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ state: 'denied', addEventListener: vi.fn() }) },
-      configurable: true, writable: true,
-    });
-
-    await act(async () => { await result.current.tryAgain(); });
-    expect(result.current.message).toMatch(/still blocked/i);
-    expect(navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
-  });
-
-  it('calls getCurrentPosition when permission is now granted', async () => {
-    setupPermissionsApi('denied');
-    mockGeoSuccess(FAKE_POS);
-    const { result } = renderHook(() => useDispatchLocation());
-    await act(async () => {});
-
-    // Permission changed to granted in browser settings
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
-      configurable: true, writable: true,
-    });
-
-    await act(async () => { await result.current.tryAgain(); });
-    expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
-  });
-
-  it('calls onLocated after permission became granted and location succeeds', async () => {
-    setupPermissionsApi('denied');
-    const onLocated = vi.fn();
-    mockGeoSuccess(FAKE_POS);
-    const { result } = renderHook(() => useDispatchLocation({ onLocated }));
-    await act(async () => {});
-
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
-      configurable: true, writable: true,
-    });
-
-    await act(async () => { await result.current.tryAgain(); });
-    expect(onLocated).toHaveBeenCalledWith(FAKE_POS);
-  });
-
-  it('clears stale denied state when browser reports granted', async () => {
+  it('calls getCurrentPosition immediately, even when Permissions API shows denied', async () => {
     setupPermissionsApi('denied');
     mockGeoSuccess(FAKE_POS);
     const { result } = renderHook(() => useDispatchLocation());
     await act(async () => {});
     expect(result.current.permissionState).toBe('denied');
 
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
-      configurable: true, writable: true,
-    });
+    await act(async () => { result.current.tryAgain(); });
+    // Must have called getCurrentPosition — never bail out due to Permissions API state
+    expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
+  });
 
-    await act(async () => { await result.current.tryAgain(); });
+  it('sets status to checking immediately on click', async () => {
+    setupPermissionsApi('denied');
+    navigator.geolocation.getCurrentPosition = vi.fn(); // never resolves
+    const { result } = renderHook(() => useDispatchLocation());
+    await act(async () => {});
+
+    act(() => { result.current.tryAgain(); });
+    expect(result.current.status).toBe('checking');
+  });
+
+  it('calls onLocated when getCurrentPosition succeeds (stale denied state clears)', async () => {
+    setupPermissionsApi('denied');
+    const onLocated = vi.fn();
+    mockGeoSuccess(FAKE_POS);
+    const { result } = renderHook(() => useDispatchLocation({ onLocated }));
+    await act(async () => {});
+
+    await act(async () => { result.current.tryAgain(); });
+    expect(onLocated).toHaveBeenCalledWith(FAKE_POS);
+  });
+
+  it('clears stale denied permissionState when getCurrentPosition succeeds', async () => {
+    setupPermissionsApi('denied');
+    mockGeoSuccess(FAKE_POS);
+    const { result } = renderHook(() => useDispatchLocation());
+    await act(async () => {});
+    expect(result.current.permissionState).toBe('denied');
+
+    await act(async () => { result.current.tryAgain(); });
     expect(result.current.permissionState).toBe('granted');
   });
 
-  it('also calls getCurrentPosition when permission is prompt', async () => {
+  it('calls onDenied when getCurrentPosition returns PERMISSION_DENIED', async () => {
+    setupPermissionsApi('denied');
+    mockGeoError(1);
+    const onDenied = vi.fn();
+    const { result } = renderHook(() => useDispatchLocation({ onDenied }));
+    await act(async () => {});
+
+    await act(async () => { result.current.tryAgain(); });
+    expect(onDenied).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls getCurrentPosition when permission is prompt (browser will prompt)', async () => {
     setupPermissionsApi('prompt');
     mockGeoSuccess(FAKE_POS);
     const { result } = renderHook(() => useDispatchLocation());
     await act(async () => {});
 
-    Object.defineProperty(navigator, 'permissions', {
-      value: { query: vi.fn().mockResolvedValue({ state: 'prompt', addEventListener: vi.fn() }) },
-      configurable: true, writable: true,
-    });
-
-    await act(async () => { await result.current.tryAgain(); });
+    await act(async () => { result.current.tryAgain(); });
     expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
+  });
+
+  it('does not pre-query the Permissions API before calling getCurrentPosition', async () => {
+    const querySpy = setupPermissionsApi('denied').constructor;
+    const queryFn = navigator.permissions.query;
+    mockGeoSuccess(FAKE_POS);
+    const { result } = renderHook(() => useDispatchLocation());
+    await act(async () => {});
+    const callsBeforeClick = queryFn.mock?.calls?.length ?? 0;
+
+    await act(async () => { result.current.tryAgain(); });
+    // No additional Permissions API calls from tryAgain itself
+    expect(navigator.permissions.query.mock.calls.length).toBe(callsBeforeClick);
+    void querySpy; // suppress unused
   });
 });
 
