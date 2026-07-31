@@ -235,6 +235,37 @@ export default function Dispatch() {
     return () => clearInterval(id);
   }, []);
 
+  // ── Map control handlers ──────────────────────────────────────────────────
+  // Declared before any callback that references it in a dependency array.
+  const applyPositionToMap = useCallback((pos) => {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps) return;
+    programmaticRef.current = true;
+    map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+    map.setZoom(14);
+    setHasInteracted(true);
+    programmaticRef.current = false;
+  }, []);
+
+  const handleFitAll = useCallback(() => {
+    initialFitDoneRef.current = false;
+    setHasInteracted(false);
+    computeAndApplyViewport({ force: true });
+  }, [computeAndApplyViewport]);
+
+  const handleRecenter = handleFitAll;
+
+  const handleCenterOnMe = useCallback(() => {
+    // If already denied: open help panel instead of calling getCurrentPosition again.
+    if (permState === 'denied') { setShowInstructions(true); return; }
+    if (permState === 'unsupported') return;
+
+    setLocating(true);
+    requestLocation()
+      .then(pos => { setLocating(false); applyPositionToMap(pos); })
+      .catch(() => { setLocating(false); });
+  }, [permState, requestLocation, applyPositionToMap]);
+
   // ── First-visit permission prompt handlers ────────────────────────────────
   const handleEnableLocation = useCallback(() => {
     setLocating(true);
@@ -251,50 +282,16 @@ export default function Dispatch() {
   }, []);
 
   // Auto-use location when permission is already granted on page load.
-  // Only applies once (initialFitDoneRef guard) and only when we haven't
-  // already applied a stronger tenant-data viewport.
   const autoLocationAppliedRef = useRef(false);
   useEffect(() => {
     if (permState !== 'granted') return;
     if (autoLocationAppliedRef.current) return;
     if (!mapRef.current || !dataLoadedRef.current) return;
-    // Only use auto-location if no meaningful tenant viewport was applied
-    // (initialFitDoneRef means tenant data already positioned the map).
     if (initialFitDoneRef.current) return;
     autoLocationAppliedRef.current = true;
     requestLocation()
       .then(pos => applyPositionToMap(pos))
       .catch(() => {});
-  }, [permState, requestLocation, applyPositionToMap]);
-
-  // ── Map control handlers ──────────────────────────────────────────────────
-  const handleFitAll = useCallback(() => {
-    initialFitDoneRef.current = false;
-    setHasInteracted(false);
-    computeAndApplyViewport({ force: true });
-  }, [computeAndApplyViewport]);
-
-  const handleRecenter = handleFitAll;
-
-  const applyPositionToMap = useCallback((pos) => {
-    const map = mapRef.current;
-    if (!map || !window.google?.maps) return;
-    programmaticRef.current = true;
-    map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    map.setZoom(14);
-    setHasInteracted(true);
-    programmaticRef.current = false;
-  }, []);
-
-  const handleCenterOnMe = useCallback(() => {
-    // If already denied: open help panel instead of calling getCurrentPosition again.
-    if (permState === 'denied') { setShowInstructions(true); return; }
-    if (permState === 'unsupported') return;
-
-    setLocating(true);
-    requestLocation()
-      .then(pos => { setLocating(false); applyPositionToMap(pos); })
-      .catch(() => { setLocating(false); });
   }, [permState, requestLocation, applyPositionToMap]);
 
   // ── Render ────────────────────────────────────────────────────────────────
