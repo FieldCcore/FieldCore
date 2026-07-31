@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from './loadGoogleMaps';
 
+// Module-level: persists across component remounts within a single page session.
+// gm_authFailure fires once per Maps API session; without this, a component
+// remount (e.g. key={user?.accountId} in App.jsx) starts fresh and never sees
+// the auth failure, leaving a blank map with no error message.
+let _sessionAuthCode = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('fieldcore:maps:auth-failure-reset', () => {
+    _sessionAuthCode = null;
+  });
+}
+
 const DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 const DEFAULT_ZOOM   = 4;
 
@@ -36,9 +47,13 @@ export default function DispatchBaseMap({ onMapReady }) {
   const mapRef        = useRef(null);
   const onReadyRef    = useRef(onMapReady);
   const readyRef      = useRef(false);
-  const authFailedRef = useRef(false);
-  const [status,    setStatus]    = useState('loading');
-  const [errorCode, setErrorCode] = useState(null);
+  // Initialise from the session flag so a remount after auth failure starts in
+  // error state immediately without waiting for a second gm_authFailure event.
+  const authFailedRef = useRef(!!_sessionAuthCode);
+  const [status,    setStatus]    = useState(() => _sessionAuthCode ? 'error' : 'loading');
+  const [errorCode, setErrorCode] = useState(() =>
+    _sessionAuthCode ? mapsErrorMessage(_sessionAuthCode) : null
+  );
 
   // Keep the callback ref current without re-running the init effect.
   onReadyRef.current = onMapReady;
@@ -48,6 +63,7 @@ export default function DispatchBaseMap({ onMapReady }) {
   // fires after gm_authFailure (an empty restricted map is immediately "idle").
   useEffect(() => {
     function onAuthFailure(e) {
+      _sessionAuthCode      = e.detail?.code || 'MapAuthFailureError';
       authFailedRef.current = true;
       setStatus('error');
       setErrorCode(mapsErrorMessage(e.detail?.code));
@@ -73,6 +89,9 @@ export default function DispatchBaseMap({ onMapReady }) {
     }
 
     async function initMap() {
+      // Skip if auth failure is already known from a previous mount this session.
+      if (_sessionAuthCode) return;
+
       try {
         const maps = await loadGoogleMaps();
         if (cancelled) return;

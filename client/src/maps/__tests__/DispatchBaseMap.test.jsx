@@ -3,6 +3,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import DispatchBaseMap from '../DispatchBaseMap';
 import * as loaderModule from '../loadGoogleMaps';
 
+// Reset module-level auth session state between tests via the same event the
+// afterEach hook dispatches — ensures _sessionAuthCode starts null for each test.
+beforeEach(() => {
+  window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure-reset'));
+});
+
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 
 function makeMockMaps() {
@@ -255,6 +261,29 @@ describe('DispatchBaseMap', () => {
     });
     await waitFor(() => expect(screen.getByText('Map unavailable')).toBeTruthy());
     expect(screen.queryByText('Loading map…')).toBeNull();
+  });
+
+  it('remount after auth failure starts in error state without second gm_authFailure', async () => {
+    // Simulate what happens when key={user?.accountId} causes a remount:
+    // first instance sees auth failure, second instance must inherit that state.
+    const { unmount } = render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+        detail: { code: 'ApiTargetBlockedMapError' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByText('Map unavailable')).toBeTruthy());
+    unmount();
+
+    // Second mount — no second auth-failure event, but must still show error
+    mocks = makeMockMaps();
+    loadSpy.mockResolvedValue(mocks.maps);
+    render(<DispatchBaseMap />);
+
+    expect(screen.getByText('Map unavailable')).toBeTruthy();
+    // initMap should NOT run — no second map created
+    expect(mocks.maps.Map).not.toHaveBeenCalled();
   });
 
   it('polling does not return to loading after ready', async () => {
