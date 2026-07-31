@@ -38,23 +38,33 @@ function installGlobalHandlers(apiKey) {
     (document.head || document.documentElement).appendChild(style);
   }
 
+  // Capture the specific Maps error code. Google emits it via console.error
+  // synchronously before calling gm_authFailure, so wrapping console.error
+  // here reliably captures it for the handler below.
+  let _pendingMapsErrorCode = null;
+  const _origConsoleError = console.error;
+  console.error = function (...args) {
+    const msg = String(args[0] ?? '');
+    if (msg.includes('Google Maps JavaScript API error:')) {
+      const m = msg.match(/error:\s*(\w+MapError)/);
+      if (m) _pendingMapsErrorCode = m[1];
+    }
+    return _origConsoleError.apply(console, args);
+  };
+
   window.gm_authFailure = function () {
+    const errorCode = _pendingMapsErrorCode ?? 'MapAuthFailureError';
+    _pendingMapsErrorCode = null;
     console.error('[MapProvider] gm_authFailure — Maps JavaScript API key rejected', {
+      errorCode,
       maskedKey:   maskedKey(apiKey),
       hostname:    window.location.hostname,
       ts:          new Date().toISOString(),
-      likelyCauses: [
-        '1. HTTP Referrer restriction — add https://www.getfieldcore.com/* in GCP Console → Credentials',
-        '2. Maps JavaScript API not enabled — GCP Console → APIs & Services → Library',
-        '3. Billing not active on the GCP project',
-        '4. VITE_GOOGLE_MAPS_API_KEY changed in Vercel but project was not redeployed',
-        '5. VITE_GOOGLE_MAPS_API_KEY scoped to Preview/Development only (not Production)',
-      ],
     });
     suppressGoogleOverlay();
     window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
       detail: {
-        code:      'auth-failure',
+        code:      errorCode,
         hostname:  window.location.hostname,
         maskedKey: maskedKey(apiKey),
         ts:        new Date().toISOString(),

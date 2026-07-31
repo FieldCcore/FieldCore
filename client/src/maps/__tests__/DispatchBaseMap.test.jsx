@@ -217,6 +217,34 @@ describe('DispatchBaseMap', () => {
     }
   });
 
+  it('shows API-restriction message for ApiTargetBlockedMapError', async () => {
+    render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+        detail: { code: 'ApiTargetBlockedMapError' },
+      }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/blocked by this key's API restrictions/)).toBeTruthy()
+    );
+    expect(screen.queryByText(/HTTP referrer/i)).toBeNull();
+  });
+
+  it('shows referrer message for RefererNotAllowedMapError', async () => {
+    render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('fieldcore:maps:auth-failure', {
+        detail: { code: 'RefererNotAllowedMapError' },
+      }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/HTTP referrer restrictions/)).toBeTruthy()
+    );
+    expect(screen.queryByText(/API restrictions/)).toBeNull();
+  });
+
   it('auth-failure prevents idle from overriding error state', async () => {
     render(<DispatchBaseMap />);
     await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());

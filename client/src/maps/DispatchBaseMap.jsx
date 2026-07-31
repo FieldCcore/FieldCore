@@ -4,6 +4,19 @@ import { loadGoogleMaps } from './loadGoogleMaps';
 const DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 const DEFAULT_ZOOM   = 4;
 
+function mapsErrorMessage(code) {
+  if (code === 'ApiTargetBlockedMapError') {
+    return "Google Maps is blocked by this key's API restrictions. " +
+      'In Google Cloud Console, open the key and allow Maps JavaScript API.';
+  }
+  if (code === 'RefererNotAllowedMapError') {
+    return 'Add www.getfieldcore.com/* to HTTP referrer restrictions ' +
+      'in Google Cloud Console → APIs & Services → Credentials.';
+  }
+  return `Map authorization failed (${code ?? 'unknown'}). ` +
+    'Check Google Cloud Console → APIs & Services → Credentials.';
+}
+
 const MAP_OPTIONS = {
   center:            DEFAULT_CENTER,
   zoom:              DEFAULT_ZOOM,
@@ -34,13 +47,10 @@ export default function DispatchBaseMap({ onMapReady }) {
   // authFailedRef prevents markReady from overriding the error state if idle
   // fires after gm_authFailure (an empty restricted map is immediately "idle").
   useEffect(() => {
-    function onAuthFailure() {
+    function onAuthFailure(e) {
       authFailedRef.current = true;
       setStatus('error');
-      setErrorCode(
-        'ApiTargetBlockedMapError — add www.getfieldcore.com/* to HTTP referrer restrictions ' +
-        'in Google Cloud Console → APIs & Services → Credentials.'
-      );
+      setErrorCode(mapsErrorMessage(e.detail?.code));
     }
     window.addEventListener('fieldcore:maps:auth-failure', onAuthFailure);
     return () => window.removeEventListener('fieldcore:maps:auth-failure', onAuthFailure);
