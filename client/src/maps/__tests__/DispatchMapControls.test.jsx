@@ -43,9 +43,9 @@ describe('DispatchMapControls — rendering', () => {
     expect(screen.getByRole('button', { name: /locating/i })).toBeInTheDocument();
   });
 
-  it('shows "Location blocked" status row when permState is denied', () => {
+  it('does not show status row when permState is denied (banner handles it)', () => {
     render(<DispatchMapControls {...defaultProps({ permState: 'denied' })} />);
-    expect(screen.getByText(/location blocked/i)).toBeInTheDocument();
+    expect(screen.queryByText(/location blocked/i)).not.toBeInTheDocument();
   });
 
   it('shows "Location not enabled" status row when permState is prompt', () => {

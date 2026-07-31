@@ -253,33 +253,59 @@ export default function Dispatch() {
 
   const handleRecenter = handleFitAll;
 
-  const handleCenterOnMe = useCallback(() => {
-    // If already denied: open help panel instead of calling getCurrentPosition again.
-    if (permState === 'denied') { setShowInstructions(true); return; }
-    if (permState === 'unsupported') return;
-
+  // Shared function: calls getCurrentPosition directly, syncs permState via recheck,
+  // centers map on success, opens instructions on PERMISSION_DENIED.
+  const requestPositionAndCenter = useCallback(() => {
+    if (!navigator.geolocation) return;
     setLocating(true);
-    requestLocation()
-      .then(pos => { setLocating(false); applyPositionToMap(pos); })
-      .catch(() => { setLocating(false); });
-  }, [permState, requestLocation, applyPositionToMap]);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        applyPositionToMap(pos);
+        recheck();
+      },
+      (err) => {
+        setLocating(false);
+        recheck();
+        if (err.code === 1 /* PERMISSION_DENIED */) setShowInstructions(true);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, [applyPositionToMap, recheck]);
+
+  const handleCenterOnMe = useCallback(() => {
+    if (permState === 'unsupported') return;
+    requestPositionAndCenter();
+  }, [permState, requestPositionAndCenter]);
 
   // ── First-visit permission prompt handlers ────────────────────────────────
   const handleEnableLocation = useCallback(() => {
     if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setLocating(false); applyPositionToMap(pos); },
-      ()    => { setLocating(false); },
+      (pos) => { setLocating(false); applyPositionToMap(pos); recheck(); },
+      ()    => { setLocating(false); recheck(); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
-  }, [applyPositionToMap]);
+  }, [applyPositionToMap, recheck]);
 
   // "Not Now" dismisses for this session only — no localStorage write.
   // The prompt banner reappears on next Dispatch load as long as permState is 'prompt'.
   const handleSkipLocation = useCallback(() => {
     setPromptDismissed(true);
   }, []);
+
+  // Recheck permission when user returns to tab (e.g. after granting in browser settings).
+  useEffect(() => {
+    function onFocus() { recheck(); }
+    function onVisibility() { if (document.visibilityState === 'visible') recheck(); }
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [recheck]);
 
   // Auto-use location when permission is already granted on page load.
   const autoLocationAppliedRef = useRef(false);
@@ -458,7 +484,7 @@ export default function Dispatch() {
           {!bannerDismissed && (permState === 'denied' || permState === 'unavailable') && (
             <LocationPermissionBanner
               variant={permState}
-              onTryAgain={recheck}
+              onTryAgain={requestPositionAndCenter}
               onOpenHelp={() => setShowInstructions(true)}
               onDismiss={() => setBannerDismissed(true)}
               dismissable

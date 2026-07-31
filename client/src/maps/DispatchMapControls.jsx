@@ -150,8 +150,10 @@ export default function DispatchMapControls({
         />
       </div>
 
-      {/* Compact permission status row — shown when not granted/unknown */}
-      {dot && permState !== 'granted' && permState !== 'unknown' && (
+      {/* Compact permission status row — shown for prompt/unsupported only.
+          denied/unavailable have a dedicated full banner; skip the dot to avoid duplicate. */}
+      {dot && permState !== 'granted' && permState !== 'unknown'
+          && permState !== 'denied' && permState !== 'unavailable' && (
         <div style={{
           padding:    '5px 11px 6px',
           fontSize:   10,
