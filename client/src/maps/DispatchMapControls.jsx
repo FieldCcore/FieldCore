@@ -1,24 +1,41 @@
+import React from 'react';
+
 // Compact map control overlay for the Dispatch page.
-// Positioned top-right inside .dispatch-map-overlays, above Google's UI.
-// Does not cover Google controls (bottom-right) or the legend (bottom-left/bottom-right).
+// Must set pointerEvents: 'auto' — parent .dispatch-map-overlays uses
+// pointer-events: none so the Google map remains pannable everywhere
+// outside this card. Without auto here, buttons are unclickable.
+
+const CARD_STYLE = {
+  position:      'absolute',
+  top:           12,
+  right:         12,
+  zIndex:        5,
+  background:    'rgba(255,255,255,0.97)',
+  border:        '1px solid var(--lightgray, #e6e6e6)',
+  borderRadius:  8,
+  boxShadow:     '0 2px 8px rgba(0,0,0,.10)',
+  minWidth:      148,
+  overflow:      'hidden',
+  pointerEvents: 'auto',
+};
 
 const BTN = {
-  display:        'flex',
-  alignItems:     'center',
-  gap:            6,
-  width:          '100%',
-  padding:        '7px 11px',
-  background:     'none',
-  border:         'none',
-  borderRadius:   6,
-  fontSize:       12,
-  fontWeight:     600,
-  fontFamily:     'inherit',
-  color:          'var(--navy)',
-  cursor:         'pointer',
-  textAlign:      'left',
-  whiteSpace:     'nowrap',
-  transition:     'background .1s',
+  display:      'flex',
+  alignItems:   'center',
+  gap:          6,
+  width:        '100%',
+  padding:      '7px 11px',
+  background:   'none',
+  border:       'none',
+  borderRadius: 6,
+  fontSize:     12,
+  fontWeight:   600,
+  fontFamily:   'inherit',
+  color:        'var(--navy)',
+  cursor:       'pointer',
+  textAlign:    'left',
+  whiteSpace:   'nowrap',
+  transition:   'background .1s',
 };
 
 const BTN_HOVER = { background: 'var(--off-white, #f8f8f7)' };
@@ -31,7 +48,6 @@ function Icon({ d, size = 14 }) {
   );
 }
 
-// SVG path data for each control icon
 const ICONS = {
   fitAll:   'M2 5.5V2h3.5M2 10.5V14h3.5M14 5.5V2h-3.5M14 10.5V14h-3.5M6 8h4M8 6v4',
   centerMe: 'M8 3v1M8 12v1M3 8h1M12 8h1M8 8m-3 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
@@ -42,8 +58,9 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title }) {
   const [hover, setHover] = React.useState(false);
   return (
     <button
+      type="button"
       title={title || label}
-      aria-label={title || label}
+      aria-label={label}
       onClick={onClick}
       disabled={!!disabled}
       onMouseEnter={() => setHover(true)}
@@ -61,18 +78,17 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title }) {
   );
 }
 
-import React from 'react';
-
 /**
  * Dispatch map controls overlay.
  *
  * Props:
  *  onFitAll()        — recompute + apply viewport from all current data
  *  onCenterOnMe()    — request browser geolocation and center map
- *  onRecenter()      — same as Fit All (alias for clarity)
+ *  onRecenter()      — restore automatic tenant-aware viewport
  *  locating          — bool: geolocation request in progress
  *  locationError     — string | null: error message from geolocation
- *  hasInteracted     — bool: user has manually panned/zoomed (shows Recenter badge)
+ *  hasInteracted     — bool: user has manually panned/zoomed (shows Recenter)
+ *  mapReady          — bool: map instance is live (disables buttons while loading)
  */
 export default function DispatchMapControls({
   onFitAll,
@@ -81,29 +97,16 @@ export default function DispatchMapControls({
   locating,
   locationError,
   hasInteracted,
+  mapReady = true,
 }) {
   return (
-    <div
-      style={{
-        position:     'absolute',
-        top:          12,
-        right:        12,
-        zIndex:       5,
-        background:   'rgba(255,255,255,0.97)',
-        border:       '1px solid var(--lightgray, #e6e6e6)',
-        borderRadius: 8,
-        boxShadow:    '0 2px 8px rgba(0,0,0,.10)',
-        minWidth:     148,
-        overflow:     'hidden',
-      }}
-      role="group"
-      aria-label="Map controls"
-    >
+    <div style={CARD_STYLE} role="group" aria-label="Map controls">
       <div style={{ padding: '4px 0' }}>
         <CtrlBtn
           label="Fit All"
           iconPath={ICONS.fitAll}
           onClick={onFitAll}
+          disabled={!mapReady}
           title="Fit map to all technicians and jobs"
         />
 
@@ -112,7 +115,8 @@ export default function DispatchMapControls({
             label="Recenter"
             iconPath={ICONS.recenter}
             onClick={onRecenter}
-            title="Recenter to active technicians and jobs"
+            disabled={!mapReady}
+            title="Restore automatic tenant viewport"
           />
         )}
 
@@ -122,19 +126,19 @@ export default function DispatchMapControls({
           label={locating ? 'Locating…' : 'Center on Me'}
           iconPath={ICONS.centerMe}
           onClick={onCenterOnMe}
-          disabled={locating}
+          disabled={locating || !mapReady}
           title="Center map on your current location"
         />
       </div>
 
       {locationError && (
         <div style={{
-          padding:    '6px 11px 7px',
-          fontSize:   11,
-          color:      'var(--red, #C62828)',
-          borderTop:  '1px solid var(--lightgray, #e6e6e6)',
+          padding:   '6px 11px 7px',
+          fontSize:  11,
+          color:     'var(--red, #C62828)',
+          borderTop: '1px solid var(--lightgray, #e6e6e6)',
           lineHeight: 1.4,
-          maxWidth:   220,
+          maxWidth:  220,
         }}>
           {locationError}
         </div>

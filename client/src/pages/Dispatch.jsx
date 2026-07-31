@@ -86,18 +86,23 @@ export default function Dispatch() {
   const [locating,         setLocating]         = useState(false);
   const [locationError,    setLocationError]    = useState(null);
   const [hasInteracted,    setHasInteracted]    = useState(false);
+  const [mapReady,         setMapReady]         = useState(false);
 
   // Google Maps instance received from DispatchBaseMap via onMapReady callback.
-  const mapRef             = useRef(null);
+  const mapRef              = useRef(null);
+  // True once the map instance is live and ready to receive viewport commands.
+  const mapReadyRef         = useRef(false);
+  // True once the initial data fetch (jobs + locs + settings) has resolved.
+  const dataLoadedRef       = useRef(false);
   // True while we are programmatically moving the map (suppress interaction detection).
-  const programmaticRef    = useRef(false);
+  const programmaticRef     = useRef(false);
   // True once the initial auto-fit has been applied for this page load.
-  const initialFitDoneRef  = useRef(false);
+  const initialFitDoneRef   = useRef(false);
   // Stable refs so viewport callbacks always see latest state.
-  const jobsRef            = useRef([]);
-  const techLocsRef        = useRef([]);
+  const jobsRef             = useRef([]);
+  const techLocsRef         = useRef([]);
   const dispatchSettingsRef = useRef(null);
-  const accountLocationRef = useRef(null);
+  const accountLocationRef  = useRef(null);
 
   jobsRef.current             = jobs;
   techLocsRef.current         = techLocs;
@@ -143,7 +148,9 @@ export default function Dispatch() {
 
   // ── Map ready callback ────────────────────────────────────────────────────
   const handleMapReady = useCallback((mapInstance) => {
-    mapRef.current = mapInstance;
+    mapRef.current      = mapInstance;
+    mapReadyRef.current = true;
+    setMapReady(true);
 
     // Detect user pan/zoom — suppress during programmatic moves.
     mapInstance.addListener('dragstart', () => {
@@ -153,8 +160,11 @@ export default function Dispatch() {
       if (!programmaticRef.current) setHasInteracted(true);
     });
 
-    // Apply viewport immediately if data is already loaded.
-    if (!initialFitDoneRef.current) {
+    // Only apply viewport if data has already loaded. If data is still in-flight,
+    // the data loader will call computeAndApplyViewport once it resolves and sees
+    // mapRef.current is set. Applying here with empty refs would resolve to the
+    // continental-US fallback and lock initialFitDoneRef before real data arrives.
+    if (dataLoadedRef.current && !initialFitDoneRef.current) {
       computeAndApplyViewport();
     }
   }, [computeAndApplyViewport]);
@@ -193,7 +203,11 @@ export default function Dispatch() {
         ? { lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) }
         : null;
 
-      // If map is already ready, apply viewport now.
+      // Mark data as ready BEFORE testing mapRef, so handleMapReady (if it fires
+      // after this) finds dataLoadedRef = true and applies the correct viewport.
+      dataLoadedRef.current = true;
+
+      // If map is already ready, apply the tenant-aware viewport now.
       if (mapRef.current && !initialFitDoneRef.current) {
         computeAndApplyViewport();
       }
@@ -241,11 +255,13 @@ export default function Dispatch() {
       (err) => {
         setLocating(false);
         if (err.code === 1)
-          setLocationError('Location access denied. Enable it in browser settings.');
+          setLocationError('Location access is off. Allow location access in your browser to center the map on you.');
         else if (err.code === 2)
-          setLocationError('Location unavailable. Check device settings.');
+          setLocationError('Your current location could not be determined.');
+        else if (err.code === 3)
+          setLocationError('Location lookup timed out. Please try again.');
         else
-          setLocationError('Location request timed out.');
+          setLocationError('Current location is not supported by this browser.');
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
@@ -397,6 +413,7 @@ export default function Dispatch() {
             locating={locating}
             locationError={locationError}
             hasInteracted={hasInteracted}
+            mapReady={mapReady}
           />
 
           {/* Legend — bottom positioning handled by existing CSS */}
