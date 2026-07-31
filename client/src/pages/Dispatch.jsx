@@ -7,6 +7,27 @@ import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
 import { useDispatchLocation } from '../hooks/useDispatchLocation';
 
+// ── Viewport persistence ──────────────────────────────────────────────────────
+const VP_KEY     = 'fc_dispatch_vp';
+const VP_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+function loadPersistedViewport() {
+  try {
+    const raw = localStorage.getItem(VP_KEY);
+    if (!raw) return null;
+    const { lat, lng, zoom, savedAt } = JSON.parse(raw);
+    if (Date.now() - savedAt > VP_MAX_AGE) { localStorage.removeItem(VP_KEY); return null; }
+    if (typeof lat !== 'number' || typeof lng !== 'number' || typeof zoom !== 'number') return null;
+    return { lat, lng, zoom };
+  } catch { return null; }
+}
+
+function savePersistedViewport(lat, lng, zoom) {
+  try {
+    localStorage.setItem(VP_KEY, JSON.stringify({ lat, lng, zoom, savedAt: Date.now() }));
+  } catch {}
+}
+
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 const JOB_COLORS = {
@@ -91,6 +112,7 @@ export default function Dispatch() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [bannerDismissed,  setBannerDismissed]  = useState(false);
   const [promptDismissed,  setPromptDismissed]  = useState(false);
+  const [recenterMsg,      setRecenterMsg]      = useState(null);
 
   // ── Refs (all declared before location hook so applyPositionToMap can be stable) ──
   const mapRef                 = useRef(null);
@@ -103,6 +125,9 @@ export default function Dispatch() {
   const techLocsRef            = useRef([]);
   const dispatchSettingsRef    = useRef(null);
   const accountLocationRef     = useRef(null);
+  const lastViewportSourceRef  = useRef(null);
+  const vpSaveTimerRef         = useRef(null);
+  const recenterMsgTimerRef    = useRef(null);
 
   jobsRef.current             = jobs;
   techLocsRef.current         = techLocs;
@@ -135,15 +160,35 @@ export default function Dispatch() {
     }
   }, []);
 
-  const computeAndApplyViewport = useCallback(({ force = false } = {}) => {
+  const computeAndApplyViewport = useCallback(({ force = false, showMessage = false } = {}) => {
     const viewport = resolveDispatchViewport({
-      technicians:      techLocsRef.current,
-      jobs:             jobsRef.current,
-      dispatchSettings: dispatchSettingsRef.current,
-      accountLocation:  accountLocationRef.current,
+      technicians:       techLocsRef.current,
+      jobs:              jobsRef.current,
+      dispatchSettings:  dispatchSettingsRef.current,
+      accountLocation:   accountLocationRef.current,
+      persistedViewport: loadPersistedViewport(),
     });
+    lastViewportSourceRef.current = viewport.source;
     applyViewport(viewport, { force });
     initialFitDoneRef.current = true;
+
+    if (showMessage) {
+      const msgs = {
+        techs_and_jobs:      'Centered on active jobs and techs',
+        jobs:                "Centered on today's jobs",
+        techs:               'Centered on field techs',
+        stale_techs:         'Centered on field techs',
+        service_area_radius: 'Centered on service area',
+        custom_center:       'Centered on dispatch center',
+        business_address:    'Centered on business address',
+        user_location:       'Centered on your location',
+        persisted_viewport:  'Restored last view',
+        fallback:            'Showing full map',
+      };
+      setRecenterMsg(msgs[viewport.source] || 'Map recentered');
+      clearTimeout(recenterMsgTimerRef.current);
+      recenterMsgTimerRef.current = setTimeout(() => setRecenterMsg(null), 2000);
+    }
   }, [applyViewport]);
 
   // ── Map ready callback ────────────────────────────────────────────────────
@@ -158,6 +203,16 @@ export default function Dispatch() {
     });
     mapInstance.addListener('zoom_changed', () => {
       if (!programmaticRef.current) setHasInteracted(true);
+    });
+
+    // Persist viewport after map settles — debounced so rapid pan/zoom coalesces.
+    mapInstance.addListener('idle', () => {
+      if (programmaticRef.current) return;
+      const c = mapInstance.getCenter();
+      const z = mapInstance.getZoom();
+      if (!c || z == null) return;
+      clearTimeout(vpSaveTimerRef.current);
+      vpSaveTimerRef.current = setTimeout(() => savePersistedViewport(c.lat(), c.lng(), z), 600);
     });
 
     // Only apply viewport if data has already loaded. If data is still in-flight,
@@ -260,7 +315,11 @@ export default function Dispatch() {
     computeAndApplyViewport({ force: true });
   }, [computeAndApplyViewport]);
 
-  const handleRecenter = handleFitAll;
+  const handleRecenter = useCallback(() => {
+    initialFitDoneRef.current = false;
+    setHasInteracted(false);
+    computeAndApplyViewport({ force: true, showMessage: true });
+  }, [computeAndApplyViewport]);
 
   const handleCenterOnMe = useCallback(() => {
     if (permissionState === 'unsupported' || permissionState === 'insecure_context') return;
@@ -276,15 +335,26 @@ export default function Dispatch() {
     setPromptDismissed(true);
   }, []);
 
-  // Auto-use location when already granted on page load (first visit only).
+  // Auto-use location when granted and the resolver placed us on a generic viewport.
+  // Re-checks when loading finishes so the resolver source is known before deciding.
   useEffect(() => {
     if (permissionState !== 'granted') return;
     if (autoLocationAppliedRef.current) return;
     if (!mapRef.current || !dataLoadedRef.current) return;
-    if (initialFitDoneRef.current) return;
+    const src = lastViewportSourceRef.current;
+    // Skip auto-center if the resolver already placed us on meaningful operational data.
+    if (initialFitDoneRef.current && src !== 'fallback' && src !== 'persisted_viewport') return;
     autoLocationAppliedRef.current = true;
     centerOnMe();
-  }, [permissionState, centerOnMe]);
+  }, [permissionState, centerOnMe, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close instructions modal and reset dismissed banner when permission becomes granted.
+  useEffect(() => {
+    if (permissionState === 'granted') {
+      setShowInstructions(false);
+      setBannerDismissed(false);
+    }
+  }, [permissionState]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -455,6 +525,18 @@ export default function Dispatch() {
               onDismiss={() => setBannerDismissed(true)}
               dismissable
             />
+          )}
+
+          {/* Recenter confirmation — brief toast, auto-dismisses after 2 s */}
+          {recenterMsg && (
+            <div style={{
+              position: 'absolute', bottom: 56, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(28,35,51,0.85)', color: '#fff',
+              padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+              pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 20,
+            }}>
+              {recenterMsg}
+            </div>
           )}
 
           {/* Legend — bottom positioning handled by existing CSS */}

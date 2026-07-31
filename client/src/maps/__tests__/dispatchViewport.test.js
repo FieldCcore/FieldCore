@@ -321,6 +321,80 @@ describe('resolveDispatchViewport — user location (Priority H)', () => {
   });
 });
 
+// ── Persisted viewport (Priority I) ───────────────────────────────────────────
+
+describe('resolveDispatchViewport — persisted viewport (Priority I)', () => {
+  it('uses persisted viewport when no tenant data exists', () => {
+    const v = resolveDispatchViewport({
+      technicians:      [],
+      jobs:             [],
+      persistedViewport: { lat: 33.749, lng: -84.388, zoom: 12 },
+    });
+    expect(v.mode).toBe('center_zoom');
+    expect(v.source).toBe('persisted_viewport');
+    expect(v.center.lat).toBeCloseTo(33.749);
+    expect(v.center.lng).toBeCloseTo(-84.388);
+    expect(v.zoom).toBe(12);
+  });
+
+  it('prefers business address over persisted viewport', () => {
+    const v = resolveDispatchViewport({
+      technicians:       [],
+      jobs:              [],
+      accountLocation:   { lat: 25.7617, lng: -80.1918 },
+      persistedViewport: { lat: 33.749, lng: -84.388, zoom: 12 },
+    });
+    expect(v.source).toBe('business_address');
+  });
+
+  it('prefers user_location over persisted viewport when explicitly requested', () => {
+    const v = resolveDispatchViewport({
+      technicians:           [],
+      jobs:                  [],
+      userLocation:          { lat: 25.7617, lng: -80.1918 },
+      userRequestedLocation: true,
+      persistedViewport:     { lat: 33.749, lng: -84.388, zoom: 12 },
+    });
+    expect(v.source).toBe('user_location');
+  });
+
+  it('falls back to continental US when persistedViewport is null', () => {
+    const v = resolveDispatchViewport({
+      technicians:      [],
+      jobs:             [],
+      persistedViewport: null,
+    });
+    expect(v.source).toBe('fallback');
+  });
+
+  it('ignores persisted viewport when lat is not a number', () => {
+    const v = resolveDispatchViewport({
+      technicians:       [],
+      jobs:              [],
+      persistedViewport: { lat: 'bad', lng: -84.388, zoom: 12 },
+    });
+    expect(v.source).toBe('fallback');
+  });
+
+  it('ignores persisted viewport when zoom is missing', () => {
+    const v = resolveDispatchViewport({
+      technicians:       [],
+      jobs:              [],
+      persistedViewport: { lat: 33.749, lng: -84.388 },
+    });
+    expect(v.source).toBe('fallback');
+  });
+
+  it('prefers live tech data over persisted viewport', () => {
+    const v = resolveDispatchViewport({
+      technicians:       [makeTech(25.7617, -80.1918, LIVE_MS)],
+      jobs:              [],
+      persistedViewport: { lat: 33.749, lng: -84.388, zoom: 12 },
+    });
+    expect(v.source).toBe('techs');
+  });
+});
+
 // ── Coordinate edge cases ──────────────────────────────────────────────────────
 
 describe('resolveDispatchViewport — coordinate validation', () => {

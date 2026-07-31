@@ -2226,7 +2226,7 @@ body {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 420px;
+  min-height: 0;
   height: 100%;
   overflow: hidden;
   background: transparent;
@@ -2237,7 +2237,6 @@ body {
   width: 100%;
   height: 100%;
   min-width: 0;
-  min-height: 420px;
   background: transparent;
 }
 .dispatch-base-map-canvas {
@@ -2246,7 +2245,6 @@ body {
   width: 100%;
   height: 100%;
   min-width: 0;
-  min-height: 420px;
   background: transparent;
 }
 /* Narrowly scoped override: prevent global max-width resets from clipping Google tile images. */

@@ -10,7 +10,8 @@
 //   F  Custom dispatch center + zoom               → center_zoom
 //   G  Business address coordinates                → center_zoom
 //   H  User geolocation (explicit request only)    → center_zoom
-//   I  Geographic fallback                         → center_zoom
+//   I  Persisted viewport from localStorage        → center_zoom
+//   J  Geographic fallback                         → center_zoom
 
 import { isValidCoord, classifyTechGPS } from './dispatchCoords';
 
@@ -35,6 +36,7 @@ const DEFAULT_ACTIVE_STATUSES = new Set([
  * @param {object|null} opts.accountLocation      – { lat, lng } from accounts table
  * @param {object|null} opts.userLocation         – { lat, lng } from navigator.geolocation
  * @param {boolean}    opts.userRequestedLocation – true only on explicit Center-on-Me
+ * @param {object|null} opts.persistedViewport    – { lat, lng, zoom } from localStorage
  *
  * @returns {{
  *   mode: 'fit_bounds'|'center_zoom',
@@ -53,6 +55,7 @@ export function resolveDispatchViewport({
   accountLocation = null,
   userLocation = null,
   userRequestedLocation = false,
+  persistedViewport = null,
 } = {}) {
   const ds = dispatchSettings || {};
   const includedStatuses = _resolveJobStatuses(ds);
@@ -161,7 +164,25 @@ export function resolveDispatchViewport({
     };
   }
 
-  // ── I. Safe geographic fallback ────────────────────────────────────────────
+  // ── I. Persisted viewport from localStorage ──────────────────────────────────
+  if (
+    persistedViewport &&
+    typeof persistedViewport.lat  === 'number' &&
+    typeof persistedViewport.lng  === 'number' &&
+    typeof persistedViewport.zoom === 'number'
+  ) {
+    return {
+      mode:       'center_zoom',
+      center:     { lat: persistedViewport.lat, lng: persistedViewport.lng },
+      zoom:       persistedViewport.zoom,
+      bounds:     null,
+      source:     'persisted_viewport',
+      pointCount: 0,
+      reason:     'Restored last saved viewport position',
+    };
+  }
+
+  // ── J. Safe geographic fallback ───────────────────────────────────────────
   return {
     mode:       'center_zoom',
     center:     FALLBACK_CENTER,
