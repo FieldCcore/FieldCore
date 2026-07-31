@@ -22,6 +22,7 @@ export default function DispatchBaseMap({ onMapReady }) {
   const containerRef  = useRef(null);
   const mapRef        = useRef(null);
   const onReadyRef    = useRef(onMapReady);
+  const readyRef      = useRef(false);
   const [status,    setStatus]    = useState('loading');
   const [errorCode, setErrorCode] = useState(null);
 
@@ -43,7 +44,18 @@ export default function DispatchBaseMap({ onMapReady }) {
 
   // Map initialisation — runs once on mount, never recreates the map.
   useEffect(() => {
-    let cancelled = false;
+    let cancelled  = false;
+    let fallbackId = null;
+
+    // markReady is idempotent — only the first caller wins.
+    // Accepts idle, tilesloaded, or dom-fallback as the source.
+    function markReady(_source) {
+      if (readyRef.current || cancelled) return;
+      readyRef.current = true;
+      setStatus('ready');
+      setErrorCode(null);
+      onReadyRef.current?.(mapRef.current);
+    }
 
     async function initMap() {
       try {
@@ -56,7 +68,7 @@ export default function DispatchBaseMap({ onMapReady }) {
         const rect = container.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) throw new Error('MAP_CONTAINER_ZERO_SIZE');
 
-        // Guard: already initialised (strict-mode double-invoke)
+        // Guard: already initialised (strict-mode double-invoke or parent remount)
         if (mapRef.current) return;
 
         mapRef.current = new maps.Map(container, MAP_OPTIONS);
@@ -68,11 +80,23 @@ export default function DispatchBaseMap({ onMapReady }) {
           maps.event.trigger(mapRef.current, 'resize');
         });
 
-        maps.event.addListenerOnce(mapRef.current, 'idle', () => {
-          if (cancelled) return;
-          setStatus('ready');
-          onReadyRef.current?.(mapRef.current);
-        });
+        // Both idle and tilesloaded signal that the basemap is rendered.
+        // readyRef guards against the second one calling markReady again.
+        maps.event.addListenerOnce(mapRef.current, 'idle',        () => markReady('idle'));
+        maps.event.addListenerOnce(mapRef.current, 'tilesloaded', () => markReady('tilesloaded'));
+
+        // Bounded DOM fallback: if neither idle nor tilesloaded reaches React
+        // within 3 seconds, check whether the map DOM actually exists and, if
+        // so, clear the loading overlay rather than leaving it stuck forever.
+        fallbackId = setTimeout(() => {
+          if (!mapRef.current || cancelled) return;
+          const c = containerRef.current;
+          if (!c || !c.isConnected) return;
+          const r = c.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) return;
+          if (!c.querySelector('.gm-style')) return;
+          markReady('dom-fallback');
+        }, 3000);
 
       } catch (err) {
         if (cancelled) return;
@@ -87,6 +111,7 @@ export default function DispatchBaseMap({ onMapReady }) {
 
     return () => {
       cancelled = true;
+      if (fallbackId !== null) clearTimeout(fallbackId);
       // Intentionally do NOT destroy the map instance here — unmounting
       // DispatchBaseMap should be rare (only on full Dispatch unmount).
       // Destroying the map on every React re-render would recreate it on

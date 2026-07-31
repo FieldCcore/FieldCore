@@ -6,7 +6,8 @@ import * as loaderModule from '../loadGoogleMaps';
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 
 function makeMockMaps() {
-  const idleCallbacks = [];
+  const idleCallbacks        = [];
+  const tilesloadedCallbacks = [];
   const map = {
     getDiv:       vi.fn(() => null),
     getCenter:    vi.fn(() => ({ lat: () => 39.5, lng: () => -98.35 })),
@@ -19,7 +20,8 @@ function makeMockMaps() {
     Map: vi.fn(function MapMock() { return map; }),
     event: {
       addListenerOnce: vi.fn((_, evt, cb) => {
-        if (evt === 'idle') idleCallbacks.push(cb);
+        if (evt === 'idle')        idleCallbacks.push(cb);
+        if (evt === 'tilesloaded') tilesloadedCallbacks.push(cb);
         return { remove: vi.fn() };
       }),
       trigger: vi.fn(),
@@ -27,7 +29,12 @@ function makeMockMaps() {
     },
     MapTypeId: { ROADMAP: 'roadmap' },
   };
-  return { maps, map, fireIdle: () => idleCallbacks.forEach(cb => cb()) };
+  return {
+    maps,
+    map,
+    fireIdle:        () => idleCallbacks.forEach(cb => cb()),
+    fireTilesloaded: () => tilesloadedCallbacks.forEach(cb => cb()),
+  };
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -78,6 +85,13 @@ describe('DispatchBaseMap', () => {
     await waitFor(() => expect(screen.queryByText('Loading map…')).toBeNull());
   });
 
+  it('removes loading overlay after tilesloaded fires', async () => {
+    render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => mocks.fireTilesloaded());
+    await waitFor(() => expect(screen.queryByText('Loading map…')).toBeNull());
+  });
+
   it('does not show error overlay after successful idle', async () => {
     render(<DispatchBaseMap />);
     await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
@@ -90,6 +104,25 @@ describe('DispatchBaseMap', () => {
     render(<DispatchBaseMap onMapReady={onMapReady} />);
     await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
     act(() => mocks.fireIdle());
+    await waitFor(() => expect(onMapReady).toHaveBeenCalledTimes(1));
+  });
+
+  it('calls onMapReady with the map instance when tilesloaded fires', async () => {
+    const onMapReady = vi.fn();
+    render(<DispatchBaseMap onMapReady={onMapReady} />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => mocks.fireTilesloaded());
+    await waitFor(() => expect(onMapReady).toHaveBeenCalledTimes(1));
+  });
+
+  it('readiness guard prevents onMapReady from firing more than once', async () => {
+    const onMapReady = vi.fn();
+    render(<DispatchBaseMap onMapReady={onMapReady} />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => {
+      mocks.fireIdle();
+      mocks.fireTilesloaded();
+    });
     await waitFor(() => expect(onMapReady).toHaveBeenCalledTimes(1));
   });
 
@@ -132,5 +165,65 @@ describe('DispatchBaseMap', () => {
     // and throw in test environment. Passing this test confirms no nested provider.
     const { container } = render(<DispatchBaseMap />);
     expect(container.querySelector('[data-testid="api-provider"]')).toBeNull();
+  });
+
+  it('DOM fallback marks ready after 3 s when .gm-style is present', async () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<DispatchBaseMap />);
+
+      // Flush all microtasks so initMap() runs past the await loadGoogleMaps() point.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mocks.maps.Map).toHaveBeenCalledTimes(1);
+
+      // Simulate Google Maps having written its DOM into the container.
+      container.querySelector('.dispatch-base-map-canvas').insertAdjacentHTML(
+        'beforeend', '<div class="gm-style"></div>'
+      );
+
+      // Neither idle nor tilesloaded fires — only the 3-second fallback.
+      act(() => vi.advanceTimersByTime(3100));
+
+      expect(screen.queryByText('Loading map…')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('DOM fallback does not mark ready when .gm-style is absent', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<DispatchBaseMap />);
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mocks.maps.Map).toHaveBeenCalledTimes(1);
+
+      // No .gm-style injected — fallback should not clear loading state.
+      act(() => vi.advanceTimersByTime(3100));
+
+      expect(screen.queryByText('Loading map…')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('polling does not return to loading after ready', async () => {
+    const { rerender } = render(<DispatchBaseMap />);
+    await waitFor(() => expect(mocks.maps.Map).toHaveBeenCalled());
+    act(() => mocks.fireIdle());
+    await waitFor(() => expect(screen.queryByText('Loading map…')).toBeNull());
+    // Simulate 10 polling re-renders
+    for (let i = 0; i < 10; i++) rerender(<DispatchBaseMap />);
+    expect(screen.queryByText('Loading map…')).toBeNull();
   });
 });

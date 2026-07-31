@@ -57,7 +57,6 @@ describe('loadGoogleMaps', () => {
   it('script src does not contain the full raw key in plain text beyond the URL', () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'SECRET_KEY_123');
     loadGoogleMaps();
-    // Key should appear only inside the script src, not leaked elsewhere
     const scripts = document.querySelectorAll('script[data-fieldcore-google-maps]');
     expect(scripts.length).toBe(1);
   });
@@ -93,7 +92,7 @@ describe('loadGoogleMaps', () => {
 
   it('reuses existing Maps script tag already in DOM', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key-abc');
-    // Simulate vis.gl having already injected the script
+    // Simulate a plain script (not bootstrap) having been injected
     const existing = document.createElement('script');
     existing.src = 'https://maps.googleapis.com/maps/api/js?key=vis-gl-key';
     document.head.appendChild(existing);
@@ -120,5 +119,40 @@ describe('loadGoogleMaps', () => {
     document.querySelectorAll('script[data-fieldcore-google-maps]').forEach(s => s.remove());
     const p2 = loadGoogleMaps();
     expect(p1).not.toBe(p2);
+  });
+
+  it('uses importLibrary when window.google.maps.importLibrary is available', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key-abc');
+    // Simulate the vis.gl bootstrap pattern: google.maps exists with importLibrary
+    // but google.maps.Map is not yet available (library chunk still loading)
+    window.google = { maps: {} };
+    window.google.maps.importLibrary = vi.fn().mockImplementation(() => {
+      window.google.maps.Map = vi.fn();
+      return Promise.resolve();
+    });
+
+    const result = await loadGoogleMaps();
+
+    expect(window.google.maps.importLibrary).toHaveBeenCalledWith('maps');
+    expect(result).toBe(window.google.maps);
+    // No additional script tag should be injected
+    expect(document.querySelector('script[data-fieldcore-google-maps]')).toBeNull();
+  });
+
+  it('rejects GOOGLE_MAPS_SCRIPT_FAILED when importLibrary rejects', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key-abc');
+    window.google = { maps: {} };
+    window.google.maps.importLibrary = vi.fn().mockRejectedValue(new Error('network'));
+
+    await expect(loadGoogleMaps()).rejects.toThrow('GOOGLE_MAPS_SCRIPT_FAILED');
+  });
+
+  it('rejects GOOGLE_MAPS_SCRIPT_LOADED_WITHOUT_API when importLibrary resolves but Map is missing', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key-abc');
+    window.google = { maps: {} };
+    // importLibrary resolves but does NOT set window.google.maps.Map
+    window.google.maps.importLibrary = vi.fn().mockResolvedValue(undefined);
+
+    await expect(loadGoogleMaps()).rejects.toThrow('GOOGLE_MAPS_SCRIPT_LOADED_WITHOUT_API');
   });
 });

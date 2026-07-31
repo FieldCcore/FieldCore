@@ -20,6 +20,23 @@ export function loadGoogleMaps() {
   }
 
   _promise = new Promise((resolve, reject) => {
+    // Bootstrap/dynamic-import pattern (vis.gl APIProvider v3.55+):
+    // importLibrary is installed before Map is available. The bootstrap fires the
+    // script's load event before the 'maps' library chunk has loaded, so attaching
+    // a { once: true } load listener to the existing script would miss the event.
+    // Calling importLibrary('maps') here piggybacks on vis.gl's already-in-flight
+    // load and resolves once window.google.maps.Map is truly available.
+    if (typeof window.google?.maps?.importLibrary === 'function') {
+      window.google.maps.importLibrary('maps')
+        .then(() => {
+          window.google?.maps?.Map
+            ? resolve(window.google.maps)
+            : reject(new Error('GOOGLE_MAPS_SCRIPT_LOADED_WITHOUT_API'));
+        })
+        .catch(() => reject(new Error('GOOGLE_MAPS_SCRIPT_FAILED')));
+      return;
+    }
+
     // Reuse any Maps script already in the DOM (including vis.gl's injection)
     const existing = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
 
