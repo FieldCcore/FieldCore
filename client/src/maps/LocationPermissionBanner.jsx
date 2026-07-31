@@ -13,12 +13,12 @@ import { useState } from 'react';
 const WRAP = {
   pointerEvents: 'auto',
   position:      'absolute',
-  bottom:        56,     // sits above the legend (legend is ~56px tall + 20px margin)
+  bottom:        16,
   left:          '50%',
   transform:     'translateX(-50%)',
   zIndex:        6,
-  maxWidth:      460,
-  width:         'calc(100% - 96px)',  // leave room for legend
+  maxWidth:      560,
+  width:         'calc(100% - 48px)',
 };
 
 const CARD = (color) => ({

@@ -10,8 +10,8 @@ import React from 'react';
 
 const CARD_STYLE = {
   position:      'absolute',
-  top:           12,
-  right:         12,
+  top:           16,
+  right:         16,
   zIndex:        5,
   background:    'rgba(255,255,255,0.97)',
   border:        '1px solid var(--lightgray, #e6e6e6)',
@@ -60,7 +60,7 @@ const ICONS = {
 // Small dot indicating location permission status
 const PERM_DOT = {
   granted:    { color: '#2E7D32', title: 'Location on'        },
-  prompt:     { color: '#D97706', title: 'Location not set up' },
+  prompt:     { color: '#D97706', title: 'Location not enabled' },
   denied:     { color: '#C62828', title: 'Location blocked'    },
   unavailable:{ color: '#8A90A2', title: 'Location unavailable' },
   unsupported:{ color: '#8A90A2', title: 'Location unsupported' },

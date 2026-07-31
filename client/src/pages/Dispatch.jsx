@@ -5,7 +5,7 @@ import DispatchMapControls from '../maps/DispatchMapControls';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
-import { useLocationPermission, getLocPrefs, saveLocPrefs } from '../hooks/useLocationPermission';
+import { useLocationPermission } from '../hooks/useLocationPermission';
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
@@ -90,12 +90,10 @@ export default function Dispatch() {
   const [mapReady,            setMapReady]            = useState(false);
   const [locating,            setLocating]            = useState(false);
   const [showInstructions,    setShowInstructions]    = useState(false);
-  // Banner dismissed for this session (office users only)
+  // Dismissed for the current session only — resets on next page load
   const [bannerDismissed,     setBannerDismissed]     = useState(false);
-  // First-visit prompt: shown when permState==='prompt' and not yet completed
-  const [firstVisitDone,      setFirstVisitDone]      = useState(
-    () => !!getLocPrefs().locationOnboardingCompleted
-  );
+  // Prompt banner dismissed for this session via "Not Now" — not persisted
+  const [promptDismissed,     setPromptDismissed]     = useState(false);
 
   const { permState, requestLocation, recheck } = useLocationPermission();
 
@@ -268,17 +266,19 @@ export default function Dispatch() {
 
   // ── First-visit permission prompt handlers ────────────────────────────────
   const handleEnableLocation = useCallback(() => {
+    if (!navigator.geolocation) return;
     setLocating(true);
-    setFirstVisitDone(true);
-    saveLocPrefs({ locationOnboardingCompleted: true });
-    requestLocation()
-      .then(pos => { setLocating(false); applyPositionToMap(pos); })
-      .catch(() => { setLocating(false); });
-  }, [requestLocation, applyPositionToMap]);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setLocating(false); applyPositionToMap(pos); },
+      ()    => { setLocating(false); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, [applyPositionToMap]);
 
+  // "Not Now" dismisses for this session only — no localStorage write.
+  // The prompt banner reappears on next Dispatch load as long as permState is 'prompt'.
   const handleSkipLocation = useCallback(() => {
-    setFirstVisitDone(true);
-    saveLocPrefs({ locationOnboardingCompleted: true });
+    setPromptDismissed(true);
   }, []);
 
   // Auto-use location when permission is already granted on page load.
@@ -444,8 +444,8 @@ export default function Dispatch() {
             permState={permState}
           />
 
-          {/* First-visit location prompt (permission=prompt, not yet asked) */}
-          {!firstVisitDone && permState === 'prompt' && (
+          {/* Location prompt shown whenever permission is 'prompt' and not dismissed this session */}
+          {!promptDismissed && permState === 'prompt' && (
             <LocationPermissionBanner
               variant="first_visit"
               onEnable={handleEnableLocation}

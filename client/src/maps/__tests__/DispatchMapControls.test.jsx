@@ -48,9 +48,9 @@ describe('DispatchMapControls — rendering', () => {
     expect(screen.getByText(/location blocked/i)).toBeInTheDocument();
   });
 
-  it('shows "Location not set up" status row when permState is prompt', () => {
+  it('shows "Location not enabled" status row when permState is prompt', () => {
     render(<DispatchMapControls {...defaultProps({ permState: 'prompt' })} />);
-    expect(screen.getByText(/location not set up/i)).toBeInTheDocument();
+    expect(screen.getByText(/location not enabled/i)).toBeInTheDocument();
   });
 
   it('does not show status row when permState is granted', () => {
