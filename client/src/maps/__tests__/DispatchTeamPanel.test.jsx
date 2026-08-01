@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import DispatchTeamPanel from '../DispatchTeamPanel';
 
@@ -41,15 +41,10 @@ function defaultProps(overrides = {}) {
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 describe('DispatchTeamPanel — rendering', () => {
-  it('renders the panel', () => {
+  it('renders Team and Jobs tabs as first visible elements', () => {
     render(<DispatchTeamPanel {...defaultProps()} />);
-    expect(screen.getByText(/live dispatch/i)).toBeInTheDocument();
-  });
-
-  it('shows tech count and job count in subtitle', () => {
-    render(<DispatchTeamPanel {...defaultProps()} />);
-    expect(screen.getByText(/3 techs/i)).toBeInTheDocument();
-    expect(screen.getByText(/3 jobs/i)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /team/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /jobs/i })).toBeInTheDocument();
   });
 
   it('shows loading text when loading=true', () => {
@@ -64,10 +59,9 @@ describe('DispatchTeamPanel — rendering', () => {
     expect(screen.getByText('Carol Turner')).toBeInTheDocument();
   });
 
-  it('shows Team and Jobs tabs', () => {
+  it('badge shows tech count on Team tab', () => {
     render(<DispatchTeamPanel {...defaultProps()} />);
-    expect(screen.getByRole('tab', { name: /team/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /jobs/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('3 techs')).toBeInTheDocument();
   });
 });
 
@@ -167,6 +161,55 @@ describe('DispatchTeamPanel — job filters', () => {
     fireEvent.click(screen.getByRole('button', { name: /unassigned/i }));
     expect(screen.getByText('Gamma LLC — Inspection')).toBeInTheDocument();
     expect(screen.queryByText('ACME Corp — Repair')).not.toBeInTheDocument();
+  });
+
+  it('Done filter shows only completed jobs', () => {
+    const completedJobs = [
+      ...JOBS,
+      { id: 'j4', client_name: 'Delta Co', service_type: 'Survey', status: 'complete', tech_id: 't1', tech_name: 'Alice Smith', scheduled_at: '2026-08-01T08:00:00Z', service_address: null, service_city: null },
+    ];
+    render(<DispatchTeamPanel {...defaultProps({ jobs: completedJobs })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByText('Delta Co — Survey')).toBeInTheDocument();
+    expect(screen.queryByText('ACME Corp — Repair')).not.toBeInTheDocument();
+  });
+});
+
+// ── panelFocus ────────────────────────────────────────────────────────────────
+
+describe('DispatchTeamPanel — panelFocus', () => {
+  it('switches to Jobs tab when panelFocus.tab is "jobs"', () => {
+    const { rerender } = render(<DispatchTeamPanel {...defaultProps()} />);
+    expect(screen.getByRole('tab', { name: /team/i })).toHaveAttribute('aria-selected', 'true');
+    rerender(<DispatchTeamPanel {...defaultProps({ panelFocus: { tab: 'jobs', _nonce: 1 } })} />);
+    expect(screen.getByRole('tab', { name: /jobs/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('applies jobFilter when panelFocus.jobFilter is set', () => {
+    const completedJobs = [
+      ...JOBS,
+      { id: 'j4', client_name: 'Delta Co', service_type: 'Survey', status: 'complete', tech_id: 't1', tech_name: 'Alice Smith', scheduled_at: '2026-08-01T08:00:00Z', service_address: null, service_city: null },
+    ];
+    const { rerender } = render(<DispatchTeamPanel {...defaultProps({ jobs: completedJobs })} />);
+    rerender(<DispatchTeamPanel {...defaultProps({ jobs: completedJobs, panelFocus: { tab: 'jobs', jobFilter: 'completed', _nonce: 1 } })} />);
+    expect(screen.getByText('Delta Co — Survey')).toBeInTheDocument();
+    expect(screen.queryByText('ACME Corp — Repair')).not.toBeInTheDocument();
+  });
+
+  it('applies teamFilter when panelFocus.teamFilter is set', () => {
+    const { rerender } = render(<DispatchTeamPanel {...defaultProps()} />);
+    rerender(<DispatchTeamPanel {...defaultProps({ panelFocus: { tab: 'team', teamFilter: 'off', _nonce: 1 } })} />);
+    expect(screen.getByText('Carol Turner')).toBeInTheDocument();
+    expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+  });
+
+  it('clears search when panelFocus changes', () => {
+    const { rerender } = render(<DispatchTeamPanel {...defaultProps()} />);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'alice' } });
+    expect(screen.getByRole('searchbox').value).toBe('alice');
+    rerender(<DispatchTeamPanel {...defaultProps({ panelFocus: { tab: 'team', _nonce: 2 } })} />);
+    expect(screen.getByRole('searchbox').value).toBe('');
   });
 });
 

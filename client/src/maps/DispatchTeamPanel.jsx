@@ -1,8 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 const GPS_LIVE_MS  = 2  * 60 * 1000;
 const GPS_STALE_MS = 15 * 60 * 1000;
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
+
+// Must stay in sync with src/routes/dispatch.js ACTIVE_STATUSES
+const ACTIVE_STATUSES = new Set([
+  'in_progress', 'paused', 'awaiting_client', 'awaiting_parts',
+  'partially_completed', 'ready_for_inspection',
+]);
 
 function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -26,13 +32,13 @@ function techStatus(tech, techLocs, jobs) {
   }
   const loc = techLocs.find(l => l.user_id === tech.id);
   const age = loc ? Date.now() - new Date(loc.updated_at).getTime() : null;
-  const onJob = jobs.some(j => j.tech_id === tech.id && j.status === 'in_progress');
+  const onJob = jobs.some(j => j.tech_id === tech.id && ACTIVE_STATUSES.has(j.status));
 
-  if (onJob)                           return { label: 'On Job',    color: '#1565C0', bg: 'var(--blue-lt)',  key: 'busy'      };
-  if (!loc)                            return { label: 'Available', color: '#2E7D32', bg: 'var(--green-lt)', key: 'available' };
-  if (age > GPS_STALE_MS)              return { label: 'Offline',   color: '#8A90A2', bg: '#f1f5f9',        key: 'offline'   };
-  if (age > GPS_LIVE_MS)               return { label: 'GPS Stale', color: '#D97706', bg: 'var(--amber-lt)', key: 'stale'    };
-  return                                      { label: 'Live GPS',  color: '#2E7D32', bg: 'var(--green-lt)', key: 'live'      };
+  if (onJob)               return { label: 'On Job',    color: '#1565C0', bg: 'var(--blue-lt)',  key: 'busy'      };
+  if (!loc)                return { label: 'Available', color: '#2E7D32', bg: 'var(--green-lt)', key: 'available' };
+  if (age > GPS_STALE_MS)  return { label: 'Offline',   color: '#8A90A2', bg: '#f1f5f9',        key: 'offline'   };
+  if (age > GPS_LIVE_MS)   return { label: 'GPS Stale', color: '#D97706', bg: 'var(--amber-lt)', key: 'stale'    };
+  return                          { label: 'Live GPS',  color: '#2E7D32', bg: 'var(--green-lt)', key: 'live'      };
 }
 
 const JOB_STATUS_STYLE = {
@@ -66,6 +72,7 @@ const JOB_FILTERS = [
   { key: 'all',        label: 'All'        },
   { key: 'active',     label: 'Active'     },
   { key: 'unassigned', label: 'Unassigned' },
+  { key: 'completed',  label: 'Done'       },
 ];
 
 export default function DispatchTeamPanel({
@@ -77,11 +84,21 @@ export default function DispatchTeamPanel({
   selectedItem,
   onSelectTech,
   onSelectJob,
+  panelFocus,   // { tab, teamFilter?, jobFilter?, _nonce } — drives KPI-click navigation
 }) {
   const [tab,         setTab]         = useState('team');
   const [search,      setSearch]      = useState('');
   const [teamFilter,  setTeamFilter]  = useState('all');
   const [jobFilter,   setJobFilter]   = useState('all');
+
+  // Respond to external panel-focus requests (from KPI card clicks)
+  useEffect(() => {
+    if (!panelFocus) return;
+    if (panelFocus.tab)        setTab(panelFocus.tab);
+    if (panelFocus.teamFilter) setTeamFilter(panelFocus.teamFilter);
+    if (panelFocus.jobFilter)  setJobFilter(panelFocus.jobFilter);
+    setSearch('');
+  }, [panelFocus]);
 
   const filteredTechs = useMemo(() => {
     let list = techs;
@@ -105,25 +122,16 @@ export default function DispatchTeamPanel({
         j.service_address?.toLowerCase().includes(q)
       );
     }
-    if (jobFilter === 'active')     list = list.filter(j => j.status === 'in_progress');
+    if (jobFilter === 'active')     list = list.filter(j => ACTIVE_STATUSES.has(j.status));
     if (jobFilter === 'unassigned') list = list.filter(j => !j.tech_id);
+    if (jobFilter === 'completed')  list = list.filter(j => j.status === 'complete');
     return list;
   }, [jobs, search, jobFilter]);
-
-  const subtitle = loading
-    ? 'Loading…'
-    : `${techs.length} tech${techs.length !== 1 ? 's' : ''} · ${jobs.length} job${jobs.length !== 1 ? 's' : ''}`;
 
   function switchTab(t) { setTab(t); setSearch(''); }
 
   return (
     <div className="dispatch-team-panel">
-      {/* Header */}
-      <div className="dispatch-panel-hdr">
-        <div className="dispatch-panel-title">Live Dispatch</div>
-        <div className="dispatch-panel-sub">{subtitle}</div>
-      </div>
-
       {/* Tabs */}
       <div className="dispatch-team-tabs" role="tablist">
         <button
@@ -215,7 +223,7 @@ export default function DispatchTeamPanel({
           ) : filteredTechs.map((t, i) => {
             const st        = techStatus(t, techLocs, jobs);
             const loc       = techLocs.find(l => l.user_id === t.id);
-            const activeJob = jobs.find(j => j.tech_id === t.id && j.status === 'in_progress');
+            const activeJob = jobs.find(j => j.tech_id === t.id && ACTIVE_STATUSES.has(j.status));
             const techJobs  = jobs.filter(j => j.tech_id === t.id);
             const color     = AVATAR_COLORS[i % AVATAR_COLORS.length];
             const isSel     = selectedItem?.type === 'tech' && selectedItem?.id === t.id;
@@ -265,7 +273,6 @@ export default function DispatchTeamPanel({
             );
           })
         ) : (
-          /* Jobs tab */
           filteredJobs.length === 0 ? (
             <div className="dispatch-panel-empty">
               {jobs.length === 0
@@ -291,7 +298,7 @@ export default function DispatchTeamPanel({
                 <div
                   className="dispatch-job-dot"
                   aria-hidden="true"
-                  style={{ background: j.status === 'in_progress' ? '#1565C0' : sStyle.background }}
+                  style={{ background: ACTIVE_STATUSES.has(j.status) ? '#1565C0' : sStyle.background }}
                 />
                 <div className="dispatch-job-info">
                   <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>
@@ -313,7 +320,7 @@ export default function DispatchTeamPanel({
           })
         )}
 
-        {/* Multi-day sessions (shown in Team tab only) */}
+        {/* Multi-day sessions — Team tab only */}
         {tab === 'team' && !loading && sessions.length > 0 && (
           <>
             <div className="dispatch-section-lbl" style={{ marginTop: 8 }}>

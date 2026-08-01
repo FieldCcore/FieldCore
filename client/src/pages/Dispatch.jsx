@@ -94,6 +94,7 @@ export default function Dispatch() {
   const [techLocs,         setTechLocs]         = useState([]);
   const [selectedItem,     setSelectedItem]     = useState(null);
   const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false });
+  const [panelFocus,       setPanelFocus]       = useState(null);
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -424,6 +425,17 @@ export default function Dispatch() {
   const handleEnableLocation = useCallback(() => { centerOnMe(); }, [centerOnMe]);
   const handleSkipLocation   = useCallback(() => { setPromptDismissed(true); }, []);
 
+  // ── KPI card click → navigate team panel ──────────────────────────────────
+  const handleKpiCardClick = useCallback((key) => {
+    const focus = {
+      live:      { tab: 'team', teamFilter: 'live'      },
+      active:    { tab: 'jobs', jobFilter:  'active'    },
+      today:     { tab: 'jobs', jobFilter:  'all'       },
+      completed: { tab: 'jobs', jobFilter:  'completed' },
+    };
+    if (focus[key]) setPanelFocus({ ...focus[key], _nonce: Date.now() });
+  }, []);
+
   // ── Selection + drawer handlers ────────────────────────────────────────────
   const handleSelectTech = useCallback((id) => {
     setSelectedItem(prev => prev?.type === 'tech' && prev?.id === id ? null : { type: 'tech', id });
@@ -485,7 +497,19 @@ export default function Dispatch() {
     <>
       <div className="dispatch-root">
 
-        <DispatchKPIStrip onCardClick={() => {}} />
+        {/* ── Page header: title left, compact KPI strip right ── */}
+        <div className="dispatch-page-header">
+          <div className="dispatch-page-heading">
+            <div className="dispatch-page-title">Dispatch</div>
+            <div className="dispatch-page-sub">
+              {loading
+                ? 'Loading…'
+                : `${techs.length} tech${techs.length !== 1 ? 's' : ''} · ${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`
+              }
+            </div>
+          </div>
+          <DispatchKPIStrip onCardClick={handleKpiCardClick} />
+        </div>
 
         <div className="dispatch-workspace">
 
@@ -498,6 +522,7 @@ export default function Dispatch() {
             selectedItem={selectedItem}
             onSelectTech={handleSelectTech}
             onSelectJob={handleSelectJob}
+            panelFocus={panelFocus}
           />
 
           <div className="dispatch-map-stage">

@@ -1,70 +1,101 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 
-const REFRESH_MS = 30000;
+const REFRESH_MS = 30_000;
 
 export default function DispatchKPIStrip({ onCardClick }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
+  const [stale,   setStale]   = useState(false);
+  const seqRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const seq = ++seqRef.current;
+    try {
+      const r = await api.get('/dispatch/summary');
+      if (seq !== seqRef.current) return; // superseded by a newer request
+      setData(r.data);
+      setLoading(false);
+      setStale(false);
+    } catch {
+      if (seq !== seqRef.current) return;
+      setLoading(false);
+      setStale(true); // retain previous data; mark stale
+    }
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-
-    async function load() {
-      try {
-        const r = await api.get('/dispatch/summary');
-        if (alive) { setData(r.data); setLoading(false); }
-      } catch {
-        if (alive) setLoading(false);
-      }
-    }
-
     load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => { alive = false; clearInterval(id); };
-  }, []);
+
+    const id = setInterval(() => {
+      if (!document.hidden) load();
+    }, REFRESH_MS);
+
+    function onVisible() {
+      if (!document.hidden) load();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+      seqRef.current++; // invalidate any in-flight request
+    };
+  }, [load]);
+
+  const d = data;
 
   const cards = [
     {
       key:   'live',
       label: 'Live Techs',
-      value: data?.liveTechnicians ?? 0,
-      sub:   `${data?.liveTechnicians ?? 0} online`,
+      value: d?.liveTechnicians?.total ?? 0,
+      sub:   d?.liveTechnicians != null
+               ? `${d.liveTechnicians.online} online · ${d.liveTechnicians.stale} stale`
+               : '—',
       color: 'var(--green)',
     },
     {
       key:   'active',
       label: 'Active Jobs',
-      value: data?.activeJobs ?? 0,
-      sub:   'in progress',
+      value: d?.activeJobs?.total ?? 0,
+      sub:   d?.activeJobs?.inProgress != null
+               ? `${d.activeJobs.inProgress} in progress`
+               : '—',
       color: 'var(--blue)',
     },
     {
       key:   'today',
       label: "Today's Jobs",
-      value: data?.todaysJobs ?? 0,
-      sub:   data?.unassignedJobs
-               ? `${data.unassignedJobs} unassigned`
-               : 'scheduled today',
+      value: d?.todaysJobs?.total ?? 0,
+      sub:   d?.todaysJobs != null
+               ? (d.todaysJobs.unassigned > 0
+                   ? `${d.todaysJobs.unassigned} unassigned`
+                   : 'all assigned')
+               : '—',
       color: 'var(--navy)',
     },
     {
       key:   'completed',
       label: 'Completed',
-      value: data?.completedToday ?? 0,
+      value: d?.completedToday?.total ?? 0,
       sub:   'today',
       color: 'var(--green)',
     },
     {
       key:   'response',
       label: 'Avg Response',
-      value: data?.avgResponseMin != null ? `${data.avgResponseMin}m` : '—',
-      sub:   'today',
+      value: d?.averageResponseTime?.minutes != null
+               ? `${d.averageResponseTime.minutes}m`
+               : '—',
+      sub:   d?.averageResponseTime?.sampleSize != null && d.averageResponseTime.sampleSize > 0
+               ? `${d.averageResponseTime.sampleSize} job${d.averageResponseTime.sampleSize !== 1 ? 's' : ''}`
+               : 'No data',
       color: 'var(--amber)',
     },
   ];
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="dispatch-kpi-strip" aria-label="KPI metrics loading">
         {[...Array(5)].map((_, i) => (
@@ -75,23 +106,24 @@ export default function DispatchKPIStrip({ onCardClick }) {
   }
 
   return (
-    <div className="dispatch-kpi-strip" role="list" aria-label="Dispatch metrics">
+    <ul className="dispatch-kpi-strip" aria-label="Dispatch metrics">
       {cards.map(c => (
-        <button
-          key={c.key}
-          type="button"
-          role="listitem"
-          className="dispatch-kpi-card"
-          onClick={() => onCardClick?.(c.key)}
-          aria-label={`${c.label}: ${c.value}`}
-        >
-          <div className="dispatch-kpi-value" style={{ color: c.color }}>
-            {c.value}
-          </div>
-          <div className="dispatch-kpi-label">{c.label}</div>
-          <div className="dispatch-kpi-sub">{c.sub}</div>
-        </button>
+        <li key={c.key}>
+          <button
+            type="button"
+            className="dispatch-kpi-card"
+            onClick={() => onCardClick?.(c.key)}
+            aria-label={`${c.label}: ${c.value}`}
+          >
+            <div className="dispatch-kpi-value" style={{ color: c.color }}>
+              {c.value}
+              {stale && <span className="dispatch-kpi-stale" title="Refresh failed — showing last data" aria-hidden="true" />}
+            </div>
+            <div className="dispatch-kpi-label">{c.label}</div>
+            <div className="dispatch-kpi-sub">{c.sub}</div>
+          </button>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
