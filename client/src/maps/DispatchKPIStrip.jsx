@@ -22,10 +22,9 @@ const FALLBACK_METRICS = [
 ];
 
 export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole }) {
-  const [metrics,     setMetrics]     = useState(null);   // null = initial loading
-  const [loading,     setLoading]     = useState(true);
-  const [stale,       setStale]       = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [metrics, setMetrics] = useState(null);   // null = initial loading
+  const [loading, setLoading] = useState(true);
+  const [stale,   setStale]   = useState(false);
   const seqRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -41,7 +40,6 @@ export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole })
       setMetrics(m.map(metric => stale ? { ...metric, status: 'stale' } : metric));
       setLoading(false);
       setStale(false);
-      setLastUpdated(new Date());
     } catch {
       if (seq !== seqRef.current) return;
       setLoading(false);
@@ -83,25 +81,18 @@ export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole })
   const displayMetrics = metrics ?? FALLBACK_METRICS;
 
   return (
-    <div className="dispatch-kpi-wrap">
-      <ul className="dispatch-kpi-strip" role="list" aria-label="Dispatch metrics">
-        {displayMetrics.map(m => (
-          <li key={m.key}>
-            <DispatchKpiCard
-              metric={m}
-              onClick={onCardClick}
-              onConfigure={onConfigure}
-              userRole={userRole}
-            />
-          </li>
-        ))}
-      </ul>
-      {lastUpdated && (
-        <div className="dispatch-kpi-ts" aria-live="polite">
-          Updated {lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-        </div>
-      )}
-    </div>
+    <ul className="dispatch-kpi-strip" role="list" aria-label="Dispatch metrics">
+      {displayMetrics.map(m => (
+        <li key={m.key}>
+          <DispatchKpiCard
+            metric={m}
+            onClick={onCardClick}
+            onConfigure={onConfigure}
+            userRole={userRole}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
