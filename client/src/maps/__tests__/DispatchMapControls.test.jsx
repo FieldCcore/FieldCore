@@ -263,11 +263,19 @@ describe('DispatchMapControls — legend', () => {
     expect(screen.getByText(/live gps/i)).toBeInTheDocument();
   });
 
-  it('shows job legend items', () => {
+  it('shows job legend items matching Calendar statuses', () => {
     render(<DispatchMapControls {...defaultProps()} />);
     fireEvent.click(screen.getByRole('button', { name: /legend/i }));
-    expect(screen.getByText(/job.*active/i)).toBeInTheDocument();
+    expect(screen.getByText(/job.*scheduled/i)).toBeInTheDocument();
+    expect(screen.getByText(/job.*in progress/i)).toBeInTheDocument();
     expect(screen.getByText(/job.*completed/i)).toBeInTheDocument();
+    expect(screen.getByText(/job.*cancelled/i)).toBeInTheDocument();
+  });
+
+  it('does not show "Job — Active" (not a Calendar canonical status)', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.queryByText(/job.*active$/i)).not.toBeInTheDocument();
   });
 
   it('closes legend when clicking outside', () => {

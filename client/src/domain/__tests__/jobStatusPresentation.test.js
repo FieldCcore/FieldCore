@@ -185,3 +185,30 @@ describe('getJobMarkerColor', () => {
     expect(getJobMarkerColor('active')).toBe(getJobMarkerColor('in_progress'));
   });
 });
+
+// ── Compact legend uniqueness ─────────────────────────────────────────────────
+
+describe('Compact job legend — no duplicate colors', () => {
+  const COMPACT_JOB_STATUSES = ['scheduled', 'in_progress', 'complete', 'cancelled'];
+
+  it('all four compact job legend colors are unique', () => {
+    const colors = COMPACT_JOB_STATUSES.map(getJobMarkerColor);
+    expect(new Set(colors).size).toBe(colors.length);
+  });
+
+  it('in_progress gold is distinct from scheduled gray', () => {
+    expect(getJobMarkerColor('in_progress')).not.toBe(getJobMarkerColor('scheduled'));
+  });
+
+  it('complete green is distinct from cancelled red', () => {
+    expect(getJobMarkerColor('complete')).not.toBe(getJobMarkerColor('cancelled'));
+  });
+
+  it('complete green is distinct from in_progress gold', () => {
+    expect(getJobMarkerColor('complete')).not.toBe(getJobMarkerColor('in_progress'));
+  });
+
+  it('scheduled gray is distinct from cancelled red', () => {
+    expect(getJobMarkerColor('scheduled')).not.toBe(getJobMarkerColor('cancelled'));
+  });
+});

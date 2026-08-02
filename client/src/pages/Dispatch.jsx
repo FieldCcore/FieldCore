@@ -11,6 +11,7 @@ import { resolveDispatchViewport } from '../maps/dispatchViewport';
 import { useDispatchLocation } from '../hooks/useDispatchLocation';
 import { isValidCoord, classifyTechGPS } from '../maps/dispatchCoords';
 import { getJobMarkerColor } from '../domain/jobStatusPresentation';
+import { getTechStatus } from '../domain/technicianStatusPresentation';
 
 // ── Viewport persistence ──────────────────────────────────────────────────────
 const VP_KEY     = 'fc_dispatch_vp';
@@ -33,7 +34,6 @@ function savePersistedViewport(lat, lng, zoom) {
   } catch {}
 }
 
-const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 const FIT_PADDING  = { top: 60, right: 60, bottom: 60, left: 60 };
 const MAX_AUTO_ZOOM = 15;
@@ -264,7 +264,7 @@ export default function Dispatch() {
       if (classifyTechGPS(loc.updated_at) === 'unavailable') return;
 
       activeIds.add(tech.id);
-      const color = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+      const color = getTechStatus(tech, techLocs, jobs).color;
       const isSel = selectedItem?.type === 'tech' && selectedItem?.id === tech.id;
       const icon  = techMarkerIcon(initials(tech.name), color, isSel);
 
@@ -571,21 +571,6 @@ export default function Dispatch() {
                 onCenterJob={handleCenterOnJob}
               />
 
-              <div className="dispatch-legend">
-                {[
-                  { color: '#2E7D32', label: 'Tech — live GPS'  },
-                  { color: '#D97706', label: 'Tech — GPS stale' },
-                  { color: '#1565C0', label: 'Job — active'     },
-                  { color: '#2E7D32', label: 'Job — complete'   },
-                  { color: '#C62828', label: 'Job — cancelled'  },
-                  { color: '#8A90A2', label: 'Job — scheduled'  },
-                ].map((l, i) => (
-                  <div key={i} className="dispatch-legend-item">
-                    <div className="dispatch-legend-dot" style={{ background: l.color }} />
-                    <span>{l.label}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
 

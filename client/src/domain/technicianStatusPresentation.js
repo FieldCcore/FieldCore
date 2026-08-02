@@ -17,13 +17,17 @@ const ACTIVE_STATUSES = new Set([
   'partially_completed', 'ready_for_inspection',
 ]);
 
+// Tech colors must never duplicate the four Calendar job-status colors:
+//   Scheduled → #8A90A2 (gray)   In Progress → #D4A000 (gold)
+//   Completed  → #2E7D32 (green) Cancelled   → #C62828 (red)
+
 const TECH_PRESENTATIONS = {
   live: {
     key:        'live',
     label:      'Live GPS',
-    color:      '#2E7D32',            // --green
-    bg:         'var(--green-lt)',
-    markerRing: '#2E7D32',
+    color:      '#00796B',            // --teal  (distinct from job green)
+    bg:         'var(--teal-lt)',
+    markerRing: '#00796B',
     priority:   1,
   },
   busy: {
@@ -37,9 +41,9 @@ const TECH_PRESENTATIONS = {
   available: {
     key:        'available',
     label:      'Available',
-    color:      '#2E7D32',
-    bg:         'var(--green-lt)',
-    markerRing: '#2E7D32',
+    color:      '#00ACC1',            // cyan (distinct from teal live GPS)
+    bg:         '#E0F7FA',
+    markerRing: '#00ACC1',
     priority:   2,
   },
   stale: {
@@ -53,17 +57,17 @@ const TECH_PRESENTATIONS = {
   offline: {
     key:        'offline',
     label:      'Offline',
-    color:      '#8A90A2',            // --steel
-    bg:         '#f1f5f9',
-    markerRing: '#8A90A2',
+    color:      '#455A64',            // dark blue-gray (distinct from job scheduled gray)
+    bg:         '#ECEFF1',
+    markerRing: '#455A64',
     priority:   4,
   },
   off: {
     key:        'off',
     label:      'Off Duty',
-    color:      '#8A90A2',
-    bg:         '#f1f5f9',
-    markerRing: '#8A90A2',
+    color:      '#455A64',
+    bg:         '#ECEFF1',
+    markerRing: '#455A64',
     priority:   5,
   },
 };
@@ -96,8 +100,8 @@ export function getTechStatusPresentation(key) {
 
 export { GPS_LIVE_MS, GPS_STALE_MS, ACTIVE_STATUSES };
 
-// Legend entries for the map controls legend (tech section)
+// Compact legend entries — derived from TECH_PRESENTATIONS, not hardcoded
 export const TECH_LEGEND_ITEMS = [
-  { key: 'live',  label: 'Tech — Live GPS',  color: '#2E7D32' },
-  { key: 'stale', label: 'Tech — GPS Stale', color: '#E65100' },
+  { key: 'live',  label: 'Tech — Live GPS',  color: TECH_PRESENTATIONS.live.color  },
+  { key: 'stale', label: 'Tech — GPS Stale', color: TECH_PRESENTATIONS.stale.color },
 ];

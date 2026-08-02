@@ -94,12 +94,12 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title, active }) {
   );
 }
 
-// Job legend items — derived from shared Calendar-approved presentation
+// Job legend items — Calendar-canonical statuses in Calendar order
 const JOB_LEGEND_ITEMS = [
-  { key: 'active',     label: 'Job — Active'    },
-  { key: 'complete',   label: 'Job — Completed' },
-  { key: 'cancelled',  label: 'Job — Cancelled' },
-  { key: 'scheduled',  label: 'Job — Scheduled' },
+  { key: 'scheduled',   label: 'Job — Scheduled'   },
+  { key: 'in_progress', label: 'Job — In Progress'  },
+  { key: 'complete',    label: 'Job — Completed'    },
+  { key: 'cancelled',   label: 'Job — Cancelled'    },
 ].map(({ key, label }) => ({
   key, label, color: getJobStatusPresentation(key).markerColor,
 }));
