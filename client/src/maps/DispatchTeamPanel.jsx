@@ -2,7 +2,8 @@ import { useMemo, useState, useEffect } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
 
-const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
+// #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
+const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -29,7 +30,7 @@ const TEAM_FILTERS = [
   { key: 'live',      label: 'Live GPS'  },
   { key: 'busy',      label: 'On Job'    },
   { key: 'available', label: 'Available' },
-  { key: 'stale',     label: 'GPS Stale' },
+  { key: 'stale',     label: 'Location Stale' },
   { key: 'off',       label: 'Off Duty'  },
 ];
 

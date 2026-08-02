@@ -7,9 +7,9 @@ function makeTech(lat, lng, ageMs = 0) {
   return { lat, lng, updated_at: new Date(Date.now() - ageMs).toISOString(), is_available: true };
 }
 
-const LIVE_MS  = 60 * 1000;        // 1 min → live
-const STALE_MS = 5  * 60 * 1000;   // 5 min → stale
-const OLD_MS   = 20 * 60 * 1000;   // 20 min → unavailable
+const LIVE_MS  = 60  * 1000;       // 1 min  → live  (≤ 5 min threshold)
+const STALE_MS = 15  * 60 * 1000;  // 15 min → stale (5–30 min threshold)
+const OLD_MS   = 35  * 60 * 1000;  // 35 min → offline (> 30 min threshold)
 
 function makeJob(lat, lng, status = 'scheduled') {
   return { service_lat: lat, service_lng: lng, status };
@@ -204,7 +204,7 @@ describe('resolveDispatchViewport — stale techs (Priority D)', () => {
     expect(v.pointCount).toBe(1); // only the live tech
   });
 
-  it('ignores unavailable techs (> 15 min)', () => {
+  it('ignores offline techs (> 30 min)', () => {
     const v = resolveDispatchViewport({
       technicians: [makeTech(25.7617, -80.1918, OLD_MS)],
       jobs:        [],

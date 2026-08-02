@@ -1,10 +1,9 @@
 // Coordinate utilities for the Dispatch viewport engine.
 // Pure functions — no side effects, no DOM, no React.
 
-// GPS freshness thresholds — kept in sync with Dispatch.jsx constants.
-export const TECH_LIVE_MS        = 2  * 60 * 1000;  // < 2 min  → live
-export const TECH_STALE_MS       = 15 * 60 * 1000;  // 2–15 min → stale
-// > TECH_STALE_MS                                   // → unavailable
+// GPS freshness thresholds — kept in sync with technicianStatusPresentation.js and src/routes/dispatch.js
+export const TECH_LIVE_MS        = 5  * 60 * 1000;  // ≤ 5 min  → live
+export const TECH_STALE_MS       = 30 * 60 * 1000;  // 5–30 min → stale; > 30 min → offline
 
 /**
  * Returns true only for a finite, in-range, non-(0,0) coordinate pair.
@@ -24,15 +23,17 @@ export function isValidCoord(lat, lng) {
 
 /**
  * Classify GPS freshness of a technician from their last-update timestamp.
+ * Returns location freshness only — not operational status.
+ *
  * @param {string|Date|null} updatedAt
- * @returns {'live'|'stale'|'unavailable'}
+ * @returns {'live'|'stale'|'offline'|'no_location'}
  */
 export function classifyTechGPS(updatedAt) {
-  if (!updatedAt) return 'unavailable';
+  if (!updatedAt) return 'no_location';
   const age = Date.now() - new Date(updatedAt).getTime();
   if (age <= TECH_LIVE_MS)  return 'live';
   if (age <= TECH_STALE_MS) return 'stale';
-  return 'unavailable';
+  return 'offline';
 }
 
 /**

@@ -1,3 +1,5 @@
+import { TECH_PRESENTATIONS } from '../domain/technicianStatusPresentation';
+
 /**
  * DispatchKpiCard
  *
@@ -131,10 +133,10 @@ export default function DispatchKpiCard({ metric, onClick, onConfigure, compact,
 function getValueColor(status, key) {
   if (status !== 'active' && status !== 'stale') return 'var(--steel)';
   const colors = {
-    liveTechnicians: 'var(--green)',
+    liveTechnicians: TECH_PRESENTATIONS.live.color,  // sky-blue — matches Tech Live GPS, never green
     activeJobs:      'var(--blue)',
     todaysJobs:      'var(--navy)',
-    completedToday:  'var(--green)',
+    completedToday:  'var(--green)',                 // green is correct for completed jobs
     averageResponse: 'var(--amber)',
   };
   return colors[key] || 'var(--navy)';

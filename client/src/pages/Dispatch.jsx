@@ -52,19 +52,31 @@ function initials(name) {
 
 // ── Marker SVG helpers ────────────────────────────────────────────────────────
 
-function techMarkerSvg(inits, color, isSelected) {
+// Amber ring around the marker body indicates stale GPS location data.
+// Visually distinct from In Progress gold (#D4A000) — uses amber #F59E0B.
+const STALE_RING_COLOR = '#F59E0B';
+
+function techMarkerSvg(inits, color, isSelected, isStale) {
   const size = isSelected ? 34 : 28;
   const r    = size / 2;
   const fs   = Math.round(size * 0.32);
-  const sw   = isSelected ? 2 : 0;
+
+  if (isStale) {
+    // Blue body + amber warning ring (ring is outer circle, body is inner circle)
+    const outerR = r - 0.5;
+    const innerR = r - 3;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${r}" cy="${r}" r="${outerR}" fill="${STALE_RING_COLOR}"/><circle cx="${r}" cy="${r}" r="${innerR}" fill="${color}"/><text x="${r}" y="${r}" dy=".35em" text-anchor="middle" font-family="Inter,sans-serif" font-size="${fs}px" font-weight="800" fill="white">${inits}</text></svg>`;
+  }
+
+  const sw     = isSelected ? 2 : 0;
   const stroke = isSelected ? 'white' : 'none';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${r}" cy="${r}" r="${r - 1}" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/><text x="${r}" y="${r}" dy=".35em" text-anchor="middle" font-family="Inter,sans-serif" font-size="${fs}px" font-weight="800" fill="white">${inits}</text></svg>`;
 }
 
-function techMarkerIcon(inits, color, isSelected) {
+function techMarkerIcon(inits, color, isSelected, isStale) {
   const size = isSelected ? 34 : 28;
   return {
-    url: `data:image/svg+xml,${encodeURIComponent(techMarkerSvg(inits, color, isSelected))}`,
+    url: `data:image/svg+xml,${encodeURIComponent(techMarkerSvg(inits, color, isSelected, isStale))}`,
     scaledSize: new window.google.maps.Size(size, size),
     anchor:     new window.google.maps.Point(size / 2, size / 2),
   };
@@ -270,12 +282,13 @@ export default function Dispatch() {
     techs.forEach((tech, idx) => {
       const loc = techLocs.find(l => l.user_id === tech.id);
       if (!loc || !isValidCoord(loc.lat, loc.lng)) return;
-      if (classifyTechGPS(loc.updated_at) === 'unavailable') return;
+      if (classifyTechGPS(loc.updated_at) === 'offline') return;
 
       activeIds.add(tech.id);
-      const color = getTechStatus(tech, techLocs, jobs).color;
-      const isSel = selectedItem?.type === 'tech' && selectedItem?.id === tech.id;
-      const icon  = techMarkerIcon(initials(tech.name), color, isSel);
+      const status = getTechStatus(tech, techLocs, jobs);
+      const color  = status.markerColor;
+      const isSel  = selectedItem?.type === 'tech' && selectedItem?.id === tech.id;
+      const icon   = techMarkerIcon(initials(tech.name), color, isSel, status.isStale);
 
       if (techMarkersRef.current[tech.id]) {
         const m = techMarkersRef.current[tech.id];
@@ -581,7 +594,7 @@ export default function Dispatch() {
                 onCenterJob={handleCenterOnJob}
               />
 
-              <DispatchMapLegend visible={showLegend} />
+              <DispatchMapLegend visible={showLegend} techs={techs} techLocs={techLocs} jobs={jobs} />
 
             </div>
           </div>

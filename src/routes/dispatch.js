@@ -4,8 +4,8 @@ const pool    = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
-const LIVE_MIN  = 2;   // < 2 min  → online (Live GPS marker)
-const STALE_MIN = 15;  // 2–15 min → stale; > 15 min → offline
+const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
+const STALE_MIN = 30;  // 5–30 min → stale; > 30 min → offline
 
 // Job statuses considered "active" for dispatch purposes
 const ACTIVE_STATUSES = [

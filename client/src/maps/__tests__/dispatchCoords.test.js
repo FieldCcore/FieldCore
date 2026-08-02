@@ -113,22 +113,22 @@ describe('classifyTechGPS', () => {
     expect(classifyTechGPS(ts)).toBe('stale');
   });
 
-  it('returns unavailable for timestamp beyond TECH_STALE_MS', () => {
+  it('returns offline for timestamp beyond TECH_STALE_MS', () => {
     const now = Date.now();
     const ts  = new Date(now - TECH_STALE_MS - 1000).toISOString();
-    expect(classifyTechGPS(ts)).toBe('unavailable');
+    expect(classifyTechGPS(ts)).toBe('offline');
   });
 
-  it('returns unavailable for null', () => {
-    expect(classifyTechGPS(null)).toBe('unavailable');
+  it('returns no_location for null', () => {
+    expect(classifyTechGPS(null)).toBe('no_location');
   });
 
-  it('returns unavailable for undefined', () => {
-    expect(classifyTechGPS(undefined)).toBe('unavailable');
+  it('returns no_location for undefined', () => {
+    expect(classifyTechGPS(undefined)).toBe('no_location');
   });
 
-  it('returns unavailable for empty string', () => {
-    expect(classifyTechGPS('')).toBe('unavailable');
+  it('returns no_location for empty string', () => {
+    expect(classifyTechGPS('')).toBe('no_location');
   });
 
   it('accepts a Date object', () => {

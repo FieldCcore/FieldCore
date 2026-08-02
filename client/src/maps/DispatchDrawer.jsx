@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
 
-const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
+// #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
+const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -163,8 +164,21 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs =
 
       {loc && (
         <div className="dispatch-drawer-stat-row">
-          <span className="dispatch-drawer-stat-label">Last seen</span>
+          <span className="dispatch-drawer-stat-label">
+            {(st.isStale || st.key === 'offline') ? 'Last known location' : 'Last seen'}
+          </span>
           <span style={{ fontSize: 12 }}>{fmtAge(loc.updated_at)}</span>
+        </div>
+      )}
+
+      {st.isStale && (
+        <div className="dispatch-drawer-stat-row">
+          <span className="dispatch-drawer-stat-label" style={{ color: '#B45309' }}>
+            Location stale
+          </span>
+          <span style={{ fontSize: 12, color: '#B45309' }}>
+            GPS not updated recently
+          </span>
         </div>
       )}
 
