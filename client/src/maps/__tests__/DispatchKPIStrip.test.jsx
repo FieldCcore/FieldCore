@@ -282,6 +282,70 @@ describe('DispatchKPIStrip — error handling', () => {
   });
 });
 
+// ── Layout structure ──────────────────────────────────────────────────────────
+
+describe('DispatchKPIStrip — layout structure', () => {
+  it('renders a <ul> as the root element (no extra wrapper div)', async () => {
+    const { container } = await (async () => {
+      let c;
+      await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+      return c;
+    })();
+    // Root element must be <ul>, not a <div> wrapper
+    expect(container.firstChild?.tagName).toBe('UL');
+  });
+
+  it('does not render a dispatch-kpi-wrap container', async () => {
+    const { container } = await (async () => {
+      let c;
+      await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+      return c;
+    })();
+    expect(container.querySelector('.dispatch-kpi-wrap')).not.toBeInTheDocument();
+  });
+
+  it('does not render any "Updated" freshness text', async () => {
+    await act(async () => { render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+    expect(screen.queryByText(/updated/i)).not.toBeInTheDocument();
+  });
+
+  it('does not render dispatch-kpi-ts element', async () => {
+    const { container } = await (async () => {
+      let c;
+      await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+      return c;
+    })();
+    expect(container.querySelector('.dispatch-kpi-ts')).not.toBeInTheDocument();
+  });
+
+  it('skeleton state also renders a <ul> root (not a div wrapper)', () => {
+    api.get.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<DispatchKPIStrip onCardClick={vi.fn()} />);
+    expect(container.firstChild?.tagName).toBe('UL');
+  });
+
+  it('loaded state has exactly 4 <li> items for 4-metric legacy response', async () => {
+    api.get.mockResolvedValue({ data: SUMMARY_LEGACY });
+    await act(async () => { render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+    // 4 metrics in legacy shape → 4 list items
+    expect(screen.getAllByRole('listitem').length).toBe(4);
+  });
+
+  it('loaded state has exactly 5 <li> items for 5-metric normalized response', async () => {
+    await act(async () => { render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+    expect(screen.getAllByRole('listitem').length).toBe(5);
+  });
+
+  it('no fifth empty slot: all listitems have a button child', async () => {
+    await act(async () => { render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
+    const items = screen.getAllByRole('listitem');
+    items.forEach(li => {
+      // display:contents means the li is invisible; the button is its only child
+      expect(li.querySelector('button')).not.toBeNull();
+    });
+  });
+});
+
 // ── Accessibility ─────────────────────────────────────────────────────────────
 
 describe('DispatchKPIStrip — accessibility', () => {

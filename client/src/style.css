@@ -2296,32 +2296,30 @@ body {
 /* Page header: KPI strip fills full width */
 .dispatch-page-header {
   display: flex;
-  align-items: center;
-  padding: 8px 16px;
+  align-items: stretch;
+  padding: 0;
   border-bottom: 1px solid var(--lightgray);
   background: var(--white);
   flex-shrink: 0;
-  min-height: 54px;
 }
 
-/* Compact KPI strip — fills header width with equal cards */
+/* KPI strip — four equal-width cards via CSS Grid, no flex quirks */
 .dispatch-kpi-strip {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 10px 20px;
 }
 .dispatch-kpi-strip > li { display: contents; }
 .dispatch-kpi-card {
-  flex: 1 1 0;
-  min-width: 100px;
-  height: 54px;
-  padding: 7px 14px;
+  width: 100%;
+  min-width: 0;
+  height: 70px;
+  padding: 10px 16px;
   background: var(--off, #f4f3f0);
   border: 1px solid var(--lightgray);
   border-radius: 10px;
@@ -2385,12 +2383,12 @@ body {
 .dispatch-workspace {
   flex: 1 1 0;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 386px minmax(0, 1fr);
   overflow: hidden;
 }
 .dispatch-map-stage {
   position: relative;
-  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -2399,8 +2397,8 @@ body {
 }
 /* ── Dispatch team panel ─────────────────────────────────────── */
 .dispatch-team-panel {
-  width: 300px;
-  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
   background: var(--white);
   border-right: 1px solid var(--lightgray);
   display: flex;
@@ -3362,22 +3360,24 @@ body {
     padding: 6px 10px !important;
     min-height: 48px !important;
   }
-  /* KPI strip: compact horizontal scroller on mobile */
-  .dispatch-kpi-strip { gap: 6px; overflow-x: auto; }
-  .dispatch-kpi-card  { min-width: 100px !important; height: 46px !important; padding: 5px 8px !important; }
+  /* KPI strip: 2-column grid on mobile */
+  .dispatch-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    padding: 8px 12px !important;
+  }
+  .dispatch-kpi-card  { height: 52px !important; padding: 6px 10px !important; }
   .dispatch-kpi-value { font-size: 15px !important; }
   .dispatch-kpi-label { font-size: 9px !important; }
   .dispatch-kpi-sub   { display: none; }
-  .dispatch-workspace { flex-direction: column; }
+  .dispatch-workspace { grid-template-columns: 1fr !important; }
   .dispatch-team-panel {
     width: 100% !important;
-    flex: 0 0 auto !important;
     max-height: 40% !important;
     border-right: none !important;
     border-bottom: 1px solid var(--lightgray);
   }
   .dispatch-map-stage {
-    flex: 1 !important;
     height: auto !important;
     min-height: 0 !important;
     position: relative !important;
