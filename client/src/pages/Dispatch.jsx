@@ -583,7 +583,7 @@ export default function Dispatch() {
   }, [permissionState]);
 
   const { mode, isMobile, toggleExpandedCompact, enterFullMap, exitFullMap } = sidebarMode;
-  const sidebarWidth = isMobile ? undefined : { expanded: '280px', compact: '96px', full_map: '0px' }[mode];
+  const sidebarWidth = isMobile ? undefined : { expanded: '280px', compact: '76px', full_map: '0px' }[mode];
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

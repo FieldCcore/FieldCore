@@ -2,9 +2,9 @@
 
 // ── Icon primitives (16×16 viewBox, 1.5px stroke, matching DispatchMapControls style) ──
 
-function Icon({ d, size = 18 }) {
+function Icon({ d, size = 18, color }) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" style={{ width: size, height: size, flexShrink: 0 }} aria-hidden="true">
+    <svg viewBox="0 0 16 16" fill="none" style={{ width: size, height: size, flexShrink: 0, ...(color ? { color } : {}) }} aria-hidden="true">
       <path d={d} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -77,7 +77,7 @@ function KpiItem({ def, metric, onClick }) {
       onClick={() => onClick?.(def.key)}
       aria-label={kpiAriaLabel(def.key, val)}
     >
-      <Icon d={ICONS[def.icon]} size={16} />
+      <Icon d={ICONS[def.icon]} size={16} color={color} />
       <span className="compact-kpi-value" style={{ color }}>{val}</span>
       <span className="compact-kpi-label">{def.shortLabel}</span>
     </button>

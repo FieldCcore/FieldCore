@@ -227,6 +227,42 @@ describe('DispatchSidebar — compact rail', () => {
   });
 });
 
+// ── Compact rail — active state colors ────────────────────────────────────────
+
+describe('DispatchSidebar — compact rail active states', () => {
+  it('Team button has .active class when activeTab=team', () => {
+    render(<DispatchSidebar {...baseProps({ mode: 'compact', activeTab: 'team' })} />);
+    const btn = screen.getByRole('button', { name: /open team panel/i });
+    expect(btn).toHaveClass('active');
+  });
+
+  it('Jobs button has .active class when activeTab=jobs', () => {
+    render(<DispatchSidebar {...baseProps({ mode: 'compact', activeTab: 'jobs' })} />);
+    const btn = screen.getByRole('button', { name: /open jobs panel/i });
+    expect(btn).toHaveClass('active');
+  });
+
+  it('Team button is not active when activeTab=jobs', () => {
+    render(<DispatchSidebar {...baseProps({ mode: 'compact', activeTab: 'jobs' })} />);
+    const btn = screen.getByRole('button', { name: /open team panel/i });
+    expect(btn).not.toHaveClass('active');
+  });
+
+  it('compact nav items have no title attribute', () => {
+    const { container } = render(<DispatchSidebar {...baseProps({ mode: 'compact' })} />);
+    container.querySelectorAll('.compact-nav-item').forEach(el => {
+      expect(el).not.toHaveAttribute('title');
+    });
+  });
+
+  it('compact kpi items have no title attribute', () => {
+    const { container } = render(<DispatchSidebar {...baseProps({ mode: 'compact' })} />);
+    container.querySelectorAll('.compact-kpi-item').forEach(el => {
+      expect(el).not.toHaveAttribute('title');
+    });
+  });
+});
+
 // ── Full map mode ─────────────────────────────────────────────────────────────
 
 describe('DispatchSidebar — full_map mode', () => {

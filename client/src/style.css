@@ -2524,7 +2524,7 @@ body {
 .rail-kpi:hover { background: var(--off); }
 .rail-kpi:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .rail-kpi__count { font-size: 13px; font-weight: 800; color: var(--navy); line-height: 1; letter-spacing: -.02em; }
-/* ── Compact labeled rail (96px) ─────────────────────────────────────── */
+/* ── Compact labeled rail (76px) ─────────────────────────────────────── */
 .dispatch-compact-rail {
   display: flex;
   flex-direction: column;
@@ -2532,7 +2532,7 @@ body {
   width: 100%;
   overflow: hidden;
   flex: 1 1 0;
-  padding: 6px 0 4px;
+  padding: 44px 5px 4px;
   gap: 1px;
 }
 .compact-nav-item {
@@ -2542,20 +2542,20 @@ body {
   gap: 3px;
   padding: 7px 4px;
   border: none;
-  border-radius: 0;
+  border-radius: 6px;
   background: none;
   cursor: pointer;
   font-family: inherit;
-  color: var(--slate);
-  transition: background .1s, color .1s;
+  color: var(--steel);
+  transition: background .12s, color .12s;
   flex-shrink: 0;
   width: 100%;
 }
 .compact-nav-item:hover { background: var(--off); color: var(--navy); }
-.compact-nav-item.active { color: var(--navy); background: #ebebea; }
-.compact-nav-item:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+.compact-nav-item.active { color: var(--white); background: var(--navy); }
+.compact-nav-item:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .compact-nav-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
   color: inherit;
@@ -2563,7 +2563,7 @@ body {
 .compact-rail-divider {
   height: 1px;
   background: var(--lightgray);
-  margin: 4px 12px;
+  margin: 4px 8px;
   flex-shrink: 0;
 }
 .compact-kpi-item {
@@ -2571,26 +2571,26 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 5px 4px;
+  padding: 5px 3px;
   border: none;
   background: none;
   cursor: pointer;
   font-family: inherit;
-  color: var(--slate);
-  transition: background .1s;
+  color: var(--steel);
+  transition: background .12s;
   flex-shrink: 0;
   width: 100%;
 }
 .compact-kpi-item:hover { background: var(--off); }
-.compact-kpi-item:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+.compact-kpi-item:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .compact-kpi-value {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -.02em;
 }
 .compact-kpi-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--steel);
   line-height: 1;
@@ -2622,11 +2622,13 @@ body {
 .sidebar-fullmap-btn:hover { background: var(--off); color: var(--navy); }
 .sidebar-fullmap-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 /* ── Full-map floating control ───────────────────────────────────────── */
+/* pointer-events: auto restores clicks — parent .dispatch-map-overlays uses none */
 .dispatch-fullmap-control {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 20;
+  top: 14px;
+  left: 14px;
+  z-index: 60;
+  pointer-events: auto;
 }
 .dispatch-fullmap-btn {
   display: flex;
@@ -3803,7 +3805,7 @@ body {
   .dash-stat-grid   { grid-template-columns: repeat(3, 1fr); }
   .dash-3col        { grid-template-columns: 1fr 1fr; }
   .rev-layout       { grid-template-columns: 1fr !important; }
-  .dispatch-workspace { grid-template-columns: var(--dispatch-sidebar-width, 96px) minmax(0, 1fr) !important; }
+  .dispatch-workspace { grid-template-columns: var(--dispatch-sidebar-width, 76px) minmax(0, 1fr) !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════
