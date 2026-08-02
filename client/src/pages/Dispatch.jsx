@@ -3,9 +3,9 @@ import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
 import DispatchMapLegend from '../maps/DispatchMapLegend';
-import DispatchKPIStrip from '../maps/DispatchKPIStrip';
-import DispatchTeamPanel from '../maps/DispatchTeamPanel';
+import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchDrawer from '../maps/DispatchDrawer';
+import { useDispatchSidebarState } from '../hooks/useDispatchSidebarState';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
@@ -106,6 +106,7 @@ export default function Dispatch() {
   const [showLegend,       setShowLegend]       = useState(getInitialLegend);
   const [panelFocus,       setPanelFocus]       = useState(null);
   const [activeKpiKey,     setActiveKpiKey]     = useState(null);
+  const sidebarState = useDispatchSidebarState();
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -474,7 +475,15 @@ export default function Dispatch() {
   const handleEnableLocation = useCallback(() => { centerOnMe(); }, [centerOnMe]);
   const handleSkipLocation   = useCallback(() => { setPromptDismissed(true); }, []);
 
-  // ── KPI card click → navigate team panel + highlight selected card ───────
+  // ── Map resize after sidebar transition ──────────────────────────────────
+  const handleSidebarTransitionEnd = useCallback(() => {
+    const map = mapRef.current;
+    if (map && window.google?.maps) {
+      window.google.maps.event.trigger(map, 'resize');
+    }
+  }, []);
+
+  // ── KPI card click → expand sidebar, navigate team panel, highlight card ─
   const handleKpiCardClick = useCallback((key) => {
     const focus = {
       liveTechnicians: { tab: 'team', teamFilter: 'live'      },
@@ -485,7 +494,19 @@ export default function Dispatch() {
     };
     setActiveKpiKey(prev => (prev === key ? null : key));
     if (focus[key]) setPanelFocus({ ...focus[key], _nonce: Date.now() });
-  }, []);
+    if (sidebarState.isCollapsed) sidebarState.expandSidebar();
+  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Rail tab expansion ─────────────────────────────────────────────────
+  const handleExpandToTeam = useCallback(() => {
+    sidebarState.expandToTeam();
+    setPanelFocus({ tab: 'team', _nonce: Date.now() });
+  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExpandToJobs = useCallback(() => {
+    sidebarState.expandToJobs();
+    setPanelFocus({ tab: 'jobs', _nonce: Date.now() });
+  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Selection + drawer handlers ────────────────────────────────────────────
   const handleSelectTech = useCallback((id) => {
@@ -551,19 +572,29 @@ export default function Dispatch() {
     }
   }, [permissionState]);
 
+  const { isCollapsed, isMobile } = sidebarState;
+  const sidebarWidth = isMobile ? undefined : (isCollapsed ? '52px' : '280px');
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <div className="dispatch-root">
 
-        {/* ── Page header: compact KPI strip ── */}
-        <div className="dispatch-page-header">
-          <DispatchKPIStrip onCardClick={handleKpiCardClick} activeKpiKey={activeKpiKey} />
-        </div>
+        <div
+          className="dispatch-workspace"
+          style={sidebarWidth ? { '--dispatch-sidebar-width': sidebarWidth } : undefined}
+        >
 
-        <div className="dispatch-workspace">
-
-          <DispatchTeamPanel
+          <DispatchSidebar
+            isCollapsed={isCollapsed}
+            isMobile={isMobile}
+            onToggle={sidebarState.toggleSidebar}
+            onTransitionEnd={handleSidebarTransitionEnd}
+            activeKpiKey={activeKpiKey}
+            onKpiClick={handleKpiCardClick}
+            onExpandToTeam={handleExpandToTeam}
+            onExpandToJobs={handleExpandToJobs}
+            panelFocus={panelFocus}
             techs={techs}
             techLocs={techLocs}
             jobs={jobs}
@@ -572,7 +603,6 @@ export default function Dispatch() {
             selectedItem={selectedItem}
             onSelectTech={handleSelectTech}
             onSelectJob={handleSelectJob}
-            panelFocus={panelFocus}
           />
 
           <div className="dispatch-map-stage">
