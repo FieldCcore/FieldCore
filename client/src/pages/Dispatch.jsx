@@ -255,6 +255,16 @@ export default function Dispatch() {
 
       dataLoadedRef.current = true;
 
+      if (import.meta.env.DEV) {
+        window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
+          ts: new Date().toISOString(), source: 'initial',
+          jobCount: fetchedJobs.length, sessionCount: fetchedSessions.length,
+          techCount: usersRes.data.filter(u => u.role === 'tech').length,
+          locCount: fetchedLocs.length,
+          jobStatuses: fetchedJobs.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
+        };
+      }
+
       if (mapRef.current && !initialFitDoneRef.current) {
         computeAndApplyViewport();
       }
@@ -282,7 +292,14 @@ export default function Dispatch() {
         setJobs(j);
         setSessions(s);
         jobsRef.current = j;
-      }).catch(() => {});
+      if (import.meta.env.DEV) {
+        window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
+          ts: new Date().toISOString(), source: 'poll',
+          jobCount: j.length, sessionCount: s.length,
+          jobStatuses: j.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
+        };
+      }
+    }).catch(() => {});
     }, 30000);
     return () => clearInterval(id);
   }, []);
@@ -334,7 +351,7 @@ export default function Dispatch() {
         delete techMarkersRef.current[id];
       }
     });
-  }, [techs, techLocs, selectedItem, mapReady, layers.techs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [techs, techLocs, jobs, selectedItem, mapReady, layers.techs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Job markers ───────────────────────────────────────────────────────────
   useEffect(() => {

@@ -288,6 +288,37 @@ describe('DispatchTeamPanel — empty states', () => {
     fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
     expect(screen.getByText(/no jobs scheduled/i)).toBeInTheDocument();
   });
+
+  it('Active filter with no matching jobs shows "No active jobs right now."', () => {
+    const scheduledOnly = [JOBS[1], JOBS[2]]; // no in_progress jobs
+    render(<DispatchTeamPanel {...defaultProps({ jobs: scheduledOnly })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Active' }));
+    expect(screen.getByText('No active jobs right now.')).toBeInTheDocument();
+  });
+
+  it('Assigned filter with no matching jobs shows "No assigned jobs today."', () => {
+    const unassignedOnly = [JOBS[2]]; // no tech_id
+    render(<DispatchTeamPanel {...defaultProps({ jobs: unassignedOnly })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned' }));
+    expect(screen.getByText('No assigned jobs today.')).toBeInTheDocument();
+  });
+
+  it('Unassigned filter with no matching jobs shows "No unassigned jobs today."', () => {
+    const assignedOnly = [JOBS[0], JOBS[1]]; // both have tech_id
+    render(<DispatchTeamPanel {...defaultProps({ jobs: assignedOnly })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: /unassigned/i }));
+    expect(screen.getByText('No unassigned jobs today.')).toBeInTheDocument();
+  });
+
+  it('Done filter with no matching jobs shows "No completed jobs today."', () => {
+    render(<DispatchTeamPanel {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByText('No completed jobs today.')).toBeInTheDocument();
+  });
 });
 
 // ── Speed display ──────────────────────────────────────────────────────────────

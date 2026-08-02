@@ -249,6 +249,10 @@ export default function DispatchTeamPanel({
             <div className="dispatch-panel-empty">
               {jobs.length === 0
                 ? 'No jobs scheduled today.'
+                : jobFilter === 'active'     ? 'No active jobs right now.'
+                : jobFilter === 'assigned'   ? 'No assigned jobs today.'
+                : jobFilter === 'unassigned' ? 'No unassigned jobs today.'
+                : jobFilter === 'completed'  ? 'No completed jobs today.'
                 : 'No jobs match this filter.'}
             </div>
           ) : filteredJobs.map((j, idx) => {

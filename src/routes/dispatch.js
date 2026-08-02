@@ -109,19 +109,25 @@ router.get('/summary', requireAuth, async (req, res) => {
           AND tl.updated_at  > NOW() - INTERVAL '${STALE_MIN} minutes'
       `, [accountId]),
 
-      // Active jobs
+      // Active jobs — date-scoped to tenant-local today (same scope as Calendar).
+      // Without this filter the KPI counts active jobs from previous days while the
+      // sidebar shows only today's jobs, producing a visible mismatch.
       pool.query(`
         SELECT
           COUNT(*) AS total,
-          COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+          COUNT(*) FILTER (WHERE status = 'in_progress')  AS in_progress,
+          COUNT(*) FILTER (WHERE status = 'en_route')     AS en_route,
+          COUNT(*) FILTER (WHERE status = 'arrived')      AS arrived,
+          COUNT(*) FILTER (WHERE status = 'paused')       AS paused,
           COUNT(*) FILTER (WHERE status IN (
-            'paused','awaiting_client','awaiting_parts',
+            'awaiting_client','awaiting_parts',
             'partially_completed','ready_for_inspection'
           )) AS other_active
         FROM jobs
         WHERE account_id = $1
           AND status = ANY($2::text[])
-      `, [accountId, ACTIVE_STATUSES]),
+          AND (scheduled_at AT TIME ZONE $3)::date = (NOW() AT TIME ZONE $3)::date
+      `, [accountId, ACTIVE_STATUSES, tz]),
 
       // Today's jobs (tenant timezone)
       pool.query(`
@@ -192,6 +198,10 @@ router.get('/summary', requireAuth, async (req, res) => {
     // Active Jobs
     const activeTotal      = parseInt(activeRes.rows[0]?.total       ?? 0, 10);
     const activeInProgress = parseInt(activeRes.rows[0]?.in_progress ?? 0, 10);
+    const activeEnRoute    = parseInt(activeRes.rows[0]?.en_route    ?? 0, 10);
+    const activeArrived    = parseInt(activeRes.rows[0]?.arrived     ?? 0, 10);
+    const activePaused     = parseInt(activeRes.rows[0]?.paused      ?? 0, 10);
+    const activeOther      = parseInt(activeRes.rows[0]?.other_active ?? 0, 10);
 
     const activeJobsMetric = !showActive
       ? metric('activeJobs', 'Active Jobs', 'disabled', null, '—', 'Feature disabled',
@@ -254,7 +264,7 @@ router.get('/summary', requireAuth, async (req, res) => {
       metrics: metricsOut,
       // Legacy shape preserved for backward-compat during transition
       liveTechnicians:     { total: online + stale, online, stale },
-      activeJobs:          { total: activeTotal, inProgress: activeInProgress },
+      activeJobs:          { total: activeTotal, inProgress: activeInProgress, enRoute: activeEnRoute, arrived: activeArrived, paused: activePaused, otherActive: activeOther },
       todaysJobs:          { total: todayTotal, unassigned: todayUnassigned },
       completedToday:      { total: completedTotal },
       averageResponseTime: { minutes: avgMin, sampleSize },
