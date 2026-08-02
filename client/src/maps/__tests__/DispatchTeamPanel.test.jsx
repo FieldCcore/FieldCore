@@ -119,7 +119,7 @@ describe('DispatchTeamPanel — search', () => {
   it('shows empty message when no techs match search', () => {
     render(<DispatchTeamPanel {...defaultProps()} />);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzzz' } });
-    expect(screen.getByText(/no techs match/i)).toBeInTheDocument();
+    expect(screen.getByText(/no field staff match/i)).toBeInTheDocument();
   });
 });
 
@@ -280,8 +280,8 @@ describe('DispatchTeamPanel — selection', () => {
 describe('DispatchTeamPanel — empty states', () => {
   it('shows onboarding CTA when techs array is empty', () => {
     render(<DispatchTeamPanel {...defaultProps({ techs: [] })} />);
-    expect(screen.getByText(/no technicians yet/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /add technician/i })).toBeInTheDocument();
+    expect(screen.getByText(/no team members yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /add team member/i })).toBeInTheDocument();
   });
 
   it('hides tech filter chips when techs array is empty', () => {
@@ -289,12 +289,17 @@ describe('DispatchTeamPanel — empty states', () => {
     expect(screen.queryByRole('button', { name: /off duty/i })).not.toBeInTheDocument();
   });
 
-  it('shows onboarding CTA with action links when jobs array is empty', () => {
+  it('shows onboarding CTA with Create Job link when jobs array is empty', () => {
     render(<DispatchTeamPanel {...defaultProps({ jobs: [] })} />);
     fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
     expect(screen.getByText(/no jobs today/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open calendar/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /create job/i })).toBeInTheDocument();
+  });
+
+  it('does not show Open Calendar link in jobs empty state', () => {
+    render(<DispatchTeamPanel {...defaultProps({ jobs: [] })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    expect(screen.queryByRole('link', { name: /open calendar/i })).not.toBeInTheDocument();
   });
 
   it('Active filter with no matching jobs shows "No active jobs right now."', () => {
@@ -357,5 +362,50 @@ describe('DispatchTeamPanel — sessions', () => {
     render(<DispatchTeamPanel {...defaultProps({ sessions: SESSIONS })} />);
     fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
     expect(screen.queryByText(/sessions today/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Field eligibility filtering ────────────────────────────────────────────────
+
+describe('DispatchTeamPanel — field eligibility filter', () => {
+  const FIELD_TECHS = [
+    { id: 't1', name: 'Alice Smith',  role: 'tech', is_available: true, field_work_eligible: true,  dispatch_visible: true  },
+    { id: 't2', name: 'Bob Jones',    role: 'tech', is_available: true, field_work_eligible: true,  dispatch_visible: true  },
+  ];
+  const OFFICE_MEMBERS = [
+    { id: 't3', name: 'Carol Mgr',    role: 'manager', is_available: true, field_work_eligible: false, dispatch_visible: false },
+  ];
+  const MIXED = [...FIELD_TECHS, ...OFFICE_MEMBERS];
+
+  it('shows only field-eligible members by default', () => {
+    render(<DispatchTeamPanel {...defaultProps({ techs: MIXED })} />);
+    expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+    expect(screen.queryByText('Carol Mgr')).not.toBeInTheDocument();
+  });
+
+  it('shows office staff when Show office staff toggle is checked', () => {
+    render(<DispatchTeamPanel {...defaultProps({ techs: MIXED })} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: /show office staff/i }));
+    expect(screen.getByText('Carol Mgr')).toBeInTheDocument();
+  });
+
+  it('does not show Show office staff toggle when all members are field-eligible', () => {
+    render(<DispatchTeamPanel {...defaultProps({ techs: FIELD_TECHS })} />);
+    expect(screen.queryByRole('checkbox', { name: /show office staff/i })).not.toBeInTheDocument();
+  });
+
+  it('backward-compat: shows techs with no field_work_eligible field (old API)', () => {
+    const legacyTechs = [
+      { id: 't1', name: 'Legacy Tech', role: 'tech', is_available: true },
+    ];
+    render(<DispatchTeamPanel {...defaultProps({ techs: legacyTechs })} />);
+    expect(screen.getByText('Legacy Tech')).toBeInTheDocument();
+  });
+
+  it('shows "No field staff match this filter" when field filter excludes all', () => {
+    // Only office staff, field_work_eligible filter active (default)
+    render(<DispatchTeamPanel {...defaultProps({ techs: OFFICE_MEMBERS })} />);
+    // The list of field-eligible members will be empty, but techs.length > 0
+    expect(screen.getByText(/no field staff match this filter/i)).toBeInTheDocument();
   });
 });

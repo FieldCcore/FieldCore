@@ -28,19 +28,33 @@ function toLocalDateStr(d) {
   return d.toISOString().slice(0, 10);
 }
 
+const TRACKING_POLICY_LABELS = {
+  disabled:                    'Disabled',
+  optional:                    'Optional',
+  required_while_clocked_in:   'Required while clocked in',
+  required_during_assigned_jobs: 'Required during assigned jobs',
+  always_during_shift:         'Always during shift',
+};
+
 // ── Add / Edit Member Modal ─────────────────────────────────
 function MemberModal({ user, onClose, onSaved }) {
   const isEdit = !!user;
   const { accounts } = useAuth();
-  const [form,    setForm]    = useState({
-    name:              user?.name              || '',
-    email:             user?.email             || '',
-    phone:             user?.phone             || '',
-    role:              user?.role              || 'tech',
-    password:          '',
-    is_contractor:     user?.is_contractor     || false,
-    tax_classification: user?.tax_classification || 'employee',
-    contractor_tax_id: user?.contractor_tax_id || '',
+  const [workforceRoles, setWorkforceRoles] = useState([]);
+  const [form, setForm] = useState({
+    name:                    user?.name                    || '',
+    email:                   user?.email                   || '',
+    phone:                   user?.phone                   || '',
+    role:                    user?.role                    || 'tech',
+    password:                '',
+    is_contractor:           user?.is_contractor           || false,
+    tax_classification:      user?.tax_classification      || 'employee',
+    contractor_tax_id:       user?.contractor_tax_id       || '',
+    workforce_role_id:       user?.workforce_role_id       || '',
+    field_work_eligible:     user?.field_work_eligible     ?? false,
+    dispatch_visible:        user?.dispatch_visible        ?? false,
+    clock_in_allowed:        user?.clock_in_allowed        ?? false,
+    location_tracking_policy: user?.location_tracking_policy || 'disabled',
   });
   const [memberships,    setMemberships]    = useState([]);
   const [membershipBusy, setMembershipBusy] = useState(false);
@@ -48,11 +62,25 @@ function MemberModal({ user, onClose, onSaved }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    api.get('/workforce-roles').then(r => setWorkforceRoles(r.data)).catch(() => {});
     if (!isEdit) return;
     api.get(`/users/${user.id}/memberships`).then(r => setMemberships(r.data)).catch(() => {});
   }, [user?.id]);
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
+
+  function applyRoleDefaults(roleId) {
+    const wr = workforceRoles.find(r => r.id === roleId);
+    if (!wr) return;
+    setForm(f => ({
+      ...f,
+      workforce_role_id:        roleId,
+      field_work_eligible:      wr.field_work_eligible,
+      dispatch_visible:         wr.dispatch_visible_default,
+      clock_in_allowed:         wr.clock_in_allowed,
+      location_tracking_policy: wr.location_tracking_default,
+    }));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -67,6 +95,11 @@ function MemberModal({ user, onClose, onSaved }) {
         is_contractor: form.is_contractor,
         tax_classification: form.tax_classification,
         contractor_tax_id: form.is_contractor ? form.contractor_tax_id : null,
+        workforce_role_id: form.workforce_role_id || null,
+        field_work_eligible: form.field_work_eligible,
+        dispatch_visible: form.dispatch_visible,
+        clock_in_allowed: form.clock_in_allowed,
+        location_tracking_policy: form.location_tracking_policy,
       };
       if (form.password) payload.password = form.password;
       if (isEdit) {
@@ -108,6 +141,7 @@ function MemberModal({ user, onClose, onSaved }) {
   }
 
   const otherAccounts = accounts.filter(a => a.id !== user?.account_id);
+  const isFieldRole   = form.field_work_eligible;
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -119,13 +153,15 @@ function MemberModal({ user, onClose, onSaved }) {
         <div className="modal-body">
         {error && <div className="form-error" style={{ marginBottom: 16 }}>{error}</div>}
         <form className="client-form" onSubmit={handleSubmit}>
+
+          {/* Identity */}
           <div className="form-row">
             <div className="form-group">
               <label>Name</label>
-              <input value={form.name}  onChange={e => set('name', e.target.value)}  placeholder="Full name" />
+              <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" />
             </div>
             <div className="form-group">
-              <label>Role</label>
+              <label>System Role</label>
               <select value={form.role} onChange={e => set('role', e.target.value)}>
                 <option value="tech">Technician</option>
                 <option value="manager">Manager</option>
@@ -136,7 +172,7 @@ function MemberModal({ user, onClose, onSaved }) {
           <div className="form-row">
             <div className="form-group">
               <label>Email</label>
-              <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="tech@business.com" />
+              <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="member@business.com" />
             </div>
             <div className="form-group">
               <label>Phone</label>
@@ -148,8 +184,64 @@ function MemberModal({ user, onClose, onSaved }) {
             <input type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min. 8 characters" autoComplete="new-password" />
           </div>
 
+          {/* Workforce role */}
+          {workforceRoles.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, marginTop: 4 }}>
+              <div className="team-section-label">Workforce Role &amp; Dispatch Policy</div>
+              <div className="form-group">
+                <label>Role</label>
+                <select
+                  value={form.workforce_role_id}
+                  onChange={e => e.target.value ? applyRoleDefaults(e.target.value) : set('workforce_role_id', '')}
+                >
+                  <option value="">— Select a role —</option>
+                  {workforceRoles.map(wr => (
+                    <option key={wr.id} value={wr.id}>{wr.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Field-work policy toggles — always visible to allow manual overrides */}
+              <div className="team-policy-grid">
+                <label className="team-policy-check">
+                  <input type="checkbox" checked={form.field_work_eligible} onChange={e => set('field_work_eligible', e.target.checked)} />
+                  Field-work eligible
+                </label>
+                <label className="team-policy-check">
+                  <input type="checkbox" checked={form.dispatch_visible} onChange={e => set('dispatch_visible', e.target.checked)} />
+                  Visible in Dispatch
+                </label>
+                <label className="team-policy-check">
+                  <input type="checkbox" checked={form.clock_in_allowed} onChange={e => set('clock_in_allowed', e.target.checked)} />
+                  Clock-in allowed
+                </label>
+              </div>
+
+              {/* Location tracking policy — shown only for field-eligible members */}
+              {isFieldRole && (
+                <div className="form-group" style={{ marginTop: 10 }}>
+                  <label>Location Tracking</label>
+                  <select value={form.location_tracking_policy} onChange={e => set('location_tracking_policy', e.target.value)}>
+                    {Object.entries(TRACKING_POLICY_LABELS).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                  {form.location_tracking_policy !== 'disabled' && (
+                    <div className="team-policy-note">
+                      This member will be informed that location tracking is active
+                      {form.location_tracking_policy === 'required_while_clocked_in' ? ' while clocked in.' :
+                       form.location_tracking_policy === 'required_during_assigned_jobs' ? ' during assigned jobs.' :
+                       form.location_tracking_policy === 'always_during_shift' ? ' during their shift.' : '.'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tax & Classification */}
           <div style={{ borderTop: '1px solid var(--lightgray)', paddingTop: 16, marginTop: 4 }}>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 12 }}>Tax &amp; Classification</div>
+            <div className="team-section-label">Tax &amp; Classification</div>
             <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" id="is_contractor" checked={form.is_contractor} onChange={e => set('is_contractor', e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--navy)' }} />
               <label htmlFor="is_contractor" style={{ margin: 0, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', fontWeight: 500 }}>1099 Independent Contractor</label>
@@ -174,7 +266,7 @@ function MemberModal({ user, onClose, onSaved }) {
 
           <div className="form-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit"  className="btn-primary"   disabled={loading}>
+            <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Member'}
             </button>
           </div>
@@ -182,9 +274,7 @@ function MemberModal({ user, onClose, onSaved }) {
 
         {isEdit && otherAccounts.length > 0 && (
           <div style={{ borderTop: '1px solid var(--lightgray)', padding: '16px 0 20px' }}>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 10 }}>
-              Cross-Account Access
-            </div>
+            <div className="team-section-label">Cross-Account Access</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {otherAccounts.map(acct => {
                 const m = memberships.find(x => x.account_id === acct.id);
@@ -244,6 +334,12 @@ export default function Team() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-open Add Member modal when navigated here with ?action=add-member
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'add-member') openAdd();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch week jobs when schedule tab is opened
   useEffect(() => {
     if (tab !== 'schedule') return;
@@ -256,7 +352,16 @@ export default function Team() {
   function openAdd()       { setEditUser(null); setShowModal(true); }
   function openEdit(u)     { setEditUser(u);    setShowModal(true); }
   function closeModal()    { setShowModal(false); setEditUser(null); }
-  function onSaved()       { closeModal(); load(); }
+  function onSaved() {
+    closeModal();
+    const params   = new URLSearchParams(window.location.search);
+    const returnTo = params.get('returnTo');
+    if (returnTo && returnTo.startsWith('/')) {
+      window.location.href = returnTo;
+      return;
+    }
+    load();
+  }
 
   async function removeUser(u) {
     if (!window.confirm(`Remove ${u.name} from the team? This cannot be undone.`)) return;
@@ -403,7 +508,24 @@ export default function Team() {
                               </div>
                             </div>
                           </td>
-                          <td style={{ textTransform: 'capitalize' }}>{u.role}</td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <span style={{ textTransform: 'capitalize', fontSize: 12, fontWeight: 600 }}>
+                                {u.workforce_role_name || u.role}
+                              </span>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {u.dispatch_visible && (
+                                  <span className="team-badge team-badge--field">Dispatch</span>
+                                )}
+                                {u.field_work_eligible && u.location_tracking_policy !== 'disabled' && (
+                                  <span className="team-badge team-badge--tracking">Tracking</span>
+                                )}
+                                {!u.field_work_eligible && (
+                                  <span className="team-badge team-badge--office">Office</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
                           <td>{stats.jobs || 0}</td>
                           <td>{stats.completed || 0}</td>
                           <td><strong style={{ color: 'var(--green)' }}>{fmt$(stats.revenue || 0)}</strong></td>

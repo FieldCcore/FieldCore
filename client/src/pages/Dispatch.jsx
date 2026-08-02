@@ -239,7 +239,11 @@ export default function Dispatch() {
 
       setJobs(fetchedJobs);
       setSessions(fetchedSessions);
-      setTechs(usersRes.data.filter(u => u.role === 'tech'));
+      // field_work_eligible check with backward-compat for pre-migration API responses
+      setTechs(usersRes.data.filter(u =>
+        u.field_work_eligible === true ||
+        (u.field_work_eligible == null && u.role === 'tech')
+      ));
       setTechLocs(fetchedLocs);
       setDispatchSettings(fetchedDS);
 

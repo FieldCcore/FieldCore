@@ -1025,6 +1025,88 @@ const MIGRATIONS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS tracking_required         BOOLEAN NOT NULL DEFAULT FALSE`,
   `CREATE INDEX IF NOT EXISTS idx_users_operational_status ON users(account_id, operational_status)
      WHERE operational_status != 'off_duty'`,
+
+  // ── WORKFORCE ROLES ────────────────────────────────────────────────────────────
+  // System role catalog + per-tenant custom roles.
+  // account_id = NULL → system role (available to all tenants).
+  // account_id set    → tenant-scoped custom role.
+  `CREATE TABLE IF NOT EXISTS workforce_roles (
+     id                        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id                UUID REFERENCES accounts(id) ON DELETE CASCADE,
+     name                      TEXT NOT NULL,
+     description               TEXT,
+     category                  TEXT NOT NULL DEFAULT 'custom'
+       CHECK (category IN ('owner','admin','operations','office','field','sales','contractor','custom')),
+     is_system_role            BOOLEAN NOT NULL DEFAULT FALSE,
+     field_work_eligible       BOOLEAN NOT NULL DEFAULT FALSE,
+     dispatch_visible_default  BOOLEAN NOT NULL DEFAULT FALSE,
+     location_tracking_default TEXT NOT NULL DEFAULT 'disabled'
+       CHECK (location_tracking_default IN (
+         'disabled','optional',
+         'required_while_clocked_in',
+         'required_during_assigned_jobs',
+         'always_during_shift'
+       )),
+     clock_in_allowed          BOOLEAN NOT NULL DEFAULT FALSE,
+     sort_order                INTEGER NOT NULL DEFAULT 0,
+     created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+
+  // Unique name among system roles (partial index) — keeps INSERT ON CONFLICT DO NOTHING safe
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_wfr_system_name
+     ON workforce_roles(name)
+     WHERE is_system_role = TRUE AND account_id IS NULL`,
+
+  // Seed system roles — idempotent via ON CONFLICT DO NOTHING against the partial index above
+  `INSERT INTO workforce_roles
+     (name, description, category, is_system_role, field_work_eligible,
+      dispatch_visible_default, location_tracking_default, clock_in_allowed, sort_order)
+   VALUES
+     ('Owner',                 'Business owner — full platform access',              'owner',       TRUE, FALSE, FALSE, 'disabled',                   FALSE, 0),
+     ('Administrator',         'Account administrator',                              'admin',       TRUE, FALSE, FALSE, 'disabled',                   FALSE, 10),
+     ('Dispatcher',            'Manages dispatch and job assignments',               'operations',  TRUE, FALSE, FALSE, 'disabled',                   FALSE, 20),
+     ('Logistics Coordinator', 'Coordinates logistics and field operations',         'operations',  TRUE, FALSE, FALSE, 'disabled',                   FALSE, 30),
+     ('Office Manager',        'Manages office operations',                          'office',      TRUE, FALSE, FALSE, 'disabled',                   FALSE, 40),
+     ('Technician',            'Field technician — assignable to jobs',              'field',       TRUE, TRUE,  TRUE,  'required_while_clocked_in',  TRUE,  50),
+     ('Crew Lead',             'Senior field technician who leads crews',            'field',       TRUE, TRUE,  TRUE,  'required_while_clocked_in',  TRUE,  60),
+     ('Sales Representative',  'Sales — configurable field access',                  'sales',       TRUE, FALSE, FALSE, 'optional',                   FALSE, 70),
+     ('Estimator',             'Estimates work — configurable field access',         'sales',       TRUE, FALSE, FALSE, 'optional',                   FALSE, 80),
+     ('Contractor',            'Independent contractor — configurable access',       'contractor',  TRUE, FALSE, FALSE, 'optional',                   FALSE, 90)
+   ON CONFLICT DO NOTHING`,
+
+  // Per-user workforce policy fields
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS workforce_role_id        UUID REFERENCES workforce_roles(id) ON DELETE SET NULL`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS field_work_eligible      BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS dispatch_visible         BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS clock_in_allowed         BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS location_tracking_policy TEXT NOT NULL DEFAULT 'disabled'
+     CHECK (location_tracking_policy IN (
+       'disabled','optional',
+       'required_while_clocked_in',
+       'required_during_assigned_jobs',
+       'always_during_shift'
+     ))`,
+
+  // Backfill: existing technicians become field-eligible + dispatch-visible
+  `UPDATE users
+   SET field_work_eligible      = TRUE,
+       dispatch_visible         = TRUE,
+       clock_in_allowed         = TRUE,
+       location_tracking_policy = 'required_while_clocked_in'
+   WHERE role = 'tech'
+     AND field_work_eligible = FALSE`,
+
+  // Assign the Technician system role to existing tech-role users (backfill)
+  `UPDATE users u
+   SET workforce_role_id = wr.id
+   FROM workforce_roles wr
+   WHERE wr.name = 'Technician'
+     AND wr.is_system_role = TRUE
+     AND wr.account_id IS NULL
+     AND u.role = 'tech'
+     AND u.workforce_role_id IS NULL`,
+
+  `CREATE INDEX IF NOT EXISTS idx_users_field_dispatch ON users(account_id) WHERE field_work_eligible = TRUE AND dispatch_visible = TRUE`,
 ];
 
 async function runMigrations() {

@@ -9,8 +9,15 @@ const { checkUserLimit } = require('../middleware/planLimits');
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, role, phone, email, is_available, is_contractor, tax_classification, created_at
-       FROM users WHERE account_id = $1 ORDER BY name`,
+      `SELECT u.id, u.name, u.role, u.phone, u.email, u.is_available,
+              u.is_contractor, u.tax_classification, u.created_at,
+              u.workforce_role_id, u.field_work_eligible, u.dispatch_visible,
+              u.clock_in_allowed, u.location_tracking_policy,
+              wr.name AS workforce_role_name
+       FROM users u
+       LEFT JOIN workforce_roles wr ON wr.id = u.workforce_role_id
+       WHERE u.account_id = $1
+       ORDER BY u.name`,
       [req.accountId]
     );
     res.json(rows);
@@ -19,23 +26,59 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
   }
 });
 
+const VALID_TRACKING_POLICIES = ['disabled','optional','required_while_clocked_in','required_during_assigned_jobs','always_during_shift'];
+
 // POST /api/users — add team member (owner/manager only)
 router.post('/', requireAuth, requireRole('owner', 'manager'), checkUserLimit, async (req, res) => {
-  const { name, email, phone, role, password } = req.body;
+  const {
+    name, email, phone, role, password,
+    is_contractor, tax_classification, contractor_tax_id,
+    workforce_role_id, field_work_eligible, dispatch_visible,
+    clock_in_allowed, location_tracking_policy,
+  } = req.body;
+
   if (!name || !email || !role || !password)
     return res.status(400).json({ error: 'name, email, role, and password are required.' });
   if (!['owner', 'manager', 'tech', 'staff'].includes(role))
     return res.status(400).json({ error: 'role must be owner, manager, tech, or staff.' });
   if (password.length < 8)
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (location_tracking_policy && !VALID_TRACKING_POLICIES.includes(location_tracking_policy))
+    return res.status(400).json({ error: `location_tracking_policy must be one of: ${VALID_TRACKING_POLICIES.join(', ')}` });
+
+  // If a workforce_role_id is provided, verify it belongs to system or this account
+  if (workforce_role_id) {
+    const check = await pool.query(
+      `SELECT 1 FROM workforce_roles WHERE id = $1 AND (account_id IS NULL OR account_id = $2)`,
+      [workforce_role_id, req.accountId]
+    );
+    if (!check.rows.length) return res.status(400).json({ error: 'Invalid workforce_role_id.' });
+  }
 
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
-      `INSERT INTO users (account_id, name, email, phone, role, password_hash)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, email, phone, role, created_at`,
-      [req.accountId, name.trim(), email.trim().toLowerCase(), phone || null, role, hash]
+      `INSERT INTO users (
+         account_id, name, email, phone, role, password_hash,
+         is_contractor, tax_classification, contractor_tax_id,
+         workforce_role_id, field_work_eligible, dispatch_visible,
+         clock_in_allowed, location_tracking_policy
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING id, name, email, phone, role, created_at,
+                 workforce_role_id, field_work_eligible, dispatch_visible,
+                 clock_in_allowed, location_tracking_policy`,
+      [
+        req.accountId, name.trim(), email.trim().toLowerCase(), phone || null, role, hash,
+        is_contractor || false,
+        tax_classification || 'employee',
+        contractor_tax_id || null,
+        workforce_role_id || null,
+        field_work_eligible ?? false,
+        dispatch_visible ?? false,
+        clock_in_allowed ?? false,
+        location_tracking_policy || 'disabled',
+      ]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -62,7 +105,10 @@ router.patch('/me/availability', requireAuth, async (req, res) => {
 
 // PATCH /api/users/:id — edit team member (owner/manager only)
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const allowed = ['name', 'email', 'phone', 'role', 'is_contractor', 'tax_classification', 'contractor_tax_id'];
+  const allowed = [
+    'name', 'email', 'phone', 'role', 'is_contractor', 'tax_classification', 'contractor_tax_id',
+    'workforce_role_id', 'field_work_eligible', 'dispatch_visible', 'clock_in_allowed', 'location_tracking_policy',
+  ];
   const updates = [];
   const values  = [];
   let i = 1;

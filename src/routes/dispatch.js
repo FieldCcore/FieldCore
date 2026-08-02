@@ -86,9 +86,9 @@ router.get('/summary', requireAuth, async (req, res) => {
     const outlierMinutes = parseInt(cfg.kpi_response_outlier_minutes ?? 1440, 10);
     const minSample      = parseInt(cfg.kpi_response_min_sample_size ?? 1, 10);
 
-    // Check whether any technicians exist for this tenant
+    // Check whether any field-eligible, dispatch-visible team members exist
     const techCountRes = await pool.query(
-      `SELECT COUNT(*) AS n FROM users WHERE account_id = $1 AND role = 'tech'`,
+      `SELECT COUNT(*) AS n FROM users WHERE account_id = $1 AND field_work_eligible = TRUE AND dispatch_visible = TRUE`,
       [accountId]
     );
     const techCount = parseInt(techCountRes.rows[0]?.n ?? 0, 10);
@@ -96,7 +96,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     // Run remaining KPI queries in parallel (avgResponse gated behind showAvgResp)
     const [liveRes, activeRes, todayRes, completedRes] = await Promise.all([
 
-      // Live technicians
+      // Live technicians — only field-eligible, dispatch-visible members
       pool.query(`
         SELECT
           COUNT(*) FILTER (WHERE tl.updated_at > NOW() - INTERVAL '${LIVE_MIN} minutes')  AS online,
@@ -104,9 +104,11 @@ router.get('/summary', requireAuth, async (req, res) => {
                              AND tl.updated_at >  NOW() - INTERVAL '${STALE_MIN} minutes') AS stale
         FROM tech_locations tl
         JOIN users u ON u.id = tl.user_id AND u.account_id = $1
-        WHERE tl.account_id  = $1
-          AND u.is_available = true
-          AND tl.updated_at  > NOW() - INTERVAL '${STALE_MIN} minutes'
+        WHERE tl.account_id         = $1
+          AND u.is_available        = TRUE
+          AND u.field_work_eligible = TRUE
+          AND u.dispatch_visible    = TRUE
+          AND tl.updated_at         > NOW() - INTERVAL '${STALE_MIN} minutes'
       `, [accountId]),
 
       // Active jobs — date-scoped to tenant-local today (same scope as Calendar).

@@ -53,10 +53,11 @@ export default function DispatchTeamPanel({
   onSelectJob,
   panelFocus,   // { tab, teamFilter?, jobFilter?, _nonce } — drives KPI-click navigation
 }) {
-  const [tab,         setTab]         = useState('team');
-  const [search,      setSearch]      = useState('');
-  const [teamFilter,  setTeamFilter]  = useState('all');
-  const [jobFilter,   setJobFilter]   = useState('all');
+  const [tab,            setTab]            = useState('team');
+  const [search,         setSearch]         = useState('');
+  const [teamFilter,     setTeamFilter]     = useState('all');
+  const [jobFilter,      setJobFilter]      = useState('all');
+  const [showAllStaff,   setShowAllStaff]   = useState(false);
 
   // Respond to external panel-focus requests (from KPI card clicks)
   useEffect(() => {
@@ -67,8 +68,15 @@ export default function DispatchTeamPanel({
     setSearch('');
   }, [panelFocus]);
 
+  // Whether this member should appear in Dispatch by default (field-eligible + dispatch-visible)
+  function isFieldMember(t) {
+    // Backward-compat: if field_work_eligible not present (old API), fall back to role check
+    if (t.field_work_eligible == null) return t.role === 'tech';
+    return t.field_work_eligible === true && t.dispatch_visible === true;
+  }
+
   const filteredTechs = useMemo(() => {
-    let list = techs;
+    let list = showAllStaff ? techs : techs.filter(isFieldMember);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(t => t.name?.toLowerCase().includes(q));
@@ -77,7 +85,7 @@ export default function DispatchTeamPanel({
       list = list.filter(t => techStatus(t, techLocs, jobs).key === teamFilter);
     }
     return list;
-  }, [techs, techLocs, jobs, search, teamFilter]);
+  }, [techs, techLocs, jobs, search, teamFilter, showAllStaff]);
 
   const filteredJobs = useMemo(() => {
     let list = jobs;
@@ -148,21 +156,33 @@ export default function DispatchTeamPanel({
         />
       </div>
 
-      {/* Filters */}
+      {/* Filters + show-all-staff toggle */}
       {tab === 'team' && techs.length > 0 && (
-        <div className="dispatch-team-filters" role="group" aria-label="Tech status filter">
-          {TEAM_FILTERS.map(f => (
-            <button
-              key={f.key}
-              type="button"
-              className={`dispatch-filter-chip${teamFilter === f.key ? ' active' : ''}`}
-              onClick={() => setTeamFilter(f.key)}
-              aria-pressed={teamFilter === f.key}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="dispatch-team-filters" role="group" aria-label="Tech status filter">
+            {TEAM_FILTERS.map(f => (
+              <button
+                key={f.key}
+                type="button"
+                className={`dispatch-filter-chip${teamFilter === f.key ? ' active' : ''}`}
+                onClick={() => setTeamFilter(f.key)}
+                aria-pressed={teamFilter === f.key}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {techs.some(t => !isFieldMember(t)) && (
+            <label className="dispatch-staff-toggle">
+              <input
+                type="checkbox"
+                checked={showAllStaff}
+                onChange={e => setShowAllStaff(e.target.checked)}
+              />
+              Show office staff
+            </label>
+          )}
+        </>
       )}
 
       {tab === 'jobs' && (
@@ -189,16 +209,16 @@ export default function DispatchTeamPanel({
           filteredTechs.length === 0 ? (
             techs.length === 0 ? (
               <div className="dispatch-panel-empty dispatch-panel-empty--onboard">
-                <div className="dispatch-empty-title">No technicians yet</div>
+                <div className="dispatch-empty-title">No team members yet</div>
                 <p className="dispatch-empty-body">
-                  Add your first technician to enable assignments, live dispatching, and GPS tracking.
+                  Add your first team member and assign their role, permissions, and field-tracking policy.
                 </p>
-                <a href="/team" className="btn btn-sm btn-primary dispatch-empty-cta">
-                  Add Technician
+                <a href="/team?action=add-member&returnTo=/dispatch" className="dispatch-empty-cta">
+                  Add Team Member
                 </a>
               </div>
             ) : (
-              <div className="dispatch-panel-empty">No techs match this filter.</div>
+              <div className="dispatch-panel-empty">No field staff match this filter.</div>
             )
           ) : filteredTechs.map((t, i) => {
             const st        = techStatus(t, techLocs, jobs);
@@ -257,11 +277,12 @@ export default function DispatchTeamPanel({
             jobs.length === 0 ? (
               <div className="dispatch-panel-empty dispatch-panel-empty--onboard">
                 <div className="dispatch-empty-title">No jobs today</div>
-                <p className="dispatch-empty-body">Schedule a job or open the calendar to plan your day.</p>
-                <div className="dispatch-empty-actions">
-                  <a href="/calendar" className="dispatch-empty-link">Open Calendar</a>
-                  <a href="/jobs/new" className="dispatch-empty-link dispatch-empty-link--primary">Create Job</a>
-                </div>
+                <p className="dispatch-empty-body">
+                  Create a job to begin scheduling and dispatching work.
+                </p>
+                <a href="/jobs?new=1" className="dispatch-empty-cta">
+                  Create Job
+                </a>
               </div>
             ) : (
               <div className="dispatch-panel-empty">

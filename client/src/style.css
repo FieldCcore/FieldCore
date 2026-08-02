@@ -2554,6 +2554,62 @@ body {
   border-color: var(--navy);
 }
 .dispatch-empty-link--primary:hover { background: #2d3a50; border-color: #2d3a50; }
+/* Show all staff toggle */
+.dispatch-staff-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 8px;
+  font-size: 11px;
+  color: var(--slate);
+  cursor: pointer;
+  user-select: none;
+}
+.dispatch-staff-toggle input { accent-color: var(--navy); cursor: pointer; }
+/* ── Team page: workforce role badges + modal policy fields ─── */
+.team-section-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--steel);
+  margin-bottom: 12px;
+}
+.team-policy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin-bottom: 4px;
+}
+.team-policy-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--navy);
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.team-policy-check input { accent-color: var(--navy); cursor: pointer; }
+.team-policy-note {
+  font-size: 11px;
+  color: var(--slate);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.team-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.team-badge--field    { background: #E3F2FD; color: #1565C0; }
+.team-badge--tracking { background: #E8F5E9; color: #2E7D32; }
+.team-badge--office   { background: var(--off, #f4f3f0); color: var(--slate); }
 /* ── Dispatch contextual drawer ──────────────────────────────── */
 .dispatch-drawer {
   position: absolute;
