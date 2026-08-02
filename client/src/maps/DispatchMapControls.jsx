@@ -14,7 +14,7 @@ const CARD_STYLE = {
   border:        '1px solid var(--lightgray, #e6e6e6)',
   borderRadius:  8,
   boxShadow:     '0 2px 8px rgba(0,0,0,.10)',
-  minWidth:      148,
+  minWidth:      180,
   overflow:      'visible',
   pointerEvents: 'auto',
 };
@@ -105,7 +105,7 @@ function LayersDropdown({ layers, onToggle }) {
       borderRadius: 8,
       boxShadow:    '0 4px 16px rgba(0,0,0,.12)',
       padding:      '4px 0',
-      minWidth:     148,
+      minWidth:     180,
       zIndex:       20,
       overflow:     'hidden',
     }}>
