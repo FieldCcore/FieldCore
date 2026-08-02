@@ -105,6 +105,7 @@ export default function Dispatch() {
   const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false });
   const [showLegend,       setShowLegend]       = useState(getInitialLegend);
   const [panelFocus,       setPanelFocus]       = useState(null);
+  const [activeKpiKey,     setActiveKpiKey]     = useState(null);
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -469,7 +470,7 @@ export default function Dispatch() {
   const handleEnableLocation = useCallback(() => { centerOnMe(); }, [centerOnMe]);
   const handleSkipLocation   = useCallback(() => { setPromptDismissed(true); }, []);
 
-  // ── KPI card click → navigate team panel ──────────────────────────────────
+  // ── KPI card click → navigate team panel + highlight selected card ───────
   const handleKpiCardClick = useCallback((key) => {
     const focus = {
       liveTechnicians: { tab: 'team', teamFilter: 'live'      },
@@ -478,6 +479,7 @@ export default function Dispatch() {
       completedToday:  { tab: 'jobs', jobFilter:  'completed' },
       averageResponse: { tab: 'jobs', jobFilter:  'all'       },
     };
+    setActiveKpiKey(prev => (prev === key ? null : key));
     if (focus[key]) setPanelFocus({ ...focus[key], _nonce: Date.now() });
   }, []);
 
@@ -552,7 +554,7 @@ export default function Dispatch() {
 
         {/* ── Page header: compact KPI strip ── */}
         <div className="dispatch-page-header">
-          <DispatchKPIStrip onCardClick={handleKpiCardClick} />
+          <DispatchKPIStrip onCardClick={handleKpiCardClick} activeKpiKey={activeKpiKey} />
         </div>
 
         <div className="dispatch-workspace">

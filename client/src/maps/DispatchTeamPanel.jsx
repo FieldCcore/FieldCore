@@ -149,7 +149,7 @@ export default function DispatchTeamPanel({
       </div>
 
       {/* Filters */}
-      {tab === 'team' && (
+      {tab === 'team' && techs.length > 0 && (
         <div className="dispatch-team-filters" role="group" aria-label="Tech status filter">
           {TEAM_FILTERS.map(f => (
             <button
@@ -187,11 +187,19 @@ export default function DispatchTeamPanel({
           <div className="dispatch-panel-empty">Loading…</div>
         ) : tab === 'team' ? (
           filteredTechs.length === 0 ? (
-            <div className="dispatch-panel-empty">
-              {techs.length === 0
-                ? 'No techs on the team yet. Add team members in Team settings.'
-                : 'No techs match this filter.'}
-            </div>
+            techs.length === 0 ? (
+              <div className="dispatch-panel-empty dispatch-panel-empty--onboard">
+                <div className="dispatch-empty-title">No technicians yet</div>
+                <p className="dispatch-empty-body">
+                  Add your first technician to enable assignments, live dispatching, and GPS tracking.
+                </p>
+                <a href="/team" className="btn btn-sm btn-primary dispatch-empty-cta">
+                  Add Technician
+                </a>
+              </div>
+            ) : (
+              <div className="dispatch-panel-empty">No techs match this filter.</div>
+            )
           ) : filteredTechs.map((t, i) => {
             const st        = techStatus(t, techLocs, jobs);
             const loc       = techLocs.find(l => l.user_id === t.id);
@@ -246,15 +254,24 @@ export default function DispatchTeamPanel({
           })
         ) : (
           filteredJobs.length === 0 ? (
-            <div className="dispatch-panel-empty">
-              {jobs.length === 0
-                ? 'No jobs scheduled today.'
-                : jobFilter === 'active'     ? 'No active jobs right now.'
+            jobs.length === 0 ? (
+              <div className="dispatch-panel-empty dispatch-panel-empty--onboard">
+                <div className="dispatch-empty-title">No jobs today</div>
+                <p className="dispatch-empty-body">Schedule a job or open the calendar to plan your day.</p>
+                <div className="dispatch-empty-actions">
+                  <a href="/calendar" className="dispatch-empty-link">Open Calendar</a>
+                  <a href="/jobs/new" className="dispatch-empty-link dispatch-empty-link--primary">Create Job</a>
+                </div>
+              </div>
+            ) : (
+              <div className="dispatch-panel-empty">
+                {jobFilter === 'active'     ? 'No active jobs right now.'
                 : jobFilter === 'assigned'   ? 'No assigned jobs today.'
                 : jobFilter === 'unassigned' ? 'No unassigned jobs today.'
                 : jobFilter === 'completed'  ? 'No completed jobs today.'
                 : 'No jobs match this filter.'}
-            </div>
+              </div>
+            )
           ) : filteredJobs.map((j, idx) => {
             const p      = getJobStatusPresentation(j.status);
             const sStyle = { background: p.badgeBg, color: p.badgeColor };

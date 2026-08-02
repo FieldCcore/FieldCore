@@ -24,7 +24,7 @@ const TOOLTIP_TEXT = {
   averageResponse:  'Average time from the configured start event to the technician\'s response event.',
 };
 
-export default function DispatchKpiCard({ metric, onClick, onConfigure, compact, userRole }) {
+export default function DispatchKpiCard({ metric, onClick, onConfigure, compact, userRole, selected }) {
   if (!metric) return null;
 
   const {
@@ -95,7 +95,7 @@ export default function DispatchKpiCard({ metric, onClick, onConfigure, compact,
   return (
     <button
       type="button"
-      className="dispatch-kpi-card"
+      className={`dispatch-kpi-card${selected ? ' selected' : ''}`}
       onClick={handleClick}
       aria-label={`${label}: ${valueContent}`}
       title={tooltip}

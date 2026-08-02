@@ -248,6 +248,24 @@ describe('DispatchKPIStrip — interaction', () => {
     await act(async () => { vi.advanceTimersByTime(30000); });
     expect(api.get.mock.calls.length).toBeGreaterThan(before);
   });
+
+  it('applies selected class to the card matching activeKpiKey', async () => {
+    const { container } = await (async () => {
+      let c;
+      await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} activeKpiKey="liveTechnicians" />); });
+      return c;
+    })();
+    expect(container.querySelector('.dispatch-kpi-card.selected')).not.toBeNull();
+  });
+
+  it('no card has selected class when activeKpiKey is null', async () => {
+    const { container } = await (async () => {
+      let c;
+      await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} activeKpiKey={null} />); });
+      return c;
+    })();
+    expect(container.querySelector('.dispatch-kpi-card.selected')).toBeNull();
+  });
 });
 
 // ── Stale / error handling ────────────────────────────────────────────────────

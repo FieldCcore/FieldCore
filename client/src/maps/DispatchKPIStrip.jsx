@@ -21,7 +21,7 @@ const FALLBACK_METRICS = [
   unavailableMetric('completedToday',  'Completed'),
 ];
 
-export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole }) {
+export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole, activeKpiKey }) {
   const [metrics, setMetrics] = useState(null);   // null = initial loading
   const [loading, setLoading] = useState(true);
   const [stale,   setStale]   = useState(false);
@@ -89,6 +89,7 @@ export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole })
             onClick={onCardClick}
             onConfigure={onConfigure}
             userRole={userRole}
+            selected={activeKpiKey === m.key}
           />
         </li>
       ))}

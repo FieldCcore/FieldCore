@@ -278,15 +278,23 @@ describe('DispatchTeamPanel — selection', () => {
 // ── Empty states ───────────────────────────────────────────────────────────────
 
 describe('DispatchTeamPanel — empty states', () => {
-  it('shows no-techs message when techs array is empty', () => {
+  it('shows onboarding CTA when techs array is empty', () => {
     render(<DispatchTeamPanel {...defaultProps({ techs: [] })} />);
-    expect(screen.getByText(/no techs on the team/i)).toBeInTheDocument();
+    expect(screen.getByText(/no technicians yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /add technician/i })).toBeInTheDocument();
   });
 
-  it('shows no-jobs message when jobs array is empty', () => {
+  it('hides tech filter chips when techs array is empty', () => {
+    render(<DispatchTeamPanel {...defaultProps({ techs: [] })} />);
+    expect(screen.queryByRole('button', { name: /off duty/i })).not.toBeInTheDocument();
+  });
+
+  it('shows onboarding CTA with action links when jobs array is empty', () => {
     render(<DispatchTeamPanel {...defaultProps({ jobs: [] })} />);
     fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
-    expect(screen.getByText(/no jobs scheduled/i)).toBeInTheDocument();
+    expect(screen.getByText(/no jobs today/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open calendar/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /create job/i })).toBeInTheDocument();
   });
 
   it('Active filter with no matching jobs shows "No active jobs right now."', () => {

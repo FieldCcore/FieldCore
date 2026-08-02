@@ -1012,6 +1012,19 @@ const MIGRATIONS = [
   // Average Response is opt-in; change default to FALSE for new tenants
   `ALTER TABLE dispatch_settings ALTER COLUMN kpi_show_avg_response SET DEFAULT FALSE`,
   `UPDATE dispatch_settings SET kpi_show_avg_response = FALSE WHERE kpi_show_avg_response = TRUE AND kpi_response_tracking_enabled = FALSE`,
+
+  // ── WORKFORCE READINESS ───────────────────────────────────────────────────────
+  // Clock-in/out tracking and operational status for field technicians.
+  // operational_status separates dispatch availability from GPS location freshness.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS clocked_in_at             TIMESTAMPTZ`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS clocked_out_at            TIMESTAMPTZ`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS operational_status        TEXT NOT NULL DEFAULT 'off_duty'
+     CHECK (operational_status IN ('available','en_route','on_job','break','off_duty'))`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_presence_at          TIMESTAMPTZ`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS location_tracking_enabled BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS tracking_required         BOOLEAN NOT NULL DEFAULT FALSE`,
+  `CREATE INDEX IF NOT EXISTS idx_users_operational_status ON users(account_id, operational_status)
+     WHERE operational_status != 'off_duty'`,
 ];
 
 async function runMigrations() {
