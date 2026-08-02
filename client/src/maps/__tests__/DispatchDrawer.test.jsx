@@ -221,6 +221,60 @@ describe('DispatchDrawer — job view', () => {
   });
 });
 
+// ── Active job status coverage ────────────────────────────────────────────────
+
+describe('DispatchDrawer — active job uses ACTIVE_STATUSES', () => {
+  it('shows current job when status is paused (not just in_progress)', () => {
+    const jobs = [{ ...JOBS[0], status: 'paused' }];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
+    expect(screen.getByText('Current Job')).toBeInTheDocument();
+    expect(screen.getByText('ACME Corp')).toBeInTheDocument();
+  });
+
+  it('shows current job when status is en_route', () => {
+    const jobs = [{ ...JOBS[0], status: 'en_route' }];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
+    expect(screen.getByText('Current Job')).toBeInTheDocument();
+  });
+
+  it('shows current job when status is awaiting_client', () => {
+    const jobs = [{ ...JOBS[0], status: 'awaiting_client' }];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
+    expect(screen.getByText('Current Job')).toBeInTheDocument();
+  });
+
+  it('does not show completed job as current job', () => {
+    const jobs = [{ ...JOBS[0], status: 'complete' }];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
+    expect(screen.queryByText('Current Job')).not.toBeInTheDocument();
+  });
+
+  it('shows next job when tech has scheduled job alongside active job', () => {
+    const twoJobs = [
+      { ...JOBS[0], id: 'j1', status: 'in_progress', tech_id: 't1', scheduled_at: '2026-07-31T09:00:00Z' },
+      { id: 'j5', client_name: 'Next Client', service_type: 'Survey', status: 'scheduled',
+        tech_id: 't1', scheduled_at: '2026-07-31T13:00:00Z',
+        service_address: null, service_city: null, service_state: null, service_zip: null,
+        service_lat: null, service_lng: null, priority: 'normal', amount: null, notes: null },
+    ];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs: twoJobs })} />);
+    expect(screen.getByText('Next Job')).toBeInTheDocument();
+    expect(screen.getByText('Next Client')).toBeInTheDocument();
+  });
+
+  it('does not show cancelled job as next job', () => {
+    const jobs = [
+      { ...JOBS[0], id: 'j1', status: 'in_progress', tech_id: 't1' },
+      { id: 'j5', client_name: 'Cancelled Co', service_type: 'X', status: 'cancelled',
+        tech_id: 't1', scheduled_at: '2026-07-31T13:00:00Z',
+        service_address: null, service_city: null, service_state: null, service_zip: null,
+        service_lat: null, service_lng: null, priority: 'normal', amount: null, notes: null },
+    ];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
+    expect(screen.queryByText('Cancelled Co')).not.toBeInTheDocument();
+  });
+});
+
 // ── Accessibility ─────────────────────────────────────────────────────────────
 
 describe('DispatchDrawer — accessibility', () => {

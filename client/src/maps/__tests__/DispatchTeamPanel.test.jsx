@@ -174,6 +174,28 @@ describe('DispatchTeamPanel — job filters', () => {
     expect(screen.getByText('Delta Co — Survey')).toBeInTheDocument();
     expect(screen.queryByText('ACME Corp — Repair')).not.toBeInTheDocument();
   });
+
+  it('Assigned filter shows assigned-but-not-yet-active jobs', () => {
+    render(<DispatchTeamPanel {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned' }));
+    // j2 is scheduled + has tech_id → shown
+    expect(screen.getByText('Beta Inc — Install')).toBeInTheDocument();
+    // j1 is in_progress (active) → excluded
+    expect(screen.queryByText('ACME Corp — Repair')).not.toBeInTheDocument();
+    // j3 has no tech_id (unassigned) → excluded
+    expect(screen.queryByText('Gamma LLC — Inspection')).not.toBeInTheDocument();
+  });
+
+  it('Assigned filter excludes active-status jobs even when assigned', () => {
+    const activeJobs = [
+      { id: 'j5', client_name: 'Echo Co', service_type: 'Repair', status: 'en_route', tech_id: 't1', tech_name: 'Alice Smith', scheduled_at: '2026-08-01T10:00:00Z', service_address: null, service_city: null },
+    ];
+    render(<DispatchTeamPanel {...defaultProps({ jobs: activeJobs })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /jobs/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned' }));
+    expect(screen.queryByText('Echo Co — Repair')).not.toBeInTheDocument();
+  });
 });
 
 // ── panelFocus ────────────────────────────────────────────────────────────────

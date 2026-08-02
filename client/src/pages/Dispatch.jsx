@@ -222,22 +222,22 @@ export default function Dispatch() {
   }, [computeAndApplyViewport]);
 
   // ── Initial data load ──────────────────────────────────────────────────────
+  // Uses /dispatch/schedule instead of /jobs?date=... so the "today" boundary
+  // is resolved in the tenant's timezone server-side, matching the KPI strip.
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
     Promise.all([
-      api.get(`/jobs?date=${today}`),
+      api.get('/dispatch/schedule'),
       api.get('/users'),
-      api.get(`/jobs/sessions?date_from=${today}&date_to=${today}`).catch(() => ({ data: [] })),
       api.get('/mobile/locations').catch(() => null),
       api.get('/dispatch-settings').catch(() => null),
-    ]).then(([jobsRes, usersRes, sessionsRes, locsRes, dsRes]) => {
-      const fetchedJobs = jobsRes.data || [];
+    ]).then(([scheduleRes, usersRes, locsRes, dsRes]) => {
+      const { jobs: fetchedJobs = [], sessions: fetchedSessions = [] } = scheduleRes.data || {};
       const fetchedLocs = locsRes?.data || [];
       const fetchedDS   = dsRes?.data?.settings || null;
       const fetchedAcct = dsRes?.data?.account  || null;
 
       setJobs(fetchedJobs);
-      setSessions(sessionsRes.data || []);
+      setSessions(fetchedSessions);
       setTechs(usersRes.data.filter(u => u.role === 'tech'));
       setTechLocs(fetchedLocs);
       setDispatchSettings(fetchedDS);
@@ -268,6 +268,22 @@ export default function Dispatch() {
         .then(r => { setTechLocs(r.data); techLocsRef.current = r.data; })
         .catch(() => {});
     }, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Live-poll jobs and sessions every 30 s ────────────────────────────────
+  // Ensures status changes (e.g. tech starts a job) propagate to the sidebar
+  // and map markers without requiring a page reload.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      api.get('/dispatch/schedule').then(r => {
+        const { jobs: j = [], sessions: s = [] } = r.data || {};
+        setJobs(j);
+        setSessions(s);
+        jobsRef.current = j;
+      }).catch(() => {});
+    }, 30000);
     return () => clearInterval(id);
   }, []);
 

@@ -7,9 +7,11 @@ const { requireAuth } = require('../middleware/auth');
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
 const STALE_MIN = 30;  // 5–30 min → stale; > 30 min → offline
 
-// Job statuses considered "active" for dispatch purposes
+// Job statuses considered "active" for dispatch purposes.
+// Must stay in sync with client/src/domain/technicianStatusPresentation.js ACTIVE_STATUSES.
 const ACTIVE_STATUSES = [
-  'in_progress', 'paused', 'awaiting_client', 'awaiting_parts',
+  'in_progress', 'en_route', 'arrived', 'paused',
+  'awaiting_client', 'awaiting_parts',
   'partially_completed', 'ready_for_inspection',
 ];
 
@@ -262,6 +264,88 @@ router.get('/summary', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[dispatch/summary]', err.message);
     res.status(500).json({ error: 'Failed to load dispatch summary.' });
+  }
+});
+
+/**
+ * GET /api/dispatch/schedule
+ *
+ * Returns today's single-day jobs and multi-day sessions in the tenant timezone.
+ * This is the authoritative "today's jobs" source for Dispatch — uses the same
+ * timezone-aware date filter as /dispatch/summary, eliminating the browser UTC-date
+ * mismatch that was causing Dispatch sidebar counts to diverge from the KPI strip.
+ *
+ * Query params:
+ *   date — optional YYYY-MM-DD in tenant local time (defaults to today in tenant TZ)
+ */
+router.get('/schedule', requireAuth, async (req, res) => {
+  const { accountId } = req;
+
+  try {
+    // Resolve tenant timezone and compute today in that timezone server-side
+    const tzRes = await pool.query(
+      `SELECT COALESCE(bp.timezone, 'UTC') AS tz,
+              TO_CHAR(NOW() AT TIME ZONE COALESCE(bp.timezone, 'UTC'), 'YYYY-MM-DD') AS today_local
+       FROM accounts a
+       LEFT JOIN business_profiles bp ON bp.account_id = a.id
+       WHERE a.id = $1`,
+      [accountId]
+    );
+    const tz         = tzRes.rows[0]?.tz         || 'UTC';
+    const todayLocal = tzRes.rows[0]?.today_local || new Date().toISOString().split('T')[0];
+
+    const dateLocal = req.query.date || todayLocal;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateLocal)) {
+      return res.status(400).json({ error: 'Invalid date. Use YYYY-MM-DD.' });
+    }
+
+    const [jobsRes, sessionsRes] = await Promise.all([
+      // Single-day jobs: same timezone-aware date comparison as /dispatch/summary
+      pool.query(
+        `SELECT j.*, c.name AS client_name, u.name AS tech_name,
+                um.name AS job_manager_name
+         FROM jobs j
+         JOIN clients c   ON c.id = j.client_id
+         LEFT JOIN users u  ON u.id = j.tech_id
+         LEFT JOIN users um ON um.id = j.job_manager_id
+         WHERE j.account_id = $1
+           AND j.is_multi_day IS NOT TRUE
+           AND (j.scheduled_at AT TIME ZONE $2)::date = $3::date
+         ORDER BY j.scheduled_at`,
+        [accountId, tz, dateLocal]
+      ),
+
+      // Multi-day sessions for this date
+      pool.query(
+        `SELECT s.*,
+                j.service_type, j.status AS job_status, j.is_multi_day,
+                j.client_id, c.name AS client_name,
+                u.name AS lead_tech_name,
+                (SELECT COUNT(*) FROM job_sessions s2 WHERE s2.job_id = s.job_id) AS total_sessions,
+                (SELECT COUNT(*) FROM job_sessions s2 WHERE s2.job_id = s.job_id
+                   AND s2.scheduled_date < s.scheduled_date) + 1 AS day_number
+         FROM job_sessions s
+         JOIN jobs j    ON j.id = s.job_id
+         JOIN clients c ON c.id = j.client_id
+         LEFT JOIN users u ON u.id = s.lead_tech_id
+         WHERE s.account_id = $1
+           AND s.scheduled_date = $2
+           AND s.status NOT IN ('cancelled')
+         ORDER BY s.start_time NULLS LAST`,
+        [accountId, dateLocal]
+      ),
+    ]);
+
+    res.json({
+      jobs:        jobsRes.rows,
+      sessions:    sessionsRes.rows,
+      dateLocal,
+      timezone:    tz,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[dispatch/schedule]', err.message);
+    res.status(500).json({ error: 'Failed to load dispatch schedule.' });
   }
 });
 

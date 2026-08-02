@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
-import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
+import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
 
 // #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
 const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
@@ -69,12 +69,24 @@ export default function DispatchDrawer({
 
   const techActiveJob = useMemo(() => {
     if (!tech) return null;
-    return jobs.find(j => j.tech_id === tech.id && j.status === 'in_progress') ?? null;
+    // Use canonical ACTIVE_STATUSES — same set as getTechStatus and the backend
+    const active = jobs
+      .filter(j => j.tech_id === tech.id && ACTIVE_STATUSES.has(j.status))
+      .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    return active[0] ?? null;
   }, [tech, jobs]);
 
   const techNextJob = useMemo(() => {
     if (!tech) return null;
-    return jobs.find(j => j.tech_id === tech.id && j.status === 'scheduled') ?? null;
+    // Earliest assigned job that is not currently active and not terminal
+    const upcoming = jobs
+      .filter(j =>
+        j.tech_id === tech.id &&
+        !ACTIVE_STATUSES.has(j.status) &&
+        !['complete', 'cancelled', 'no_show'].includes(j.status)
+      )
+      .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    return upcoming[0] ?? null;
   }, [tech, jobs]);
 
   const jobTech = useMemo(() => {

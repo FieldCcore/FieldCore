@@ -11,9 +11,10 @@
 const GPS_LIVE_MS  = 5  * 60 * 1000;   // ≤ 5 min  → Live GPS
 const GPS_STALE_MS = 30 * 60 * 1000;   // 5–30 min → Stale; > 30 min → Offline
 
-// Active job statuses (must stay in sync with DispatchTeamPanel + dispatch.js)
+// Active job statuses — must stay in sync with src/routes/dispatch.js ACTIVE_STATUSES
 const ACTIVE_STATUSES = new Set([
-  'in_progress', 'paused', 'awaiting_client', 'awaiting_parts',
+  'in_progress', 'en_route', 'arrived', 'paused',
+  'awaiting_client', 'awaiting_parts',
   'partially_completed', 'ready_for_inspection',
 ]);
 

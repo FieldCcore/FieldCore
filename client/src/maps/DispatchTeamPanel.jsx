@@ -37,6 +37,7 @@ const TEAM_FILTERS = [
 const JOB_FILTERS = [
   { key: 'all',        label: 'All'        },
   { key: 'active',     label: 'Active'     },
+  { key: 'assigned',   label: 'Assigned'   },
   { key: 'unassigned', label: 'Unassigned' },
   { key: 'completed',  label: 'Done'       },
 ];
@@ -89,6 +90,11 @@ export default function DispatchTeamPanel({
       );
     }
     if (jobFilter === 'active')     list = list.filter(j => ACTIVE_STATUSES.has(j.status));
+    if (jobFilter === 'assigned')   list = list.filter(j =>
+      j.tech_id &&
+      !ACTIVE_STATUSES.has(j.status) &&
+      !['complete', 'cancelled', 'no_show'].includes(j.status)
+    );
     if (jobFilter === 'unassigned') list = list.filter(j => !j.tech_id);
     if (jobFilter === 'completed')  list = list.filter(j => j.status === 'complete');
     return list;

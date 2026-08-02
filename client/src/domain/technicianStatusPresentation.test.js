@@ -5,6 +5,7 @@ import {
   GPS_STALE_MS,
   TECH_PRESENTATIONS,
   STALE_WARNING_COLOR,
+  ACTIVE_STATUSES,
 } from './technicianStatusPresentation';
 import { getJobStatusPresentation } from './jobStatusPresentation';
 
@@ -185,6 +186,58 @@ describe('Stale does not mean Off Duty or no-location', () => {
     const st = getTechStatus(TECH, [], []);
     expect(st.key).toBe('available');
     expect(st.isStale).toBe(false);
+  });
+});
+
+// ── ACTIVE_STATUSES coverage ──────────────────────────────────────────────────
+
+describe('ACTIVE_STATUSES covers all operational job statuses', () => {
+  it('includes en_route and arrived as active statuses', () => {
+    expect(ACTIVE_STATUSES.has('en_route')).toBe(true);
+    expect(ACTIVE_STATUSES.has('arrived')).toBe(true);
+    expect(ACTIVE_STATUSES.has('in_progress')).toBe(true);
+    expect(ACTIVE_STATUSES.has('paused')).toBe(true);
+  });
+
+  it('excludes terminal and pre-work statuses', () => {
+    expect(ACTIVE_STATUSES.has('scheduled')).toBe(false);
+    expect(ACTIVE_STATUSES.has('complete')).toBe(false);
+    expect(ACTIVE_STATUSES.has('cancelled')).toBe(false);
+  });
+
+  it('en_route makes tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'en_route' }]);
+    expect(st.key).toBe('busy');
+  });
+
+  it('arrived makes tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'arrived' }]);
+    expect(st.key).toBe('busy');
+  });
+
+  it('paused makes tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'paused' }]);
+    expect(st.key).toBe('busy');
+  });
+
+  it('awaiting_client makes tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'awaiting_client' }]);
+    expect(st.key).toBe('busy');
+  });
+
+  it('awaiting_parts makes tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'awaiting_parts' }]);
+    expect(st.key).toBe('busy');
+  });
+
+  it('scheduled job does NOT make tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'scheduled' }]);
+    expect(st.key).not.toBe('busy');
+  });
+
+  it('complete job does NOT make tech busy', () => {
+    const st = getTechStatus(TECH, [], [{ tech_id: 'tech1', status: 'complete' }]);
+    expect(st.key).not.toBe('busy');
   });
 });
 
