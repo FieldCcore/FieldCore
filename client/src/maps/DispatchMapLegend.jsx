@@ -48,16 +48,34 @@ function LegendRow({ color, label, shape, isStale, warningColor }) {
   );
 }
 
+// Job statuses shown as map markers by default (cancelled/no_show are excluded)
+const VISIBLE_JOB_STATUSES = new Set(['scheduled', 'in_progress', 'complete']);
+
 /**
- * Compact map legend. The "Tech — Location Stale" entry is shown only when at
- * least one visible technician currently has stale GPS data. This avoids
- * permanently displaying a status that may not exist right now.
+ * Compact map legend.
+ * - Tech entries only shown when layers.techs is enabled.
+ * - Job entries only shown when layers.jobs is enabled.
+ * - "Tech — Location Stale" only shown when at least one visible tech has stale GPS.
+ * - Legend entries match exactly what's visible on the map.
  */
-export default function DispatchMapLegend({ visible = true, techs = [], techLocs = [], jobs = [] }) {
+export default function DispatchMapLegend({
+  visible = true,
+  techs   = [],
+  techLocs = [],
+  jobs    = [],
+  layers  = { techs: true, jobs: true },
+}) {
   const hasStaleTech = useMemo(
-    () => techs.some(t => getTechStatus(t, techLocs, jobs).isStale),
-    [techs, techLocs, jobs],
+    () => layers.techs && techs.some(t => getTechStatus(t, techLocs, jobs).isStale),
+    [techs, techLocs, jobs, layers.techs],
   );
+
+  const visibleJobLegendItems = useMemo(
+    () => layers.jobs ? JOB_LEGEND_ITEMS.filter(i => VISIBLE_JOB_STATUSES.has(i.key)) : [],
+    [layers.jobs],
+  );
+
+  const showTechDivider = layers.techs && visibleJobLegendItems.length > 0;
 
   if (!visible) return null;
 
@@ -70,11 +88,11 @@ export default function DispatchMapLegend({ visible = true, techs = [], techLocs
         Legend
       </div>
 
-      {TECH_LEGEND_ITEMS.map(item => (
+      {layers.techs && TECH_LEGEND_ITEMS.map(item => (
         <LegendRow key={item.key} color={item.color} label={item.label} shape="circle" />
       ))}
 
-      {hasStaleTech && (
+      {layers.techs && hasStaleTech && (
         <LegendRow
           key={TECH_STALE_LEGEND_ITEM.key}
           color={TECH_STALE_LEGEND_ITEM.color}
@@ -82,13 +100,14 @@ export default function DispatchMapLegend({ visible = true, techs = [], techLocs
           shape="circle"
           isStale={true}
           warningColor={TECH_STALE_LEGEND_ITEM.warningColor}
-          aria-label="Tech — Location Stale: technician's last known location has not updated recently"
         />
       )}
 
-      <div style={{ height: 1, background: 'var(--lightgray)', margin: '6px 0' }} />
+      {showTechDivider && (
+        <div style={{ height: 1, background: 'var(--lightgray)', margin: '6px 0' }} />
+      )}
 
-      {JOB_LEGEND_ITEMS.map(item => (
+      {visibleJobLegendItems.map(item => (
         <LegendRow key={item.key} color={item.color} label={item.label} shape="pin" />
       ))}
     </div>

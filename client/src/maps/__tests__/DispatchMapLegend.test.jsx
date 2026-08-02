@@ -72,8 +72,8 @@ describe('DispatchMapLegend — content', () => {
     expect(screen.getByText(/job.*completed/i)).toBeInTheDocument();
   });
 
-  it('shows job Cancelled entry matching Calendar status', () => {
-    expect(screen.getByText(/job.*cancelled/i)).toBeInTheDocument();
+  it('does not show job Cancelled entry (terminal state excluded from map)', () => {
+    expect(screen.queryByText(/job.*cancelled/i)).not.toBeInTheDocument();
   });
 
   it('does not show "Job — Active" (not a Calendar canonical status)', () => {
@@ -124,5 +124,64 @@ describe('DispatchMapLegend — conditional stale entry', () => {
       />,
     );
     expect(screen.getByText(/live gps/i)).toBeInTheDocument();
+  });
+});
+
+// ── layers prop ───────────────────────────────────────────────────────────────
+
+describe('DispatchMapLegend — layers prop', () => {
+  it('hides all tech entries when layers.techs is false', () => {
+    render(
+      <DispatchMapLegend
+        visible={true}
+        layers={{ techs: false, jobs: true }}
+      />,
+    );
+    expect(screen.queryByText(/live gps/i)).not.toBeInTheDocument();
+  });
+
+  it('hides all job entries when layers.jobs is false', () => {
+    render(
+      <DispatchMapLegend
+        visible={true}
+        layers={{ techs: true, jobs: false }}
+      />,
+    );
+    expect(screen.queryByText(/job.*scheduled/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/job.*in progress/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/job.*completed/i)).not.toBeInTheDocument();
+  });
+
+  it('shows tech entries when layers.techs is true', () => {
+    render(
+      <DispatchMapLegend
+        visible={true}
+        layers={{ techs: true, jobs: false }}
+      />,
+    );
+    expect(screen.getByText(/live gps/i)).toBeInTheDocument();
+  });
+
+  it('shows job entries when layers.jobs is true', () => {
+    render(
+      <DispatchMapLegend
+        visible={true}
+        layers={{ techs: false, jobs: true }}
+      />,
+    );
+    expect(screen.getByText(/job.*scheduled/i)).toBeInTheDocument();
+  });
+
+  it('hides stale tech entry when layers.techs is false, even with stale tech', () => {
+    render(
+      <DispatchMapLegend
+        visible={true}
+        techs={[TECH]}
+        techLocs={[STALE_LOC]}
+        jobs={[]}
+        layers={{ techs: false, jobs: true }}
+      />,
+    );
+    expect(screen.queryByText(/location stale/i)).not.toBeInTheDocument();
   });
 });

@@ -47,6 +47,8 @@ router.get('/summary', requireAuth, async (req, res) => {
 
   try {
     // Load tenant timezone and KPI settings in one round-trip
+    // Optional ?date=YYYY-MM-DD scopes todaysJobs and completedToday to a specific date.
+    // liveTechnicians and activeJobs are always real-time operational.
     const configRes = await pool.query(
       `SELECT
          COALESCE(bp.timezone, 'UTC') AS tz,
@@ -67,8 +69,14 @@ router.get('/summary', requireAuth, async (req, res) => {
       [accountId]
     );
 
-    const cfg = configRes.rows[0] || {};
-    const tz  = cfg.tz || 'UTC';
+    const cfg       = configRes.rows[0] || {};
+    const tz        = cfg.tz || 'UTC';
+    const todayTz   = `(NOW() AT TIME ZONE '${tz.replace(/'/g, '')}')::date`;
+    const dateParam = req.query.date;
+    const dateSql   = (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam))
+      ? `'${dateParam}'::date`
+      : todayTz;
+    const isToday   = !dateParam;
 
     // KPI visibility flags (default true when no row exists)
     const showLive      = cfg.kpi_show_live_techs      !== false;
@@ -111,9 +119,7 @@ router.get('/summary', requireAuth, async (req, res) => {
           AND tl.updated_at         > NOW() - INTERVAL '${STALE_MIN} minutes'
       `, [accountId]),
 
-      // Active jobs — date-scoped to tenant-local today (same scope as Calendar).
-      // Without this filter the KPI counts active jobs from previous days while the
-      // sidebar shows only today's jobs, producing a visible mismatch.
+      // Active jobs — date-scoped to the requested date in tenant timezone.
       pool.query(`
         SELECT
           COUNT(*) AS total,
@@ -128,10 +134,10 @@ router.get('/summary', requireAuth, async (req, res) => {
         FROM jobs
         WHERE account_id = $1
           AND status = ANY($2::text[])
-          AND (scheduled_at AT TIME ZONE $3)::date = (NOW() AT TIME ZONE $3)::date
+          AND (scheduled_at AT TIME ZONE $3)::date = ${dateSql}
       `, [accountId, ACTIVE_STATUSES, tz]),
 
-      // Today's jobs (tenant timezone)
+      // Jobs for the requested date (tenant timezone)
       pool.query(`
         SELECT
           COUNT(*) AS total,
@@ -143,17 +149,17 @@ router.get('/summary', requireAuth, async (req, res) => {
         FROM jobs
         WHERE account_id = $1
           AND status NOT IN ('cancelled','no_show','draft','unscheduled')
-          AND (scheduled_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date
+          AND (scheduled_at AT TIME ZONE $2)::date = ${dateSql}
       `, [accountId, tz]),
 
-      // Completed today
+      // Completed on the requested date
       pool.query(`
         SELECT COUNT(*) AS total
         FROM jobs
         WHERE account_id  = $1
           AND status       = 'complete'
           AND completed_at IS NOT NULL
-          AND (completed_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date
+          AND (completed_at AT TIME ZONE $2)::date = ${dateSql}
       `, [accountId, tz]),
     ]);
 
@@ -211,24 +217,26 @@ router.get('/summary', requireAuth, async (req, res) => {
       : metric('activeJobs', 'Active Jobs', 'active', activeTotal, String(activeTotal),
           `${activeInProgress} in progress`);
 
-    // Today's Jobs
+    // Today's Jobs (or date-scoped jobs)
     const todayTotal      = parseInt(todayRes.rows[0]?.total      ?? 0, 10);
     const todayUnassigned = parseInt(todayRes.rows[0]?.unassigned ?? 0, 10);
+    const todayLabel      = isToday ? "Today's Jobs" : 'Jobs';
+    const completedLabel  = isToday ? 'Completed' : 'Completed';
 
     const todaysJobsMetric = !showToday
-      ? metric('todaysJobs', "Today's Jobs", 'disabled', null, '—', 'Feature disabled',
+      ? metric('todaysJobs', todayLabel, 'disabled', null, '—', 'Feature disabled',
           { enabled: false, reasonCode: 'FEATURE_DISABLED' })
-      : metric('todaysJobs', "Today's Jobs", 'active', todayTotal, String(todayTotal),
+      : metric('todaysJobs', todayLabel, 'active', todayTotal, String(todayTotal),
           todayUnassigned > 0 ? `${todayUnassigned} unassigned` : 'all assigned');
 
-    // Completed Today
+    // Completed on the requested date
     const completedTotal = parseInt(completedRes.rows[0]?.total ?? 0, 10);
 
     const completedMetric = !showCompleted
-      ? metric('completedToday', 'Completed', 'disabled', null, '—', 'Feature disabled',
+      ? metric('completedToday', completedLabel, 'disabled', null, '—', 'Feature disabled',
           { enabled: false, reasonCode: 'FEATURE_DISABLED' })
-      : metric('completedToday', 'Completed', 'active', completedTotal, String(completedTotal),
-          'today');
+      : metric('completedToday', completedLabel, 'active', completedTotal, String(completedTotal),
+          isToday ? 'today' : dateParam);
 
     // Average Response
     const sampleSize = parseInt(responseRes.rows[0]?.sample_size ?? 0, 10);
@@ -272,6 +280,8 @@ router.get('/summary', requireAuth, async (req, res) => {
       averageResponseTime: { minutes: avgMin, sampleSize },
       generatedAt: new Date().toISOString(),
       timezone:    tz,
+      dateLocal:   dateParam || null,
+      isToday:     isToday,
     });
   } catch (err) {
     console.error('[dispatch/summary]', err.message);

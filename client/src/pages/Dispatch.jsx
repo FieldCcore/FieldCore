@@ -5,6 +5,7 @@ import DispatchMapControls from '../maps/DispatchMapControls';
 import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
+import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
 import DispatchDrawer from '../maps/DispatchDrawer';
 import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
@@ -14,6 +15,15 @@ import { useDispatchLocation } from '../hooks/useDispatchLocation';
 import { isValidCoord, classifyTechGPS } from '../maps/dispatchCoords';
 import { getJobMarkerColor } from '../domain/jobStatusPresentation';
 import { getTechStatus } from '../domain/technicianStatusPresentation';
+
+// Job statuses that should appear as map markers.
+// Cancelled and no_show are excluded — they are terminal states not relevant
+// to active field operations and would clutter the map with old pins.
+const MAP_MARKER_STATUSES = new Set([
+  'scheduled', 'en_route', 'arrived', 'in_progress', 'paused',
+  'awaiting_client', 'awaiting_parts', 'partially_completed',
+  'ready_for_inspection', 'complete',
+]);
 
 // ── Viewport persistence ──────────────────────────────────────────────────────
 const VP_KEY     = 'fc_dispatch_vp';
@@ -110,6 +120,10 @@ export default function Dispatch() {
   const [lastPanelTab,     setLastPanelTab]     = useState('team');
   const sidebarMode = useDispatchSidebarMode();
   const [loading,          setLoading]          = useState(true);
+  const [overlayError,     setOverlayError]     = useState(false);
+  const [retryKey,         setRetryKey]         = useState(0);
+  // null = today (server resolves tenant TZ); 'YYYY-MM-DD' = specific date
+  const [dispatchDate,     setDispatchDate]     = useState(null);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
   const [hasInteracted,    setHasInteracted]    = useState(false);
@@ -225,12 +239,16 @@ export default function Dispatch() {
     }
   }, [computeAndApplyViewport]);
 
-  // ── Initial data load ──────────────────────────────────────────────────────
-  // Uses /dispatch/schedule instead of /jobs?date=... so the "today" boundary
-  // is resolved in the tenant's timezone server-side, matching the KPI strip.
+  // ── Initial data load (and date-change refresh) ───────────────────────────
+  // Uses /dispatch/schedule so the "today" boundary is resolved server-side in
+  // the tenant's timezone. Passes ?date= when user has selected a specific date.
+  // Users, locations, and settings are loaded once; only the schedule re-fetches
+  // on date change since techs and settings are date-agnostic.
   useEffect(() => {
+    setLoading(true);
+    const scheduleParams = dispatchDate ? { date: dispatchDate } : {};
     Promise.all([
-      api.get('/dispatch/schedule'),
+      api.get('/dispatch/schedule', { params: scheduleParams }),
       api.get('/users'),
       api.get('/mobile/locations').catch(() => null),
       api.get('/dispatch-settings').catch(() => null),
@@ -242,6 +260,7 @@ export default function Dispatch() {
 
       setJobs(fetchedJobs);
       setSessions(fetchedSessions);
+      setOverlayError(false);
       // field_work_eligible check with backward-compat for pre-migration API responses
       setTechs(usersRes.data.filter(u =>
         u.field_work_eligible === true ||
@@ -266,6 +285,7 @@ export default function Dispatch() {
       if (import.meta.env.DEV) {
         window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
           ts: new Date().toISOString(), source: 'initial',
+          dispatchDate: dispatchDate || 'today',
           jobCount: fetchedJobs.length, sessionCount: fetchedSessions.length,
           techCount: usersRes.data.filter(u => u.role === 'tech').length,
           locCount: fetchedLocs.length,
@@ -276,8 +296,10 @@ export default function Dispatch() {
       if (mapRef.current && !initialFitDoneRef.current) {
         computeAndApplyViewport();
       }
+    }).catch(() => {
+      setOverlayError(true);
     }).finally(() => setLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dispatchDate, retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live-poll tech locations every 15 s ───────────────────────────────────
   useEffect(() => {
@@ -292,25 +314,29 @@ export default function Dispatch() {
   // ── Live-poll jobs and sessions every 30 s ────────────────────────────────
   // Ensures status changes (e.g. tech starts a job) propagate to the sidebar
   // and map markers without requiring a page reload.
+  // Re-creates the interval when dispatchDate changes so it always polls the
+  // correct date rather than always re-fetching today.
   useEffect(() => {
+    const scheduleParams = dispatchDate ? { date: dispatchDate } : {};
     const id = setInterval(() => {
       if (document.hidden) return;
-      api.get('/dispatch/schedule').then(r => {
+      api.get('/dispatch/schedule', { params: scheduleParams }).then(r => {
         const { jobs: j = [], sessions: s = [] } = r.data || {};
         setJobs(j);
         setSessions(s);
         jobsRef.current = j;
-      if (import.meta.env.DEV) {
-        window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
-          ts: new Date().toISOString(), source: 'poll',
-          jobCount: j.length, sessionCount: s.length,
-          jobStatuses: j.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
-        };
-      }
-    }).catch(() => {});
+        if (import.meta.env.DEV) {
+          window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
+            ts: new Date().toISOString(), source: 'poll',
+            dispatchDate: dispatchDate || 'today',
+            jobCount: j.length, sessionCount: s.length,
+            jobStatuses: j.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
+          };
+        }
+      }).catch(() => {});
     }, 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [dispatchDate]);
 
   // ── Tech markers ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -371,6 +397,7 @@ export default function Dispatch() {
 
     jobs.forEach(job => {
       if (!isValidCoord(job.service_lat, job.service_lng)) return;
+      if (!MAP_MARKER_STATUSES.has(job.status)) return; // skip cancelled, no_show
 
       activeIds.add(job.id);
       const color = getJobMarkerColor(job.status);
@@ -505,6 +532,14 @@ export default function Dispatch() {
     }
   }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Date change ───────────────────────────────────────────────────────────
+  const handleDateChange = useCallback((date) => {
+    setDispatchDate(date);
+    // Clear any selected record since it may belong to a different date's scope
+    setSelectedItem(null);
+    setActiveKpiKey(null);
+  }, []);
+
   // ── Compact rail / sidebar expand actions ─────────────────────────────
   const handleExpandToTeam = useCallback(() => {
     sidebarMode.openTeam();
@@ -615,6 +650,8 @@ export default function Dispatch() {
             selectedItem={selectedItem}
             onSelectTech={handleSelectTech}
             onSelectJob={handleSelectJob}
+            dispatchDate={dispatchDate}
+            onDateChange={handleDateChange}
           />
 
           <div className="dispatch-map-stage">
@@ -679,7 +716,14 @@ export default function Dispatch() {
                 onCenterJob={handleCenterOnJob}
               />
 
-              <DispatchMapLegend visible={showLegend} techs={techs} techLocs={techLocs} jobs={jobs} />
+              <DispatchOverlayStatus
+                loading={loading}
+                error={overlayError}
+                stale={false}
+                onRetry={() => setRetryKey(k => k + 1)}
+              />
+
+              <DispatchMapLegend visible={showLegend} techs={techs} techLocs={techLocs} jobs={jobs} layers={layers} />
 
             </div>
           </div>

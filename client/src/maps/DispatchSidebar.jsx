@@ -2,6 +2,7 @@ import { useDispatchKpiMetrics } from '../hooks/useDispatchKpiMetrics';
 import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
+import DispatchDateControl from './DispatchDateControl';
 
 // Panel-left-close: two chevrons pointing left + vertical bar
 function CollapseIcon() {
@@ -32,7 +33,7 @@ function ExpandIcon() {
 /**
  * DispatchSidebar
  *
- * Three modes: "expanded" (280px) | "compact" (96px, labeled rail) | "full_map" (0px, hidden).
+ * Three modes: "expanded" (280px) | "compact" (76px, labeled rail) | "full_map" (0px, hidden).
  *
  * The toggle button sits on the divider (position:absolute right:-15px) and switches
  * between expanded ↔ compact only. Full Map is a separate action inside the compact rail.
@@ -41,16 +42,16 @@ function ExpandIcon() {
  * used instead to prevent browser native tooltip popups.
  */
 export default function DispatchSidebar({
-  mode,            // 'expanded' | 'compact' | 'full_map'
+  mode,             // 'expanded' | 'compact' | 'full_map'
   isMobile,
-  onToggle,        // toggleExpandedCompact
+  onToggle,         // toggleExpandedCompact
   onEnterFullMap,
   onTransitionEnd,
   activeKpiKey,
   onKpiClick,
   onExpandToTeam,
   onExpandToJobs,
-  activeTab,       // 'team' | 'jobs' — for compact rail active state
+  activeTab,        // 'team' | 'jobs' — for compact rail active state
   panelFocus,
   techs,
   techLocs,
@@ -60,8 +61,10 @@ export default function DispatchSidebar({
   selectedItem,
   onSelectTech,
   onSelectJob,
+  dispatchDate,     // 'YYYY-MM-DD' or null (null = today)
+  onDateChange,     // (date: string|null) => void
 }) {
-  const { metrics, loading: kpiLoading } = useDispatchKpiMetrics();
+  const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
   const isExpanded = mode === 'expanded';
   const isCompact  = mode === 'compact';
@@ -101,7 +104,7 @@ export default function DispatchSidebar({
         />
       )}
 
-      {/* Expanded content: KPI grid + team/jobs panel */}
+      {/* Expanded content: KPI grid + date control + team/jobs panel */}
       {(isExpanded || isMobile) && (
         <>
           <DispatchSidebarKpiGrid
@@ -110,6 +113,10 @@ export default function DispatchSidebar({
             activeKpiKey={activeKpiKey}
             onKpiClick={onKpiClick}
             onEnterFullMap={onEnterFullMap}
+          />
+          <DispatchDateControl
+            date={dispatchDate}
+            onDateChange={onDateChange}
           />
           <DispatchTeamPanel
             techs={techs}

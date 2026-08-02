@@ -37,7 +37,7 @@ function buildLegacyMetrics(data) {
         ? `${d.activeJobs.inProgress} in progress` : '—',
     },
     {
-      key: 'todaysJobs', label: "Today's Jobs", status: 'active',
+      key: 'todaysJobs', label: d.isToday ? "Today's Jobs" : 'Jobs', status: 'active',
       value: d.todaysJobs?.total ?? 0,
       displayValue: String(d.todaysJobs?.total ?? 0),
       supportingText: d.todaysJobs
@@ -48,20 +48,27 @@ function buildLegacyMetrics(data) {
       key: 'completedToday', label: 'Completed', status: 'active',
       value: d.completedToday?.total ?? 0,
       displayValue: String(d.completedToday?.total ?? 0),
-      supportingText: 'today',
+      supportingText: d.isToday ? 'today' : (d.dateLocal || ''),
     },
   ];
 }
 
-export function useDispatchKpiMetrics() {
+/**
+ * Fetch KPI metrics for the given dispatch date.
+ * date = null means "today in tenant timezone" (server resolves it).
+ * date = 'YYYY-MM-DD' scopes todaysJobs and completedToday to that date.
+ * liveTechnicians is always real-time regardless of date.
+ */
+export function useDispatchKpiMetrics(date = null) {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const seqRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (requestDate) => {
     const seq = ++seqRef.current;
     try {
-      const r = await api.get('/dispatch/summary');
+      const params = requestDate ? { date: requestDate } : {};
+      const r = await api.get('/dispatch/summary', { params });
       if (seq !== seqRef.current) return;
       const data = r.data;
       const m = Array.isArray(data.metrics) ? data.metrics : buildLegacyMetrics(data);
@@ -77,16 +84,17 @@ export function useDispatchKpiMetrics() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    load();
-    const id = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
-    function onVisible() { if (!document.hidden) load(); }
+    setLoading(true);
+    load(date);
+    const id = setInterval(() => { if (!document.hidden) load(date); }, REFRESH_MS);
+    function onVisible() { if (!document.hidden) load(date); }
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
       seqRef.current++;
     };
-  }, [load]);
+  }, [load, date]); // re-run when date changes
 
   return { metrics: metrics ?? FALLBACK_METRICS, loading: loading && !metrics };
 }
