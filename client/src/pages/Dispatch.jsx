@@ -4,8 +4,9 @@ import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
 import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
+import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchDrawer from '../maps/DispatchDrawer';
-import { useDispatchSidebarState } from '../hooks/useDispatchSidebarState';
+import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
@@ -106,7 +107,8 @@ export default function Dispatch() {
   const [showLegend,       setShowLegend]       = useState(getInitialLegend);
   const [panelFocus,       setPanelFocus]       = useState(null);
   const [activeKpiKey,     setActiveKpiKey]     = useState(null);
-  const sidebarState = useDispatchSidebarState();
+  const [lastPanelTab,     setLastPanelTab]     = useState('team');
+  const sidebarMode = useDispatchSidebarMode();
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -483,7 +485,7 @@ export default function Dispatch() {
     }
   }, []);
 
-  // ── KPI card click → expand sidebar, navigate team panel, highlight card ─
+  // ── KPI card click → expand sidebar, navigate panel, highlight card ────
   const handleKpiCardClick = useCallback((key) => {
     const focus = {
       liveTechnicians: { tab: 'team', teamFilter: 'live'      },
@@ -493,20 +495,28 @@ export default function Dispatch() {
       averageResponse: { tab: 'jobs', jobFilter:  'all'       },
     };
     setActiveKpiKey(prev => (prev === key ? null : key));
-    if (focus[key]) setPanelFocus({ ...focus[key], _nonce: Date.now() });
-    if (sidebarState.isCollapsed) sidebarState.expandSidebar();
-  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (focus[key]) {
+      setLastPanelTab(focus[key].tab);
+      setPanelFocus({ ...focus[key], _nonce: Date.now() });
+    }
+    if (sidebarMode.mode !== 'expanded') {
+      if (focus[key]?.tab === 'team') sidebarMode.openTeam();
+      else sidebarMode.openJobs();
+    }
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Rail tab expansion ─────────────────────────────────────────────────
+  // ── Compact rail / sidebar expand actions ─────────────────────────────
   const handleExpandToTeam = useCallback(() => {
-    sidebarState.expandToTeam();
+    sidebarMode.openTeam();
+    setLastPanelTab('team');
     setPanelFocus({ tab: 'team', _nonce: Date.now() });
-  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExpandToJobs = useCallback(() => {
-    sidebarState.expandToJobs();
+    sidebarMode.openJobs();
+    setLastPanelTab('jobs');
     setPanelFocus({ tab: 'jobs', _nonce: Date.now() });
-  }, [sidebarState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Selection + drawer handlers ────────────────────────────────────────────
   const handleSelectTech = useCallback((id) => {
@@ -572,8 +582,8 @@ export default function Dispatch() {
     }
   }, [permissionState]);
 
-  const { isCollapsed, isMobile } = sidebarState;
-  const sidebarWidth = isMobile ? undefined : (isCollapsed ? '52px' : '280px');
+  const { mode, isMobile, toggleExpandedCompact, enterFullMap, exitFullMap } = sidebarMode;
+  const sidebarWidth = isMobile ? undefined : { expanded: '280px', compact: '96px', full_map: '0px' }[mode];
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -586,14 +596,16 @@ export default function Dispatch() {
         >
 
           <DispatchSidebar
-            isCollapsed={isCollapsed}
+            mode={mode}
             isMobile={isMobile}
-            onToggle={sidebarState.toggleSidebar}
+            onToggle={toggleExpandedCompact}
+            onEnterFullMap={enterFullMap}
             onTransitionEnd={handleSidebarTransitionEnd}
             activeKpiKey={activeKpiKey}
             onKpiClick={handleKpiCardClick}
             onExpandToTeam={handleExpandToTeam}
             onExpandToJobs={handleExpandToJobs}
+            activeTab={lastPanelTab}
             panelFocus={panelFocus}
             techs={techs}
             techLocs={techLocs}
@@ -609,6 +621,10 @@ export default function Dispatch() {
             <DispatchBaseMap onMapReady={handleMapReady} />
 
             <div className="dispatch-map-overlays">
+              {mode === 'full_map' && (
+                <DispatchFullMapControl onOpen={exitFullMap} />
+              )}
+
               <DispatchMapControls
                 onFitAll={handleFitAll}
                 onCenterOnMe={handleCenterOnMe}

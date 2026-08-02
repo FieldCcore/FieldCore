@@ -1,7 +1,8 @@
 // Compact 2×2 KPI grid rendered inside the expanded dispatch sidebar.
-// Receives pre-fetched metrics from DispatchSidebar to avoid duplicate API calls.
+// No title attributes — aria-label provides accessibility context.
+// Colors match the compact rail's KPI value colors for visual consistency.
 
-const VALUE_COLORS = {
+const KPI_VALUE_COLORS = {
   liveTechnicians: '#0369A1',
   activeJobs:      'var(--blue)',
   todaysJobs:      'var(--navy)',
@@ -11,7 +12,19 @@ const VALUE_COLORS = {
 
 function getValueColor(metric) {
   if (metric.status !== 'active' && metric.status !== 'stale') return 'var(--steel)';
-  return VALUE_COLORS[metric.key] || 'var(--navy)';
+  return KPI_VALUE_COLORS[metric.key] || 'var(--navy)';
+}
+
+function MaximizeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13 }} aria-hidden="true">
+      <path
+        d="M10 2h4v4M6 14H2v-4M14 2l-5 5M2 14l5-5"
+        stroke="currentColor" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function KpiTile({ metric, selected, onClick }) {
@@ -26,7 +39,6 @@ function KpiTile({ metric, selected, onClick }) {
       className={`sidebar-kpi-tile${selected ? ' selected' : ''}`}
       onClick={() => onClick?.(metric.key)}
       aria-label={`${metric.label}: ${val}`}
-      title={metric.label}
       style={{ opacity: isDimmed ? 0.65 : 1 }}
     >
       <div
@@ -40,7 +52,13 @@ function KpiTile({ metric, selected, onClick }) {
   );
 }
 
-export default function DispatchSidebarKpiGrid({ metrics, loading, activeKpiKey, onKpiClick }) {
+export default function DispatchSidebarKpiGrid({
+  metrics,
+  loading,
+  activeKpiKey,
+  onKpiClick,
+  onEnterFullMap,
+}) {
   if (loading) {
     return (
       <div className="sidebar-kpi-grid" aria-label="KPI metrics loading">
@@ -52,15 +70,30 @@ export default function DispatchSidebarKpiGrid({ metrics, loading, activeKpiKey,
   }
 
   return (
-    <div className="sidebar-kpi-grid" role="group" aria-label="Dispatch metrics">
-      {metrics.map(m => (
-        <KpiTile
-          key={m.key}
-          metric={m}
-          selected={activeKpiKey === m.key}
-          onClick={onKpiClick}
-        />
-      ))}
+    <div className="sidebar-kpi-section">
+      <div className="sidebar-kpi-grid" role="group" aria-label="Dispatch metrics">
+        {metrics.map(m => (
+          <KpiTile
+            key={m.key}
+            metric={m}
+            selected={activeKpiKey === m.key}
+            onClick={onKpiClick}
+          />
+        ))}
+      </div>
+      {onEnterFullMap && (
+        <div className="sidebar-kpi-actions">
+          <button
+            type="button"
+            className="sidebar-fullmap-btn"
+            onClick={onEnterFullMap}
+            aria-label="Enter full map mode"
+          >
+            <MaximizeIcon />
+            Full Map
+          </button>
+        </div>
+      )}
     </div>
   );
 }

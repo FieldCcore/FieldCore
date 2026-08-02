@@ -1,9 +1,9 @@
 import { useDispatchKpiMetrics } from '../hooks/useDispatchKpiMetrics';
 import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
-import DispatchSidebarRail from './DispatchSidebarRail';
+import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
 
-// Panel-left-close icon (collapse)
+// Panel-left-close: two chevrons pointing left + vertical bar
 function CollapseIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" style={{ width: 16, height: 16 }} aria-hidden="true">
@@ -16,7 +16,7 @@ function CollapseIcon() {
   );
 }
 
-// Panel-left-open icon (expand)
+// Panel-left-open: two chevrons pointing right + vertical bar
 function ExpandIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" style={{ width: 16, height: 16 }} aria-hidden="true">
@@ -32,31 +32,25 @@ function ExpandIcon() {
 /**
  * DispatchSidebar
  *
- * Outer wrapper that renders the expanded sidebar (KPI grid + team panel)
- * or the collapsed 52px rail. The toggle button floats on the divider between
- * this sidebar and the map via position: absolute + right: -15px.
+ * Three modes: "expanded" (280px) | "compact" (96px, labeled rail) | "full_map" (0px, hidden).
  *
- * Props:
- *   isCollapsed       — bool: current sidebar state
- *   isMobile          — bool: suppress toggle button and rail on mobile
- *   onToggle          — () => void
- *   onTransitionEnd   — () => void — triggers map resize after animation
- *   activeKpiKey      — string|null: highlighted KPI
- *   onKpiClick        — (key) => void
- *   onExpandToTeam    — () => void — expand + navigate Team tab
- *   onExpandToJobs    — () => void — expand + navigate Jobs tab
- *   panelFocus        — { tab, teamFilter?, jobFilter?, _nonce } | null
- *   ... (team panel props: techs, techLocs, jobs, sessions, loading, selectedItem, onSelectTech, onSelectJob)
+ * The toggle button sits on the divider (position:absolute right:-15px) and switches
+ * between expanded ↔ compact only. Full Map is a separate action inside the compact rail.
+ *
+ * No title attributes on any interactive element — visible labels and aria-label are
+ * used instead to prevent browser native tooltip popups.
  */
 export default function DispatchSidebar({
-  isCollapsed,
+  mode,            // 'expanded' | 'compact' | 'full_map'
   isMobile,
-  onToggle,
+  onToggle,        // toggleExpandedCompact
+  onEnterFullMap,
   onTransitionEnd,
   activeKpiKey,
   onKpiClick,
   onExpandToTeam,
   onExpandToJobs,
+  activeTab,       // 'team' | 'jobs' — for compact rail active state
   panelFocus,
   techs,
   techLocs,
@@ -69,45 +63,53 @@ export default function DispatchSidebar({
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics();
 
-  const showRail   = isCollapsed && !isMobile;
-  const showToggle = !isMobile;
+  const isExpanded = mode === 'expanded';
+  const isCompact  = mode === 'compact';
+  const isFullMap  = mode === 'full_map';
+  const showToggle = !isMobile && !isFullMap;
 
   return (
     <div
       id="dispatch-sidebar"
-      className="dispatch-sidebar"
+      className={`dispatch-sidebar${isFullMap ? ' dispatch-sidebar--full-map' : ''}`}
       onTransitionEnd={onTransitionEnd}
     >
-      {/* Toggle button — mounted on the divider between sidebar and map */}
+      {/* Toggle: expanded→compact or compact→expanded. No title attribute. */}
       {showToggle && (
         <button
           type="button"
           className="dispatch-sidebar-toggle"
           onClick={onToggle}
-          aria-expanded={!isCollapsed}
+          aria-expanded={isExpanded}
           aria-controls="dispatch-sidebar"
-          aria-label={isCollapsed ? 'Expand dispatch panel' : 'Collapse dispatch panel'}
-          title={isCollapsed ? 'Expand dispatch panel' : 'Collapse dispatch panel'}
+          aria-label={isExpanded ? 'Collapse dispatch panel' : 'Expand dispatch panel'}
         >
-          {isCollapsed ? <ExpandIcon /> : <CollapseIcon />}
+          {isExpanded ? <CollapseIcon /> : <ExpandIcon />}
         </button>
       )}
 
-      {showRail ? (
-        <DispatchSidebarRail
+      {/* Compact labeled rail */}
+      {isCompact && !isMobile && (
+        <DispatchCompactRail
           metrics={metrics}
           activeKpiKey={activeKpiKey}
+          activeTab={activeTab}
           onExpandToTeam={onExpandToTeam}
           onExpandToJobs={onExpandToJobs}
           onKpiClick={onKpiClick}
+          onEnterFullMap={onEnterFullMap}
         />
-      ) : (
+      )}
+
+      {/* Expanded content: KPI grid + team/jobs panel */}
+      {(isExpanded || isMobile) && (
         <>
           <DispatchSidebarKpiGrid
             metrics={metrics}
             loading={kpiLoading}
             activeKpiKey={activeKpiKey}
             onKpiClick={onKpiClick}
+            onEnterFullMap={onEnterFullMap}
           />
           <DispatchTeamPanel
             techs={techs}
