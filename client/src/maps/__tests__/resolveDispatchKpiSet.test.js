@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveDispatchKpiSet, SUPPORTED_METRICS } from '../resolveDispatchKpiSet';
 
+const DEFAULT_FOUR = ['liveTechnicians', 'activeJobs', 'todaysJobs', 'completedToday'];
 const DEFAULT_FIVE = ['liveTechnicians', 'activeJobs', 'todaysJobs', 'completedToday', 'averageResponse'];
 
 // ── Basic contract ────────────────────────────────────────────────────────────
@@ -26,17 +27,26 @@ describe('resolveDispatchKpiSet — basic contract', () => {
     result.forEach(k => expect(SUPPORTED_METRICS.has(k)).toBe(true));
   });
 
-  it('returns default 5 with no settings', () => {
-    expect(resolveDispatchKpiSet()).toEqual(DEFAULT_FIVE);
+  it('returns 4 default cards with no settings (averageResponse is opt-in)', () => {
+    expect(resolveDispatchKpiSet()).toEqual(DEFAULT_FOUR);
+  });
+
+  it('averageResponse not included by default', () => {
+    expect(resolveDispatchKpiSet()).not.toContain('averageResponse');
+  });
+
+  it('averageResponse included when explicitly enabled', () => {
+    const result = resolveDispatchKpiSet({ settings: { kpi_show_avg_response: true } });
+    expect(result).toContain('averageResponse');
   });
 });
 
 // ── Fixed layout mode ─────────────────────────────────────────────────────────
 
 describe('resolveDispatchKpiSet — fixed layout', () => {
-  it('respects fixed layout when kpi_fixed_layout=true', () => {
+  it('respects fixed layout when kpi_fixed_layout=true (4 default cards)', () => {
     const result = resolveDispatchKpiSet({ settings: { kpi_fixed_layout: true } });
-    expect(result).toEqual(DEFAULT_FIVE);
+    expect(result).toEqual(DEFAULT_FOUR);
   });
 
   it('hides liveTechnicians when kpi_show_live_techs=false in fixed mode', () => {
@@ -130,7 +140,7 @@ describe('resolveDispatchKpiSet — visibility settings', () => {
     expect(result).not.toContain('averageResponse');
   });
 
-  it('all visible: returns default five', () => {
+  it('all visible including averageResponse: returns default five', () => {
     const result = resolveDispatchKpiSet({
       settings: {
         kpi_show_live_techs:      true,
@@ -151,7 +161,7 @@ describe('SUPPORTED_METRICS', () => {
     expect(SUPPORTED_METRICS instanceof Set).toBe(true);
   });
 
-  it('contains the 5 known keys', () => {
+  it('contains all 5 known keys including averageResponse', () => {
     DEFAULT_FIVE.forEach(k => expect(SUPPORTED_METRICS.has(k)).toBe(true));
   });
 });

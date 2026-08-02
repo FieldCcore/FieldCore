@@ -73,7 +73,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     const showActive    = cfg.kpi_show_active_jobs     !== false;
     const showToday     = cfg.kpi_show_todays_jobs     !== false;
     const showCompleted = cfg.kpi_show_completed_today !== false;
-    const showAvgResp   = cfg.kpi_show_avg_response    !== false;
+    const showAvgResp   = !!cfg.kpi_show_avg_response;
 
     // Average Response config
     const respEnabled    = !!cfg.kpi_response_tracking_enabled;
@@ -91,8 +91,8 @@ router.get('/summary', requireAuth, async (req, res) => {
     );
     const techCount = parseInt(techCountRes.rows[0]?.n ?? 0, 10);
 
-    // Run remaining KPI queries in parallel
-    const [liveRes, activeRes, todayRes, completedRes, responseRes] = await Promise.all([
+    // Run remaining KPI queries in parallel (avgResponse gated behind showAvgResp)
+    const [liveRes, activeRes, todayRes, completedRes] = await Promise.all([
 
       // Live technicians
       pool.query(`
@@ -145,10 +145,12 @@ router.get('/summary', requireAuth, async (req, res) => {
           AND completed_at IS NOT NULL
           AND (completed_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date
       `, [accountId, tz]),
+    ]);
 
-      // Average response: configurable start_event → end_event
-      // Only runs when both columns are non-null and duration is positive and < outlier limit
-      pool.query(`
+    // Average response — only query when feature is enabled
+    let responseRes = { rows: [{ avg_min: null, sample_size: 0 }] };
+    if (showAvgResp) {
+      responseRes = await pool.query(`
         SELECT
           ROUND(AVG(
             EXTRACT(EPOCH FROM (${endEvent} - ${startEvent})) / 60.0
@@ -162,8 +164,8 @@ router.get('/summary', requireAuth, async (req, res) => {
           AND ${endEvent}      > ${startEvent}
           AND EXTRACT(EPOCH FROM (${endEvent} - ${startEvent})) / 60.0 < $3
           AND (completed_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date
-      `, [accountId, tz, outlierMinutes]),
-    ]);
+      `, [accountId, tz, outlierMinutes]);
+    }
 
     // ── Build normalized metric objects ────────────────────────────────────────
 
@@ -243,14 +245,11 @@ router.get('/summary', requireAuth, async (req, res) => {
         `${sampleSize} job${sampleSize !== 1 ? 's' : ''}`, { sampleSize });
     }
 
+    const metricsOut = [liveTechsMetric, activeJobsMetric, todaysJobsMetric, completedMetric];
+    if (showAvgResp) metricsOut.push(avgRespMetric);
+
     res.json({
-      metrics: [
-        liveTechsMetric,
-        activeJobsMetric,
-        todaysJobsMetric,
-        completedMetric,
-        avgRespMetric,
-      ],
+      metrics: metricsOut,
       // Legacy shape preserved for backward-compat during transition
       liveTechnicians:     { total: online + stale, online, stale },
       activeJobs:          { total: activeTotal, inProgress: activeInProgress },

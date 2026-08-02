@@ -1008,6 +1008,10 @@ const MIGRATIONS = [
   // Performance indexes for dispatch summary queries
   `CREATE INDEX IF NOT EXISTS idx_tech_locs_account_updated ON tech_locations(account_id, updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_account_completed     ON jobs(account_id, completed_at) WHERE completed_at IS NOT NULL`,
+
+  // Average Response is opt-in; change default to FALSE for new tenants
+  `ALTER TABLE dispatch_settings ALTER COLUMN kpi_show_avg_response SET DEFAULT FALSE`,
+  `UPDATE dispatch_settings SET kpi_show_avg_response = FALSE WHERE kpi_show_avg_response = TRUE AND kpi_response_tracking_enabled = FALSE`,
 ];
 
 async function runMigrations() {

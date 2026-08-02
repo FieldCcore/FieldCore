@@ -57,7 +57,7 @@ export function resolveDispatchKpiSet({
     activeJobs:      settings.kpi_show_active_jobs         !== false,
     todaysJobs:      settings.kpi_show_todays_jobs         !== false,
     completedToday:  settings.kpi_show_completed_today     !== false,
-    averageResponse: settings.kpi_show_avg_response        !== false,
+    averageResponse: !!settings.kpi_show_avg_response,
   };
 
   if (fixedLayout) {

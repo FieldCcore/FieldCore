@@ -19,7 +19,6 @@ const FALLBACK_METRICS = [
   unavailableMetric('activeJobs',      'Active Jobs'),
   unavailableMetric('todaysJobs',      "Today's Jobs"),
   unavailableMetric('completedToday',  'Completed'),
-  unavailableMetric('averageResponse', 'Avg Response'),
 ];
 
 export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole }) {
@@ -66,11 +65,11 @@ export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole })
     };
   }, [load]);
 
-  // Loading state: show 5 skeletons
+  // Loading state: show 4 skeletons
   if (loading && !metrics) {
     return (
       <ul className="dispatch-kpi-strip" aria-label="KPI metrics loading">
-        {[...Array(5)].map((_, i) => (
+        {[...Array(4)].map((_, i) => (
           <li key={i}>
             <div className="dispatch-kpi-card dispatch-kpi-skel" aria-hidden="true" />
           </li>
@@ -128,16 +127,6 @@ function buildLegacyMetrics(data) {
       value: d.completedToday?.total ?? 0,
       displayValue: String(d.completedToday?.total ?? 0),
       supportingText: 'today',
-    },
-    {
-      key: 'averageResponse', label: 'Avg Response',
-      status: d.averageResponseTime?.sampleSize > 0 ? 'active' : 'no_data',
-      value: d.averageResponseTime?.minutes ?? null,
-      displayValue: d.averageResponseTime?.minutes != null
-        ? `${d.averageResponseTime.minutes}m` : '—',
-      supportingText: d.averageResponseTime?.sampleSize > 0
-        ? `${d.averageResponseTime.sampleSize} jobs` : 'No data',
-      sampleSize: d.averageResponseTime?.sampleSize ?? 0,
     },
   ];
 }

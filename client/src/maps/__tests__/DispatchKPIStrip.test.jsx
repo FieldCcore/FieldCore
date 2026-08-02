@@ -50,10 +50,10 @@ afterEach(() => {
 // ── Loading state ────────────────────────────────────────────────────────────
 
 describe('DispatchKPIStrip — loading state', () => {
-  it('shows 5 skeleton cards while loading', () => {
+  it('shows 4 skeleton cards while loading', () => {
     api.get.mockReturnValue(new Promise(() => {}));
     const { container } = render(<DispatchKPIStrip onCardClick={vi.fn()} />);
-    expect(container.querySelectorAll('.dispatch-kpi-skel').length).toBe(5);
+    expect(container.querySelectorAll('.dispatch-kpi-skel').length).toBe(4);
   });
 
   it('has aria-label during loading', () => {
@@ -158,28 +158,14 @@ describe('DispatchKPIStrip — legacy API shape', () => {
     return c;
   }
 
-  it('renders 5 KPI cards from legacy shape', async () => {
+  it('renders 4 KPI cards from legacy shape', async () => {
     await renderLegacy();
-    expect(screen.getAllByRole('listitem').length).toBe(5);
+    expect(screen.getAllByRole('listitem').length).toBe(4);
   });
 
   it('shows live technicians from legacy shape', async () => {
     await renderLegacy();
     expect(screen.getByLabelText(/live techs: 3/i)).toBeInTheDocument();
-  });
-
-  it('shows avg response from legacy shape', async () => {
-    await renderLegacy();
-    expect(screen.getByText('18m')).toBeInTheDocument();
-  });
-
-  it('shows — for avg response when minutes is null (legacy)', async () => {
-    api.get.mockResolvedValue({
-      data: { ...SUMMARY_LEGACY, averageResponseTime: { minutes: null, sampleSize: 0 } },
-    });
-    let c;
-    await act(async () => { c = render(<DispatchKPIStrip onCardClick={vi.fn()} />); });
-    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('shows "all assigned" when unassigned is 0 (legacy)', async () => {

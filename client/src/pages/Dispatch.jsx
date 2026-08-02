@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
+import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchKPIStrip from '../maps/DispatchKPIStrip';
 import DispatchTeamPanel from '../maps/DispatchTeamPanel';
 import DispatchDrawer from '../maps/DispatchDrawer';
@@ -16,6 +17,13 @@ import { getTechStatus } from '../domain/technicianStatusPresentation';
 // ── Viewport persistence ──────────────────────────────────────────────────────
 const VP_KEY     = 'fc_dispatch_vp';
 const VP_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+// ── Legend visibility persistence ─────────────────────────────────────────────
+const LEGEND_KEY = 'fc_dispatch_legend';
+function getInitialLegend() {
+  try { return localStorage.getItem(LEGEND_KEY) !== 'false'; }
+  catch { return true; }
+}
 
 function loadPersistedViewport() {
   try {
@@ -83,6 +91,7 @@ export default function Dispatch() {
   const [techLocs,         setTechLocs]         = useState([]);
   const [selectedItem,     setSelectedItem]     = useState(null);
   const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false });
+  const [showLegend,       setShowLegend]       = useState(getInitialLegend);
   const [panelFocus,       setPanelFocus]       = useState(null);
   const [loading,          setLoading]          = useState(true);
   const [dispatchSettings, setDispatchSettings] = useState(null);
@@ -464,6 +473,14 @@ export default function Dispatch() {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  const handleLegendToggle = useCallback(() => {
+    setShowLegend(v => {
+      const next = !v;
+      try { localStorage.setItem(LEGEND_KEY, String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // ── Auto-location ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (permissionState !== 'granted') return;
@@ -487,17 +504,8 @@ export default function Dispatch() {
     <>
       <div className="dispatch-root">
 
-        {/* ── Page header: title left, compact KPI strip right ── */}
+        {/* ── Page header: compact KPI strip ── */}
         <div className="dispatch-page-header">
-          <div className="dispatch-page-heading">
-            <div className="dispatch-page-title">Dispatch</div>
-            <div className="dispatch-page-sub">
-              {loading
-                ? 'Loading…'
-                : `${techs.length} tech${techs.length !== 1 ? 's' : ''} · ${jobs.length} job${jobs.length !== 1 ? 's' : ''} today`
-              }
-            </div>
-          </div>
           <DispatchKPIStrip onCardClick={handleKpiCardClick} />
         </div>
 
@@ -529,6 +537,8 @@ export default function Dispatch() {
                 permState={permissionState}
                 layers={layers}
                 onLayerToggle={handleLayerToggle}
+                showLegend={showLegend}
+                onLegendToggle={handleLegendToggle}
               />
 
               {!promptDismissed && permissionState === 'prompt' && (
@@ -570,6 +580,8 @@ export default function Dispatch() {
                 onCenterTech={handleCenterOnTech}
                 onCenterJob={handleCenterOnJob}
               />
+
+              <DispatchMapLegend visible={showLegend} />
 
             </div>
           </div>

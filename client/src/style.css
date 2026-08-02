@@ -2293,33 +2293,21 @@ body {
   margin: -22px -24px;
   overflow: hidden;
 }
-/* Page header: Dispatch title (left) + compact KPI group (right) */
+/* Page header: KPI strip fills full width */
 .dispatch-page-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--lightgray);
   background: var(--white);
   flex-shrink: 0;
-  min-height: 62px;
+  min-height: 54px;
 }
-.dispatch-page-heading { flex-shrink: 0; }
-.dispatch-page-title {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--navy);
-  line-height: 1.1;
-}
-.dispatch-page-sub { font-size: 10px; color: var(--steel); margin-top: 2px; }
 
-/* Compact KPI strip — right-aligned inside header */
+/* Compact KPI strip — fills header width with equal cards */
 .dispatch-kpi-strip {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: stretch;
   gap: 8px;
   flex: 1 1 0;
   min-width: 0;
@@ -2330,9 +2318,10 @@ body {
 }
 .dispatch-kpi-strip > li { display: contents; }
 .dispatch-kpi-card {
-  min-width: 118px;
+  flex: 1 1 0;
+  min-width: 100px;
   height: 54px;
-  padding: 7px 12px;
+  padding: 7px 14px;
   background: var(--off, #f4f3f0);
   border: 1px solid var(--lightgray);
   border-radius: 10px;
@@ -2343,7 +2332,6 @@ body {
   cursor: pointer;
   font-family: inherit;
   transition: background .1s;
-  flex-shrink: 0;
   text-align: left;
 }
 .dispatch-kpi-card:hover { background: #eceae6; }
@@ -2377,6 +2365,23 @@ body {
   background-size: 800px 100%;
   animation: dispatch-shimmer 1.4s infinite;
 }
+
+/* Compact map legend — bottom-right corner, always visible when showLegend=true */
+.dispatch-map-legend {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 20;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid var(--lightgray, #e6e6e6);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.10);
+  backdrop-filter: blur(4px);
+  padding: 8px 12px;
+  min-width: 148px;
+  pointer-events: none;
+}
+
 .dispatch-workspace {
   flex: 1 1 0;
   min-height: 0;
@@ -3354,11 +3359,9 @@ body {
     z-index: 1 !important;
   }
   .dispatch-page-header {
-    padding: 8px 12px !important;
-    min-height: 52px !important;
-    gap: 10px !important;
+    padding: 6px 10px !important;
+    min-height: 48px !important;
   }
-  .dispatch-page-title { font-size: 14px !important; }
   /* KPI strip: compact horizontal scroller on mobile */
   .dispatch-kpi-strip { gap: 6px; overflow-x: auto; }
   .dispatch-kpi-card  { min-width: 100px !important; height: 46px !important; padding: 5px 8px !important; }
