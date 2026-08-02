@@ -84,7 +84,8 @@ describe('DispatchDrawer — tech view', () => {
   it('shows GPS status row', () => {
     renderTech();
     expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.getByText('Live GPS')).toBeInTheDocument();
+    // Alice has live GPS + active job → status is 'On Job' (busy)
+    expect(screen.getByText('On Job')).toBeInTheDocument();
   });
 
   it('shows Last seen row', () => {

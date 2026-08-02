@@ -987,6 +987,27 @@ const MIGRATIONS = [
      dispatch_include_cancelled      BOOLEAN NOT NULL DEFAULT FALSE,
      updated_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+
+  // ── DISPATCH KPI SETTINGS ─────────────────────────────────────────────────────
+  // Per-tenant KPI card visibility and Average Response configuration.
+  // All columns added with IF NOT EXISTS so this is safe to re-run on existing DBs.
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_show_live_techs           BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_show_active_jobs          BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_show_todays_jobs          BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_show_completed_today      BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_show_avg_response         BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_response_tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_response_start_event      TEXT NOT NULL DEFAULT 'scheduled_at'`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_response_end_event        TEXT NOT NULL DEFAULT 'checkin_at'`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_response_outlier_minutes  INTEGER NOT NULL DEFAULT 1440`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_response_min_sample_size  INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_adaptive_kpis_enabled     BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_fixed_layout              BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS kpi_fifth_preference          TEXT NOT NULL DEFAULT 'average_response'`,
+
+  // Performance indexes for dispatch summary queries
+  `CREATE INDEX IF NOT EXISTS idx_tech_locs_account_updated ON tech_locations(account_id, updated_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_account_completed     ON jobs(account_id, completed_at) WHERE completed_at IS NOT NULL`,
 ];
 
 async function runMigrations() {

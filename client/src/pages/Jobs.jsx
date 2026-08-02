@@ -12,29 +12,19 @@ import CalendarErrorBoundary from '../components/CalendarErrorBoundary';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 
 // ─── Calendar status color system ────────────────────────────────────────────
-// Four canonical statuses in the Calendar view.
-// partially_completed is remapped to In Progress display-side — no DB migration.
+// Imported from the shared module — Calendar is the source of truth.
+// Do not redefine these values here.
 
-const CAL_STATUS_COLOR = {
-  scheduled:           '#8A90A2',  // neutral  — not yet active
-  in_progress:         '#D4A000',  // warning  — true yellow, actively running
-  partially_completed: '#D4A000',  // → maps to In Progress
-  complete:            '#2E7D32',  // success  — done
-  cancelled:           '#C62828',  // critical — lost revenue
-};
-
-const SESSION_CAL_COLOR = {
-  scheduled:         '#8A90A2',
-  in_progress:       '#D4A000',
-  completed_for_day: '#2E7D32',
-  cancelled:         '#C62828',
-};
+import {
+  CAL_STATUS_COLOR,
+  SESSION_CAL_COLOR,
+} from '../domain/jobStatusPresentation';
 
 const LEGEND = [
-  { key: 'scheduled',   label: 'Scheduled',  color: '#8A90A2' },
-  { key: 'in_progress', label: 'In Progress', color: '#D4A000' },
-  { key: 'complete',    label: 'Completed',   color: '#2E7D32' },
-  { key: 'cancelled',   label: 'Canceled',    color: '#C62828' },
+  { key: 'scheduled',   label: 'Scheduled',  color: CAL_STATUS_COLOR.scheduled   },
+  { key: 'in_progress', label: 'In Progress', color: CAL_STATUS_COLOR.in_progress },
+  { key: 'complete',    label: 'Completed',   color: CAL_STATUS_COLOR.complete    },
+  { key: 'cancelled',   label: 'Canceled',    color: CAL_STATUS_COLOR.cancelled   },
 ];
 
 const VALID_VIEWS   = ['month', 'week', 'day', 'agenda'];

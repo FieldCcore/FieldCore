@@ -235,3 +235,70 @@ describe('DispatchMapControls — keyboard activation', () => {
     expect(onCenterOnMe).toHaveBeenCalled();
   });
 });
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+
+describe('DispatchMapControls — legend', () => {
+  it('renders Legend button', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    expect(screen.getByRole('button', { name: /legend/i })).toBeInTheDocument();
+  });
+
+  it('opens legend popover when Legend is clicked', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.getByRole('dialog', { name: /map legend/i })).toBeInTheDocument();
+  });
+
+  it('shows Legend heading inside popover', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    const dialog = screen.getByRole('dialog', { name: /map legend/i });
+    expect(dialog.textContent).toContain('Legend');
+  });
+
+  it('shows tech legend items', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.getByText(/live gps/i)).toBeInTheDocument();
+  });
+
+  it('shows job legend items', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.getByText(/job.*active/i)).toBeInTheDocument();
+    expect(screen.getByText(/job.*completed/i)).toBeInTheDocument();
+  });
+
+  it('closes legend when clicking outside', () => {
+    render(
+      <div>
+        <DispatchMapControls {...defaultProps()} />
+        <div data-testid="outside">Outside</div>
+      </div>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.getByRole('dialog', { name: /map legend/i })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId('outside'));
+    expect(screen.queryByRole('dialog', { name: /map legend/i })).not.toBeInTheDocument();
+  });
+
+  it('closes layers dropdown when legend is opened', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /layers/i }));
+    expect(screen.getByText('Technicians')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.queryByText('Technicians')).not.toBeInTheDocument();
+  });
+
+  it('Legend button is disabled when mapReady is false', () => {
+    render(<DispatchMapControls {...defaultProps({ mapReady: false })} />);
+    expect(screen.getByRole('button', { name: /legend/i })).toBeDisabled();
+  });
+
+  it('Legend button shows active state when popover is open', () => {
+    render(<DispatchMapControls {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /legend/i }));
+    expect(screen.getByRole('button', { name: /legend/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+});

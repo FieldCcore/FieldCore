@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
+import { TECH_LEGEND_ITEMS } from '../domain/technicianStatusPresentation';
 
 // Compact map control overlay for the Dispatch page.
 // Must set pointerEvents: 'auto' — parent .dispatch-map-overlays uses
@@ -92,6 +94,55 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title, active }) {
   );
 }
 
+// Job legend items — derived from shared Calendar-approved presentation
+const JOB_LEGEND_ITEMS = [
+  { key: 'active',     label: 'Job — Active'    },
+  { key: 'complete',   label: 'Job — Completed' },
+  { key: 'cancelled',  label: 'Job — Cancelled' },
+  { key: 'scheduled',  label: 'Job — Scheduled' },
+].map(({ key, label }) => ({
+  key, label, color: getJobStatusPresentation(key).markerColor,
+}));
+
+function LegendPopover({ onClose }) {
+  return (
+    <div style={{
+      position: 'absolute', top: '100%', right: 0, marginTop: 4,
+      background: 'rgba(255,255,255,0.97)', border: '1px solid var(--lightgray)',
+      borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.12)',
+      padding: '8px 12px', minWidth: 160, zIndex: 20,
+    }} role="dialog" aria-label="Map legend">
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+        Legend
+      </div>
+      {TECH_LEGEND_ITEMS.map(item => (
+        <LegendRow key={item.key} color={item.color} label={item.label} shape="circle" />
+      ))}
+      <div style={{ height: 1, background: 'var(--lightgray)', margin: '6px 0' }} />
+      {JOB_LEGEND_ITEMS.map(item => (
+        <LegendRow key={item.key} color={item.color} label={item.label} shape="pin" />
+      ))}
+    </div>
+  );
+}
+
+function LegendRow({ color, label, shape }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+      {shape === 'circle' ? (
+        <svg width="10" height="10" aria-hidden="true">
+          <circle cx="5" cy="5" r="4" fill={color} />
+        </svg>
+      ) : (
+        <svg width="8" height="11" viewBox="0 0 22 30" aria-hidden="true">
+          <path d="M11 1C6.58 1 3 4.58 3 9c0 5.25 8 19 8 19s8-13.75 8-19c0-4.42-3.58-8-8-8z" fill={color} />
+        </svg>
+      )}
+      <span style={{ fontSize: 11, color: 'var(--navy)' }}>{label}</span>
+    </div>
+  );
+}
+
 function LayersDropdown({ layers, onToggle }) {
   return (
     <div style={{
@@ -167,19 +218,24 @@ export default function DispatchMapControls({
   onLayerToggle,
 }) {
   const [showLayers, setShowLayers] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
   const layersWrapRef = useRef(null);
+  const legendWrapRef = useRef(null);
 
-  // Close layers dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!showLayers) return;
+    if (!showLayers && !showLegend) return;
     function onDown(e) {
-      if (layersWrapRef.current && !layersWrapRef.current.contains(e.target)) {
+      if (showLayers && layersWrapRef.current && !layersWrapRef.current.contains(e.target)) {
         setShowLayers(false);
+      }
+      if (showLegend && legendWrapRef.current && !legendWrapRef.current.contains(e.target)) {
+        setShowLegend(false);
       }
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [showLayers]);
+  }, [showLayers, showLegend]);
 
   const centerLabel   = locating ? 'Locating…' : 'Center on Me';
   const dot           = PERM_DOT[permState];
@@ -227,7 +283,7 @@ export default function DispatchMapControls({
           <CtrlBtn
             label="Layers"
             iconPath={ICONS.layers}
-            onClick={() => setShowLayers(v => !v)}
+            onClick={() => { setShowLayers(v => !v); setShowLegend(false); }}
             disabled={!mapReady}
             active={showLayers || anyLayerOff}
             title="Toggle map layers"
@@ -238,6 +294,19 @@ export default function DispatchMapControls({
               onToggle={(key) => { onLayerToggle?.(key); }}
             />
           )}
+        </div>
+
+        {/* Legend */}
+        <div ref={legendWrapRef} style={{ position: 'relative' }}>
+          <CtrlBtn
+            label="Legend"
+            iconPath="M3 5h10M3 8h7M3 11h4M13 8l2 2 3-3"
+            onClick={() => { setShowLegend(v => !v); setShowLayers(false); }}
+            disabled={!mapReady}
+            active={showLegend}
+            title="Show map legend"
+          />
+          {showLegend && <LegendPopover onClose={() => setShowLegend(false)} />}
         </div>
       </div>
 

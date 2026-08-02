@@ -280,6 +280,25 @@ export default function BusinessSettings() {
   const [dsSaving, setDsSaving] = useState(false);
   const [dsSaved,  setDsSaved]  = useState(false);
 
+  // KPI card settings (stored in dispatch_settings table)
+  const [kpiSettings, setKpiSettings] = useState({
+    kpi_show_live_techs:           true,
+    kpi_show_active_jobs:          true,
+    kpi_show_todays_jobs:          true,
+    kpi_show_completed_today:      true,
+    kpi_show_avg_response:         true,
+    kpi_response_tracking_enabled: false,
+    kpi_response_start_event:      'scheduled_at',
+    kpi_response_end_event:        'checkin_at',
+    kpi_response_outlier_minutes:  1440,
+    kpi_response_min_sample_size:  1,
+    kpi_adaptive_kpis_enabled:     true,
+    kpi_fixed_layout:              false,
+    kpi_fifth_preference:          'average_response',
+  });
+  const [kpiSaving, setKpiSaving] = useState(false);
+  const [kpiSaved,  setKpiSaved]  = useState(false);
+
   useEffect(() => {
     if (tab !== 'dispatch') return;
     api.get('/dispatch-settings').then(r => {
@@ -299,8 +318,37 @@ export default function BusinessSettings() {
         dispatch_include_completed:     !!s.dispatch_include_completed,
         dispatch_include_cancelled:     !!s.dispatch_include_cancelled,
       });
+      setKpiSettings({
+        kpi_show_live_techs:           s.kpi_show_live_techs           !== false,
+        kpi_show_active_jobs:          s.kpi_show_active_jobs          !== false,
+        kpi_show_todays_jobs:          s.kpi_show_todays_jobs          !== false,
+        kpi_show_completed_today:      s.kpi_show_completed_today      !== false,
+        kpi_show_avg_response:         s.kpi_show_avg_response         !== false,
+        kpi_response_tracking_enabled: !!s.kpi_response_tracking_enabled,
+        kpi_response_start_event:      s.kpi_response_start_event      || 'scheduled_at',
+        kpi_response_end_event:        s.kpi_response_end_event        || 'checkin_at',
+        kpi_response_outlier_minutes:  s.kpi_response_outlier_minutes  ?? 1440,
+        kpi_response_min_sample_size:  s.kpi_response_min_sample_size  ?? 1,
+        kpi_adaptive_kpis_enabled:     s.kpi_adaptive_kpis_enabled     !== false,
+        kpi_fixed_layout:              !!s.kpi_fixed_layout,
+        kpi_fifth_preference:          s.kpi_fifth_preference          || 'average_response',
+      });
     }).catch(() => {});
   }, [tab]);
+
+  async function saveKpiSettings() {
+    setKpiSaving(true);
+    try {
+      await api.put('/dispatch-settings', {
+        ...kpiSettings,
+        kpi_response_outlier_minutes: parseInt(kpiSettings.kpi_response_outlier_minutes, 10) || 1440,
+        kpi_response_min_sample_size: parseInt(kpiSettings.kpi_response_min_sample_size, 10) || 1,
+      });
+      setKpiSaved(true);
+      setTimeout(() => setKpiSaved(false), 2500);
+    } catch { setError('Failed to save KPI settings.'); }
+    finally { setKpiSaving(false); }
+  }
 
   async function saveDispatchSettings() {
     setDsSaving(true);
@@ -934,24 +982,145 @@ export default function BusinessSettings() {
             </div>
           </Section>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-            <button
-              onClick={saveDispatchSettings}
-              disabled={dsSaving}
-              className="btn-primary"
-              style={{ opacity: dsSaving ? .6 : 1 }}
-            >
-              {dsSaving ? 'Saving…' : 'Save dispatch settings'}
-            </button>
-            {dsSaved && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13 }}>
-                  <path d="M3 8l3.5 3.5 6.5-7" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Saved
-              </span>
-            )}
-          </div>
+          <SaveBar saving={dsSaving} saved={dsSaved} onSave={saveDispatchSettings} label="Save dispatch settings" />
+
+          {/* ── KPI Cards ── */}
+          <Section title="KPI Cards">
+            <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.5 }}>
+              Choose which metrics appear in the five KPI cards at the top of the Dispatch page.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+              {[
+                ['kpi_show_live_techs',      'Live Technicians — techs with a recent GPS check-in'],
+                ['kpi_show_active_jobs',     'Active Jobs — jobs currently in progress or paused'],
+                ['kpi_show_todays_jobs',     "Today's Jobs — all jobs scheduled for today"],
+                ['kpi_show_completed_today', 'Completed Today — jobs completed during today'],
+                ['kpi_show_avg_response',    'Avg Response Time — time from dispatch to technician arrival'],
+              ].map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', lineHeight: 1.4 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!kpiSettings[key]}
+                    onChange={e => setKpiSettings(s => ({ ...s, [key]: e.target.checked }))}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            {/* Average Response sub-settings */}
+            <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '12px 14px', marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 10 }}>
+                Average Response Time
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={!!kpiSettings.kpi_response_tracking_enabled}
+                  onChange={e => setKpiSettings(s => ({ ...s, kpi_response_tracking_enabled: e.target.checked }))}
+                />
+                Enable response time tracking
+              </label>
+
+              <div style={{ opacity: kpiSettings.kpi_response_tracking_enabled ? 1 : 0.45, pointerEvents: kpiSettings.kpi_response_tracking_enabled ? 'auto' : 'none' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <label style={bssLabel}>Start event</label>
+                    <select style={bssInput} value={kpiSettings.kpi_response_start_event}
+                      onChange={e => setKpiSettings(s => ({ ...s, kpi_response_start_event: e.target.value }))}>
+                      <option value="scheduled_at">Job scheduled time</option>
+                      <option value="checkin_at">Tech check-in</option>
+                      <option value="created_at">Job created time</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={bssLabel}>End event</label>
+                    <select style={bssInput} value={kpiSettings.kpi_response_end_event}
+                      onChange={e => setKpiSettings(s => ({ ...s, kpi_response_end_event: e.target.value }))}>
+                      <option value="checkin_at">Tech check-in</option>
+                      <option value="scheduled_at">Job scheduled time</option>
+                      <option value="created_at">Job created time</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={bssLabel}>Outlier threshold (minutes)</label>
+                    <input
+                      type="number" min="30" max="10080" step="30"
+                      style={bssInput}
+                      value={kpiSettings.kpi_response_outlier_minutes}
+                      onChange={e => setKpiSettings(s => ({ ...s, kpi_response_outlier_minutes: e.target.value }))}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                      Jobs with response times above this limit are excluded. Default: 1440 (24 h).
+                    </div>
+                  </div>
+                  <div>
+                    <label style={bssLabel}>Minimum sample size</label>
+                    <input
+                      type="number" min="1" max="100" step="1"
+                      style={bssInput}
+                      value={kpiSettings.kpi_response_min_sample_size}
+                      onChange={e => setKpiSettings(s => ({ ...s, kpi_response_min_sample_size: e.target.value }))}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                      Minimum completed jobs required before showing the metric. Default: 1.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Adaptive KPI layout */}
+            <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '12px 14px', marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 10 }}>
+                Layout
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', lineHeight: 1.4 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!kpiSettings.kpi_adaptive_kpis_enabled}
+                    onChange={e => setKpiSettings(s => ({ ...s, kpi_adaptive_kpis_enabled: e.target.checked }))}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                  />
+                  <span>
+                    <strong>Adaptive KPIs</strong> — automatically reorder cards based on your team size and available data
+                  </span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', lineHeight: 1.4 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!kpiSettings.kpi_fixed_layout}
+                    onChange={e => setKpiSettings(s => ({ ...s, kpi_fixed_layout: e.target.checked }))}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                  />
+                  <span>
+                    <strong>Fixed layout</strong> — always show cards in the order above, no automatic substitutions
+                  </span>
+                </label>
+              </div>
+
+              <div>
+                <label style={bssLabel}>Fifth card preference</label>
+                <select style={{ ...bssInput, maxWidth: 280 }} value={kpiSettings.kpi_fifth_preference}
+                  onChange={e => setKpiSettings(s => ({ ...s, kpi_fifth_preference: e.target.value }))}>
+                  <option value="average_response">Average Response Time</option>
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                  When adaptive mode replaces the fifth slot, this metric is preferred.
+                </div>
+              </div>
+            </div>
+
+            <SaveBar saving={kpiSaving} saved={kpiSaved} onSave={saveKpiSettings} label="Save KPI settings" />
+          </Section>
         </div>
       )}
     </div>

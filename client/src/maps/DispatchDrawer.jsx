@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
+import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
+import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
 
-const GPS_LIVE_MS  = 2  * 60 * 1000;
-const GPS_STALE_MS = 15 * 60 * 1000;
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
 function initials(name) {
@@ -25,24 +25,6 @@ function fmtAge(ts) {
   if (m >= 60) return `${Math.floor(m / 60)}h ago`;
   return m > 0 ? `${m}m ago` : 'just now';
 }
-
-const JOB_STATUS_STYLE = {
-  scheduled:           { background: 'var(--off)',       color: 'var(--steel)'  },
-  in_progress:         { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
-  complete:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
-  cancelled:           { background: 'var(--red-lt)',    color: 'var(--red)'    },
-  no_show:             { background: 'var(--red-lt)',    color: 'var(--red)'    },
-  paused:              { background: 'var(--amber-lt)',  color: 'var(--amber)'  },
-  en_route:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
-  awaiting_client:     { background: 'var(--yellow-lt)', color: 'var(--yellow)' },
-  partially_completed: { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
-};
-
-const JOB_STATUS_LABEL = {
-  scheduled: 'Scheduled', in_progress: 'Active', complete: 'Done',
-  cancelled: 'Cancelled', no_show: 'No-show', paused: 'Paused',
-  en_route: 'En Route', awaiting_client: 'Awaiting', partially_completed: 'Partial',
-};
 
 /**
  * Contextual drawer that slides in from the right of the map when a tech or
@@ -136,6 +118,7 @@ export default function DispatchDrawer({
             nextJob={techNextJob}
             avatarColor={avatarColor}
             onCenter={() => onCenterTech?.(tech.id)}
+            jobs={jobs}
           />
         )}
 
@@ -153,22 +136,9 @@ export default function DispatchDrawer({
 
 // ── Tech detail view ──────────────────────────────────────────────────────────
 
-function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter }) {
-  const age      = loc ? Date.now() - new Date(loc.updated_at).getTime() : null;
-  const isLive   = age !== null && age < GPS_LIVE_MS;
-  const isStale  = age !== null && age >= GPS_LIVE_MS && age < GPS_STALE_MS;
-  const isOffline = age !== null && age >= GPS_STALE_MS;
-
-  const gpsLabel = !tech.is_available ? 'Off Duty'
-    : !loc             ? 'No GPS'
-    : isLive           ? 'Live GPS'
-    : isStale          ? 'GPS Stale'
-    :                    'Offline';
-
-  const gpsColor = (!tech.is_available || isOffline) ? '#8A90A2'
-    : isStale ? '#D97706' : '#2E7D32';
-
-  const hasLoc = !!loc && isLive;
+function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs = [] }) {
+  const st     = getTechStatus(tech, loc ? [{ ...loc, user_id: tech.id }] : [], jobs);
+  const hasLoc = !!loc && st.key !== 'off' && st.key !== 'offline';
 
   return (
     <>
@@ -188,7 +158,7 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter }) {
 
       <div className="dispatch-drawer-stat-row">
         <span className="dispatch-drawer-stat-label">Status</span>
-        <span style={{ color: gpsColor, fontWeight: 600, fontSize: 12 }}>{gpsLabel}</span>
+        <span style={{ color: st.color, fontWeight: 600, fontSize: 12 }}>{st.label}</span>
       </div>
 
       {loc && (
@@ -251,8 +221,9 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter }) {
 // ── Job detail view ───────────────────────────────────────────────────────────
 
 function JobView({ job, jobTech, onCenter }) {
-  const sStyle   = JOB_STATUS_STYLE[job.status] || JOB_STATUS_STYLE.scheduled;
-  const sLabel   = JOB_STATUS_LABEL[job.status] || job.status;
+  const p        = getJobStatusPresentation(job.status);
+  const sStyle   = { background: p.badgeBg, color: p.badgeColor };
+  const sLabel   = p.label;
   const hasCoords = job.service_lat && job.service_lng;
 
   return (

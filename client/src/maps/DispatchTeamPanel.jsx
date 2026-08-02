@@ -1,14 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
+import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
+import { getTechStatus, ACTIVE_STATUSES, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
 
-const GPS_LIVE_MS  = 2  * 60 * 1000;
-const GPS_STALE_MS = 15 * 60 * 1000;
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
-
-// Must stay in sync with src/routes/dispatch.js ACTIVE_STATUSES
-const ACTIVE_STATUSES = new Set([
-  'in_progress', 'paused', 'awaiting_client', 'awaiting_parts',
-  'partially_completed', 'ready_for_inspection',
-]);
 
 function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -27,37 +21,8 @@ function fmtAgeShort(ts) {
 }
 
 function techStatus(tech, techLocs, jobs) {
-  if (!tech.is_available) {
-    return { label: 'Off Duty', color: '#8A90A2', bg: '#f1f5f9', key: 'off' };
-  }
-  const loc = techLocs.find(l => l.user_id === tech.id);
-  const age = loc ? Date.now() - new Date(loc.updated_at).getTime() : null;
-  const onJob = jobs.some(j => j.tech_id === tech.id && ACTIVE_STATUSES.has(j.status));
-
-  if (onJob)               return { label: 'On Job',    color: '#1565C0', bg: 'var(--blue-lt)',  key: 'busy'      };
-  if (!loc)                return { label: 'Available', color: '#2E7D32', bg: 'var(--green-lt)', key: 'available' };
-  if (age > GPS_STALE_MS)  return { label: 'Offline',   color: '#8A90A2', bg: '#f1f5f9',        key: 'offline'   };
-  if (age > GPS_LIVE_MS)   return { label: 'GPS Stale', color: '#D97706', bg: 'var(--amber-lt)', key: 'stale'    };
-  return                          { label: 'Live GPS',  color: '#2E7D32', bg: 'var(--green-lt)', key: 'live'      };
+  return getTechStatus(tech, techLocs, jobs);
 }
-
-const JOB_STATUS_STYLE = {
-  scheduled:           { background: 'var(--off)',       color: 'var(--steel)'  },
-  in_progress:         { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
-  complete:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
-  cancelled:           { background: 'var(--red-lt)',    color: 'var(--red)'    },
-  no_show:             { background: 'var(--red-lt)',    color: 'var(--red)'    },
-  paused:              { background: 'var(--amber-lt)',  color: 'var(--amber)'  },
-  en_route:            { background: 'var(--green-lt)',  color: 'var(--green)'  },
-  awaiting_client:     { background: 'var(--yellow-lt)', color: 'var(--yellow)' },
-  partially_completed: { background: 'var(--blue-lt)',   color: 'var(--blue)'   },
-};
-
-const JOB_STATUS_LABEL = {
-  scheduled: 'Scheduled', in_progress: 'Active', complete: 'Done',
-  cancelled: 'Cancelled', no_show: 'No-show', paused: 'Paused',
-  en_route: 'En Route', awaiting_client: 'Waiting', partially_completed: 'Partial',
-};
 
 const TEAM_FILTERS = [
   { key: 'all',       label: 'All'       },
@@ -280,8 +245,9 @@ export default function DispatchTeamPanel({
                 : 'No jobs match this filter.'}
             </div>
           ) : filteredJobs.map((j, idx) => {
-            const sStyle = JOB_STATUS_STYLE[j.status] || JOB_STATUS_STYLE.scheduled;
-            const sLabel = JOB_STATUS_LABEL[j.status] || j.status;
+            const p      = getJobStatusPresentation(j.status);
+            const sStyle = { background: p.badgeBg, color: p.badgeColor };
+            const sLabel = p.label;
             const isSel  = selectedItem?.type === 'job' && selectedItem?.id === j.id;
 
             return (
@@ -298,7 +264,7 @@ export default function DispatchTeamPanel({
                 <div
                   className="dispatch-job-dot"
                   aria-hidden="true"
-                  style={{ background: ACTIVE_STATUSES.has(j.status) ? '#1565C0' : sStyle.background }}
+                  style={{ background: ACTIVE_STATUSES.has(j.status) ? '#D4A000' : sStyle.background }}
                 />
                 <div className="dispatch-job-info">
                   <div className="dispatch-job-name">{j.client_name} — {j.service_type}</div>

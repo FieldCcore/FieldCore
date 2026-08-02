@@ -10,6 +10,7 @@ import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
 import { useDispatchLocation } from '../hooks/useDispatchLocation';
 import { isValidCoord, classifyTechGPS } from '../maps/dispatchCoords';
+import { getJobMarkerColor } from '../domain/jobStatusPresentation';
 
 // ── Viewport persistence ──────────────────────────────────────────────────────
 const VP_KEY     = 'fc_dispatch_vp';
@@ -33,18 +34,6 @@ function savePersistedViewport(lat, lng, zoom) {
 }
 
 const AVATAR_COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
-
-const JOB_MARKER_COLORS = {
-  scheduled:           '#8A90A2',
-  in_progress:         '#1565C0',
-  complete:            '#2E7D32',
-  en_route:            '#2E7D32',
-  paused:              '#D97706',
-  cancelled:           '#C62828',
-  no_show:             '#C62828',
-  awaiting_client:     '#D97706',
-  partially_completed: '#1565C0',
-};
 
 const FIT_PADDING  = { top: 60, right: 60, bottom: 60, left: 60 };
 const MAX_AUTO_ZOOM = 15;
@@ -321,7 +310,7 @@ export default function Dispatch() {
       if (!isValidCoord(job.service_lat, job.service_lng)) return;
 
       activeIds.add(job.id);
-      const color = JOB_MARKER_COLORS[job.status] || '#8A90A2';
+      const color = getJobMarkerColor(job.status);
       const isSel = selectedItem?.type === 'job' && selectedItem?.id === job.id;
       const icon  = jobMarkerIcon(color, isSel);
 
@@ -428,10 +417,11 @@ export default function Dispatch() {
   // ── KPI card click → navigate team panel ──────────────────────────────────
   const handleKpiCardClick = useCallback((key) => {
     const focus = {
-      live:      { tab: 'team', teamFilter: 'live'      },
-      active:    { tab: 'jobs', jobFilter:  'active'    },
-      today:     { tab: 'jobs', jobFilter:  'all'       },
-      completed: { tab: 'jobs', jobFilter:  'completed' },
+      liveTechnicians: { tab: 'team', teamFilter: 'live'      },
+      activeJobs:      { tab: 'jobs', jobFilter:  'active'    },
+      todaysJobs:      { tab: 'jobs', jobFilter:  'all'       },
+      completedToday:  { tab: 'jobs', jobFilter:  'completed' },
+      averageResponse: { tab: 'jobs', jobFilter:  'all'       },
     };
     if (focus[key]) setPanelFocus({ ...focus[key], _nonce: Date.now() });
   }, []);

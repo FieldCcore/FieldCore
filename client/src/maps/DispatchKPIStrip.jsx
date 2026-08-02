@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
+import DispatchKpiCard from './DispatchKpiCard';
 
 const REFRESH_MS = 30_000;
 
-export default function DispatchKPIStrip({ onCardClick }) {
-  const [data,    setData]    = useState(null);
+// Fallback metric for when the API fails entirely with no prior data
+function unavailableMetric(key, label) {
+  return {
+    key, label, status: 'unavailable', value: null, displayValue: '—',
+    supportingText: 'Temporarily unavailable',
+    enabled: true, configured: true, sampleSize: null,
+    reasonCode: 'QUERY_FAILED', configurePath: null,
+  };
+}
+
+const FALLBACK_METRICS = [
+  unavailableMetric('liveTechnicians', 'Live Techs'),
+  unavailableMetric('activeJobs',      'Active Jobs'),
+  unavailableMetric('todaysJobs',      "Today's Jobs"),
+  unavailableMetric('completedToday',  'Completed'),
+  unavailableMetric('averageResponse', 'Avg Response'),
+];
+
+export default function DispatchKPIStrip({ onCardClick, onConfigure, userRole }) {
+  const [metrics, setMetrics] = useState(null);   // null = initial loading
   const [loading, setLoading] = useState(true);
   const [stale,   setStale]   = useState(false);
   const seqRef = useRef(0);
@@ -13,117 +32,112 @@ export default function DispatchKPIStrip({ onCardClick }) {
     const seq = ++seqRef.current;
     try {
       const r = await api.get('/dispatch/summary');
-      if (seq !== seqRef.current) return; // superseded by a newer request
-      setData(r.data);
+      if (seq !== seqRef.current) return;
+
+      // Use normalized metrics array if present; fall back to legacy shape
+      const data = r.data;
+      const m = Array.isArray(data.metrics) ? data.metrics : buildLegacyMetrics(data);
+
+      setMetrics(m.map(metric => stale ? { ...metric, status: 'stale' } : metric));
       setLoading(false);
       setStale(false);
     } catch {
       if (seq !== seqRef.current) return;
       setLoading(false);
-      setStale(true); // retain previous data; mark stale
+      setStale(true);
+      // Mark any existing metrics as stale; unavailable if none yet
+      setMetrics(prev =>
+        prev
+          ? prev.map(m => ({ ...m, status: 'stale' }))
+          : FALLBACK_METRICS
+      );
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load();
-
-    const id = setInterval(() => {
-      if (!document.hidden) load();
-    }, REFRESH_MS);
-
-    function onVisible() {
-      if (!document.hidden) load();
-    }
+    const id = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
+    function onVisible() { if (!document.hidden) load(); }
     document.addEventListener('visibilitychange', onVisible);
-
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
-      seqRef.current++; // invalidate any in-flight request
+      seqRef.current++;
     };
   }, [load]);
 
-  const d = data;
-
-  const cards = [
-    {
-      key:   'live',
-      label: 'Live Techs',
-      value: d?.liveTechnicians?.total ?? 0,
-      sub:   d?.liveTechnicians != null
-               ? `${d.liveTechnicians.online} online · ${d.liveTechnicians.stale} stale`
-               : '—',
-      color: 'var(--green)',
-    },
-    {
-      key:   'active',
-      label: 'Active Jobs',
-      value: d?.activeJobs?.total ?? 0,
-      sub:   d?.activeJobs?.inProgress != null
-               ? `${d.activeJobs.inProgress} in progress`
-               : '—',
-      color: 'var(--blue)',
-    },
-    {
-      key:   'today',
-      label: "Today's Jobs",
-      value: d?.todaysJobs?.total ?? 0,
-      sub:   d?.todaysJobs != null
-               ? (d.todaysJobs.unassigned > 0
-                   ? `${d.todaysJobs.unassigned} unassigned`
-                   : 'all assigned')
-               : '—',
-      color: 'var(--navy)',
-    },
-    {
-      key:   'completed',
-      label: 'Completed',
-      value: d?.completedToday?.total ?? 0,
-      sub:   'today',
-      color: 'var(--green)',
-    },
-    {
-      key:   'response',
-      label: 'Avg Response',
-      value: d?.averageResponseTime?.minutes != null
-               ? `${d.averageResponseTime.minutes}m`
-               : '—',
-      sub:   d?.averageResponseTime?.sampleSize != null && d.averageResponseTime.sampleSize > 0
-               ? `${d.averageResponseTime.sampleSize} job${d.averageResponseTime.sampleSize !== 1 ? 's' : ''}`
-               : 'No data',
-      color: 'var(--amber)',
-    },
-  ];
-
-  if (loading && !data) {
+  // Loading state: show 5 skeletons
+  if (loading && !metrics) {
     return (
-      <div className="dispatch-kpi-strip" aria-label="KPI metrics loading">
+      <ul className="dispatch-kpi-strip" aria-label="KPI metrics loading">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="dispatch-kpi-card dispatch-kpi-skel" aria-hidden="true" />
+          <li key={i}>
+            <div className="dispatch-kpi-card dispatch-kpi-skel" aria-hidden="true" />
+          </li>
         ))}
-      </div>
+      </ul>
     );
   }
 
+  const displayMetrics = metrics ?? FALLBACK_METRICS;
+
   return (
-    <ul className="dispatch-kpi-strip" aria-label="Dispatch metrics">
-      {cards.map(c => (
-        <li key={c.key}>
-          <button
-            type="button"
-            className="dispatch-kpi-card"
-            onClick={() => onCardClick?.(c.key)}
-            aria-label={`${c.label}: ${c.value}`}
-          >
-            <div className="dispatch-kpi-value" style={{ color: c.color }}>
-              {c.value}
-              {stale && <span className="dispatch-kpi-stale" title="Refresh failed — showing last data" aria-hidden="true" />}
-            </div>
-            <div className="dispatch-kpi-label">{c.label}</div>
-            <div className="dispatch-kpi-sub">{c.sub}</div>
-          </button>
+    <ul className="dispatch-kpi-strip" role="list" aria-label="Dispatch metrics">
+      {displayMetrics.map(m => (
+        <li key={m.key}>
+          <DispatchKpiCard
+            metric={m}
+            onClick={onCardClick}
+            onConfigure={onConfigure}
+            userRole={userRole}
+          />
         </li>
       ))}
     </ul>
   );
+}
+
+// Build metrics array from the legacy response shape (backward compat)
+function buildLegacyMetrics(data) {
+  const d = data || {};
+  return [
+    {
+      key: 'liveTechnicians', label: 'Live Techs', status: 'active',
+      value: d.liveTechnicians?.total ?? 0,
+      displayValue: String(d.liveTechnicians?.total ?? 0),
+      supportingText: d.liveTechnicians
+        ? `${d.liveTechnicians.online} online · ${d.liveTechnicians.stale} stale` : '—',
+    },
+    {
+      key: 'activeJobs', label: 'Active Jobs', status: 'active',
+      value: d.activeJobs?.total ?? 0,
+      displayValue: String(d.activeJobs?.total ?? 0),
+      supportingText: d.activeJobs?.inProgress != null
+        ? `${d.activeJobs.inProgress} in progress` : '—',
+    },
+    {
+      key: 'todaysJobs', label: "Today's Jobs", status: 'active',
+      value: d.todaysJobs?.total ?? 0,
+      displayValue: String(d.todaysJobs?.total ?? 0),
+      supportingText: d.todaysJobs
+        ? (d.todaysJobs.unassigned > 0 ? `${d.todaysJobs.unassigned} unassigned` : 'all assigned')
+        : '—',
+    },
+    {
+      key: 'completedToday', label: 'Completed', status: 'active',
+      value: d.completedToday?.total ?? 0,
+      displayValue: String(d.completedToday?.total ?? 0),
+      supportingText: 'today',
+    },
+    {
+      key: 'averageResponse', label: 'Avg Response',
+      status: d.averageResponseTime?.sampleSize > 0 ? 'active' : 'no_data',
+      value: d.averageResponseTime?.minutes ?? null,
+      displayValue: d.averageResponseTime?.minutes != null
+        ? `${d.averageResponseTime.minutes}m` : '—',
+      supportingText: d.averageResponseTime?.sampleSize > 0
+        ? `${d.averageResponseTime.sampleSize} jobs` : 'No data',
+      sampleSize: d.averageResponseTime?.sampleSize ?? 0,
+    },
+  ];
 }
