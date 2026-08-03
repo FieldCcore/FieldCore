@@ -1,5 +1,6 @@
 const router = require('express').Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { geocodeAddress } = require('../services/geocode');
 
 // GET /api/maps/autocomplete?input=...
 // Server-side Places Autocomplete proxy using Places API (New).
@@ -156,6 +157,51 @@ router.post('/route', requireAuth, async (req, res) => {
     console.error('[maps/route]', err.message);
     res.status(500).json({ error: 'Routing request failed' });
   }
+});
+
+// POST /api/maps/geocode-diagnostic
+// Owner-only diagnostic — verifies the server key and geocoding pipeline.
+// REMOVE or DEV-gate this endpoint after production verification.
+router.post('/geocode-diagnostic', requireAuth, requireRole('owner'), async (req, res) => {
+  const serverKeySet  = !!process.env.GOOGLE_MAPS_SERVER_KEY;
+  const browserKeySet = !!process.env.GOOGLE_MAPS_API_KEY;
+  const sk = process.env.GOOGLE_MAPS_SERVER_KEY || '';
+  const bk = process.env.GOOGLE_MAPS_API_KEY    || '';
+
+  const keyInfo = {
+    GOOGLE_MAPS_SERVER_KEY_set: serverKeySet,
+    GOOGLE_MAPS_SERVER_KEY_len: sk.length,
+    GOOGLE_MAPS_SERVER_KEY_first6: sk.slice(0, 6) || null,
+    GOOGLE_MAPS_SERVER_KEY_last4:  sk.slice(-4)   || null,
+    GOOGLE_MAPS_API_KEY_set:   browserKeySet,
+    activeKeySource: serverKeySet ? 'GOOGLE_MAPS_SERVER_KEY' : (browserKeySet ? 'GOOGLE_MAPS_API_KEY' : 'NONE'),
+  };
+
+  const testAddress = (req.body?.address || '305 Lincoln Court, Deerfield Beach, FL, United States').trim();
+  const geo = await geocodeAddress(testAddress);
+
+  const result = {
+    keyInfo,
+    normalizedAddress: testAddress,
+    httpStatus: 200,
+    providerStatus:       geo.geocode_provider_status || (geo.error ? 'ERROR' : 'OK'),
+    providerErrorMessage: geo.geocode_error || null,
+    resultCount:          geo.lat != null ? 1 : 0,
+    firstFormattedAddress: geo.formatted_address || null,
+    placeId:              geo.place_id    || null,
+    lat:                  geo.lat         || null,
+    lng:                  geo.lng         || null,
+    hasCoordinates:       geo.lat != null && geo.lng != null,
+  };
+
+  console.log('[maps/geocode-diagnostic] result', {
+    activeKeySource: keyInfo.activeKeySource,
+    providerStatus: result.providerStatus,
+    hasCoordinates: result.hasCoordinates,
+    providerErrorMessage: result.providerErrorMessage,
+  });
+
+  res.json(result);
 });
 
 function formatDuration(sec) {
