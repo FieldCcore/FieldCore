@@ -424,8 +424,11 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       }
     }
 
-    const addressToGeocode  = service_address || service_location || address || null;
-    let finalServiceAddress = addressToGeocode;
+    const streetAddr        = service_address || service_location || address || null;
+    const addressToGeocode  = streetAddr
+      ? [streetAddr, service_city, service_state, service_zip].filter(Boolean).join(', ')
+      : null;
+    let finalServiceAddress = streetAddr;
     let finalServiceLat     = service_lat  || null;
     let finalServiceLng     = service_lng  || null;
     let mappingWarning      = null;

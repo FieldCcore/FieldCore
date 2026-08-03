@@ -311,7 +311,8 @@ describe('DispatchDrawer — geocode status', () => {
   it('shows geocode failed indicator when geocode_status is failed', () => {
     const jobs = [...JOBS, JOB_NO_COORDS];
     render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
-    expect(screen.getByText(/could not be placed on map/i)).toBeInTheDocument();
+    expect(screen.getByText(/map location unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/could not be geocoded/i)).toBeInTheDocument();
   });
 
   it('shows Retry Geocoding button when coords are missing and address is present', () => {

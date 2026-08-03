@@ -59,11 +59,12 @@ const VISIBLE_JOB_STATUSES = new Set(['scheduled', 'in_progress', 'complete']);
  * - Legend entries match exactly what's visible on the map.
  */
 export default function DispatchMapLegend({
-  visible = true,
-  techs   = [],
+  visible  = true,
+  techs    = [],
   techLocs = [],
-  jobs    = [],
-  layers  = { techs: true, jobs: true },
+  jobs     = [],
+  layers   = { techs: true, jobs: true },
+  inline   = false,
 }) {
   const hasStaleTech = useMemo(
     () => layers.techs && techs.some(t => getTechStatus(t, techLocs, jobs).isStale),
@@ -80,7 +81,12 @@ export default function DispatchMapLegend({
   if (!visible) return null;
 
   return (
-    <div className="dispatch-map-legend" role="region" aria-label="Map legend">
+    <div
+      className={inline ? undefined : 'dispatch-map-legend'}
+      style={inline ? { padding: '10px 14px 6px' } : undefined}
+      role="region"
+      aria-label="Map legend"
+    >
       <div style={{
         fontSize: 10, fontWeight: 700, color: 'var(--steel)',
         textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6,

@@ -360,16 +360,24 @@ function JobView({ job, jobTech, onCenter, onJobGeocoded, timezone }) {
       )}
 
       {showGeocodeStatus && (
-        <div style={{ margin: '10px 0', padding: '8px 10px', borderRadius: 6,
+        <div style={{
+          margin: '10px 0', padding: '10px 12px', borderRadius: 6,
           background: geocodeFailed ? 'var(--red-lt, #FEE2E2)' : 'var(--off, #EDEBE7)',
-          fontSize: 11, color: geocodeFailed ? 'var(--red, #DC2626)' : 'var(--slate, #5F667A)',
+          borderLeft: geocodeFailed
+            ? '3px solid var(--red, #DC2626)'
+            : '3px solid var(--steel, #8A90A2)',
         }}>
-          {geocodeFailed
-            ? 'Address could not be placed on map.'
-            : 'Map location pending.'}
-          {geocodeError && (
-            <div style={{ marginTop: 4, fontWeight: 600 }}>{geocodeError}</div>
-          )}
+          <div style={{
+            fontSize: 11, fontWeight: 600, marginBottom: 2,
+            color: geocodeFailed ? 'var(--red, #DC2626)' : 'var(--slate, #5F667A)',
+          }}>
+            Map location unavailable
+          </div>
+          <div style={{ fontSize: 11, color: geocodeFailed ? 'var(--red, #DC2626)' : 'var(--slate, #5F667A)' }}>
+            {geocodeError || (geocodeFailed
+              ? 'Address could not be geocoded. Verify the address and retry.'
+              : 'Map location pending.')}
+          </div>
         </div>
       )}
 

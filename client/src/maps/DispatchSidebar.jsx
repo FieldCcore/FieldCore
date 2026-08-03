@@ -3,6 +3,7 @@ import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
 import DispatchDateControl from './DispatchDateControl';
+import DispatchMapLegend from './DispatchMapLegend';
 
 // Panel-left-close: two chevrons pointing left + vertical bar
 function CollapseIcon() {
@@ -64,6 +65,9 @@ export default function DispatchSidebar({
   dispatchDate,     // 'YYYY-MM-DD' or null (null = today)
   onDateChange,     // (date: string|null) => void
   timezone,
+  showLegend,
+  onLegendToggle,
+  layers,
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
@@ -131,6 +135,44 @@ export default function DispatchSidebar({
             panelFocus={panelFocus}
             timezone={timezone}
           />
+
+          {/* Legend section — collapsible, toggled by the map controls Legend button */}
+          <div style={{ borderTop: '1px solid var(--lightgray)', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={onLegendToggle}
+              aria-expanded={showLegend}
+              aria-label={showLegend ? 'Hide legend' : 'Show legend'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                width: '100%', padding: '8px 14px', background: 'none', border: 'none',
+                cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--steel)',
+                textTransform: 'uppercase', letterSpacing: '.06em',
+              }}
+            >
+              Legend
+              <svg
+                viewBox="0 0 16 16" fill="none"
+                style={{
+                  width: 12, height: 12, transition: 'transform 150ms',
+                  transform: showLegend ? 'rotate(180deg)' : 'none',
+                }}
+                aria-hidden="true"
+              >
+                <path d="M3 6l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {showLegend && (
+              <DispatchMapLegend
+                visible={true}
+                techs={techs}
+                techLocs={techLocs}
+                jobs={jobs}
+                layers={layers || { techs: true, jobs: true }}
+                inline={true}
+              />
+            )}
+          </div>
         </>
       )}
     </div>

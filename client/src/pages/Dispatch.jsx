@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
-import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
@@ -665,6 +664,9 @@ export default function Dispatch() {
             dispatchDate={dispatchDate}
             onDateChange={handleDateChange}
             timezone={dispatchTZ}
+            showLegend={showLegend}
+            onLegendToggle={handleLegendToggle}
+            layers={layers}
           />
 
           <div className="dispatch-map-stage">
@@ -737,8 +739,6 @@ export default function Dispatch() {
                 stale={false}
                 onRetry={() => setRetryKey(k => k + 1)}
               />
-
-              <DispatchMapLegend visible={showLegend} techs={techs} techLocs={techLocs} jobs={jobs} layers={layers} />
 
             </div>
           </div>
