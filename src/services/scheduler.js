@@ -4,6 +4,7 @@ const pool   = require('../db/pool');
 const sms    = require('./sms');
 const email  = require('./email');
 const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
+const { formatScheduleForDisplay } = require('./scheduleTimeService');
 
 // ── 1. Appointment reminders — runs every hour ──────────────
 function startReminderJob() {
@@ -11,9 +12,11 @@ function startReminderJob() {
     console.log('[Scheduler] Checking for appointment reminders...');
     try {
       const { rows: jobs } = await pool.query(`
-        SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email
+        SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+               COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
         FROM jobs j
         JOIN clients c ON c.id = j.client_id
+        LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
         WHERE j.status IN ('scheduled')
           AND j.reminder_sent = FALSE
           AND j.scheduled_at BETWEEN NOW() + INTERVAL '23 hours'
@@ -22,17 +25,18 @@ function startReminderJob() {
 
       for (const job of jobs) {
         try {
+          const displayTz = job.display_tz || 'UTC';
           if (job.client_phone) {
             await sms.send(
               job.account_id, job.client_id, job.client_phone,
-              sms.reminderBody(job.client_name, job.service_type, job.scheduled_at)
+              sms.reminderBody(job.client_name, job.service_type, job.scheduled_at, displayTz)
             );
           }
           if (job.client_email) {
             await email.send({
               to:      job.client_email,
               subject: `Reminder: your ${job.service_type} appointment is tomorrow`,
-              html:    email.reminderHtml(job.client_name, job.service_type, job.scheduled_at),
+              html:    email.reminderHtml(job.client_name, job.service_type, job.scheduled_at, displayTz),
             });
           }
           await pool.query(`UPDATE jobs SET reminder_sent = TRUE WHERE id = $1`, [job.id]);
@@ -56,9 +60,11 @@ function startRecurringJobCreation() {
     try {
       // Find completed jobs with a recurring schedule
       const { rows: jobs } = await pool.query(`
-        SELECT j.*, c.name AS client_name, c.phone AS client_phone
+        SELECT j.*, c.name AS client_name, c.phone AS client_phone,
+               COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
         FROM jobs j
         JOIN clients c ON c.id = j.client_id
+        LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
         WHERE j.status = 'complete'
           AND j.recurring != 'none'
           AND j.scheduled_at IS NOT NULL
@@ -111,7 +117,7 @@ function startRecurringJobCreation() {
         if (job.client_phone) {
           sms.send(
             job.account_id, job.client_id, job.client_phone,
-            sms.confirmationBody(job.client_name, job.service_type, nextDate)
+            sms.confirmationBody(job.client_name, job.service_type, nextDate, job.display_tz || 'UTC')
           ).then(result => {
             if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [newJob.id]);
           }).catch(err => console.error('[Scheduler] Recurring confirmation SMS failed:', err.message));
@@ -237,12 +243,14 @@ function startNoShowClockJob() {
                COALESCE(nss.grace_period_minutes, 15) AS grace_period_minutes,
                COALESCE(nss.auto_declare, TRUE) AS auto_declare,
                nss.client_sms_template, nss.tech_sms_template,
-               d.amount AS deposit_amount
+               d.amount AS deposit_amount,
+               COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
         FROM jobs j
         JOIN clients c ON c.id = j.client_id
         LEFT JOIN users u ON u.id = j.tech_id
         LEFT JOIN no_show_settings nss ON nss.account_id = j.account_id
         LEFT JOIN deposits d ON d.job_id = j.id AND d.status = 'collected'
+        LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
         WHERE j.status = 'scheduled'
           AND j.no_show_clock_started_at IS NOT NULL
           AND j.noshow_declared_at IS NULL
@@ -305,7 +313,7 @@ function startNoShowClockJob() {
             email.send({
               to: owner.email,
               subject: `No-Show Auto-Declared — ${job.client_name} · ${job.service_type}`,
-              html: email.noShowOperatorHtml(job, { ...record, declared_at: new Date() }, depositRetained),
+              html: email.noShowOperatorHtml(job, { ...record, declared_at: new Date() }, depositRetained, job.display_tz || 'UTC'),
             }).catch(e => console.error('[NoShow clock email]', e.message));
           }
 
@@ -328,10 +336,12 @@ function startPreChargeNoticeJob() {
     try {
       const { rows: jobs } = await pool.query(`
         SELECT j.*, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
-               a.name AS business_name
+               a.name AS business_name,
+               COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
         FROM jobs j
         JOIN clients c ON c.id = j.client_id AND c.card_on_file = TRUE
         JOIN accounts a ON a.id = j.account_id
+        LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
         WHERE j.status = 'scheduled'
           AND j.amount > 0
           AND j.pre_charge_notice_sent = FALSE
@@ -341,8 +351,9 @@ function startPreChargeNoticeJob() {
 
       for (const job of jobs) {
         try {
-          const fmtDate = d => new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-          const msg = `Hi ${job.client_name}, a reminder that $${parseFloat(job.amount).toFixed(2)} will be charged to your card on file for your ${job.service_type} appointment on ${fmtDate(job.scheduled_at)}.`;
+          const displayTz = job.display_tz || 'UTC';
+          const apptStr   = formatScheduleForDisplay(job.scheduled_at, displayTz, { showDate: true, showTime: true });
+          const msg = `Hi ${job.client_name}, a reminder that $${parseFloat(job.amount).toFixed(2)} will be charged to your card on file for your ${job.service_type} appointment on ${apptStr}.`;
 
           if (job.client_email) {
             await email.send({
@@ -350,7 +361,7 @@ function startPreChargeNoticeJob() {
               subject: `Upcoming charge for your ${job.service_type} appointment`,
               html:    email.wrap(`
                 <p>Hi ${job.client_name},</p>
-                <p>This is a reminder that <strong>$${parseFloat(job.amount).toFixed(2)}</strong> will be charged to your card on file for your upcoming <strong>${job.service_type}</strong> appointment on <strong>${fmtDate(job.scheduled_at)}</strong>.</p>
+                <p>This is a reminder that <strong>$${parseFloat(job.amount).toFixed(2)}</strong> will be charged to your card on file for your upcoming <strong>${job.service_type}</strong> appointment on <strong>${apptStr}</strong>.</p>
                 <p>If you have any questions, please contact ${job.business_name}.</p>
               `),
             });

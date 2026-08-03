@@ -10,19 +10,30 @@
  *   1. userTimezone   — per-user override (users.timezone column — reserved for future)
  *   2. businessTimezone — business_profiles.timezone per account (current source of truth)
  *   3. browser timezone — Intl.DateTimeFormat().resolvedOptions().timeZone
- *   4. 'America/Chicago' — geographically central US safe default
+ *   4. 'UTC'           — last-resort fallback (no geographic assumption)
  */
 
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+// Common timezone abbreviations that Intl accepts but that skip DST transitions.
+// Reject these so callers must use proper IANA identifiers (America/New_York etc).
+const BANNED_TZ_ABBREVIATIONS = new Set([
+  'EST', 'EDT', 'CST', 'CDT', 'MST', 'MDT', 'PST', 'PDT',
+  'AST', 'ADT', 'HST', 'AKST', 'AKDT',
+  'CET', 'CEST', 'EET', 'EEST', 'WET', 'WEST',
+  'IST', 'JST', 'KST', 'SGT', 'HKT', 'AEST', 'AEDT',
+]);
+
 /**
  * Returns true if tz is a recognized IANA timezone identifier.
- * Uses Intl.DateTimeFormat which has the IANA DB embedded in all modern runtimes.
+ * Rejects fixed-offset strings (UTC+5, GMT-4) and well-known abbreviations
+ * (EST, CDT, etc.) that do not handle DST transitions correctly.
  */
 export function isValidTimezone(tz) {
   if (!tz || typeof tz !== 'string') return false;
+  if (BANNED_TZ_ABBREVIATIONS.has(tz.toUpperCase())) return false;
   try {
     Intl.DateTimeFormat(undefined, { timeZone: tz });
     return true;
@@ -44,24 +55,37 @@ export function isValidTimezone(tz) {
 export function resolveCalendarTimeZone(context = {}) {
   const { userTimezone, businessTimezone } = context;
 
+  let result;
+
   if (userTimezone && isValidTimezone(userTimezone)) {
-    return { timezone: userTimezone, source: 'user' };
-  }
-
-  if (businessTimezone && isValidTimezone(businessTimezone)) {
-    return { timezone: businessTimezone, source: 'business' };
-  }
-
-  try {
-    const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (browser && isValidTimezone(browser)) {
-      return { timezone: browser, source: 'browser' };
+    result = { timezone: userTimezone, source: 'user' };
+  } else if (businessTimezone && isValidTimezone(businessTimezone)) {
+    result = { timezone: businessTimezone, source: 'business' };
+  } else {
+    try {
+      const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (browser && isValidTimezone(browser)) {
+        result = { timezone: browser, source: 'browser' };
+      }
+    } catch {
+      // Intl not available — fall through to default
     }
-  } catch {
-    // Intl not available — fall through to default
+    if (!result) result = { timezone: 'UTC', source: 'default' };
   }
 
-  return { timezone: 'America/Chicago', source: 'default' };
+  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+    window.__FIELDCORE_SCHEDULE_DIAGNOSTICS__ = {
+      ...(window.__FIELDCORE_SCHEDULE_DIAGNOSTICS__ || {}),
+      resolvedTZ: result.timezone,
+      resolvedSource: result.source,
+      inputUser: userTimezone ?? null,
+      inputBusiness: businessTimezone ?? null,
+      browserTZ: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } })(),
+      resolvedAt: new Date().toISOString(),
+    };
+  }
+
+  return result;
 }
 
 // ── Display formatting ────────────────────────────────────────────────────────
@@ -88,7 +112,7 @@ export function formatTZ(date, formatStr, timezone) {
     ? timezone
     : (() => {
         if (typeof window !== 'undefined') console.warn('[calendarTimezone] formatTZ: invalid timezone, using browser', timezone);
-        try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'America/Chicago'; }
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; }
       })();
 
   return formatInTimeZone(d, resolvedTZ, formatStr);

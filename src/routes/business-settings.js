@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
+const { validateIanaTimezone } = require('../services/scheduleTimeService');
 
 // GET /api/business-settings — full settings bundle
 router.get('/', requireAuth, async (req, res) => {
@@ -42,6 +43,9 @@ router.put('/profile', requireAuth, async (req, res) => {
   const accountId = req.accountId;
   const { business_name, phone, address, city, state, zip, website, description, timezone, vertical } = req.body;
   const { ein } = req.body;
+  if (timezone && !validateIanaTimezone(timezone)) {
+    return res.status(400).json({ error: `Invalid timezone: ${timezone}. Use an IANA identifier such as America/New_York.` });
+  }
   try {
     await pool.query(`
       INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, updated_at)

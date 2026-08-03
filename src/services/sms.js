@@ -56,17 +56,19 @@ async function send(accountId, clientId, to, body) {
 }
 
 // Templates
-function confirmationBody(clientName, serviceType, scheduledAt) {
-  const dt      = new Date(scheduledAt);
-  const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+function confirmationBody(clientName, serviceType, scheduledAt, timezone = null) {
+  const dt     = new Date(scheduledAt);
+  const tzOpt  = timezone ? { timeZone: timezone } : {};
+  const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...tzOpt });
+  const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...tzOpt });
   return `Hi ${clientName}, your ${serviceType} appointment is confirmed for ${dateStr} at ${timeStr}. Reply STOP to opt out.`;
 }
 
-function reminderBody(clientName, serviceType, scheduledAt) {
+function reminderBody(clientName, serviceType, scheduledAt, timezone = null) {
   const dt      = new Date(scheduledAt);
-  const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const tzOpt   = timezone ? { timeZone: timezone } : {};
+  const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...tzOpt });
+  const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...tzOpt });
   return `Hi ${clientName}, reminder: your ${serviceType} appointment is tomorrow (${dateStr}) at ${timeStr}. Reply STOP to opt out.`;
 }
 

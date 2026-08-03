@@ -8,7 +8,7 @@ const sms        = require('../services/sms');
 const notify     = require('../services/notify');
 const audit      = require('../services/audit');
 const { geocodeAddress } = require('../services/geocode');
-const { validateIanaTimezone, utcScheduleToLocal } = require('../services/scheduleTimeService');
+const { validateIanaTimezone, utcScheduleToLocal, localScheduleToUtc } = require('../services/scheduleTimeService');
 
 // Valid status values — single-day and multi-day parent job statuses
 const VALID_STATUSES = [
@@ -33,6 +33,7 @@ const PATCHABLE_JOB_FIELDS = [
   'is_multi_day',
   // Timezone audit fields (populated by the scheduling form when column exists)
   'scheduling_timezone', 'original_local_start',
+  'input_timezone', 'input_timezone_source', 'creator_timezone_at_creation',
 ];
 
 // ── Helper: fetch sessions + techs for a job ─────────────────────────────────
@@ -340,7 +341,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date,
     end_date_unknown, job_manager_id, estimated_labor_hours, billing_method, priority,
     sessions = [],  // array of { scheduled_date, start_time, end_time, tech_ids, title, description }
-    // Timezone audit fields (set by frontend using business timezone)
+    // New scheduling contract: frontend sends local string + explicit timezone; server converts.
+    scheduled_at_local, input_timezone, input_timezone_source, creator_timezone,
+    // Legacy timezone audit fields
     scheduling_timezone, original_local_start,
   } = req.body;
 
@@ -348,11 +351,36 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
 
-  // Validate timezone if provided — silently ignore invalid values rather than
+  // Resolve final scheduled_at UTC value.
+  // New path: frontend sends scheduled_at_local (raw local string) + input_timezone; server converts.
+  // Legacy path: frontend sent a pre-converted UTC ISO string as scheduled_at.
+  let finalScheduledAt = scheduled_at || null;
+  let validatedInputTZ = (input_timezone && validateIanaTimezone(input_timezone)) ? input_timezone : null;
+
+  if (scheduled_at_local) {
+    if (!validatedInputTZ) {
+      return res.status(400).json({
+        error: 'input_timezone is required when scheduled_at_local is provided. Use an IANA identifier such as America/New_York.',
+      });
+    }
+    const localStr = String(scheduled_at_local).trim();
+    if (localStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)) {
+      try {
+        const datePart = localStr.substring(0, 10);
+        const timePart = localStr.substring(11, 16);
+        finalScheduledAt = localScheduleToUtc(datePart, timePart, validatedInputTZ).toISOString();
+      } catch (convErr) {
+        return res.status(400).json({
+          error: `Cannot interpret "${scheduled_at_local}" in timezone "${validatedInputTZ}": ${convErr.message}`,
+        });
+      }
+    }
+  }
+
+  // Validate scheduling_timezone if provided — silently ignore invalid values rather than
   // rejecting saves (backward compatibility with legacy payloads).
-  const validatedTZ = (scheduling_timezone && validateIanaTimezone(scheduling_timezone))
-    ? scheduling_timezone
-    : null;
+  const validatedTZ = validatedInputTZ
+    || ((scheduling_timezone && validateIanaTimezone(scheduling_timezone)) ? scheduling_timezone : null);
 
   // Enforce entitlements before touching the DB
   const ent = await getEntitlements(req.accountId);
@@ -432,12 +460,13 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
           travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng,
           is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date, end_date_unknown,
           job_manager_id, estimated_labor_hours, billing_method, priority,
-          scheduling_timezone, original_local_start, geocode_status, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,NOW())
+          scheduling_timezone, original_local_start, geocode_status,
+          input_timezone, input_timezone_source, creator_timezone_at_creation, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
        RETURNING *`,
       [
         req.accountId, client_id, tech_id || null, service_type,
-        scheduled_at || null, amount || null, notes, recurring || 'none',
+        finalScheduledAt, amount || null, notes, recurring || 'none',
         travelFee, finalServiceAddress || null, service_city || null,
         service_state || null, service_zip || null, finalServiceLat, finalServiceLng,
         !!is_multi_day, title || null, scope_of_work || null,
@@ -445,6 +474,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         job_manager_id || null, estimated_labor_hours || null,
         billing_method || 'fixed', priority || 'normal',
         validatedTZ, original_local_start || null, geocodeStatus,
+        validatedInputTZ, input_timezone_source || null,
+        (creator_timezone && validateIanaTimezone(creator_timezone)) ? creator_timezone : null,
       ]
     );
     const job = rows[0];
@@ -532,6 +563,38 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
 
 // ── PATCH /api/jobs/:id — full edit ──────────────────────────────────────────
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  // New scheduling contract: convert scheduled_at_local + input_timezone to UTC before patching.
+  if (req.body.scheduled_at_local) {
+    const inputTZ = req.body.input_timezone;
+    if (!inputTZ || !validateIanaTimezone(inputTZ)) {
+      return res.status(400).json({
+        error: 'input_timezone is required when scheduled_at_local is provided. Use an IANA identifier such as America/New_York.',
+      });
+    }
+    const localStr = String(req.body.scheduled_at_local).trim();
+    if (localStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)) {
+      try {
+        const datePart = localStr.substring(0, 10);
+        const timePart = localStr.substring(11, 16);
+        req.body.scheduled_at = localScheduleToUtc(datePart, timePart, inputTZ).toISOString();
+      } catch (convErr) {
+        return res.status(400).json({
+          error: `Cannot interpret "${req.body.scheduled_at_local}" in timezone "${inputTZ}": ${convErr.message}`,
+        });
+      }
+    }
+    // scheduled_at_local is not a real DB column — remove it before building the UPDATE.
+    delete req.body.scheduled_at_local;
+    // creator_timezone_at_creation: validate before patching
+    if (req.body.creator_timezone && !validateIanaTimezone(req.body.creator_timezone)) {
+      delete req.body.creator_timezone;
+    }
+    if (req.body.creator_timezone) {
+      req.body.creator_timezone_at_creation = req.body.creator_timezone;
+    }
+    delete req.body.creator_timezone;
+  }
+
   const updates = [];
   const values  = [];
   let i = 1;

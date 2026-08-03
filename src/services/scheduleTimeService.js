@@ -27,11 +27,23 @@ const FALLBACK_TZ = 'UTC';
  * Rejects fixed-offset strings like "UTC-5" or "GMT+4".
  * Uses Node's built-in Intl API (no external packages required).
  */
+// Common timezone abbreviations that Intl.DateTimeFormat accepts but that do NOT
+// handle DST and are often used by mistake instead of proper IANA identifiers.
+// e.g. 'EST' maps to America/Panama (UTC-5 always) not America/New_York.
+const BANNED_TZ_ABBREVIATIONS = new Set([
+  'EST', 'EDT', 'CST', 'CDT', 'MST', 'MDT', 'PST', 'PDT',
+  'AST', 'ADT', 'HST', 'AKST', 'AKDT',
+  'CET', 'CEST', 'EET', 'EEST', 'WET', 'WEST',
+  'IST', 'JST', 'KST', 'SGT', 'HKT', 'AEST', 'AEDT',
+]);
+
 function validateIanaTimezone(tz) {
   if (!tz || typeof tz !== 'string') return false;
   // Reject fixed-offset aliases that aren't proper IANA zone names.
   // Pure "UTC" is valid; "UTC+5" / "UTC-5" are not.
   if (/^(UTC|GMT)[+-]\d/.test(tz)) return false;
+  // Reject common timezone abbreviations that skip DST transitions.
+  if (BANNED_TZ_ABBREVIATIONS.has(tz.toUpperCase())) return false;
   try {
     Intl.DateTimeFormat('en-US', { timeZone: tz });
     return true;

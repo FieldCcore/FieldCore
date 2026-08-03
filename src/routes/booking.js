@@ -127,9 +127,11 @@ router.post('/:accountId/submit', async (req, res) => {
     // Check if deposit is required
     const settingsResult = await pool.query(
       `SELECT bs.deposit_amount, bs.deposit_rules, bs.business_name,
-              a.stripe_connect_account_id, a.stripe_connect_status
+              a.stripe_connect_account_id, a.stripe_connect_status,
+              COALESCE(bp.timezone, 'UTC') AS display_tz
        FROM booking_settings bs
        JOIN accounts a ON a.id = bs.account_id
+       LEFT JOIN business_profiles bp ON bp.account_id = bs.account_id
        WHERE bs.account_id = $1`,
       [accountId]
     );
@@ -205,10 +207,11 @@ router.post('/:accountId/submit', async (req, res) => {
     }
 
     // No deposit required — confirm immediately via SMS + email
+    const displayTz = settings?.display_tz || 'UTC';
     if (phone) {
       smsService.send(
         accountId, client.id, phone,
-        smsService.confirmationBody(name, service, scheduled_at)
+        smsService.confirmationBody(name, service, scheduled_at, displayTz)
       ).then(result => {
         if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
       }).catch(err => console.error('[Booking SMS]', err.message));
@@ -217,7 +220,7 @@ router.post('/:accountId/submit', async (req, res) => {
       emailService.send({
         to:      email,
         subject: `Your ${service} appointment is confirmed`,
-        html:    emailService.confirmationHtml(name, service, scheduled_at),
+        html:    emailService.confirmationHtml(name, service, scheduled_at, displayTz),
       }).catch(err => console.error('[Booking email]', err.message));
     }
 

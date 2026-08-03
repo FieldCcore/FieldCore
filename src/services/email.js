@@ -38,11 +38,12 @@ function wrap(content) {
 </body></html>`;
 }
 
-function fmtDt(scheduledAt) {
-  const dt = new Date(scheduledAt);
+function fmtDt(scheduledAt, timezone = null) {
+  const dt    = new Date(scheduledAt);
+  const tzOpt = timezone ? { timeZone: timezone } : {};
   return {
-    date: dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
-    time: dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+    date: dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', ...tzOpt }),
+    time: dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...tzOpt }),
   };
 }
 
@@ -57,8 +58,8 @@ function card(inner) {
   return `<div style="background:#f9f7f3;border-radius:8px;padding:20px;margin-bottom:24px;border:1px solid #e5e0d8">${inner}</div>`;
 }
 
-function confirmationHtml(clientName, serviceType, scheduledAt) {
-  const { date, time } = fmtDt(scheduledAt);
+function confirmationHtml(clientName, serviceType, scheduledAt, timezone = null) {
+  const { date, time } = fmtDt(scheduledAt, timezone);
   return wrap(`
     <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Appointment Confirmed</h2>
     <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${clientName}, your appointment has been confirmed.</p>
@@ -67,8 +68,8 @@ function confirmationHtml(clientName, serviceType, scheduledAt) {
   `);
 }
 
-function reminderHtml(clientName, serviceType, scheduledAt) {
-  const { date, time } = fmtDt(scheduledAt);
+function reminderHtml(clientName, serviceType, scheduledAt, timezone = null) {
+  const { date, time } = fmtDt(scheduledAt, timezone);
   return wrap(`
     <h2 style="margin:0 0 6px;color:#1C2333;font-size:20px;font-weight:700">Appointment Reminder</h2>
     <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Hi ${clientName}, a friendly reminder about your appointment tomorrow.</p>
@@ -104,15 +105,17 @@ function invoiceHtml(clientName, serviceType, amount, payLink, businessName, tax
   `);
 }
 
-function noShowOperatorHtml(job, record, depositRetained) {
+function noShowOperatorHtml(job, record, depositRetained, timezone = null) {
+  const tzOpt = timezone ? { timeZone: timezone } : {};
+  const fmtTs = d => new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', ...tzOpt });
   return wrap(`
     <h2 style="margin:0 0 6px;color:#B52A2A;font-size:20px;font-weight:700">No-Show Declared</h2>
     <p style="color:#6b7280;margin:0 0 24px;font-size:14px">A no-show has been automatically documented for the following appointment.</p>
     ${card(
       detail('Client', record.client_name) +
       detail('Service', job.service_type) +
-      detail('Scheduled', new Date(record.scheduled_at).toLocaleString('en-US')) +
-      detail('Declared At', new Date(record.declared_at).toLocaleString('en-US')) +
+      detail('Scheduled', fmtTs(record.scheduled_at)) +
+      detail('Declared At', fmtTs(record.declared_at)) +
       detail('Grace Period', `${record.grace_period_minutes} minutes`) +
       detail('Deposit Retained', `$${parseFloat(depositRetained).toFixed(2)}`) +
       detail('Technician', record.tech_name || 'Unassigned')

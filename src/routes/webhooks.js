@@ -101,17 +101,22 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
       // Send confirmation SMS now that deposit is confirmed
       const { rows: jobRows } = await pool.query(
         `SELECT j.id, j.service_type, j.scheduled_at, j.account_id, j.confirmation_sent,
-                c.id AS client_id, c.name AS client_name, c.phone AS client_phone, c.email AS client_email
-         FROM jobs j JOIN clients c ON c.id = j.client_id
+                j.scheduling_timezone,
+                c.id AS client_id, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+                COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
+         FROM jobs j
+         JOIN clients c ON c.id = j.client_id
+         LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
          WHERE j.id = $1`,
         [jobId]
       );
       const job = jobRows[0];
       if (job && !job.confirmation_sent) {
+        const displayTz = job.display_tz || 'UTC';
         if (job.client_phone) {
           smsService.send(
             job.account_id, job.client_id, job.client_phone,
-            smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at)
+            smsService.confirmationBody(job.client_name, job.service_type, job.scheduled_at, displayTz)
           ).then(result => {
             if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
           }).catch(err => console.error('[Deposit webhook SMS]', err.message));
@@ -120,7 +125,7 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
           emailService.send({
             to:      job.client_email,
             subject: `Your ${job.service_type} appointment is confirmed`,
-            html:    emailService.confirmationHtml(job.client_name, job.service_type, job.scheduled_at),
+            html:    emailService.confirmationHtml(job.client_name, job.service_type, job.scheduled_at, displayTz),
           }).catch(err => console.error('[Deposit webhook email]', err.message));
         }
         notify.create(job.account_id, 'deposit_collected',

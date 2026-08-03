@@ -78,13 +78,18 @@ router.post('/send-template', requireAuth, requireRole('owner', 'manager'), asyn
     if (template === 'confirmation' || template === 'reminder') {
       if (!job_id) return res.status(400).json({ error: 'job_id required for this template' });
       const jobResult = await pool.query(
-        `SELECT * FROM jobs WHERE id = $1 AND account_id = $2`, [job_id, req.accountId]
+        `SELECT j.*, COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
+         FROM jobs j
+         LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
+         WHERE j.id = $1 AND j.account_id = $2`,
+        [job_id, req.accountId]
       );
       const job = jobResult.rows[0];
       if (!job) return res.status(404).json({ error: 'Job not found' });
+      const displayTz = job.display_tz || 'UTC';
       body = template === 'confirmation'
-        ? smsService.confirmationBody(client.name, job.service_type, job.scheduled_at)
-        : smsService.reminderBody(client.name, job.service_type, job.scheduled_at);
+        ? smsService.confirmationBody(client.name, job.service_type, job.scheduled_at, displayTz)
+        : smsService.reminderBody(client.name, job.service_type, job.scheduled_at, displayTz);
     } else {
       return res.status(400).json({ error: 'Unknown template. Use: confirmation, reminder' });
     }

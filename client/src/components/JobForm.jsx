@@ -1,70 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { format, addMinutes } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { Plus, Trash2, Lock } from 'lucide-react';
 import api from '../api';
 import AddressAutocomplete from './AddressAutocomplete';
 import { useEntitlements } from '../hooks/useEntitlements';
-import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
+import { resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimezone';
+import { TIMEZONES } from '../utils/timezones';
 
 function blankSession(date = '') {
   return { scheduled_date: date, start_time: '', end_time: '', title: '', description: '', tech_ids: [], lead_tech_id: '' };
 }
 
+// Detected once per page load — never changes.
+const BROWSER_TZ = (() => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isValidTimezone(tz) ? tz : 'UTC';
+  } catch { return 'UTC'; }
+})();
+
+// Format a UTC ISO string into a datetime-local value in the given timezone.
+function toLocalInTZ(utcIso, tz) {
+  if (!utcIso) return '';
+  try {
+    return formatInTimeZone(new Date(utcIso), tz, "yyyy-MM-dd'T'HH:mm");
+  } catch { return ''; }
+}
+
+// Format a Date (from a calendar slot click) into a datetime-local value
+// in the given timezone. Falls back to ISO string if conversion fails.
+function dateToLocalInTZ(ds, tz) {
+  if (!ds) return '';
+  if (typeof ds === 'string') return ds;
+  try {
+    return formatInTimeZone(ds, tz, "yyyy-MM-dd'T'HH:mm");
+  } catch { return ''; }
+}
+
+// For display in the conversion preview: convert a local string from one TZ to another.
+// Display-only — this is fine on the frontend.
+function convertLocalToTZ(localStr, fromTZ, toTZ) {
+  if (!localStr || !localStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)) return null;
+  try {
+    const utc = fromZonedTime(localStr, fromTZ);
+    return formatInTimeZone(utc, toTZ, 'MMM d, h:mm a zzz');
+  } catch { return null; }
+}
+
 /**
- * schedulingTimezone — the IANA timezone used to interpret wall-clock times
- * in this form. Comes from business_profiles.timezone (via the parent page).
- * Jobs are stored as UTC instants; this prop controls local↔UTC conversion.
+ * schedulingTimezone — the IANA timezone the calendar is currently displaying
+ * (comes from business_profiles.timezone via the parent page). Used to
+ * pre-fill times from calendar slot clicks in the expected display timezone.
  */
 export default function JobForm({ job, defaultStart, defaultMultiDay = false, onSave, onCancel, schedulingTimezone }) {
   const [clients,   setClients]   = useState([]);
   const [techs,     setTechs]     = useState([]);
   const [templates, setTemplates] = useState([]);
 
-  // Resolve the scheduling timezone: prop > job's stored timezone > browser fallback.
-  // Note: schedulingTimezone prop is set by the parent (Jobs.jsx) from calendarTZ,
-  // which itself comes from business-settings. In the rare case it's not yet loaded,
-  // we fall back to the browser timezone (same as the legacy behavior).
+  // ── Input timezone: the timezone the user is entering times in ──────────────
+  // This is explicitly separate from the calendar display timezone (schedulingTimezone).
+  // For edits: restore from stored job.input_timezone (round-trip invariant).
+  // For new jobs from calendar slot clicks: default to calendar display timezone.
+  // For new jobs from the "New Job" button (no slot): default to browser timezone.
+  const initialInputTZ = useMemo(() => {
+    if (job?.input_timezone && isValidTimezone(job.input_timezone)) return job.input_timezone;
+    if (defaultStart && schedulingTimezone && isValidTimezone(schedulingTimezone)) return schedulingTimezone;
+    return BROWSER_TZ;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [inputTimezone, setInputTimezone] = useState(initialInputTZ);
+  const [inputTZSource, setInputTZSource] = useState(() => {
+    if (job?.input_timezone && isValidTimezone(job.input_timezone)) return 'stored';
+    if (defaultStart && schedulingTimezone && isValidTimezone(schedulingTimezone)) return 'business';
+    return 'browser';
+  });
+
+  // resolvedTZ is kept only for calendar-slot pre-fill (defaultStartToInput).
+  // It must NEVER be used to parse appointment input or convert the scheduled time.
   const resolvedTZ = resolveCalendarTimeZone({
     businessTimezone: schedulingTimezone || job?.scheduling_timezone,
   }).timezone;
 
-  // Convert a UTC ISO string from the API to a naive local datetime-local string
-  // in the scheduling timezone. Used for form initialisation (edit round-trip).
-  function toLocalInput(utcIso) {
-    if (!utcIso) return '';
-    try {
-      return formatInTimeZone(new Date(utcIso), resolvedTZ, "yyyy-MM-dd'T'HH:mm");
-    } catch {
-      return format(new Date(utcIso), "yyyy-MM-dd'T'HH:mm");
+  // Initial scheduled_at string for the datetime-local input.
+  // Round-trip: for jobs with original_local_start, use that exact string.
+  // Backward-compat: for old jobs without it, convert UTC → initialInputTZ.
+  const initialScheduledAt = useMemo(() => {
+    if (job?.scheduled_at) {
+      return job.original_local_start || toLocalInTZ(job.scheduled_at, initialInputTZ);
     }
-  }
-
-  // Convert defaultStart (Date from calendar slot click, or string) to a local
-  // datetime-local string in the scheduling timezone.
-  function defaultStartToInput(ds) {
-    if (!ds) return '';
-    if (typeof ds === 'string') return ds; // Already formatted (e.g. "2026-08-02T07:30")
-    try {
-      // ds is a Date from RBC slot click. Its .getHours() reflects the visual
-      // position on the calendar grid. Format as browser local to preserve the
-      // visual time. Note: if browser TZ ≠ schedulingTZ this may differ by offset;
-      // that's an inherent RBC limitation, documented in calendarTimezone.js.
-      return format(ds, "yyyy-MM-dd'T'HH:mm");
-    } catch {
-      return '';
-    }
-  }
+    return dateToLocalInTZ(defaultStart, resolvedTZ);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [form, setForm] = useState({
     client_id:       job?.client_id    || '',
     tech_id:         job?.tech_id      || '',
     service_type:    job?.service_type || '',
-    // FIXED: use formatInTimeZone (scheduling TZ) instead of format (browser TZ)
-    // so the form always shows and saves the wall-clock time the business expects.
-    scheduled_at:    job?.scheduled_at
-      ? toLocalInput(job.scheduled_at)
-      : defaultStartToInput(defaultStart),
+    scheduled_at:    initialScheduledAt,
     amount:          job?.amount     || '',
     travel_fee:      job?.travel_fee != null ? String(job.travel_fee) : '',
     notes:           job?.notes      || '',
@@ -185,27 +217,22 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     setSaving(true);
     setError('');
     try {
-      // Convert the naive local datetime-local string to a UTC ISO string.
-      // The form value is wall-clock time in resolvedTZ (business timezone).
-      // fromZonedTime converts it to the correct UTC instant, respecting DST.
-      let scheduledAtUtc = null;
-      const localInput = form.scheduled_at;
-      if (localInput) {
-        try {
-          scheduledAtUtc = fromZonedTime(localInput, resolvedTZ).toISOString();
-        } catch {
-          // Fallback: treat as-is (legacy naive string — should not happen after this fix)
-          scheduledAtUtc = localInput;
-        }
-      }
+      // The raw local string typed by the user. We do NOT convert to UTC on the frontend.
+      // The backend receives scheduled_at_local + input_timezone and converts server-side.
+      const localInput = form.scheduled_at || null;
 
       const payload = {
         ...form,
-        // FIXED: send UTC ISO string, not naive local string
-        scheduled_at:  scheduledAtUtc,
-        // Timezone audit: tell the server what timezone was used for this save
-        scheduling_timezone:  resolvedTZ,
-        original_local_start: localInput || null,
+        // Send the raw local string and the explicit timezone — server does the UTC conversion.
+        scheduled_at:        undefined,      // not sent (no frontend UTC conversion)
+        scheduled_at_local:  localInput,
+        input_timezone:      inputTimezone,
+        input_timezone_source: inputTZSource === 'stored' ? 'user_confirmed' : inputTZSource,
+        creator_timezone:    BROWSER_TZ,
+        // Store the raw typed string for round-trip (edit form restores from this).
+        original_local_start: localInput,
+        // scheduling_timezone mirrors input_timezone for legacy scheduler / SMS paths.
+        scheduling_timezone: inputTimezone,
         amount:      form.amount      || null,
         tech_id:     form.tech_id     || null,
         service_lat: form.service_lat || null,
@@ -213,6 +240,7 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         job_manager_id: form.job_manager_id || null,
         estimated_labor_hours: form.estimated_labor_hours ? parseFloat(form.estimated_labor_hours) : null,
       };
+      delete payload.scheduled_at;
       delete payload._duration_minutes;
       delete payload._end_at;
 
@@ -223,16 +251,12 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
           end_time:    s.end_time     || null,
           lead_tech_id: s.lead_tech_id || null,
         }));
-        // Use first session date as scheduled_at if not set
-        if (!payload.scheduled_at && sessions[0]?.scheduled_date) {
+        // Use first session date as the job-level scheduled_at_local if no time was set
+        if (!payload.scheduled_at_local && sessions[0]?.scheduled_date) {
           const d = sessions[0].scheduled_date;
           const t = sessions[0].start_time || '08:00';
-          // Convert multi-day fallback start to UTC
-          try {
-            payload.scheduled_at = fromZonedTime(`${d}T${t}`, resolvedTZ).toISOString();
-          } catch {
-            payload.scheduled_at = `${d}T${t}`;
-          }
+          payload.scheduled_at_local = `${d}T${t}`;
+          payload.original_local_start = payload.scheduled_at_local;
         }
         payload.estimated_start_date = sessions[0]?.scheduled_date || payload.estimated_start_date || null;
       }
@@ -248,7 +272,41 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     }
   }
 
+  // ── Conversion preview ────────────────────────────────────────
+  // Show what the entered time maps to in the calendar display timezone when they differ.
+  const conversionPreview = useMemo(() => {
+    if (!form.scheduled_at || !schedulingTimezone || inputTimezone === schedulingTimezone) return null;
+    if (!isValidTimezone(schedulingTimezone)) return null;
+    const inCalTZ = convertLocalToTZ(form.scheduled_at, inputTimezone, schedulingTimezone);
+    if (!inCalTZ) return null;
+    const calLabel = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
+    return `In company timezone (${calLabel}): ${inCalTZ}`;
+  }, [form.scheduled_at, inputTimezone, schedulingTimezone]);
+
   const isMultiDay = form.is_multi_day;
+
+  // Build timezone selector options: browser TZ + business TZ + full list
+  const tzOptions = useMemo(() => {
+    const pinned = new Set();
+    const result = [];
+    if (BROWSER_TZ) { pinned.add(BROWSER_TZ); result.push({ value: BROWSER_TZ, label: `My timezone — ${BROWSER_TZ}` }); }
+    if (schedulingTimezone && isValidTimezone(schedulingTimezone) && !pinned.has(schedulingTimezone)) {
+      pinned.add(schedulingTimezone);
+      const bl = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
+      result.push({ value: schedulingTimezone, label: `Business timezone — ${bl} (${schedulingTimezone})` });
+    }
+    // If current inputTimezone isn't in the pinned list (e.g., stored from a different device), add it
+    if (inputTimezone && !pinned.has(inputTimezone)) {
+      pinned.add(inputTimezone);
+      result.push({ value: inputTimezone, label: inputTimezone });
+    }
+    // Divider then full sorted list
+    result.push({ value: '__sep__', label: '──────────────────', disabled: true });
+    for (const tz of TIMEZONES) {
+      if (!pinned.has(tz)) result.push({ value: tz, label: tz });
+    }
+    return result;
+  }, [schedulingTimezone, inputTimezone]);
 
   return (
     <form className="client-form" onSubmit={handleSubmit}>
@@ -372,6 +430,34 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
               </select>
             </div>
           </div>
+
+          {/* Timezone selector — explicit: which timezone is the entered time in? */}
+          <div className="form-group" style={{ marginTop: -8, marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: 'var(--steel)', fontWeight: 500, marginBottom: 4, display: 'block' }}>
+              Times entered in
+            </label>
+            <select
+              value={inputTimezone}
+              onChange={e => { setInputTimezone(e.target.value); setInputTZSource('user_selected'); }}
+              style={{ fontSize: 13, padding: '6px 8px' }}
+            >
+              {tzOptions.map(opt => (
+                <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Conversion preview — shown when input TZ differs from calendar display TZ */}
+          {conversionPreview && (
+            <div style={{ fontSize: 12, color: 'var(--slate)', background: 'var(--offwhite)',
+              border: '1px solid var(--lightgray)', borderRadius: 6, padding: '6px 10px',
+              marginTop: -8, marginBottom: 14 }}>
+              {conversionPreview}
+            </div>
+          )}
+
           {form._end_at && (
             <p style={{ fontSize: 12, color: '#8A90A2', marginTop: -8, marginBottom: 12 }}>
               Estimated end: {form._end_at.replace('T', ' at ').replace(/:\d\d$/, '')}

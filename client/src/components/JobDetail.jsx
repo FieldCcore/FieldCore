@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Camera, Timer, MessageSquare, CheckCircle, CalendarDays } from 'lucide-react';
 import { format, addMinutes } from 'date-fns';
 import { formatDuration } from '../utils/normalizeJob';
-import { formatTZ, resolveCalendarTimeZone } from '../utils/calendarTimezone';
+import { formatTZ, resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimezone';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from './StatusBadge';
@@ -51,7 +51,12 @@ function fmtHistorical(min) {
 }
 
 export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit, calendarTZ }) {
-  const tz = resolveCalendarTimeZone({ businessTimezone: calendarTZ }).timezone;
+  // Display timezone: prefer the timezone the appointment was explicitly entered in,
+  // then fall back to the calendar display timezone (business profile timezone).
+  const inputTZValid = initialJob?.input_timezone && isValidTimezone(initialJob.input_timezone);
+  const tz = inputTZValid
+    ? initialJob.input_timezone
+    : resolveCalendarTimeZone({ businessTimezone: calendarTZ }).timezone;
   const [job,           setJob]           = useState(initialJob);
   const [sessions,      setSessions]      = useState(initialJob.sessions || []);
   const [sessionsLoaded,setSessLoaded]    = useState(!!initialJob.sessions);
@@ -349,7 +354,14 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             <>
               <div className="detail-row">
                 <label>Start</label>
-                <span>{job.scheduled_at ? formatTZ(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a', tz) : '—'}</span>
+                <span>
+                  {job.scheduled_at ? formatTZ(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a', tz) : '—'}
+                  {job.scheduled_at && (
+                    <span style={{ fontSize: 11, color: 'var(--steel)', marginLeft: 6 }}>
+                      {tz.split('/').pop().replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </span>
               </div>
               {job.scheduled_at && job.duration_minutes ? (
                 <div className="detail-row">

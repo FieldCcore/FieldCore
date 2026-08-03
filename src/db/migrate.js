@@ -1120,6 +1120,11 @@ const MIGRATIONS = [
   // Scheduling timezone audit columns (added 2026-08-02 — must be idempotent)
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS scheduling_timezone  TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS original_local_start TEXT`,
+
+  // Explicit per-appointment timezone audit columns (scheduling engine rebuild)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS input_timezone TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS input_timezone_source TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS creator_timezone_at_creation TEXT`,
 ];
 
 async function runMigrations() {

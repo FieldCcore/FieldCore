@@ -87,11 +87,13 @@ router.post('/jobs/:jobId/declare', requireAuth, async (req, res) => {
       `SELECT j.*, c.name AS client_name, c.phone AS client_phone,
               c.email AS client_email, c.address AS client_address,
               u.name AS tech_name, u.phone AS tech_phone,
-              d.amount AS deposit_amount
+              d.amount AS deposit_amount,
+              COALESCE(j.scheduling_timezone, bp.timezone, 'UTC') AS display_tz
        FROM jobs j
        JOIN clients c ON c.id = j.client_id
        LEFT JOIN users u ON u.id = j.tech_id
        LEFT JOIN deposits d ON d.job_id = j.id AND d.status = 'collected'
+       LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
        WHERE j.id = $1 AND j.account_id = $2
          AND j.status IN ('scheduled','in_progress')`,
       [req.params.jobId, req.accountId]
@@ -172,7 +174,7 @@ router.post('/jobs/:jobId/declare', requireAuth, async (req, res) => {
       await email.send({
         to:      ownerRow.email,
         subject: `No-Show Declared — ${job.client_name} · ${job.service_type}`,
-        html:    email.noShowOperatorHtml(job, record, depositRetained),
+        html:    email.noShowOperatorHtml(job, record, depositRetained, job.display_tz || 'UTC'),
       }).catch(err => console.error('[NoShow email operator]', err.message));
     }
 
