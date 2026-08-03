@@ -1129,6 +1129,32 @@ const MIGRATIONS = [
   // Geocoding error capture — stores the actual provider status and human-readable reason
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geocode_provider_status TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geocode_error TEXT`,
+
+  // ── DISPATCH ADVANCED OPERATIONS — PHASE 1 ────────────────────────────────
+  // Per-tenant feature flags for phased dispatch feature rollout.
+  // Keys match the dispatch_* flag names. Empty JSONB = all flags use defaults.
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS feature_flags JSONB NOT NULL DEFAULT '{}'`,
+
+  // Route order for sequence engine (Phase 2 — add column now, populated in Phase 2)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS route_order INT`,
+
+  // Dispatch activity log — authoritative event timeline for jobs and dispatchers.
+  // Sourced from real domain events only. Phase 3 adds the full UI; this table
+  // is populated from Phase 1 onward so historical data exists when the UI ships.
+  `CREATE TABLE IF NOT EXISTS dispatch_activity_log (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id      UUID REFERENCES jobs(id) ON DELETE SET NULL,
+     tech_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     event_type  TEXT NOT NULL,
+     actor_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+     actor_name  TEXT,
+     details     JSONB,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_account ON dispatch_activity_log(account_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_job     ON dispatch_activity_log(job_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_tech    ON dispatch_activity_log(account_id, tech_id, created_at DESC)`,
 ];
 
 async function runMigrations() {

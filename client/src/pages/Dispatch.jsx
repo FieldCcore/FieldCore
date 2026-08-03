@@ -7,6 +7,8 @@ import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
 import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
+import { useDispatchFeatureFlags } from '../hooks/useDispatchFeatureFlags';
+import { useDispatchWorkloads } from '../hooks/useDispatchWorkloads';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
@@ -15,6 +17,15 @@ import { isValidCoord, classifyTechGPS } from '../maps/dispatchCoords';
 import { getJobMarkerColor } from '../domain/jobStatusPresentation';
 import { getTechStatus } from '../domain/technicianStatusPresentation';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
+
+function getUserRoleFromToken() {
+  try {
+    const token = localStorage.getItem('fc_token');
+    if (!token) return 'tech';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.role || 'tech';
+  } catch { return 'tech'; }
+}
 
 // Job statuses that should appear as map markers.
 const MAP_MARKER_STATUSES = new Set([
@@ -122,6 +133,8 @@ export default function Dispatch() {
   const [isDataStale,      setIsDataStale]      = useState(false);
   const [retryKey,         setRetryKey]         = useState(0);
   const [dispatchDate,     setDispatchDate]     = useState(null);
+  const flags       = useDispatchFeatureFlags();
+  const { byTechId: workloadsByTechId } = useDispatchWorkloads(dispatchDate, flags.dispatch_workload_balancing);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [dispatchTZ,       setDispatchTZ]       = useState(() => resolveCalendarTimeZone({}).timezone);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -131,6 +144,8 @@ export default function Dispatch() {
   const [bannerDismissed,  setBannerDismissed]  = useState(false);
   const [promptDismissed,  setPromptDismissed]  = useState(false);
   const [recenterMsg,      setRecenterMsg]      = useState(null);
+  const [assignmentPending, setAssignmentPending] = useState(null); // { job, tech, validation }
+  const userRole = getUserRoleFromToken();
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const mapRef                 = useRef(null);
@@ -593,6 +608,46 @@ export default function Dispatch() {
     setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
   }, []);
 
+  // ── Phase 1 assignment flow ───────────────────────────────────────────────
+  const handleAssignJob = useCallback(async (jobId, techId) => {
+    const job  = jobsRef.current.find(j => j.id === jobId);
+    const tech = techs.find(t => t.id === techId);
+    if (!job || !tech) return;
+    // Expand sidebar so the confirmation panel is visible
+    if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
+    if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    try {
+      const res = await api.post('/dispatch/assignments/validate', { jobId, techId });
+      setAssignmentPending({ job, tech, validation: res.data });
+      setSidebarView('assignment_confirm');
+    } catch (err) {
+      setAssignmentPending({
+        job, tech,
+        validation: {
+          allowed: false,
+          blockingIssues: [{ message: err.response?.data?.error || 'Validation failed. Please try again.' }],
+          warnings: [], informational: [],
+          scheduleImpact: {}, workloadImpact: {},
+        },
+      });
+      setSidebarView('assignment_confirm');
+    }
+  }, [techs, sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAssignConfirmed = useCallback((updatedJob) => {
+    if (updatedJob) {
+      setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
+    }
+    setAssignmentPending(null);
+    setSelectedItem(null);
+    setSidebarView('list');
+  }, []);
+
+  const handleAssignCancel = useCallback(() => {
+    setAssignmentPending(null);
+    setSidebarView('list');
+  }, []);
+
   const handleCenterOnTech = useCallback((techId) => {
     const loc = techLocsRef.current.find(l => l.user_id === techId);
     if (!loc || !isValidCoord(loc.lat, loc.lng)) return;
@@ -677,6 +732,13 @@ export default function Dispatch() {
             onCenterJob={handleCenterOnJob}
             onCenterTech={handleCenterOnTech}
             onJobGeocoded={handleJobGeocoded}
+            assignmentPending={assignmentPending}
+            onAssignConfirmed={handleAssignConfirmed}
+            onAssignCancel={handleAssignCancel}
+            onAssignJob={handleAssignJob}
+            flags={flags}
+            workloadsByTechId={workloadsByTechId}
+            userRole={userRole}
           />
 
           <div className="dispatch-map-stage">

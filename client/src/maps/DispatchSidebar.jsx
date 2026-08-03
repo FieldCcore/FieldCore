@@ -3,6 +3,7 @@ import { useDispatchKpiMetrics } from '../hooks/useDispatchKpiMetrics';
 import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
+import DispatchAssignmentPanel from './DispatchAssignmentPanel';
 import DispatchDateControl from './DispatchDateControl';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
@@ -400,11 +401,19 @@ export default function DispatchSidebar({
   onDateChange,
   timezone,
   // Detail views
-  sidebarView,     // 'list' | 'job_details' | 'tech_details'
+  sidebarView,     // 'list' | 'job_details' | 'tech_details' | 'assignment_confirm'
   onSidebarBack,   // () => void — go back to list
   onCenterJob,     // (job) => void
   onCenterTech,    // (techId) => void
   onJobGeocoded,   // (updatedJob) => void
+  // Phase 1 — assignment
+  assignmentPending,     // { job, tech, validation } | null
+  onAssignConfirmed,     // (updatedJob) => void
+  onAssignCancel,        // () => void
+  onAssignJob,           // (jobId, techId) => void
+  flags,                 // dispatch feature flags
+  workloadsByTechId,     // Map<techId, WorkloadEntry>
+  userRole,              // 'owner' | 'manager' | 'tech'
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
@@ -459,7 +468,7 @@ export default function DispatchSidebar({
   }, [selectedTech, jobs]);
 
   const showDetailView = (isExpanded || isMobile) &&
-    (sidebarView === 'job_details' || sidebarView === 'tech_details');
+    (sidebarView === 'job_details' || sidebarView === 'tech_details' || sidebarView === 'assignment_confirm');
 
   return (
     <div
@@ -518,6 +527,16 @@ export default function DispatchSidebar({
         />
       )}
 
+      {showDetailView && sidebarView === 'assignment_confirm' && assignmentPending && (
+        <DispatchAssignmentPanel
+          job={assignmentPending.job}
+          tech={assignmentPending.tech}
+          validation={assignmentPending.validation}
+          onConfirm={onAssignConfirmed}
+          onCancel={onAssignCancel}
+        />
+      )}
+
       {/* List view: KPI grid + date control + team/jobs panel */}
       {(isExpanded || isMobile) && !showDetailView && (
         <>
@@ -543,6 +562,10 @@ export default function DispatchSidebar({
             onSelectJob={onSelectJob}
             panelFocus={panelFocus}
             timezone={timezone}
+            flags={flags}
+            workloadsByTechId={workloadsByTechId}
+            onAssignJob={onAssignJob}
+            userRole={userRole}
           />
         </>
       )}

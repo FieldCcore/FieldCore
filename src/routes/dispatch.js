@@ -1,7 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const audit    = require('../services/audit');
+const { validate: validateAssignment } = require('../services/assignmentValidationService');
+const { getWorkloads }                 = require('../services/technicianWorkloadService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -385,6 +388,222 @@ router.get('/schedule', requireAuth, async (req, res) => {
       errorCode: err.code || null, error: err.message,
     }));
     res.status(500).json({ error: 'Failed to load dispatch schedule.' });
+  }
+});
+
+// ── Phase 1 flags — defaults differ between dev and production ────────────────
+const PHASE1_DEFAULTS = {
+  dispatch_drag_assignment:    process.env.NODE_ENV !== 'production',
+  dispatch_conflict_engine:    process.env.NODE_ENV !== 'production',
+  dispatch_workload_balancing: process.env.NODE_ENV !== 'production',
+};
+const ALL_FLAG_DEFAULTS = {
+  ...PHASE1_DEFAULTS,
+  dispatch_route_sequencing:              false,
+  dispatch_service_areas:                 false,
+  dispatch_emergency_mode:                false,
+  dispatch_delay_prediction:              false,
+  dispatch_quick_communications:          false,
+  dispatch_activity_timeline:             false,
+  dispatch_predictive_operations_foundation: false,
+};
+
+/**
+ * GET /api/dispatch/feature-flags
+ * Returns the merged flag state for the tenant: defaults + per-tenant overrides.
+ */
+router.get('/feature-flags', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(feature_flags, '{}') AS feature_flags
+       FROM dispatch_settings WHERE account_id = $1`,
+      [req.accountId]
+    );
+    const overrides = rows[0]?.feature_flags || {};
+    res.json({ ...ALL_FLAG_DEFAULTS, ...overrides });
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.feature-flags.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to load feature flags.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/assignments/validate
+ * Validate a proposed assignment without mutating anything.
+ * Body: { jobId, techId, isEmergency? }
+ * Requires owner or manager role.
+ */
+router.post('/assignments/validate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { jobId, techId, isEmergency = false } = req.body;
+  if (!jobId || !techId) {
+    return res.status(400).json({ error: 'jobId and techId are required.' });
+  }
+  try {
+    const result = await validateAssignment({
+      accountId:          req.accountId,
+      jobId,
+      techId,
+      requestedByUserId:  req.userId,
+      isEmergency,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.assign.validate.error', error: err.message }));
+    res.status(500).json({ error: 'Validation failed.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/assignments
+ * Assign a job to a technician after server-side validation.
+ * Body: { jobId, techId, overrideWarnings?, overrideReason?, isEmergency? }
+ * Requires owner or manager role.
+ */
+router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { jobId, techId, overrideWarnings = false, overrideReason, isEmergency = false } = req.body;
+  if (!jobId || !techId) {
+    return res.status(400).json({ error: 'jobId and techId are required.' });
+  }
+
+  const validation = await validateAssignment({
+    accountId:         req.accountId,
+    jobId,
+    techId,
+    requestedByUserId: req.userId,
+    isEmergency,
+  });
+
+  if (!validation.allowed) {
+    return res.status(422).json({
+      error:          'Assignment blocked by validation.',
+      blockingIssues: validation.blockingIssues,
+      warnings:       validation.warnings,
+    });
+  }
+
+  if (validation.warnings.length > 0 && !overrideWarnings) {
+    return res.status(422).json({
+      error:            'Assignment has warnings requiring explicit confirmation.',
+      requiresConfirm:  true,
+      warnings:         validation.warnings,
+      informational:    validation.informational,
+      workloadImpact:   validation.workloadImpact,
+      scheduleImpact:   validation.scheduleImpact,
+    });
+  }
+
+  // ── Fetch previous tech for audit ─────────────────────────────────────────
+  const { rows: [prevJob] } = await pool.query(
+    `SELECT tech_id FROM jobs WHERE id = $1 AND account_id = $2`,
+    [jobId, req.accountId]
+  );
+  const previousTechId = prevJob?.tech_id || null;
+
+  // ── Persist assignment ────────────────────────────────────────────────────
+  const { rows: [updatedJob] } = await pool.query(
+    `UPDATE jobs
+     SET tech_id    = $1,
+         updated_at = NOW()
+     WHERE id = $2 AND account_id = $3
+     RETURNING *`,
+    [techId, jobId, req.accountId]
+  );
+  if (!updatedJob) {
+    return res.status(404).json({ error: 'Job not found.' });
+  }
+
+  // ── Audit log ─────────────────────────────────────────────────────────────
+  const auditAction = previousTechId ? 'dispatch.job.reassigned' : 'dispatch.job.assigned';
+  await audit.log(req.accountId, req.userId, auditAction, 'job', jobId, {
+    previousTechId,
+    newTechId: techId,
+    overrideWarnings,
+    overrideReason: overrideWarnings ? overrideReason : undefined,
+    isEmergency,
+    warningCount: validation.warnings.length,
+    workloadImpact: validation.workloadImpact,
+  }, req.ip);
+
+  // ── Activity log ──────────────────────────────────────────────────────────
+  const { rows: [actor] } = await pool.query(
+    `SELECT name FROM users WHERE id = $1`, [req.userId]
+  ).catch(() => ({ rows: [{}] }));
+  await pool.query(
+    `INSERT INTO dispatch_activity_log
+       (account_id, job_id, tech_id, event_type, actor_id, actor_name, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      req.accountId, jobId, techId,
+      previousTechId ? 'job.reassigned' : 'job.assigned',
+      req.userId, actor?.name || null,
+      JSON.stringify({ previousTechId, newTechId: techId, isEmergency }),
+    ]
+  ).catch(e => console.error('[dispatch/assign] activity log failed:', e.message));
+
+  res.json({
+    job:          updatedJob,
+    validation,
+    assigned:     true,
+    previousTechId,
+  });
+});
+
+/**
+ * GET /api/dispatch/workloads
+ * Returns workload summary for all field-eligible, dispatch-visible technicians.
+ * Query params: date (YYYY-MM-DD, defaults to today in tenant TZ)
+ */
+router.get('/workloads', requireAuth, async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const tzRes = await pool.query(
+      `SELECT COALESCE(bp.timezone, 'UTC') AS tz,
+              TO_CHAR(NOW() AT TIME ZONE COALESCE(bp.timezone, 'UTC'), 'YYYY-MM-DD') AS today_local
+       FROM accounts a
+       LEFT JOIN business_profiles bp ON bp.account_id = a.id
+       WHERE a.id = $1`,
+      [req.accountId]
+    );
+    const tz         = tzRes.rows[0]?.tz         || 'UTC';
+    const todayLocal = tzRes.rows[0]?.today_local || new Date().toISOString().split('T')[0];
+    const dateLocal  = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+      ? req.query.date : todayLocal;
+
+    const workloads = await getWorkloads({ accountId: req.accountId, dateLocal, timezone: tz });
+
+    console.log(JSON.stringify({
+      event: 'dispatch.workloads', accountId: req.accountId,
+      durationMs: Date.now() - t0, techCount: workloads.length, dateLocal,
+    }));
+    res.json({ workloads, dateLocal, timezone: tz, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: 'dispatch.workloads.error', accountId: req.accountId,
+      durationMs: Date.now() - t0, error: err.message,
+    }));
+    res.status(500).json({ error: 'Failed to load workloads.' });
+  }
+});
+
+/**
+ * GET /api/dispatch/jobs/:jobId/activity
+ * Returns the dispatch activity timeline for a specific job.
+ * Phase 3 adds full UI — this endpoint is available from Phase 1 onward.
+ */
+router.get('/jobs/:jobId/activity', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT dal.*, u.name AS actor_name_live
+       FROM dispatch_activity_log dal
+       LEFT JOIN users u ON u.id = dal.actor_id
+       WHERE dal.account_id = $1 AND dal.job_id = $2
+       ORDER BY dal.created_at DESC
+       LIMIT 100`,
+      [req.accountId, req.params.jobId]
+    );
+    res.json({ events: rows, jobId: req.params.jobId });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load activity.' });
   }
 });
 

@@ -6,6 +6,17 @@ import { formatTZ } from '../utils/calendarTimezone';
 // #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
 const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
 
+const NON_ASSIGNABLE_STATUSES = new Set(['complete', 'cancelled', 'no_show', 'draft']);
+
+// Workload state → visual config
+const WL_STATE_STYLE = {
+  open:          { color: '#2E7D32', bg: '#E8F5E9', label: 'Open'     },
+  balanced:      { color: '#2E7D32', bg: '#E8F5E9', label: 'Balanced' },
+  near_capacity: { color: '#B45309', bg: '#FEF3C7', label: 'Near Cap' },
+  over_capacity: { color: '#DC2626', bg: '#FEE2E2', label: 'Over Cap' },
+  unavailable:   { color: '#5F667A', bg: '#F3F4F6', label: 'N/A'      },
+};
+
 function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
@@ -28,13 +39,35 @@ function techStatus(tech, techLocs, jobs) {
   return getTechStatus(tech, techLocs, jobs);
 }
 
-const TEAM_FILTERS = [
+function WorkloadBadge({ wl }) {
+  if (!wl) return null;
+  const s = WL_STATE_STYLE[wl.state] || WL_STATE_STYLE.unavailable;
+  return (
+    <span
+      aria-label={`Workload: ${wl.capacityPercent}%`}
+      style={{
+        fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99,
+        color: s.color, background: s.bg, marginLeft: 4, flexShrink: 0,
+      }}
+    >
+      {wl.capacityPercent}%
+    </span>
+  );
+}
+
+const BASE_TEAM_FILTERS = [
   { key: 'all',       label: 'All'       },
   { key: 'live',      label: 'Live GPS'  },
   { key: 'busy',      label: 'On Job'    },
   { key: 'available', label: 'Available' },
   { key: 'stale',     label: 'Location Stale' },
   { key: 'off',       label: 'Off Duty'  },
+];
+
+const WORKLOAD_FILTERS = [
+  { key: 'wl_open', label: 'Open Cap'  },
+  { key: 'wl_near', label: 'Near Cap'  },
+  { key: 'wl_over', label: 'Over Cap'  },
 ];
 
 const JOB_FILTERS = [
@@ -46,22 +79,34 @@ const JOB_FILTERS = [
 ];
 
 export default function DispatchTeamPanel({
-  techs      = [],
-  techLocs   = [],
-  jobs       = [],
-  sessions   = [],
-  loading    = false,
+  techs           = [],
+  techLocs        = [],
+  jobs            = [],
+  sessions        = [],
+  loading         = false,
   selectedItem,
   onSelectTech,
   onSelectJob,
   panelFocus,   // { tab, teamFilter?, jobFilter?, _nonce } — drives KPI-click navigation
   timezone,
+  // Phase 1 — assignment
+  flags           = {},
+  workloadsByTechId = null,  // Map<techId, WorkloadEntry>
+  onAssignJob     = null,    // (jobId, techId) => void
+  userRole        = 'tech',
 }) {
-  const [tab,            setTab]            = useState('team');
-  const [search,         setSearch]         = useState('');
-  const [teamFilter,     setTeamFilter]     = useState('all');
-  const [jobFilter,      setJobFilter]      = useState('all');
-  const [showAllStaff,   setShowAllStaff]   = useState(false);
+  const [tab,              setTab]              = useState('team');
+  const [search,           setSearch]           = useState('');
+  const [teamFilter,       setTeamFilter]       = useState('all');
+  const [jobFilter,        setJobFilter]        = useState('all');
+  const [showAllStaff,     setShowAllStaff]     = useState(false);
+  // Drag-and-drop state
+  const [dragJobId,        setDragJobId]        = useState(null);
+  const [dragOverTechId,   setDragOverTechId]   = useState(null);
+  // Accessible assign flow: picking a tech for a job
+  const [pendingAssignJob, setPendingAssignJob]  = useState(null);
+
+  const canAssign = flags.dispatch_drag_assignment && onAssignJob && userRole !== 'tech';
 
   // Respond to external panel-focus requests (from KPI card clicks)
   useEffect(() => {
@@ -72,12 +117,24 @@ export default function DispatchTeamPanel({
     setSearch('');
   }, [panelFocus]);
 
-  // Whether this member should appear in Dispatch by default (field-eligible + dispatch-visible)
+  // Clear pending assign when tab changes away from team
+  useEffect(() => {
+    if (tab !== 'team') setPendingAssignJob(null);
+  }, [tab]);
+
   function isFieldMember(t) {
-    // Backward-compat: if field_work_eligible not present (old API), fall back to role check
     if (t.field_work_eligible == null) return t.role === 'tech';
     return t.field_work_eligible === true && t.dispatch_visible === true;
   }
+
+  function isJobAssignable(job) {
+    return !NON_ASSIGNABLE_STATUSES.has(job.status);
+  }
+
+  const activeTeamFilters = useMemo(() => {
+    if (flags.dispatch_workload_balancing) return [...BASE_TEAM_FILTERS, ...WORKLOAD_FILTERS];
+    return BASE_TEAM_FILTERS;
+  }, [flags.dispatch_workload_balancing]);
 
   const filteredTechs = useMemo(() => {
     let list = showAllStaff ? techs : techs.filter(isFieldMember);
@@ -85,11 +142,26 @@ export default function DispatchTeamPanel({
       const q = search.toLowerCase();
       list = list.filter(t => t.name?.toLowerCase().includes(q));
     }
-    if (teamFilter !== 'all') {
+    if (teamFilter === 'wl_open') {
+      list = list.filter(t => {
+        const wl = workloadsByTechId?.get(t.id);
+        return wl && (wl.state === 'open' || wl.state === 'balanced');
+      });
+    } else if (teamFilter === 'wl_near') {
+      list = list.filter(t => {
+        const wl = workloadsByTechId?.get(t.id);
+        return wl && wl.state === 'near_capacity';
+      });
+    } else if (teamFilter === 'wl_over') {
+      list = list.filter(t => {
+        const wl = workloadsByTechId?.get(t.id);
+        return wl && wl.state === 'over_capacity';
+      });
+    } else if (teamFilter !== 'all') {
       list = list.filter(t => techStatus(t, techLocs, jobs).key === teamFilter);
     }
     return list;
-  }, [techs, techLocs, jobs, search, teamFilter, showAllStaff]);
+  }, [techs, techLocs, jobs, search, teamFilter, showAllStaff, workloadsByTechId]);
 
   const filteredJobs = useMemo(() => {
     let list = jobs;
@@ -113,6 +185,51 @@ export default function DispatchTeamPanel({
   }, [jobs, search, jobFilter]);
 
   function switchTab(t) { setTab(t); setSearch(''); }
+
+  function handleDragStart(e, jobId) {
+    setDragJobId(jobId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', jobId);
+  }
+
+  function handleDragEnd() {
+    setDragJobId(null);
+    setDragOverTechId(null);
+  }
+
+  function handleTechDragOver(e, techId) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverTechId(techId);
+  }
+
+  function handleTechDragLeave() {
+    setDragOverTechId(null);
+  }
+
+  function handleTechDrop(e, techId) {
+    e.preventDefault();
+    const jobId = e.dataTransfer.getData('text/plain') || dragJobId;
+    setDragJobId(null);
+    setDragOverTechId(null);
+    if (jobId && techId) onAssignJob?.(jobId, techId);
+  }
+
+  function handleAssignButtonClick(e, job) {
+    e.stopPropagation();
+    setPendingAssignJob(job);
+    setTab('team');
+    setSearch('');
+  }
+
+  function handleTechClickInAssignMode(techId) {
+    if (pendingAssignJob) {
+      onAssignJob?.(pendingAssignJob.id, techId);
+      setPendingAssignJob(null);
+    } else {
+      onSelectTech?.(techId);
+    }
+  }
 
   return (
     <div className="dispatch-team-panel">
@@ -148,12 +265,36 @@ export default function DispatchTeamPanel({
         </button>
       </div>
 
+      {/* Pending-assign banner */}
+      {pendingAssignJob && tab === 'team' && (
+        <div style={{
+          background: 'var(--sand)', color: '#fff',
+          padding: '6px 12px', fontSize: 11, fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span>Assigning: {pendingAssignJob.client_name}</span>
+          <button
+            type="button"
+            onClick={() => setPendingAssignJob(null)}
+            style={{
+              background: 'none', border: 'none', color: '#fff',
+              cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '0 2px',
+            }}
+            aria-label="Cancel tech selection"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Search */}
       <div className="dispatch-team-search-wrap">
         <input
           type="search"
           className="dispatch-team-search"
-          placeholder={tab === 'team' ? 'Search techs…' : 'Search jobs…'}
+          placeholder={tab === 'team'
+            ? (pendingAssignJob ? 'Filter techs…' : 'Search techs…')
+            : 'Search jobs…'}
           value={search}
           onChange={e => setSearch(e.target.value)}
           aria-label={tab === 'team' ? 'Search technicians' : 'Search jobs'}
@@ -164,7 +305,7 @@ export default function DispatchTeamPanel({
       {tab === 'team' && techs.length > 0 && (
         <>
           <div className="dispatch-team-filters" role="group" aria-label="Tech status filter">
-            {TEAM_FILTERS.map(f => (
+            {activeTeamFilters.map(f => (
               <button
                 key={f.key}
                 type="button"
@@ -225,12 +366,15 @@ export default function DispatchTeamPanel({
               <div className="dispatch-panel-empty">No field staff match this filter.</div>
             )
           ) : filteredTechs.map((t, i) => {
-            const st        = techStatus(t, techLocs, jobs);
-            const loc       = techLocs.find(l => l.user_id === t.id);
-            const activeJob = jobs.find(j => j.tech_id === t.id && ACTIVE_STATUSES.has(j.status));
-            const techJobs  = jobs.filter(j => j.tech_id === t.id);
-            const color     = AVATAR_COLORS[i % AVATAR_COLORS.length];
-            const isSel     = selectedItem?.type === 'tech' && selectedItem?.id === t.id;
+            const st          = techStatus(t, techLocs, jobs);
+            const loc         = techLocs.find(l => l.user_id === t.id);
+            const activeJob   = jobs.find(j => j.tech_id === t.id && ACTIVE_STATUSES.has(j.status));
+            const techJobs    = jobs.filter(j => j.tech_id === t.id);
+            const color       = AVATAR_COLORS[i % AVATAR_COLORS.length];
+            const isSel       = selectedItem?.type === 'tech' && selectedItem?.id === t.id;
+            const isDragOver  = dragOverTechId === t.id;
+            const wl          = flags.dispatch_workload_balancing ? workloadsByTechId?.get(t.id) : null;
+            const isPickMode  = !!pendingAssignJob;
 
             return (
               <div
@@ -239,15 +383,22 @@ export default function DispatchTeamPanel({
                 role="button"
                 tabIndex={0}
                 aria-pressed={isSel}
-                aria-label={`${t.name} — ${st.label}`}
-                onClick={() => onSelectTech?.(t.id)}
-                onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelectTech?.(t.id)}
+                aria-label={`${t.name} — ${st.label}${isPickMode ? ' — click to assign' : ''}`}
+                onClick={() => handleTechClickInAssignMode(t.id)}
+                onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleTechClickInAssignMode(t.id)}
+                onDragOver={canAssign ? e => handleTechDragOver(e, t.id) : undefined}
+                onDragLeave={canAssign ? handleTechDragLeave : undefined}
+                onDrop={canAssign ? e => handleTechDrop(e, t.id) : undefined}
+                style={isDragOver ? { outline: '2px solid var(--sand)', background: 'var(--off)' } : undefined}
               >
                 <div className="dispatch-tech-avatar" style={{ background: color }} aria-hidden="true">
                   {initials(t.name)}
                 </div>
                 <div className="dispatch-tech-info">
-                  <div className="dispatch-tech-name">{t.name}</div>
+                  <div className="dispatch-tech-name" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {t.name}
+                    {wl && <WorkloadBadge wl={wl} />}
+                  </div>
                   <div className="dispatch-tech-job">
                     {activeJob
                       ? `${activeJob.service_type} · ${activeJob.client_name}`
@@ -298,10 +449,12 @@ export default function DispatchTeamPanel({
               </div>
             )
           ) : filteredJobs.map((j, idx) => {
-            const p      = getJobStatusPresentation(j.status);
-            const sStyle = { background: p.badgeBg, color: p.badgeColor };
-            const sLabel = p.label;
-            const isSel  = selectedItem?.type === 'job' && selectedItem?.id === j.id;
+            const p          = getJobStatusPresentation(j.status);
+            const sStyle     = { background: p.badgeBg, color: p.badgeColor };
+            const sLabel     = p.label;
+            const isSel      = selectedItem?.type === 'job' && selectedItem?.id === j.id;
+            const assignable = canAssign && isJobAssignable(j);
+            const isDragging = dragJobId === j.id;
 
             return (
               <div
@@ -311,8 +464,12 @@ export default function DispatchTeamPanel({
                 tabIndex={0}
                 aria-pressed={isSel}
                 aria-label={`${j.client_name} — ${j.service_type}: ${sLabel}`}
+                draggable={assignable}
                 onClick={() => onSelectJob?.(j.id)}
                 onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelectJob?.(j.id)}
+                onDragStart={assignable ? e => handleDragStart(e, j.id) : undefined}
+                onDragEnd={assignable ? handleDragEnd : undefined}
+                style={isDragging ? { opacity: 0.5 } : undefined}
               >
                 <div
                   className="dispatch-job-dot"
@@ -332,6 +489,21 @@ export default function DispatchTeamPanel({
                       : <span style={{ color: 'var(--amber)' }}>Unassigned</span>
                     } · {fmtTime(j.scheduled_at, timezone)}
                   </div>
+                  {assignable && (
+                    <button
+                      type="button"
+                      onClick={e => handleAssignButtonClick(e, j)}
+                      style={{
+                        marginTop: 4, padding: '2px 8px',
+                        fontSize: 10, fontWeight: 700,
+                        background: 'var(--sand)', color: '#fff',
+                        border: 'none', borderRadius: 4, cursor: 'pointer',
+                      }}
+                      aria-label={`Assign ${j.client_name} — ${j.service_type} to a technician`}
+                    >
+                      Assign Tech
+                    </button>
+                  )}
                 </div>
                 <span className="dispatch-job-badge" style={sStyle}>{sLabel}</span>
               </div>
