@@ -6,9 +6,13 @@ import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
+import DispatchEmergencyBanner from '../maps/DispatchEmergencyBanner';
 import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
 import { useDispatchFeatureFlags } from '../hooks/useDispatchFeatureFlags';
 import { useDispatchWorkloads } from '../hooks/useDispatchWorkloads';
+import { useDispatchRouteSequence } from '../hooks/useDispatchRouteSequence';
+import { useDispatchServiceAreas } from '../hooks/useDispatchServiceAreas';
+import { useDispatchEmergencyMode } from '../hooks/useDispatchEmergencyMode';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
@@ -135,6 +139,10 @@ export default function Dispatch() {
   const [dispatchDate,     setDispatchDate]     = useState(null);
   const flags       = useDispatchFeatureFlags();
   const { byTechId: workloadsByTechId } = useDispatchWorkloads(dispatchDate, flags.dispatch_workload_balancing);
+  const routeSeq    = useDispatchRouteSequence();
+  const { areas: serviceAreas } = useDispatchServiceAreas(flags.dispatch_service_areas);
+  const { active: emergencyMode, toggling: emergencyToggling, toggle: toggleEmergencyMode } =
+    useDispatchEmergencyMode(flags.dispatch_emergency_mode);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [dispatchTZ,       setDispatchTZ]       = useState(() => resolveCalendarTimeZone({}).timezone);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -164,6 +172,7 @@ export default function Dispatch() {
   const techMarkersRef         = useRef({});
   const jobMarkersRef          = useRef({});
   const trafficLayerRef        = useRef(null);
+  const serviceAreaCirclesRef  = useRef({});
   // Track legend state before entering Full Map, so we can restore it on exit
   const preLegendStateRef      = useRef(null);
 
@@ -442,22 +451,59 @@ export default function Dispatch() {
     }
   }, [mapReady, layers.traffic]);
 
+  // ── Service area circles ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !window.google?.maps || !flags.dispatch_service_areas) {
+      Object.values(serviceAreaCirclesRef.current).forEach(c => c.setMap(null));
+      serviceAreaCirclesRef.current = {};
+      return;
+    }
+    const map = mapRef.current;
+    if (!map) return;
+    const activeIds = new Set();
+    serviceAreas.forEach(area => {
+      if (area.type !== 'radius' || !area.center_lat || !area.center_lng || !area.radius_km) return;
+      activeIds.add(area.id);
+      if (serviceAreaCirclesRef.current[area.id]) {
+        serviceAreaCirclesRef.current[area.id].setMap(map);
+        return;
+      }
+      serviceAreaCirclesRef.current[area.id] = new window.google.maps.Circle({
+        map,
+        center:      { lat: parseFloat(area.center_lat), lng: parseFloat(area.center_lng) },
+        radius:      parseFloat(area.radius_km) * 1000, // metres
+        strokeColor: '#1C2333',
+        strokeOpacity: 0.4,
+        strokeWeight:  1.5,
+        fillColor:   '#1C2333',
+        fillOpacity: 0.04,
+        clickable:   false,
+        zIndex:      1,
+      });
+    });
+    Object.keys(serviceAreaCirclesRef.current).forEach(id => {
+      if (!activeIds.has(id)) {
+        serviceAreaCirclesRef.current[id].setMap(null);
+        delete serviceAreaCirclesRef.current[id];
+      }
+    });
+  }, [mapReady, serviceAreas, flags.dispatch_service_areas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── selectedItem → sidebarView ────────────────────────────────────────────
   // When a job or tech is selected (via map click or sidebar card), switch the
   // sidebar to the corresponding detail view and expand if compact.
+  // Route view sets selectedItem itself and manages sidebarView directly — skip.
   useEffect(() => {
     if (!selectedItem) {
-      setSidebarView('list');
+      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm') ? v : 'list');
       return;
     }
     if (selectedItem.type === 'job') {
-      setSidebarView('job_details');
-      // Expand sidebar if compact so the job detail is visible
+      setSidebarView(v => v === 'assignment_confirm' ? v : 'job_details');
       if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
-      // If in Full Map mode, exit to show the sidebar
       if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     } else if (selectedItem.type === 'tech') {
-      setSidebarView('tech_details');
+      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm') ? v : 'tech_details');
       if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
       if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     }
@@ -468,6 +514,7 @@ export default function Dispatch() {
     return () => {
       Object.values(techMarkersRef.current).forEach(m => m.setMap(null));
       Object.values(jobMarkersRef.current).forEach(m => m.setMap(null));
+      Object.values(serviceAreaCirclesRef.current).forEach(c => c.setMap(null));
       trafficLayerRef.current?.setMap(null);
       clearTimeout(vpSaveTimerRef.current);
       clearTimeout(recenterMsgTimerRef.current);
@@ -602,7 +649,8 @@ export default function Dispatch() {
   const handleSidebarBack = useCallback(() => {
     setSelectedItem(null);
     setSidebarView('list');
-  }, []);
+    routeSeq.clearRoute();
+  }, [routeSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleJobGeocoded = useCallback((updatedJob) => {
     setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
@@ -617,7 +665,9 @@ export default function Dispatch() {
     if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
     if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     try {
-      const res = await api.post('/dispatch/assignments/validate', { jobId, techId });
+      const res = await api.post('/dispatch/assignments/validate', {
+        jobId, techId, isEmergency: emergencyMode,
+      });
       setAssignmentPending({ job, tech, validation: res.data });
       setSidebarView('assignment_confirm');
     } catch (err) {
@@ -632,7 +682,7 @@ export default function Dispatch() {
       });
       setSidebarView('assignment_confirm');
     }
-  }, [techs, sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [techs, sidebarMode, emergencyMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAssignConfirmed = useCallback((updatedJob) => {
     if (updatedJob) {
@@ -647,6 +697,19 @@ export default function Dispatch() {
     setAssignmentPending(null);
     setSidebarView('list');
   }, []);
+
+  // ── Phase 2 route sequencing ──────────────────────────────────────────────
+  const handleViewRoute = useCallback((techId) => {
+    if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
+    if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    setSidebarView('route_view');
+    setSelectedItem({ type: 'tech', id: techId });
+    routeSeq.loadRoute(techId, dispatchDate);
+  }, [sidebarMode, dispatchDate, routeSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSaveRoute = useCallback(async (techId, jobIds) => {
+    await routeSeq.saveRoute(techId, jobIds);
+  }, [routeSeq]);
 
   const handleCenterOnTech = useCallback((techId) => {
     const loc = techLocsRef.current.find(l => l.user_id === techId);
@@ -739,6 +802,12 @@ export default function Dispatch() {
             flags={flags}
             workloadsByTechId={workloadsByTechId}
             userRole={userRole}
+            routeState={routeSeq}
+            onSaveRoute={handleSaveRoute}
+            onViewRoute={handleViewRoute}
+            emergencyMode={emergencyMode}
+            onToggleEmergency={toggleEmergencyMode}
+            emergencyToggling={emergencyToggling}
           />
 
           <div className="dispatch-map-stage">
@@ -791,6 +860,15 @@ export default function Dispatch() {
                 }}>
                   {recenterMsg}
                 </div>
+              )}
+
+              {flags.dispatch_emergency_mode && (
+                <DispatchEmergencyBanner
+                  active={emergencyMode}
+                  toggling={emergencyToggling}
+                  onToggle={toggleEmergencyMode}
+                  userRole={userRole}
+                />
               )}
 
               <DispatchOverlayStatus

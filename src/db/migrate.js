@@ -1155,6 +1155,29 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_account ON dispatch_activity_log(account_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_job     ON dispatch_activity_log(job_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_tech    ON dispatch_activity_log(account_id, tech_id, created_at DESC)`,
+
+  // ── Phase 2: service areas ────────────────────────────────────────────────
+  // Radius-based service area boundaries per technician.
+  // type = 'radius' only for now; polygon reserved for a future release.
+  `CREATE TABLE IF NOT EXISTS service_areas (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     tech_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     name        TEXT,
+     type        TEXT NOT NULL DEFAULT 'radius',
+     center_lat  NUMERIC(10,6),
+     center_lng  NUMERIC(10,6),
+     radius_km   NUMERIC(8,3),
+     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_service_areas_account ON service_areas(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_service_areas_tech    ON service_areas(account_id, tech_id)`,
+
+  // Emergency dispatch mode columns on dispatch_settings
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_dispatch_active BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_activated_at    TIMESTAMPTZ`,
+  `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_activated_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
 ];
 
 async function runMigrations() {

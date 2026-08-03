@@ -1,5 +1,6 @@
 'use strict';
 const pool = require('../db/pool');
+const { getTechServiceArea, isJobInArea } = require('./serviceAreaService');
 
 const NON_ASSIGNABLE_STATUSES = new Set([
   'complete', 'cancelled', 'no_show', 'draft',
@@ -185,6 +186,26 @@ async function validate({ accountId, jobId, techId, requestedByUserId, isEmergen
 
   informational.push(issue('workload_summary', 'informational',
     `${tech.name} has ${currentCount} job${currentCount !== 1 ? 's' : ''} today (${+(currentMinutes / 60).toFixed(1)}h).`));
+
+  // ── Service area check ────────────────────────────────────────────────────
+  // Warning only — never blocking. Skipped in emergency mode.
+  if (!isEmergency) {
+    try {
+      const area = await getTechServiceArea({ accountId, techId });
+      if (area && (job.service_lat || job.client_lat)) {
+        const jobLat = job.service_lat || job.client_lat;
+        const jobLng = job.service_lng || job.client_lng;
+        if (!isJobInArea(area, jobLat, jobLng)) {
+          warnings.push(issue('outside_service_area', 'warning',
+            `This job is outside ${tech.name}'s assigned service area "${area.name || 'Service Area'}".`,
+            { areaId: area.id, resolutionOptions: ['confirm_anyway', 'select_other_technician'] }
+          ));
+        }
+      }
+    } catch {
+      // Service area check failure must never block an assignment
+    }
+  }
 
   // ── Result ─────────────────────────────────────────────────────────────────
   const scheduleImpact = {

@@ -3,8 +3,13 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const audit    = require('../services/audit');
-const { validate: validateAssignment } = require('../services/assignmentValidationService');
-const { getWorkloads }                 = require('../services/technicianWorkloadService');
+const { validate: validateAssignment }         = require('../services/assignmentValidationService');
+const { getWorkloads }                         = require('../services/technicianWorkloadService');
+const { getRouteForTech, saveRoute }           = require('../services/routeSequencingService');
+const {
+  getServiceAreas, createServiceArea,
+  updateServiceArea, deleteServiceArea,
+} = require('../services/serviceAreaService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -391,17 +396,20 @@ router.get('/schedule', requireAuth, async (req, res) => {
   }
 });
 
-// ── Phase 1 flags — defaults differ between dev and production ────────────────
+// ── Feature flag defaults — dev enables current phase, prod remains off ───────
 const PHASE1_DEFAULTS = {
   dispatch_drag_assignment:    process.env.NODE_ENV !== 'production',
   dispatch_conflict_engine:    process.env.NODE_ENV !== 'production',
   dispatch_workload_balancing: process.env.NODE_ENV !== 'production',
 };
+const PHASE2_DEFAULTS = {
+  dispatch_route_sequencing: process.env.NODE_ENV !== 'production',
+  dispatch_service_areas:    process.env.NODE_ENV !== 'production',
+  dispatch_emergency_mode:   process.env.NODE_ENV !== 'production',
+};
 const ALL_FLAG_DEFAULTS = {
   ...PHASE1_DEFAULTS,
-  dispatch_route_sequencing:              false,
-  dispatch_service_areas:                 false,
-  dispatch_emergency_mode:                false,
+  ...PHASE2_DEFAULTS,
   dispatch_delay_prediction:              false,
   dispatch_quick_communications:          false,
   dispatch_activity_timeline:             false,
@@ -604,6 +612,211 @@ router.get('/jobs/:jobId/activity', requireAuth, async (req, res) => {
     res.json({ events: rows, jobId: req.params.jobId });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load activity.' });
+  }
+});
+
+// ── Phase 2: Route sequencing ─────────────────────────────────────────────────
+
+/**
+ * GET /api/dispatch/technicians/:techId/route
+ * Returns the technician's jobs for the day in route_order sequence.
+ * Query params: date (YYYY-MM-DD, defaults to today in tenant TZ)
+ */
+router.get('/technicians/:techId/route', requireAuth, async (req, res) => {
+  try {
+    const tzRes = await pool.query(
+      `SELECT COALESCE(bp.timezone, 'UTC') AS tz,
+              TO_CHAR(NOW() AT TIME ZONE COALESCE(bp.timezone, 'UTC'), 'YYYY-MM-DD') AS today_local
+       FROM accounts a
+       LEFT JOIN business_profiles bp ON bp.account_id = a.id
+       WHERE a.id = $1`,
+      [req.accountId]
+    );
+    const tz        = tzRes.rows[0]?.tz         || 'UTC';
+    const todayLocal = tzRes.rows[0]?.today_local || new Date().toISOString().split('T')[0];
+    const dateLocal  = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+      ? req.query.date : todayLocal;
+
+    const route = await getRouteForTech({
+      accountId: req.accountId,
+      techId:    req.params.techId,
+      dateLocal,
+      timezone:  tz,
+    });
+    res.json({ ...route, timezone: tz });
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.route.get.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to load route.' });
+  }
+});
+
+/**
+ * PATCH /api/dispatch/technicians/:techId/route
+ * Saves the route_order for the technician's jobs.
+ * Body: { jobIds: string[] } — ordered array of job UUIDs
+ * Requires owner or manager role.
+ */
+router.patch('/technicians/:techId/route', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { jobIds } = req.body;
+  if (!Array.isArray(jobIds) || jobIds.length === 0) {
+    return res.status(400).json({ error: 'jobIds must be a non-empty array.' });
+  }
+  try {
+    const updated = await saveRoute({
+      accountId: req.accountId,
+      techId:    req.params.techId,
+      jobIds,
+    });
+
+    await audit.log(req.accountId, req.userId, 'dispatch.route.saved', 'tech', req.params.techId, {
+      jobCount: updated, jobIds,
+    }, req.ip);
+
+    // Return refreshed route
+    const tzRes = await pool.query(
+      `SELECT COALESCE(bp.timezone, 'UTC') AS tz,
+              TO_CHAR(NOW() AT TIME ZONE COALESCE(bp.timezone, 'UTC'), 'YYYY-MM-DD') AS today_local
+       FROM accounts a LEFT JOIN business_profiles bp ON bp.account_id = a.id WHERE a.id = $1`,
+      [req.accountId]
+    );
+    const tz        = tzRes.rows[0]?.tz || 'UTC';
+    const todayLocal = tzRes.rows[0]?.today_local || new Date().toISOString().split('T')[0];
+    const dateLocal  = req.query.date || todayLocal;
+    const route = await getRouteForTech({ accountId: req.accountId, techId: req.params.techId, dateLocal, timezone: tz });
+    res.json({ ...route, updated, timezone: tz });
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.route.save.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to save route.' });
+  }
+});
+
+// ── Phase 2: Service areas ────────────────────────────────────────────────────
+
+/**
+ * GET /api/dispatch/service-areas
+ * Lists all active service areas for the account.
+ */
+router.get('/service-areas', requireAuth, async (req, res) => {
+  try {
+    const areas = await getServiceAreas({ accountId: req.accountId });
+    res.json({ areas });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load service areas.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/service-areas
+ * Creates a new service area.
+ * Body: { techId?, name?, type?, centerLat, centerLng, radiusKm }
+ * Requires owner or manager role.
+ */
+router.post('/service-areas', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { techId, name, type, centerLat, centerLng, radiusKm } = req.body;
+  if (!centerLat || !centerLng) {
+    return res.status(400).json({ error: 'centerLat and centerLng are required.' });
+  }
+  try {
+    const area = await createServiceArea({
+      accountId: req.accountId, techId, name, type, centerLat, centerLng, radiusKm,
+    });
+    await audit.log(req.accountId, req.userId, 'dispatch.service_area.created', 'service_area', area.id, {
+      techId, name, type, radiusKm,
+    }, req.ip);
+    res.status(201).json({ area });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create service area.' });
+  }
+});
+
+/**
+ * PATCH /api/dispatch/service-areas/:id
+ * Updates a service area.
+ * Requires owner or manager role.
+ */
+router.patch('/service-areas/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { name, centerLat, centerLng, radiusKm, isActive } = req.body;
+  try {
+    const area = await updateServiceArea({
+      accountId: req.accountId, areaId: req.params.id,
+      name, centerLat, centerLng, radiusKm, isActive,
+    });
+    if (!area) return res.status(404).json({ error: 'Service area not found.' });
+    res.json({ area });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update service area.' });
+  }
+});
+
+/**
+ * DELETE /api/dispatch/service-areas/:id
+ * Deletes a service area.
+ * Requires owner or manager role.
+ */
+router.delete('/service-areas/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const deleted = await deleteServiceArea({ accountId: req.accountId, areaId: req.params.id });
+    if (!deleted) return res.status(404).json({ error: 'Service area not found.' });
+    await audit.log(req.accountId, req.userId, 'dispatch.service_area.deleted', 'service_area', req.params.id, {}, req.ip);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete service area.' });
+  }
+});
+
+// ── Phase 2: Emergency dispatch mode ─────────────────────────────────────────
+
+/**
+ * GET /api/dispatch/emergency-mode
+ * Returns the current emergency dispatch mode state for the account.
+ */
+router.get('/emergency-mode', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT emergency_dispatch_active, emergency_activated_at, emergency_activated_by
+       FROM dispatch_settings WHERE account_id = $1`,
+      [req.accountId]
+    );
+    const row = rows[0] || {};
+    res.json({
+      active:      row.emergency_dispatch_active ?? false,
+      activatedAt: row.emergency_activated_at    ?? null,
+      activatedBy: row.emergency_activated_by    ?? null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load emergency mode.' });
+  }
+});
+
+/**
+ * PATCH /api/dispatch/emergency-mode
+ * Toggles emergency dispatch mode on or off.
+ * Body: { active: boolean }
+ * Requires owner or manager role.
+ */
+router.patch('/emergency-mode', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { active } = req.body;
+  if (typeof active !== 'boolean') {
+    return res.status(400).json({ error: 'active (boolean) is required.' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO dispatch_settings (account_id, emergency_dispatch_active, emergency_activated_at, emergency_activated_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (account_id) DO UPDATE
+         SET emergency_dispatch_active = $2,
+             emergency_activated_at   = $3,
+             emergency_activated_by   = $4`,
+      [req.accountId, active, active ? new Date() : null, active ? req.userId : null]
+    );
+    await audit.log(req.accountId, req.userId,
+      active ? 'dispatch.emergency_mode.activated' : 'dispatch.emergency_mode.deactivated',
+      'account', req.accountId, {}, req.ip
+    );
+    res.json({ active, activatedAt: active ? new Date().toISOString() : null });
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.emergency-mode.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to update emergency mode.' });
   }
 });
 

@@ -4,6 +4,7 @@ import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
 import DispatchAssignmentPanel from './DispatchAssignmentPanel';
+import DispatchRoutePanel from './DispatchRoutePanel';
 import DispatchDateControl from './DispatchDateControl';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
@@ -414,6 +415,13 @@ export default function DispatchSidebar({
   flags,                 // dispatch feature flags
   workloadsByTechId,     // Map<techId, WorkloadEntry>
   userRole,              // 'owner' | 'manager' | 'tech'
+  // Phase 2 — route + emergency
+  routeState,            // { route, loading, saving, error } from useDispatchRouteSequence
+  onSaveRoute,           // (techId, jobIds) => void
+  onViewRoute,           // (techId) => void
+  emergencyMode,         // boolean
+  onToggleEmergency,     // () => void
+  emergencyToggling,     // boolean
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
@@ -468,7 +476,8 @@ export default function DispatchSidebar({
   }, [selectedTech, jobs]);
 
   const showDetailView = (isExpanded || isMobile) &&
-    (sidebarView === 'job_details' || sidebarView === 'tech_details' || sidebarView === 'assignment_confirm');
+    (sidebarView === 'job_details' || sidebarView === 'tech_details' ||
+     sidebarView === 'assignment_confirm' || sidebarView === 'route_view');
 
   return (
     <div
@@ -537,6 +546,19 @@ export default function DispatchSidebar({
         />
       )}
 
+      {showDetailView && sidebarView === 'route_view' && (
+        <DispatchRoutePanel
+          tech={selectedTech}
+          route={routeState?.route ?? null}
+          loading={routeState?.loading ?? false}
+          saving={routeState?.saving ?? false}
+          error={routeState?.error ?? null}
+          onSaveRoute={onSaveRoute}
+          onBack={onSidebarBack}
+          timezone={timezone}
+        />
+      )}
+
       {/* List view: KPI grid + date control + team/jobs panel */}
       {(isExpanded || isMobile) && !showDetailView && (
         <>
@@ -566,6 +588,10 @@ export default function DispatchSidebar({
             workloadsByTechId={workloadsByTechId}
             onAssignJob={onAssignJob}
             userRole={userRole}
+            onViewRoute={onViewRoute}
+            emergencyMode={emergencyMode}
+            onToggleEmergency={onToggleEmergency}
+            emergencyToggling={emergencyToggling}
           />
         </>
       )}

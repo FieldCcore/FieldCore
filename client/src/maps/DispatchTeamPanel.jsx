@@ -94,6 +94,11 @@ export default function DispatchTeamPanel({
   workloadsByTechId = null,  // Map<techId, WorkloadEntry>
   onAssignJob     = null,    // (jobId, techId) => void
   userRole        = 'tech',
+  // Phase 2 — route + emergency
+  onViewRoute     = null,    // (techId) => void
+  emergencyMode   = false,
+  onToggleEmergency = null,  // () => void
+  emergencyToggling = false,
 }) {
   const [tab,              setTab]              = useState('team');
   const [search,           setSearch]           = useState('');
@@ -265,6 +270,39 @@ export default function DispatchTeamPanel({
         </button>
       </div>
 
+      {/* Emergency mode toggle strip — shown only to owners/managers when flag is on */}
+      {flags.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager') && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '5px 12px',
+          background: emergencyMode ? '#DC2626' : 'var(--off)',
+          borderBottom: '1px solid var(--lightgray)',
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: emergencyMode ? '#fff' : 'var(--slate)',
+          }}>
+            {emergencyMode ? '⚡ Emergency Mode' : 'Emergency Mode'}
+          </span>
+          <button
+            type="button"
+            onClick={onToggleEmergency}
+            disabled={emergencyToggling}
+            aria-pressed={emergencyMode}
+            style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 4,
+              border: emergencyMode ? '1.5px solid rgba(255,255,255,0.7)' : '1px solid var(--lightgray)',
+              background: emergencyMode ? 'transparent' : '#fff',
+              color: emergencyMode ? '#fff' : 'var(--navy)',
+              cursor: emergencyToggling ? 'not-allowed' : 'pointer',
+              opacity: emergencyToggling ? 0.6 : 1,
+            }}
+          >
+            {emergencyToggling ? '…' : emergencyMode ? 'Deactivate' : 'Activate'}
+          </button>
+        </div>
+      )}
+
       {/* Pending-assign banner */}
       {pendingAssignJob && tab === 'team' && (
         <div style={{
@@ -375,6 +413,7 @@ export default function DispatchTeamPanel({
             const isDragOver  = dragOverTechId === t.id;
             const wl          = flags.dispatch_workload_balancing ? workloadsByTechId?.get(t.id) : null;
             const isPickMode  = !!pendingAssignJob;
+            const showRoute   = flags.dispatch_route_sequencing && onViewRoute && techJobs.length > 0;
 
             return (
               <div
@@ -416,6 +455,22 @@ export default function DispatchTeamPanel({
                       </span>
                     )}
                   </div>
+                  {showRoute && (
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onViewRoute(t.id); }}
+                      style={{
+                        marginTop: 3, padding: '2px 8px',
+                        fontSize: 10, fontWeight: 700,
+                        background: 'var(--off)', color: 'var(--navy)',
+                        border: '1px solid var(--lightgray)', borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                      aria-label={`View route for ${t.name}`}
+                    >
+                      View Route
+                    </button>
+                  )}
                 </div>
                 <span
                   className="dispatch-tech-badge"
