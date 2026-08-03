@@ -29,9 +29,10 @@ describe('DispatchMapLegend — visibility', () => {
     expect(container.firstChild).not.toBeNull();
   });
 
-  it('does not render when visible=false', () => {
-    const { container } = render(<DispatchMapLegend visible={false} />);
-    expect(container.firstChild).toBeNull();
+  it('renders collapsed chip when isCollapsed=true, hiding the legend region', () => {
+    render(<DispatchMapLegend isCollapsed={true} onToggleCollapse={() => {}} />);
+    expect(screen.getByRole('button', { name: /expand map legend/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
 
   it('has role=region with accessible label', () => {

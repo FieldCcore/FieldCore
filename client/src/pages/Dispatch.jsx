@@ -2,10 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import api from '../api';
 import DispatchBaseMap from '../maps/DispatchBaseMap';
 import DispatchMapControls from '../maps/DispatchMapControls';
+import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
-import DispatchDrawer from '../maps/DispatchDrawer';
 import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
@@ -17,8 +17,6 @@ import { getTechStatus } from '../domain/technicianStatusPresentation';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 
 // Job statuses that should appear as map markers.
-// Cancelled and no_show are excluded — they are terminal states not relevant
-// to active field operations and would clutter the map with old pins.
 const MAP_MARKER_STATUSES = new Set([
   'scheduled', 'en_route', 'arrived', 'in_progress', 'paused',
   'awaiting_client', 'awaiting_parts', 'partially_completed',
@@ -29,11 +27,16 @@ const MAP_MARKER_STATUSES = new Set([
 const VP_KEY     = 'fc_dispatch_vp';
 const VP_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-// ── Legend visibility persistence ─────────────────────────────────────────────
-const LEGEND_KEY = 'fc_dispatch_legend';
-function getInitialLegend() {
-  try { return localStorage.getItem(LEGEND_KEY) !== 'false'; }
-  catch { return true; }
+// ── Legend collapse persistence ───────────────────────────────────────────────
+const LEGEND_COLLAPSE_KEY = 'fieldcore:dispatch:legend-collapsed';
+
+function getInitialLegendCollapsed() {
+  try { return localStorage.getItem(LEGEND_COLLAPSE_KEY) === 'true'; }
+  catch { return false; }
+}
+
+function saveLegendCollapsed(val) {
+  try { localStorage.setItem(LEGEND_COLLAPSE_KEY, val ? 'true' : 'false'); } catch {}
 }
 
 function loadPersistedViewport() {
@@ -53,8 +56,7 @@ function savePersistedViewport(lat, lng, zoom) {
   } catch {}
 }
 
-
-const FIT_PADDING  = { top: 60, right: 60, bottom: 60, left: 60 };
+const FIT_PADDING   = { top: 60, right: 60, bottom: 60, left: 60 };
 const MAX_AUTO_ZOOM = 15;
 
 function initials(name) {
@@ -63,22 +65,17 @@ function initials(name) {
 
 // ── Marker SVG helpers ────────────────────────────────────────────────────────
 
-// Amber ring around the marker body indicates stale GPS location data.
-// Visually distinct from In Progress gold (#D4A000) — uses amber #F59E0B.
 const STALE_RING_COLOR = '#F59E0B';
 
 function techMarkerSvg(inits, color, isSelected, isStale) {
   const size = isSelected ? 34 : 28;
   const r    = size / 2;
   const fs   = Math.round(size * 0.32);
-
   if (isStale) {
-    // Blue body + amber warning ring (ring is outer circle, body is inner circle)
     const outerR = r - 0.5;
     const innerR = r - 3;
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${r}" cy="${r}" r="${outerR}" fill="${STALE_RING_COLOR}"/><circle cx="${r}" cy="${r}" r="${innerR}" fill="${color}"/><text x="${r}" y="${r}" dy=".35em" text-anchor="middle" font-family="Inter,sans-serif" font-size="${fs}px" font-weight="800" fill="white">${inits}</text></svg>`;
   }
-
   const sw     = isSelected ? 2 : 0;
   const stroke = isSelected ? 'white' : 'none';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${r}" cy="${r}" r="${r - 1}" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/><text x="${r}" y="${r}" dy=".35em" text-anchor="middle" font-family="Inter,sans-serif" font-size="${fs}px" font-weight="800" fill="white">${inits}</text></svg>`;
@@ -113,8 +110,9 @@ export default function Dispatch() {
   const [techs,            setTechs]            = useState([]);
   const [techLocs,         setTechLocs]         = useState([]);
   const [selectedItem,     setSelectedItem]     = useState(null);
+  const [sidebarView,      setSidebarView]      = useState('list');
   const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false });
-  const [showLegend,       setShowLegend]       = useState(getInitialLegend);
+  const [isLegendCollapsed, setIsLegendCollapsed] = useState(getInitialLegendCollapsed);
   const [panelFocus,       setPanelFocus]       = useState(null);
   const [activeKpiKey,     setActiveKpiKey]     = useState(null);
   const [lastPanelTab,     setLastPanelTab]     = useState('team');
@@ -122,7 +120,6 @@ export default function Dispatch() {
   const [loading,          setLoading]          = useState(true);
   const [overlayError,     setOverlayError]     = useState(false);
   const [retryKey,         setRetryKey]         = useState(0);
-  // null = today (server resolves tenant TZ); 'YYYY-MM-DD' = specific date
   const [dispatchDate,     setDispatchDate]     = useState(null);
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [dispatchTZ,       setDispatchTZ]       = useState(() => resolveCalendarTimeZone({}).timezone);
@@ -151,6 +148,8 @@ export default function Dispatch() {
   const techMarkersRef         = useRef({});
   const jobMarkersRef          = useRef({});
   const trafficLayerRef        = useRef(null);
+  // Track legend state before entering Full Map, so we can restore it on exit
+  const preLegendStateRef      = useRef(null);
 
   jobsRef.current             = jobs;
   techLocsRef.current         = techLocs;
@@ -162,9 +161,7 @@ export default function Dispatch() {
     const map = mapRef.current;
     if (!map || !window.google?.maps) return;
     if (!force && initialFitDoneRef.current) return;
-
     programmaticRef.current = true;
-
     if (viewport.mode === 'fit_bounds' && viewport.bounds?.length > 0) {
       const bounds = new window.google.maps.LatLngBounds();
       viewport.bounds.forEach(pt => bounds.extend(pt));
@@ -193,7 +190,6 @@ export default function Dispatch() {
     lastViewportSourceRef.current = viewport.source;
     applyViewport(viewport, { force });
     initialFitDoneRef.current = true;
-
     if (showMessage) {
       const msgs = {
         techs_and_jobs:      'Centered on active jobs and techs',
@@ -218,14 +214,12 @@ export default function Dispatch() {
     mapRef.current      = mapInstance;
     mapReadyRef.current = true;
     setMapReady(true);
-
     mapInstance.addListener('dragstart', () => {
       if (!programmaticRef.current) setHasInteracted(true);
     });
     mapInstance.addListener('zoom_changed', () => {
       if (!programmaticRef.current) setHasInteracted(true);
     });
-
     mapInstance.addListener('idle', () => {
       if (programmaticRef.current) return;
       const c = mapInstance.getCenter();
@@ -234,17 +228,12 @@ export default function Dispatch() {
       clearTimeout(vpSaveTimerRef.current);
       vpSaveTimerRef.current = setTimeout(() => savePersistedViewport(c.lat(), c.lng(), z), 600);
     });
-
     if (dataLoadedRef.current && !initialFitDoneRef.current) {
       computeAndApplyViewport();
     }
   }, [computeAndApplyViewport]);
 
-  // ── Initial data load (and date-change refresh) ───────────────────────────
-  // Uses /dispatch/schedule so the "today" boundary is resolved server-side in
-  // the tenant's timezone. Passes ?date= when user has selected a specific date.
-  // Users, locations, and settings are loaded once; only the schedule re-fetches
-  // on date change since techs and settings are date-agnostic.
+  // ── Initial data load ─────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
     const scheduleParams = dispatchDate ? { date: dispatchDate } : {};
@@ -258,11 +247,9 @@ export default function Dispatch() {
       const fetchedLocs = locsRes?.data || [];
       const fetchedDS   = dsRes?.data?.settings || null;
       const fetchedAcct = dsRes?.data?.account  || null;
-
       setJobs(fetchedJobs);
       setSessions(fetchedSessions);
       setOverlayError(false);
-      // field_work_eligible check with backward-compat for pre-migration API responses
       setTechs(usersRes.data.filter(u =>
         u.field_work_eligible === true ||
         (u.field_work_eligible == null && u.role === 'tech')
@@ -270,20 +257,16 @@ export default function Dispatch() {
       setTechLocs(fetchedLocs);
       setDispatchSettings(fetchedDS);
       setDispatchTZ(resolveCalendarTimeZone({ businessTimezone: fetchedAcct?.timezone }).timezone);
-
       if (fetchedAcct?.lat != null && fetchedAcct?.lng != null) {
         setAccountLocation({ lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) });
       }
-
       jobsRef.current             = fetchedJobs;
       techLocsRef.current         = fetchedLocs;
       dispatchSettingsRef.current = fetchedDS;
       accountLocationRef.current  = (fetchedAcct?.lat != null && fetchedAcct?.lng != null)
         ? { lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) }
         : null;
-
       dataLoadedRef.current = true;
-
       if (import.meta.env.DEV) {
         window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
           ts: new Date().toISOString(), source: 'initial',
@@ -291,10 +274,9 @@ export default function Dispatch() {
           jobCount: fetchedJobs.length, sessionCount: fetchedSessions.length,
           techCount: usersRes.data.filter(u => u.role === 'tech').length,
           locCount: fetchedLocs.length,
-          jobStatuses: fetchedJobs.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
+          jobStatuses: fetchedJobs.reduce((acc, j) => { acc[j.status] = (acc[j.status] || 0) + 1; return acc; }, {}),
         };
       }
-
       if (mapRef.current && !initialFitDoneRef.current) {
         computeAndApplyViewport();
       }
@@ -314,10 +296,6 @@ export default function Dispatch() {
   }, []);
 
   // ── Live-poll jobs and sessions every 30 s ────────────────────────────────
-  // Ensures status changes (e.g. tech starts a job) propagate to the sidebar
-  // and map markers without requiring a page reload.
-  // Re-creates the interval when dispatchDate changes so it always polls the
-  // correct date rather than always re-fetching today.
   useEffect(() => {
     const scheduleParams = dispatchDate ? { date: dispatchDate } : {};
     const id = setInterval(() => {
@@ -327,14 +305,6 @@ export default function Dispatch() {
         setJobs(j);
         setSessions(s);
         jobsRef.current = j;
-        if (import.meta.env.DEV) {
-          window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
-            ts: new Date().toISOString(), source: 'poll',
-            dispatchDate: dispatchDate || 'today',
-            jobCount: j.length, sessionCount: s.length,
-            jobStatuses: j.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {}),
-          };
-        }
       }).catch(() => {});
     }, 30000);
     return () => clearInterval(id);
@@ -345,20 +315,16 @@ export default function Dispatch() {
     if (!mapReady || !window.google?.maps) return;
     const map = mapRef.current;
     if (!map) return;
-
     const activeIds = new Set();
-
     techs.forEach((tech, idx) => {
       const loc = techLocs.find(l => l.user_id === tech.id);
       if (!loc || !isValidCoord(loc.lat, loc.lng)) return;
       if (classifyTechGPS(loc.updated_at) === 'offline') return;
-
       activeIds.add(tech.id);
       const status = getTechStatus(tech, techLocs, jobs);
       const color  = status.markerColor;
       const isSel  = selectedItem?.type === 'tech' && selectedItem?.id === tech.id;
       const icon   = techMarkerIcon(initials(tech.name), color, isSel, status.isStale);
-
       if (techMarkersRef.current[tech.id]) {
         const m = techMarkersRef.current[tech.id];
         m.setPosition({ lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) });
@@ -370,9 +336,7 @@ export default function Dispatch() {
         const m = new window.google.maps.Marker({
           position: { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) },
           map:      layers.techs ? map : null,
-          icon,
-          title:    tech.name,
-          zIndex:   isSel ? 100 : 10,
+          icon, title: tech.name, zIndex: isSel ? 100 : 10,
         });
         m.set('fieldcoreMarker', 'tech');
         m.set('techId', techId);
@@ -382,7 +346,6 @@ export default function Dispatch() {
         techMarkersRef.current[tech.id] = m;
       }
     });
-
     Object.keys(techMarkersRef.current).forEach(id => {
       if (!activeIds.has(id)) {
         techMarkersRef.current[id].setMap(null);
@@ -396,18 +359,14 @@ export default function Dispatch() {
     if (!mapReady || !window.google?.maps) return;
     const map = mapRef.current;
     if (!map) return;
-
     const activeIds = new Set();
-
     jobs.forEach(job => {
       if (!isValidCoord(job.service_lat, job.service_lng)) return;
-      if (!MAP_MARKER_STATUSES.has(job.status)) return; // skip cancelled, no_show
-
+      if (!MAP_MARKER_STATUSES.has(job.status)) return;
       activeIds.add(job.id);
       const color = getJobMarkerColor(job.status);
       const isSel = selectedItem?.type === 'job' && selectedItem?.id === job.id;
       const icon  = jobMarkerIcon(color, isSel);
-
       if (jobMarkersRef.current[job.id]) {
         const m = jobMarkersRef.current[job.id];
         m.setPosition({ lat: parseFloat(job.service_lat), lng: parseFloat(job.service_lng) });
@@ -419,9 +378,8 @@ export default function Dispatch() {
         const m = new window.google.maps.Marker({
           position: { lat: parseFloat(job.service_lat), lng: parseFloat(job.service_lng) },
           map:      layers.jobs ? map : null,
-          icon,
-          title:    `${job.client_name} — ${job.service_type}`,
-          zIndex:   isSel ? 100 : 5,
+          icon, title: `${job.client_name} — ${job.service_type}`,
+          zIndex: isSel ? 100 : 5,
         });
         m.set('fieldcoreMarker', 'job');
         m.set('jobId', jobId);
@@ -431,7 +389,6 @@ export default function Dispatch() {
         jobMarkersRef.current[job.id] = m;
       }
     });
-
     Object.keys(jobMarkersRef.current).forEach(id => {
       if (!activeIds.has(id)) {
         jobMarkersRef.current[id].setMap(null);
@@ -445,16 +402,34 @@ export default function Dispatch() {
     if (!mapReady || !window.google?.maps) return;
     const map = mapRef.current;
     if (!map) return;
-
     if (layers.traffic) {
-      if (!trafficLayerRef.current) {
-        trafficLayerRef.current = new window.google.maps.TrafficLayer();
-      }
+      if (!trafficLayerRef.current) trafficLayerRef.current = new window.google.maps.TrafficLayer();
       trafficLayerRef.current.setMap(map);
     } else {
       trafficLayerRef.current?.setMap(null);
     }
   }, [mapReady, layers.traffic]);
+
+  // ── selectedItem → sidebarView ────────────────────────────────────────────
+  // When a job or tech is selected (via map click or sidebar card), switch the
+  // sidebar to the corresponding detail view and expand if compact.
+  useEffect(() => {
+    if (!selectedItem) {
+      setSidebarView('list');
+      return;
+    }
+    if (selectedItem.type === 'job') {
+      setSidebarView('job_details');
+      // Expand sidebar if compact so the job detail is visible
+      if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
+      // If in Full Map mode, exit to show the sidebar
+      if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    } else if (selectedItem.type === 'tech') {
+      setSidebarView('tech_details');
+      if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
+      if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    }
+  }, [selectedItem]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
@@ -467,7 +442,7 @@ export default function Dispatch() {
     };
   }, []);
 
-  // ── Position-to-map ────────────────────────────────────────────────────────
+  // ── Position-to-map ───────────────────────────────────────────────────────
   const applyPositionToMap = useCallback((pos) => {
     const map = mapRef.current;
     if (!map || !window.google?.maps) return;
@@ -510,7 +485,7 @@ export default function Dispatch() {
   const handleEnableLocation = useCallback(() => { centerOnMe(); }, [centerOnMe]);
   const handleSkipLocation   = useCallback(() => { setPromptDismissed(true); }, []);
 
-  // ── Map resize after sidebar transition ──────────────────────────────────
+  // ── Sidebar transition resize map ─────────────────────────────────────────
   const handleSidebarTransitionEnd = useCallback(() => {
     const map = mapRef.current;
     if (map && window.google?.maps) {
@@ -518,7 +493,7 @@ export default function Dispatch() {
     }
   }, []);
 
-  // ── KPI card click → expand sidebar, navigate panel, highlight card ────
+  // ── KPI card click ────────────────────────────────────────────────────────
   const handleKpiCardClick = useCallback((key) => {
     const focus = {
       liveTechnicians: { tab: 'team', teamFilter: 'live'      },
@@ -541,12 +516,11 @@ export default function Dispatch() {
   // ── Date change ───────────────────────────────────────────────────────────
   const handleDateChange = useCallback((date) => {
     setDispatchDate(date);
-    // Clear any selected record since it may belong to a different date's scope
     setSelectedItem(null);
     setActiveKpiKey(null);
   }, []);
 
-  // ── Compact rail / sidebar expand actions ─────────────────────────────
+  // ── Compact / full-map expand actions ─────────────────────────────────────
   const handleExpandToTeam = useCallback(() => {
     sidebarMode.openTeam();
     setLastPanelTab('team');
@@ -559,7 +533,32 @@ export default function Dispatch() {
     setPanelFocus({ tab: 'jobs', _nonce: Date.now() });
   }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Selection + drawer handlers ────────────────────────────────────────────
+  // ── Legend collapse toggle ─────────────────────────────────────────────────
+  const handleLegendToggle = useCallback(() => {
+    setIsLegendCollapsed(v => {
+      const next = !v;
+      saveLegendCollapsed(next);
+      return next;
+    });
+  }, []);
+
+  // ── Full Map: collapse legend on enter; restore on exit ───────────────────
+  const handleEnterFullMap = useCallback(() => {
+    preLegendStateRef.current = isLegendCollapsed;
+    setIsLegendCollapsed(true);  // collapse while map is full-screen
+    sidebarMode.enterFullMap();
+  }, [isLegendCollapsed, sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExitFullMap = useCallback(() => {
+    sidebarMode.exitFullMap();
+    // Restore the legend state the user had before entering Full Map
+    if (preLegendStateRef.current !== null) {
+      setIsLegendCollapsed(preLegendStateRef.current);
+      preLegendStateRef.current = null;
+    }
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Selection handlers ────────────────────────────────────────────────────
   const handleSelectTech = useCallback((id) => {
     setSelectedItem(prev => prev?.type === 'tech' && prev?.id === id ? null : { type: 'tech', id });
   }, []);
@@ -568,7 +567,10 @@ export default function Dispatch() {
     setSelectedItem(prev => prev?.type === 'job' && prev?.id === id ? null : { type: 'job', id });
   }, []);
 
-  const handleCloseDrawer = useCallback(() => { setSelectedItem(null); }, []);
+  const handleSidebarBack = useCallback(() => {
+    setSelectedItem(null);
+    setSidebarView('list');
+  }, []);
 
   const handleJobGeocoded = useCallback((updatedJob) => {
     setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
@@ -601,14 +603,6 @@ export default function Dispatch() {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  const handleLegendToggle = useCallback(() => {
-    setShowLegend(v => {
-      const next = !v;
-      try { localStorage.setItem(LEGEND_KEY, String(next)); } catch {}
-      return next;
-    });
-  }, []);
-
   // ── Auto-location ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (permissionState !== 'granted') return;
@@ -627,25 +621,22 @@ export default function Dispatch() {
     }
   }, [permissionState]);
 
-  const { mode, isMobile, toggleExpandedCompact, enterFullMap, exitFullMap } = sidebarMode;
+  const { mode, isMobile, toggleExpandedCompact } = sidebarMode;
   const sidebarWidth = isMobile ? undefined : { expanded: '280px', compact: '76px', full_map: '0px' }[mode];
-
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <div className="dispatch-root">
-
         <div
           className="dispatch-workspace"
           style={sidebarWidth ? { '--dispatch-sidebar-width': sidebarWidth } : undefined}
         >
-
           <DispatchSidebar
             mode={mode}
             isMobile={isMobile}
             onToggle={toggleExpandedCompact}
-            onEnterFullMap={enterFullMap}
+            onEnterFullMap={handleEnterFullMap}
             onTransitionEnd={handleSidebarTransitionEnd}
             activeKpiKey={activeKpiKey}
             onKpiClick={handleKpiCardClick}
@@ -664,9 +655,11 @@ export default function Dispatch() {
             dispatchDate={dispatchDate}
             onDateChange={handleDateChange}
             timezone={dispatchTZ}
-            showLegend={showLegend}
-            onLegendToggle={handleLegendToggle}
-            layers={layers}
+            sidebarView={sidebarView}
+            onSidebarBack={handleSidebarBack}
+            onCenterJob={handleCenterOnJob}
+            onCenterTech={handleCenterOnTech}
+            onJobGeocoded={handleJobGeocoded}
           />
 
           <div className="dispatch-map-stage">
@@ -674,7 +667,7 @@ export default function Dispatch() {
 
             <div className="dispatch-map-overlays">
               {mode === 'full_map' && (
-                <DispatchFullMapControl onOpen={exitFullMap} />
+                <DispatchFullMapControl onOpen={handleExitFullMap} />
               )}
 
               <DispatchMapControls
@@ -687,7 +680,7 @@ export default function Dispatch() {
                 permState={permissionState}
                 layers={layers}
                 onLayerToggle={handleLayerToggle}
-                showLegend={showLegend}
+                showLegend={!isLegendCollapsed}
                 onLegendToggle={handleLegendToggle}
               />
 
@@ -721,18 +714,6 @@ export default function Dispatch() {
                 </div>
               )}
 
-              <DispatchDrawer
-                item={selectedItem}
-                techs={techs}
-                techLocs={techLocs}
-                jobs={jobs}
-                onClose={handleCloseDrawer}
-                onCenterTech={handleCenterOnTech}
-                onCenterJob={handleCenterOnJob}
-                onJobGeocoded={handleJobGeocoded}
-                timezone={dispatchTZ}
-              />
-
               <DispatchOverlayStatus
                 loading={loading}
                 error={overlayError}
@@ -740,9 +721,17 @@ export default function Dispatch() {
                 onRetry={() => setRetryKey(k => k + 1)}
               />
 
+              {/* Legend — bottom-right overlay, always present, collapsible */}
+              <DispatchMapLegend
+                isCollapsed={isLegendCollapsed}
+                onToggleCollapse={handleLegendToggle}
+                techs={techs}
+                techLocs={techLocs}
+                jobs={jobs}
+                layers={layers}
+              />
             </div>
           </div>
-
         </div>
       </div>
 

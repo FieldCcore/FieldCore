@@ -1125,6 +1125,10 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS input_timezone TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS input_timezone_source TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS creator_timezone_at_creation TEXT`,
+
+  // Geocoding error capture — stores the actual provider status and human-readable reason
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geocode_provider_status TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geocode_error TEXT`,
 ];
 
 async function runMigrations() {

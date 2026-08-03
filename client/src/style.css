@@ -2372,20 +2372,30 @@ body {
   animation: dispatch-shimmer 1.4s infinite;
 }
 
-/* Compact map legend — bottom-right corner, always visible when showLegend=true */
+/* Map legend — bottom-right corner of the map overlay */
 .dispatch-map-legend {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
+  bottom: 24px;
+  right: 14px;
   z-index: 20;
   background: rgba(255,255,255,0.96);
   border: 1px solid var(--lightgray, #e6e6e6);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,.10);
   backdrop-filter: blur(4px);
-  padding: 6px 10px;
+  padding: 8px 10px;
   min-width: 172px;
-  pointer-events: none;
+  pointer-events: auto;
+}
+/* Collapsed state: compact chip showing only icon + "Legend" */
+.dispatch-map-legend--collapsed {
+  min-width: 0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 /* ── Dispatch date control ───────────────────────────────────────── */
