@@ -49,6 +49,7 @@ const dispatchSettingsRouter   = require('./routes/dispatch-settings');
 const dispatchRouter           = require('./routes/dispatch');
 const workforceRouter          = require('./routes/workforce');
 const workforceRolesRouter     = require('./routes/workforce-roles');
+const systemRouter             = require('./routes/system');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -211,6 +212,7 @@ app.use('/api/dispatch-settings',   generalLimiter, dispatchSettingsRouter);
 app.use('/api/dispatch',            generalLimiter, dispatchRouter);
 app.use('/api/workforce',           generalLimiter, workforceRouter);
 app.use('/api/workforce-roles',     generalLimiter, workforceRolesRouter);
+app.use('/api/system',              generalLimiter, systemRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', async (req, res) => {

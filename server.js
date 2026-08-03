@@ -10,15 +10,70 @@ if (missing.length) {
 const app       = require('./src/app');
 const scheduler = require('./src/services/scheduler');
 const { runMigrations } = require('./src/db/migrate');
+const { geocodeAddress } = require('./src/services/geocode');
 
 const PORT = process.env.PORT || 3000;
+
+// Validate Maps key presence at startup — logs actionable messages, never crashes.
+function validateMapsConfig() {
+  const sk = (process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
+  const bk = (process.env.GOOGLE_MAPS_API_KEY    || '').trim();
+
+  if (!sk) {
+    console.error(
+      '[startup] GOOGLE_MAPS_SERVER_KEY is not set — server-side geocoding is disabled. ' +
+      'Add this variable to the Railway backend service (production environment). ' +
+      'The key must have Application restrictions: None and API restrictions: Geocoding API.'
+    );
+  } else {
+    const fp = `${sk.slice(0, 6)}…${sk.slice(-4)}`;
+    console.log(`[startup] GOOGLE_MAPS_SERVER_KEY present (len=${sk.length}, fingerprint=${fp})`);
+  }
+
+  if (!bk) {
+    console.error(
+      '[startup] GOOGLE_MAPS_API_KEY is not set — Places autocomplete and map routing will not work. ' +
+      'Add GOOGLE_MAPS_API_KEY to Railway (backend proxy) and VITE_GOOGLE_MAPS_API_KEY to Vercel (browser bundle).'
+    );
+  } else {
+    const fp = `${bk.slice(0, 6)}…${bk.slice(-4)}`;
+    console.log(`[startup] GOOGLE_MAPS_API_KEY present (len=${bk.length}, fingerprint=${fp})`);
+  }
+}
+
+// Startup geocoding probe — runs after server is up, never blocks or crashes.
+// Tests the server key against a known address and logs a human-readable result.
+async function probeGeocoding() {
+  const TEST_ADDRESS = '305 Lincoln Court, Deerfield Beach, FL';
+  try {
+    const result = await geocodeAddress(TEST_ADDRESS);
+    if (!result.error) {
+      console.log('[startup] ✓ Google Geocoding operational.');
+      return;
+    }
+    const status = result.geocode_provider_status;
+    if (status === 'REQUEST_DENIED') {
+      console.error('[startup] Geocoding probe: Server key permissions are incorrect. Remove Application restrictions (HTTP referrers / Websites) from GOOGLE_MAPS_SERVER_KEY in Google Cloud Console.');
+    } else if (status === 'OVER_QUERY_LIMIT') {
+      console.error('[startup] Geocoding probe: Quota exceeded.');
+    } else if (status === 'NO_API_KEY' || status === 'INVALID_REQUEST') {
+      console.error('[startup] Geocoding probe: Server key missing.');
+    } else {
+      console.error(`[startup] Geocoding probe: ${status} — ${result.geocode_error || 'unknown error'}`);
+    }
+  } catch (err) {
+    console.error('[startup] Geocoding probe threw unexpectedly:', err.message);
+  }
+}
 
 // Start server immediately so health checks pass during deployment
 const server = app.listen(PORT, () => {
   console.log(`FieldCore API running on port ${PORT}`);
+  validateMapsConfig();
   scheduler.startReminderJob();
-  // Run migrations after server is up (non-blocking)
+  // Non-blocking post-startup tasks
   runMigrations().catch(err => console.error('[DB] runMigrations error:', err.message));
+  probeGeocoding();
 });
 
 function shutdown(signal) {
