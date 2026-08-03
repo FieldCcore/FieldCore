@@ -17,7 +17,130 @@ const DELAY_OPTIONS = [
 ];
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const TIMEZONES = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu'];
+const TIMEZONES = [
+  // ── United States ──
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Phoenix',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  // ── Canada ──
+  'America/Halifax',
+  'America/Toronto',
+  'America/Winnipeg',
+  'America/Edmonton',
+  'America/Vancouver',
+  'America/St_Johns',
+  // ── Mexico & Central America ──
+  'America/Mexico_City',
+  'America/Tijuana',
+  'America/Cancun',
+  'America/Guatemala',
+  'America/Costa_Rica',
+  'America/Tegucigalpa',
+  // ── Caribbean ──
+  'America/Puerto_Rico',
+  'America/Jamaica',
+  'America/Nassau',
+  // ── South America ──
+  'America/Bogota',
+  'America/Lima',
+  'America/Caracas',
+  'America/La_Paz',
+  'America/Santiago',
+  'America/Buenos_Aires',
+  'America/Sao_Paulo',
+  'America/Manaus',
+  'America/Asuncion',
+  'America/Montevideo',
+  // ── Europe ──
+  'Europe/London',
+  'Europe/Dublin',
+  'Europe/Lisbon',
+  'Atlantic/Reykjavik',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Madrid',
+  'Europe/Rome',
+  'Europe/Amsterdam',
+  'Europe/Brussels',
+  'Europe/Zurich',
+  'Europe/Vienna',
+  'Europe/Prague',
+  'Europe/Warsaw',
+  'Europe/Budapest',
+  'Europe/Stockholm',
+  'Europe/Oslo',
+  'Europe/Copenhagen',
+  'Europe/Helsinki',
+  'Europe/Athens',
+  'Europe/Bucharest',
+  'Europe/Sofia',
+  'Europe/Kiev',
+  'Europe/Minsk',
+  'Europe/Moscow',
+  'Europe/Istanbul',
+  // ── Africa ──
+  'Africa/Abidjan',
+  'Africa/Lagos',
+  'Africa/Accra',
+  'Africa/Nairobi',
+  'Africa/Cairo',
+  'Africa/Casablanca',
+  'Africa/Johannesburg',
+  'Africa/Addis_Ababa',
+  'Africa/Dar_es_Salaam',
+  'Africa/Khartoum',
+  'Africa/Tunis',
+  // ── Middle East ──
+  'Asia/Dubai',
+  'Asia/Riyadh',
+  'Asia/Kuwait',
+  'Asia/Baghdad',
+  'Asia/Beirut',
+  'Asia/Jerusalem',
+  'Asia/Muscat',
+  'Asia/Qatar',
+  'Asia/Tehran',
+  // ── South & Central Asia ──
+  'Asia/Karachi',
+  'Asia/Kolkata',
+  'Asia/Colombo',
+  'Asia/Dhaka',
+  'Asia/Kathmandu',
+  'Asia/Tashkent',
+  'Asia/Almaty',
+  'Asia/Kabul',
+  // ── East Asia ──
+  'Asia/Shanghai',
+  'Asia/Hong_Kong',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Singapore',
+  'Asia/Taipei',
+  'Asia/Kuala_Lumpur',
+  'Asia/Bangkok',
+  'Asia/Ho_Chi_Minh',
+  'Asia/Jakarta',
+  'Asia/Manila',
+  'Asia/Yangon',
+  'Asia/Rangoon',
+  // ── Oceania ──
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Australia/Brisbane',
+  'Australia/Perth',
+  'Australia/Adelaide',
+  'Australia/Darwin',
+  'Australia/Hobart',
+  'Pacific/Auckland',
+  'Pacific/Fiji',
+  'Pacific/Guam',
+  'Pacific/Port_Moresby',
+  'Pacific/Apia',
+];
 const VERTICALS = ['Auto Detailing','Pressure Washing','Landscaping','HVAC','Plumbing','Electrical','Pest Control','Pool Cleaning','Mobile Mechanic','Junk Removal','Window Tint / PPF','Appliance Repair','Garage Door','Flooring / Epoxy','Commercial Fleet Wash','Other'];
 
 function Section({ title, children }) {
@@ -607,6 +730,9 @@ export default function BusinessSettings() {
             <select className="bss-input" value={profile.timezone || 'America/New_York'} onChange={e => setProfile(p => ({...p, timezone: e.target.value}))}>
               {TIMEZONES.map(tz => <option key={tz}>{tz}</option>)}
             </select>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--steel)', lineHeight: 1.4 }}>
+              Used to schedule and display job times across your team. Changing this affects <em>future</em> scheduling only — existing jobs are stored in UTC and are not shifted.
+            </p>
           </div>
           <div className="bss-field bss-span2">
             <label className="bss-label">Business Description <span style={{ fontFamily: 'Inter', textTransform: 'none', letterSpacing: 0, fontSize: 11, color: 'var(--steel)' }}>(optional)</span></label>

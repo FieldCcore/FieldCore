@@ -15,6 +15,7 @@ import { useDispatchLocation } from '../hooks/useDispatchLocation';
 import { isValidCoord, classifyTechGPS } from '../maps/dispatchCoords';
 import { getJobMarkerColor } from '../domain/jobStatusPresentation';
 import { getTechStatus } from '../domain/technicianStatusPresentation';
+import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 
 // Job statuses that should appear as map markers.
 // Cancelled and no_show are excluded — they are terminal states not relevant
@@ -125,6 +126,7 @@ export default function Dispatch() {
   // null = today (server resolves tenant TZ); 'YYYY-MM-DD' = specific date
   const [dispatchDate,     setDispatchDate]     = useState(null);
   const [dispatchSettings, setDispatchSettings] = useState(null);
+  const [dispatchTZ,       setDispatchTZ]       = useState(() => resolveCalendarTimeZone({}).timezone);
   const [accountLocation,  setAccountLocation]  = useState(null);
   const [hasInteracted,    setHasInteracted]    = useState(false);
   const [mapReady,         setMapReady]         = useState(false);
@@ -268,6 +270,7 @@ export default function Dispatch() {
       ));
       setTechLocs(fetchedLocs);
       setDispatchSettings(fetchedDS);
+      setDispatchTZ(resolveCalendarTimeZone({ businessTimezone: fetchedAcct?.timezone }).timezone);
 
       if (fetchedAcct?.lat != null && fetchedAcct?.lng != null) {
         setAccountLocation({ lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) });
@@ -620,6 +623,7 @@ export default function Dispatch() {
   const { mode, isMobile, toggleExpandedCompact, enterFullMap, exitFullMap } = sidebarMode;
   const sidebarWidth = isMobile ? undefined : { expanded: '280px', compact: '76px', full_map: '0px' }[mode];
 
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
@@ -652,6 +656,7 @@ export default function Dispatch() {
             onSelectJob={handleSelectJob}
             dispatchDate={dispatchDate}
             onDateChange={handleDateChange}
+            timezone={dispatchTZ}
           />
 
           <div className="dispatch-map-stage">
@@ -714,6 +719,7 @@ export default function Dispatch() {
                 onClose={handleCloseDrawer}
                 onCenterTech={handleCenterOnTech}
                 onCenterJob={handleCenterOnJob}
+                timezone={dispatchTZ}
               />
 
               <DispatchOverlayStatus

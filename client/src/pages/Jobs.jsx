@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMinutes, addDays } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { enUS } from 'date-fns/locale/en-US';
 import { useSearchParams } from 'react-router-dom';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -329,13 +330,22 @@ export default function Jobs() {
   const allEvents = useMemo(() => {
     const jobEvents = jobs
       .filter(j => j.scheduled_at && !j.is_multi_day)
-      .map(j => ({
-        id:       j.id,
-        title:    `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
-        start:    new Date(j.scheduled_at),
-        end:      addMinutes(new Date(j.scheduled_at), j.duration_minutes || 60),
-        resource: { ...j, _type: 'job' },
-      }));
+      .map(j => {
+        // FIXED: Use toZonedTime to create "fake local" dates so react-big-calendar
+        // places events at the correct wall-clock position in the business timezone,
+        // regardless of the browser's local timezone.
+        // toZonedTime returns a Date whose .getHours()/.getMinutes() match the
+        // scheduling timezone hour — RBC uses these for grid placement.
+        const utcStart = new Date(j.scheduled_at);
+        const utcEnd   = addMinutes(utcStart, j.duration_minutes || 60);
+        return {
+          id:       j.id,
+          title:    `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
+          start:    toZonedTime(utcStart, calendarTZ),
+          end:      toZonedTime(utcEnd,   calendarTZ),
+          resource: { ...j, _type: 'job' },
+        };
+      });
 
     const sessionEvents = sessions
       .filter(s => s.scheduled_date)
@@ -357,7 +367,7 @@ export default function Jobs() {
       });
 
     return [...jobEvents, ...sessionEvents];
-  }, [jobs, sessions]);
+  }, [jobs, sessions, calendarTZ]);
 
   // ── Filter events by status and/or tech ───────────────────────────────────
   const events = useMemo(() => {
@@ -611,6 +621,7 @@ export default function Jobs() {
               <JobForm
                 defaultStart={defaultStart}
                 defaultMultiDay={defaultMultiDay}
+                schedulingTimezone={calendarTZ}
                 onSave={handleJobCreated}
                 onCancel={() => setModal(null)}
               />
@@ -630,6 +641,7 @@ export default function Jobs() {
             <div className="modal-body">
               <JobForm
                 job={drawerJob}
+                schedulingTimezone={calendarTZ}
                 onSave={handleJobEdited}
                 onCancel={() => setModal(null)}
               />

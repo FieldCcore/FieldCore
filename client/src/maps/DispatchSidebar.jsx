@@ -63,6 +63,7 @@ export default function DispatchSidebar({
   onSelectJob,
   dispatchDate,     // 'YYYY-MM-DD' or null (null = today)
   onDateChange,     // (date: string|null) => void
+  timezone,
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
@@ -128,6 +129,7 @@ export default function DispatchSidebar({
             onSelectTech={onSelectTech}
             onSelectJob={onSelectJob}
             panelFocus={panelFocus}
+            timezone={timezone}
           />
         </>
       )}

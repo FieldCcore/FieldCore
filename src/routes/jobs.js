@@ -8,6 +8,7 @@ const sms        = require('../services/sms');
 const notify     = require('../services/notify');
 const audit      = require('../services/audit');
 const { geocodeAddress } = require('../services/geocode');
+const { validateIanaTimezone, utcScheduleToLocal } = require('../services/scheduleTimeService');
 
 // Valid status values — single-day and multi-day parent job statuses
 const VALID_STATUSES = [
@@ -30,6 +31,8 @@ const PATCHABLE_JOB_FIELDS = [
   'title','scope_of_work','estimated_start_date','estimated_end_date','end_date_unknown',
   'job_manager_id','estimated_labor_hours','overall_completion_pct','billing_method','priority',
   'is_multi_day',
+  // Timezone audit fields (populated by the scheduling form when column exists)
+  'scheduling_timezone', 'original_local_start',
 ];
 
 // ── Helper: fetch sessions + techs for a job ─────────────────────────────────
@@ -337,11 +340,19 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date,
     end_date_unknown, job_manager_id, estimated_labor_hours, billing_method, priority,
     sessions = [],  // array of { scheduled_date, start_time, end_time, tech_ids, title, description }
+    // Timezone audit fields (set by frontend using business timezone)
+    scheduling_timezone, original_local_start,
   } = req.body;
 
   if (!client_id || !service_type) {
     return res.status(400).json({ error: 'client_id and service_type are required' });
   }
+
+  // Validate timezone if provided — silently ignore invalid values rather than
+  // rejecting saves (backward compatibility with legacy payloads).
+  const validatedTZ = (scheduling_timezone && validateIanaTimezone(scheduling_timezone))
+    ? scheduling_timezone
+    : null;
 
   // Enforce entitlements before touching the DB
   const ent = await getEntitlements(req.accountId);
@@ -415,8 +426,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
          (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring,
           travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng,
           is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date, end_date_unknown,
-          job_manager_id, estimated_labor_hours, billing_method, priority, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
+          job_manager_id, estimated_labor_hours, billing_method, priority,
+          scheduling_timezone, original_local_start, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,NOW())
        RETURNING *`,
       [
         req.accountId, client_id, tech_id || null, service_type,
@@ -427,6 +439,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         estimated_start_date || null, estimated_end_date || null, !!end_date_unknown,
         job_manager_id || null, estimated_labor_hours || null,
         billing_method || 'fixed', priority || 'normal',
+        validatedTZ, original_local_start || null,
       ]
     );
     const job = rows[0];

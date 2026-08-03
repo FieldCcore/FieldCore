@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
+import { formatTZ } from '../utils/calendarTimezone';
 
 // #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
 const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
@@ -9,14 +10,18 @@ function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-function fmtTime(iso) {
+function fmtTime(iso, tz) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return tz
+    ? formatTZ(new Date(iso), 'h:mm a', tz)
+    : new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function fmtDate(iso) {
+function fmtDate(iso, tz) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return tz
+    ? formatTZ(new Date(iso), 'MMM d', tz)
+    : new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function fmtAge(ts) {
@@ -49,6 +54,7 @@ export default function DispatchDrawer({
   onClose,
   onCenterTech,
   onCenterJob,
+  timezone,
 }) {
   const isOpen = item != null;
 
@@ -132,6 +138,7 @@ export default function DispatchDrawer({
             avatarColor={avatarColor}
             onCenter={() => onCenterTech?.(tech.id)}
             jobs={jobs}
+            timezone={timezone}
           />
         )}
 
@@ -140,6 +147,7 @@ export default function DispatchDrawer({
             job={job}
             jobTech={jobTech}
             onCenter={() => onCenterJob?.(job)}
+            timezone={timezone}
           />
         )}
       </div>
@@ -149,7 +157,7 @@ export default function DispatchDrawer({
 
 // ── Tech detail view ──────────────────────────────────────────────────────────
 
-function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs = [] }) {
+function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs = [], timezone }) {
   const st     = getTechStatus(tech, loc ? [{ ...loc, user_id: tech.id }] : [], jobs);
   const hasLoc = !!loc && st.key !== 'off' && st.key !== 'offline';
 
@@ -220,7 +228,7 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs =
           <div className="dispatch-drawer-job-lbl">Next Job</div>
           <div className="dispatch-drawer-job-name">{nextJob.client_name}</div>
           <div className="dispatch-drawer-job-meta">
-            {nextJob.service_type} · {fmtTime(nextJob.scheduled_at)}
+            {nextJob.service_type} · {fmtTime(nextJob.scheduled_at, timezone)}
           </div>
         </div>
       )}
@@ -246,7 +254,7 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs =
 
 // ── Job detail view ───────────────────────────────────────────────────────────
 
-function JobView({ job, jobTech, onCenter }) {
+function JobView({ job, jobTech, onCenter, timezone }) {
   const p        = getJobStatusPresentation(job.status);
   const sStyle   = { background: p.badgeBg, color: p.badgeColor };
   const sLabel   = p.label;
@@ -282,7 +290,7 @@ function JobView({ job, jobTech, onCenter }) {
       <div className="dispatch-drawer-stat-row">
         <span className="dispatch-drawer-stat-label">Scheduled</span>
         <span style={{ fontSize: 12 }}>
-          {fmtDate(job.scheduled_at)} {fmtTime(job.scheduled_at)}
+          {fmtDate(job.scheduled_at, timezone)} {fmtTime(job.scheduled_at, timezone)}
         </span>
       </div>
 

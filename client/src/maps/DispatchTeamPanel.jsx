@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES, GPS_LIVE_MS, GPS_STALE_MS } from '../domain/technicianStatusPresentation';
+import { formatTZ } from '../utils/calendarTimezone';
 
 // #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
 const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
@@ -9,9 +10,11 @@ function initials(name) {
   return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-function fmtTime(iso) {
+function fmtTime(iso, tz) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return tz
+    ? formatTZ(new Date(iso), 'h:mm a', tz)
+    : new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function fmtAgeShort(ts) {
@@ -52,6 +55,7 @@ export default function DispatchTeamPanel({
   onSelectTech,
   onSelectJob,
   panelFocus,   // { tab, teamFilter?, jobFilter?, _nonce } — drives KPI-click navigation
+  timezone,
 }) {
   const [tab,            setTab]            = useState('team');
   const [search,         setSearch]         = useState('');
@@ -326,7 +330,7 @@ export default function DispatchTeamPanel({
                     {j.tech_name
                       ? j.tech_name
                       : <span style={{ color: 'var(--amber)' }}>Unassigned</span>
-                    } · {fmtTime(j.scheduled_at)}
+                    } · {fmtTime(j.scheduled_at, timezone)}
                   </div>
                 </div>
                 <span className="dispatch-job-badge" style={sStyle}>{sLabel}</span>
