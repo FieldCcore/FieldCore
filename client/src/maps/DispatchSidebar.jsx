@@ -5,6 +5,8 @@ import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
 import DispatchAssignmentPanel from './DispatchAssignmentPanel';
 import DispatchRoutePanel from './DispatchRoutePanel';
+import DispatchActivityTimeline from './DispatchActivityTimeline';
+import DispatchQuickCommsPanel from './DispatchQuickCommsPanel';
 import DispatchDateControl from './DispatchDateControl';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
@@ -73,7 +75,7 @@ function fmtAge(ts) {
 
 // ── Job Details inline view ───────────────────────────────────────────────────
 
-function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone }) {
+function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone, onViewActivity, onViewComms, flags }) {
   const p         = getJobStatusPresentation(job.status);
   const sStyle    = { background: p.badgeBg, color: p.badgeColor };
   const sLabel    = p.label;
@@ -247,6 +249,16 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
               {geocoding ? 'Locating…' : 'Retry Geocoding'}
             </button>
           )}
+          {flags?.dispatch_quick_communications && (
+            <button type="button" className="dispatch-drawer-btn" onClick={() => onViewComms?.(job.id)}>
+              Send Update
+            </button>
+          )}
+          {flags?.dispatch_activity_timeline && (
+            <button type="button" className="dispatch-drawer-btn" onClick={() => onViewActivity?.('job', job.id)}>
+              Activity
+            </button>
+          )}
           <a href={`/jobs`} className="dispatch-drawer-btn">
             Open Job
           </a>
@@ -258,7 +270,7 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
 
 // ── Tech Details inline view ──────────────────────────────────────────────────
 
-function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTech, onBack, jobs = [], timezone }) {
+function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTech, onBack, jobs = [], timezone, onViewActivity, flags, delayPrediction }) {
   const st     = getTechStatus(tech, loc ? [{ ...loc, user_id: tech.id }] : [], jobs);
   const hasLoc = !!loc && st.key !== 'off' && st.key !== 'offline';
 
@@ -350,6 +362,29 @@ function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTe
           </div>
         )}
 
+        {/* Delay status — Phase 3 */}
+        {flags?.dispatch_delay_prediction && delayPrediction && delayPrediction.status !== 'no_upcoming_job' && delayPrediction.status !== 'no_location' && (
+          <div style={{
+            margin: '8px 0', padding: '8px 10px', borderRadius: 6,
+            background: delayPrediction.status === 'delayed' ? '#FEE2E2'
+                      : delayPrediction.status === 'at_risk'  ? '#FEF3C7' : '#E8F5E9',
+            borderLeft: `3px solid ${delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? 'var(--amber)' : '#2E7D32'}`,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2,
+              color: delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? '#92400E' : '#2E7D32' }}>
+              {delayPrediction.status === 'delayed' ? `~${delayPrediction.delayMinutes}m behind schedule`
+               : delayPrediction.status === 'at_risk' ? 'At risk of delay'
+               : 'On schedule'}
+            </div>
+            {delayPrediction.nextJobClientName && (
+              <div style={{ fontSize: 10, color: 'var(--slate)' }}>
+                Next: {delayPrediction.nextJobServiceType} for {delayPrediction.nextJobClientName}
+                {delayPrediction.distanceKm > 0 && ` · ${(delayPrediction.distanceKm * 0.621371).toFixed(1)} mi away`}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="dispatch-drawer-actions">
           {hasLoc && (
             <button type="button" className="dispatch-drawer-btn primary" onClick={() => onCenterTech?.(tech.id)}>
@@ -360,6 +395,11 @@ function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTe
             <a href={`tel:${tech.phone}`} className="dispatch-drawer-btn" aria-label={`Call ${tech.name}`}>
               Call
             </a>
+          )}
+          {flags?.dispatch_activity_timeline && (
+            <button type="button" className="dispatch-drawer-btn" onClick={() => onViewActivity?.('tech', tech.id)}>
+              Activity
+            </button>
           )}
           <a href="/team" className="dispatch-drawer-btn">Profile</a>
         </div>
@@ -422,6 +462,12 @@ export default function DispatchSidebar({
   emergencyMode,         // boolean
   onToggleEmergency,     // () => void
   emergencyToggling,     // boolean
+  // Phase 3 — activity + comms + delay
+  activityState,         // { events, subject, loading, error } from useDispatchActivity
+  onViewActivity,        // (type: 'job'|'tech', id) => void
+  onViewComms,           // (jobId) => void
+  onCommsSent,           // () => void
+  delaysByTechId,        // Map<techId, DelayPrediction>
 }) {
   const { metrics, loading: kpiLoading } = useDispatchKpiMetrics(dispatchDate);
 
@@ -477,7 +523,8 @@ export default function DispatchSidebar({
 
   const showDetailView = (isExpanded || isMobile) &&
     (sidebarView === 'job_details' || sidebarView === 'tech_details' ||
-     sidebarView === 'assignment_confirm' || sidebarView === 'route_view');
+     sidebarView === 'assignment_confirm' || sidebarView === 'route_view' ||
+     sidebarView === 'activity_timeline' || sidebarView === 'quick_comms');
 
   return (
     <div
@@ -519,6 +566,9 @@ export default function DispatchSidebar({
           onJobGeocoded={onJobGeocoded}
           onBack={onSidebarBack}
           timezone={timezone}
+          onViewActivity={onViewActivity}
+          onViewComms={onViewComms}
+          flags={flags}
         />
       )}
 
@@ -533,6 +583,9 @@ export default function DispatchSidebar({
           onBack={onSidebarBack}
           jobs={jobs}
           timezone={timezone}
+          onViewActivity={onViewActivity}
+          flags={flags}
+          delayPrediction={delaysByTechId?.get(selectedTech.id) ?? null}
         />
       )}
 
@@ -556,6 +609,31 @@ export default function DispatchSidebar({
           onSaveRoute={onSaveRoute}
           onBack={onSidebarBack}
           timezone={timezone}
+        />
+      )}
+
+      {showDetailView && sidebarView === 'activity_timeline' && (
+        <DispatchActivityTimeline
+          subject={activityState?.subject ?? null}
+          events={activityState?.events ?? []}
+          loading={activityState?.loading ?? false}
+          error={activityState?.error ?? null}
+          onBack={onSidebarBack}
+          title={
+            activityState?.subject?.type === 'job' && selectedJob
+              ? `${selectedJob.client_name} — Activity`
+              : activityState?.subject?.type === 'tech' && selectedTech
+              ? `${selectedTech.name} — Activity`
+              : 'Activity'
+          }
+        />
+      )}
+
+      {showDetailView && sidebarView === 'quick_comms' && selectedJob && (
+        <DispatchQuickCommsPanel
+          job={selectedJob}
+          onBack={onSidebarBack}
+          onSent={() => { onCommsSent?.(); onSidebarBack?.(); }}
         />
       )}
 
@@ -592,6 +670,7 @@ export default function DispatchSidebar({
             emergencyMode={emergencyMode}
             onToggleEmergency={onToggleEmergency}
             emergencyToggling={emergencyToggling}
+            delaysByTechId={delaysByTechId}
           />
         </>
       )}

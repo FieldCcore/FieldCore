@@ -13,6 +13,8 @@ import { useDispatchWorkloads } from '../hooks/useDispatchWorkloads';
 import { useDispatchRouteSequence } from '../hooks/useDispatchRouteSequence';
 import { useDispatchServiceAreas } from '../hooks/useDispatchServiceAreas';
 import { useDispatchEmergencyMode } from '../hooks/useDispatchEmergencyMode';
+import { useDispatchDelayPredictions } from '../hooks/useDispatchDelayPredictions';
+import { useDispatchActivity } from '../hooks/useDispatchActivity';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
 import LocationInstructionsModal from '../maps/LocationInstructionsModal';
 import { resolveDispatchViewport } from '../maps/dispatchViewport';
@@ -143,6 +145,8 @@ export default function Dispatch() {
   const { areas: serviceAreas } = useDispatchServiceAreas(flags.dispatch_service_areas);
   const { active: emergencyMode, toggling: emergencyToggling, toggle: toggleEmergencyMode } =
     useDispatchEmergencyMode(flags.dispatch_emergency_mode);
+  const { byTechId: delaysByTechId } = useDispatchDelayPredictions(dispatchDate, flags.dispatch_delay_prediction);
+  const activityState = useDispatchActivity();
   const [dispatchSettings, setDispatchSettings] = useState(null);
   const [dispatchTZ,       setDispatchTZ]       = useState(() => resolveCalendarTimeZone({}).timezone);
   const [accountLocation,  setAccountLocation]  = useState(null);
@@ -495,15 +499,15 @@ export default function Dispatch() {
   // Route view sets selectedItem itself and manages sidebarView directly — skip.
   useEffect(() => {
     if (!selectedItem) {
-      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm') ? v : 'list');
+      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'list');
       return;
     }
     if (selectedItem.type === 'job') {
-      setSidebarView(v => v === 'assignment_confirm' ? v : 'job_details');
+      setSidebarView(v => (v === 'assignment_confirm' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'job_details');
       if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
       if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     } else if (selectedItem.type === 'tech') {
-      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm') ? v : 'tech_details');
+      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm' || v === 'activity_timeline') ? v : 'tech_details');
       if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
       if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     }
@@ -650,7 +654,8 @@ export default function Dispatch() {
     setSelectedItem(null);
     setSidebarView('list');
     routeSeq.clearRoute();
-  }, [routeSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+    activityState.clearActivity();
+  }, [routeSeq, activityState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleJobGeocoded = useCallback((updatedJob) => {
     setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
@@ -710,6 +715,25 @@ export default function Dispatch() {
   const handleSaveRoute = useCallback(async (techId, jobIds) => {
     await routeSeq.saveRoute(techId, jobIds);
   }, [routeSeq]);
+
+  // ── Phase 3 comms + activity ──────────────────────────────────────────────
+  const handleViewActivity = useCallback((type, id) => {
+    if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
+    if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    setSidebarView('activity_timeline');
+    activityState.loadActivity(type, id);
+  }, [sidebarMode, activityState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleViewComms = useCallback((jobId) => {
+    if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
+    if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    setSidebarView('quick_comms');
+    setSelectedItem({ type: 'job', id: jobId });
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCommsSent = useCallback(() => {
+    setSidebarView('list');
+  }, []);
 
   const handleCenterOnTech = useCallback((techId) => {
     const loc = techLocsRef.current.find(l => l.user_id === techId);
@@ -808,6 +832,11 @@ export default function Dispatch() {
             emergencyMode={emergencyMode}
             onToggleEmergency={toggleEmergencyMode}
             emergencyToggling={emergencyToggling}
+            activityState={activityState}
+            onViewActivity={handleViewActivity}
+            onViewComms={handleViewComms}
+            onCommsSent={handleCommsSent}
+            delaysByTechId={delaysByTechId}
           />
 
           <div className="dispatch-map-stage">

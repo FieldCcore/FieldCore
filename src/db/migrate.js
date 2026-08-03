@@ -1178,6 +1178,26 @@ const MIGRATIONS = [
   `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_dispatch_active BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_activated_at    TIMESTAMPTZ`,
   `ALTER TABLE dispatch_settings ADD COLUMN IF NOT EXISTS emergency_activated_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
+
+  // ── Phase 3: quick-comm audit trail ──────────────────────────────────────
+  // Full message body + delivery status. dispatch_activity_log gets a summary event alongside this.
+  `CREATE TABLE IF NOT EXISTS dispatch_communications (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id       UUID REFERENCES jobs(id)  ON DELETE SET NULL,
+     tech_id      UUID REFERENCES users(id) ON DELETE SET NULL,
+     actor_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     recipient    TEXT NOT NULL,
+     template     TEXT,
+     message      TEXT NOT NULL,
+     client_phone TEXT,
+     tech_phone   TEXT,
+     status       TEXT NOT NULL DEFAULT 'sent',
+     error        TEXT,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_comms_account ON dispatch_communications(account_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_comms_job     ON dispatch_communications(job_id, created_at DESC)`,
 ];
 
 async function runMigrations() {

@@ -95,10 +95,12 @@ export default function DispatchTeamPanel({
   onAssignJob     = null,    // (jobId, techId) => void
   userRole        = 'tech',
   // Phase 2 — route + emergency
-  onViewRoute     = null,    // (techId) => void
-  emergencyMode   = false,
+  onViewRoute       = null,  // (techId) => void
+  emergencyMode     = false,
   onToggleEmergency = null,  // () => void
   emergencyToggling = false,
+  // Phase 3 — delay predictions
+  delaysByTechId    = null,  // Map<techId, DelayPrediction>
 }) {
   const [tab,              setTab]              = useState('team');
   const [search,           setSearch]           = useState('');
@@ -414,6 +416,10 @@ export default function DispatchTeamPanel({
             const wl          = flags.dispatch_workload_balancing ? workloadsByTechId?.get(t.id) : null;
             const isPickMode  = !!pendingAssignJob;
             const showRoute   = flags.dispatch_route_sequencing && onViewRoute && techJobs.length > 0;
+            const delay       = flags.dispatch_delay_prediction ? delaysByTechId?.get(t.id) : null;
+            const delayStyle  = delay?.status === 'delayed' ? { color: '#DC2626', bg: '#FEE2E2' }
+                              : delay?.status === 'at_risk'  ? { color: '#B45309', bg: '#FEF3C7' }
+                              : null;
 
             return (
               <div
@@ -434,9 +440,20 @@ export default function DispatchTeamPanel({
                   {initials(t.name)}
                 </div>
                 <div className="dispatch-tech-info">
-                  <div className="dispatch-tech-name" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="dispatch-tech-name" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                     {t.name}
                     {wl && <WorkloadBadge wl={wl} />}
+                    {delayStyle && (
+                      <span
+                        aria-label={delay.status === 'delayed' ? `Delayed ~${delay.delayMinutes}m` : 'At risk of delay'}
+                        style={{
+                          fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99,
+                          color: delayStyle.color, background: delayStyle.bg, flexShrink: 0,
+                        }}
+                      >
+                        {delay.status === 'delayed' ? `~${delay.delayMinutes}m late` : 'At risk'}
+                      </span>
+                    )}
                   </div>
                   <div className="dispatch-tech-job">
                     {activeJob

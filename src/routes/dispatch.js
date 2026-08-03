@@ -10,6 +10,8 @@ const {
   getServiceAreas, createServiceArea,
   updateServiceArea, deleteServiceArea,
 } = require('../services/serviceAreaService');
+const { predictDelays }       = require('../services/routeDelayService');
+const { sendQuickMessage }    = require('../services/dispatchCommunicationService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -407,12 +409,15 @@ const PHASE2_DEFAULTS = {
   dispatch_service_areas:    process.env.NODE_ENV !== 'production',
   dispatch_emergency_mode:   process.env.NODE_ENV !== 'production',
 };
+const PHASE3_DEFAULTS = {
+  dispatch_delay_prediction:    process.env.NODE_ENV !== 'production',
+  dispatch_quick_communications: process.env.NODE_ENV !== 'production',
+  dispatch_activity_timeline:   process.env.NODE_ENV !== 'production',
+};
 const ALL_FLAG_DEFAULTS = {
   ...PHASE1_DEFAULTS,
   ...PHASE2_DEFAULTS,
-  dispatch_delay_prediction:              false,
-  dispatch_quick_communications:          false,
-  dispatch_activity_timeline:             false,
+  ...PHASE3_DEFAULTS,
   dispatch_predictive_operations_foundation: false,
 };
 
@@ -817,6 +822,116 @@ router.patch('/emergency-mode', requireAuth, requireRole('owner', 'manager'), as
   } catch (err) {
     console.error(JSON.stringify({ event: 'dispatch.emergency-mode.error', error: err.message }));
     res.status(500).json({ error: 'Failed to update emergency mode.' });
+  }
+});
+
+// ── Phase 3: Delay predictions ────────────────────────────────────────────────
+
+/**
+ * GET /api/dispatch/delay-predictions
+ * Returns delay status for all field-eligible techs with GPS fixes and upcoming jobs.
+ * Query params: date (YYYY-MM-DD, defaults to today in tenant TZ)
+ */
+router.get('/delay-predictions', requireAuth, async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const tzRes = await pool.query(
+      `SELECT COALESCE(bp.timezone, 'UTC') AS tz,
+              TO_CHAR(NOW() AT TIME ZONE COALESCE(bp.timezone, 'UTC'), 'YYYY-MM-DD') AS today_local
+       FROM accounts a LEFT JOIN business_profiles bp ON bp.account_id = a.id WHERE a.id = $1`,
+      [req.accountId]
+    );
+    const tz        = tzRes.rows[0]?.tz         || 'UTC';
+    const todayLocal = tzRes.rows[0]?.today_local || new Date().toISOString().split('T')[0];
+    const dateLocal  = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+      ? req.query.date : todayLocal;
+
+    const predictions = await predictDelays({ accountId: req.accountId, dateLocal, timezone: tz });
+    console.log(JSON.stringify({
+      event: 'dispatch.delay-predictions', accountId: req.accountId,
+      durationMs: Date.now() - t0, techCount: predictions.length, dateLocal,
+    }));
+    res.json({ predictions, dateLocal, timezone: tz, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.delay-predictions.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to compute delay predictions.' });
+  }
+});
+
+// ── Phase 3: Quick communications ─────────────────────────────────────────────
+
+/**
+ * POST /api/dispatch/jobs/:jobId/communicate
+ * Sends a quick dispatch communication to client and/or technician.
+ * Body: { template, customMessage?, recipient }
+ *   template  — 'on_the_way' | 'running_late' | 'job_assigned' | 'job_rescheduled' | 'custom'
+ *   recipient — 'client' | 'tech' | 'both'
+ * Requires owner or manager role.
+ */
+router.post('/jobs/:jobId/communicate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { template, customMessage, recipient } = req.body;
+  const VALID_TEMPLATES  = ['on_the_way','running_late','job_assigned','job_rescheduled','custom'];
+  const VALID_RECIPIENTS = ['client','tech','both'];
+
+  if (!VALID_TEMPLATES.includes(template)) {
+    return res.status(400).json({ error: `template must be one of: ${VALID_TEMPLATES.join(', ')}.` });
+  }
+  if (!VALID_RECIPIENTS.includes(recipient)) {
+    return res.status(400).json({ error: `recipient must be one of: ${VALID_RECIPIENTS.join(', ')}.` });
+  }
+  if (template === 'custom' && !customMessage?.trim()) {
+    return res.status(400).json({ error: 'customMessage is required when template is "custom".' });
+  }
+
+  const { rows: [actor] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [req.userId])
+    .catch(() => ({ rows: [{}] }));
+
+  try {
+    const result = await sendQuickMessage({
+      accountId:     req.accountId,
+      jobId:         req.params.jobId,
+      actorId:       req.userId,
+      actorName:     actor?.name || null,
+      template, customMessage, recipient,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.communicate.error', error: err.message }));
+    res.status(err.message === 'Job not found.' ? 404 : 500).json({ error: err.message });
+  }
+});
+
+// ── Phase 3: Tech-level activity timeline ─────────────────────────────────────
+
+/**
+ * GET /api/dispatch/technicians/:techId/activity
+ * Returns the dispatch activity timeline for a specific technician.
+ * Query params: limit (default 50), date (YYYY-MM-DD scope filter)
+ */
+router.get('/technicians/:techId/activity', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    let dateFilter = '';
+    const params = [req.accountId, req.params.techId, limit];
+
+    if (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) {
+      dateFilter = `AND dal.created_at::date = $4`;
+      params.push(req.query.date);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT dal.*, u.name AS actor_name_live
+       FROM dispatch_activity_log dal
+       LEFT JOIN users u ON u.id = dal.actor_id
+       WHERE dal.account_id = $1 AND dal.tech_id = $2
+       ${dateFilter}
+       ORDER BY dal.created_at DESC
+       LIMIT $3`,
+      params
+    );
+    res.json({ events: rows, techId: req.params.techId });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load activity.' });
   }
 });
 
