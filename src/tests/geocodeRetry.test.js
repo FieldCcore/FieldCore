@@ -111,9 +111,13 @@ describe('POST /api/jobs/:id/geocode', () => {
     expect(res.body.error).toMatch(/no service address/i);
   });
 
-  it('returns 422 with geocode_status=failed when GOOGLE_MAPS_API_KEY is not set', async () => {
-    const savedKey = process.env.GOOGLE_MAPS_API_KEY;
-    delete process.env.GOOGLE_MAPS_API_KEY;
+  it('returns 422 with geocode_status=failed when GOOGLE_MAPS_SERVER_KEY is absent (no browser-key fallback)', async () => {
+    const savedServerKey  = process.env.GOOGLE_MAPS_SERVER_KEY;
+    const savedBrowserKey = process.env.GOOGLE_MAPS_API_KEY;
+
+    // Remove the server key, keep the browser key present to prove no fallback occurs.
+    delete process.env.GOOGLE_MAPS_SERVER_KEY;
+    if (!savedBrowserKey) process.env.GOOGLE_MAPS_API_KEY = 'browser-key-should-never-be-used';
 
     try {
       const job = await createJob({ geocode_status: 'failed' });
@@ -129,7 +133,32 @@ describe('POST /api/jobs/:id/geocode', () => {
       );
       expect(updated.geocode_status).toBe('failed');
     } finally {
-      if (savedKey) process.env.GOOGLE_MAPS_API_KEY = savedKey;
+      if (savedServerKey) process.env.GOOGLE_MAPS_SERVER_KEY = savedServerKey;
+      else delete process.env.GOOGLE_MAPS_SERVER_KEY;
+      if (savedBrowserKey) process.env.GOOGLE_MAPS_API_KEY = savedBrowserKey;
+      else delete process.env.GOOGLE_MAPS_API_KEY;
+    }
+  });
+
+  it('returns 422 even when GOOGLE_MAPS_API_KEY is set but GOOGLE_MAPS_SERVER_KEY is absent', async () => {
+    const savedServerKey = process.env.GOOGLE_MAPS_SERVER_KEY;
+    delete process.env.GOOGLE_MAPS_SERVER_KEY;
+    const prevBrowserKey = process.env.GOOGLE_MAPS_API_KEY;
+    process.env.GOOGLE_MAPS_API_KEY = 'AIzaSy_browser_key_must_not_be_used';
+
+    try {
+      const job = await createJob({ geocode_status: 'failed' });
+      const res = await request(app)
+        .post(`/api/jobs/${job.id}/geocode`)
+        .set('Authorization', `Bearer ${token}`);
+      // Must fail because GOOGLE_MAPS_SERVER_KEY is absent — browser key is never the fallback
+      expect(res.status).toBe(422);
+      expect(res.body.geocode_status).toBe('failed');
+    } finally {
+      if (savedServerKey) process.env.GOOGLE_MAPS_SERVER_KEY = savedServerKey;
+      else delete process.env.GOOGLE_MAPS_SERVER_KEY;
+      if (prevBrowserKey) process.env.GOOGLE_MAPS_API_KEY = prevBrowserKey;
+      else delete process.env.GOOGLE_MAPS_API_KEY;
     }
   });
 
