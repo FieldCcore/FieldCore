@@ -401,6 +401,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     let finalServiceLat     = service_lat  || null;
     let finalServiceLng     = service_lng  || null;
     let mappingWarning      = null;
+    let geocodeStatus       = 'not_attempted';
 
     if (addressToGeocode && (!finalServiceLat || !finalServiceLng)) {
       const geo = await geocodeAddress(addressToGeocode);
@@ -408,9 +409,13 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         finalServiceAddress = geo.formatted_address || finalServiceAddress;
         finalServiceLat     = geo.lat;
         finalServiceLng     = geo.lng;
+        geocodeStatus       = 'resolved';
       } else {
         mappingWarning = 'Job saved, but address could not be mapped.';
+        geocodeStatus  = 'failed';
       }
+    } else if (finalServiceLat && finalServiceLng) {
+      geocodeStatus = 'resolved';
     }
 
     let travelFee = travel_fee !== undefined ? parseFloat(travel_fee) || 0 : null;
@@ -427,8 +432,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
           travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng,
           is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date, end_date_unknown,
           job_manager_id, estimated_labor_hours, billing_method, priority,
-          scheduling_timezone, original_local_start, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,NOW())
+          scheduling_timezone, original_local_start, geocode_status, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,NOW())
        RETURNING *`,
       [
         req.accountId, client_id, tech_id || null, service_type,
@@ -439,7 +444,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         estimated_start_date || null, estimated_end_date || null, !!end_date_unknown,
         job_manager_id || null, estimated_labor_hours || null,
         billing_method || 'fixed', priority || 'normal',
-        validatedTZ, original_local_start || null,
+        validatedTZ, original_local_start || null, geocodeStatus,
       ]
     );
     const job = rows[0];
@@ -500,7 +505,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       const cl = clientResult.rows[0];
       if (cl?.phone) {
         sms.send(req.accountId, client_id, cl.phone,
-          sms.confirmationBody(cl.name, service_type, scheduled_at)
+          sms.confirmationBody(cl.name, service_type, scheduled_at, validatedTZ || null)
         ).then(result => {
           if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
         }).catch(() => {});
@@ -564,10 +569,16 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
       const geo = await geocodeAddress(addrParts.join(', '));
       if (geo) {
         await pool.query(
-          `UPDATE jobs SET service_lat = $1, service_lng = $2, service_address = COALESCE($3, service_address) WHERE id = $4`,
+          `UPDATE jobs SET service_lat = $1, service_lng = $2,
+           service_address = COALESCE($3, service_address), geocode_status = 'resolved'
+           WHERE id = $4`,
           [geo.lat, geo.lng, geo.formatted_address || null, job.id]
         );
-        job = { ...job, service_lat: geo.lat, service_lng: geo.lng, service_address: geo.formatted_address || job.service_address };
+        job = { ...job, service_lat: geo.lat, service_lng: geo.lng,
+          service_address: geo.formatted_address || job.service_address, geocode_status: 'resolved' };
+      } else {
+        await pool.query(`UPDATE jobs SET geocode_status = 'failed' WHERE id = $1`, [job.id]);
+        job = { ...job, geocode_status: 'failed' };
       }
     }
 
@@ -576,6 +587,47 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     audit.log(req.accountId, req.userId, 'job.updated', 'job', job.id, updatedFields, req.ip);
 
     res.json(job);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/jobs/:id/geocode — retry geocoding for a job ───────────────────
+router.post('/:id/geocode', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, service_address, service_city, service_state, service_zip, service_lat, service_lng
+       FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const job = rows[0];
+
+    if (!job.service_address) {
+      return res.status(400).json({ error: 'Job has no service address to geocode.' });
+    }
+
+    const addrParts = [job.service_address, job.service_city, job.service_state, job.service_zip].filter(Boolean);
+    const geo = await geocodeAddress(addrParts.join(', '));
+
+    if (geo) {
+      const { rows: updated } = await pool.query(
+        `UPDATE jobs
+         SET service_lat = $1, service_lng = $2,
+             service_address = COALESCE($3, service_address),
+             geocode_status = 'resolved', updated_at = NOW()
+         WHERE id = $4 AND account_id = $5
+         RETURNING service_lat, service_lng, service_address, geocode_status`,
+        [geo.lat, geo.lng, geo.formatted_address || null, job.id, req.accountId]
+      );
+      return res.json(updated[0]);
+    }
+
+    await pool.query(
+      `UPDATE jobs SET geocode_status = 'failed', updated_at = NOW() WHERE id = $1 AND account_id = $2`,
+      [job.id, req.accountId]
+    );
+    return res.status(422).json({ geocode_status: 'failed', error: 'Address could not be geocoded.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

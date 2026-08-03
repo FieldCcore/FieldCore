@@ -1107,6 +1107,19 @@ const MIGRATIONS = [
      AND u.workforce_role_id IS NULL`,
 
   `CREATE INDEX IF NOT EXISTS idx_users_field_dispatch ON users(account_id) WHERE field_work_eligible = TRUE AND dispatch_visible = TRUE`,
+
+  // ── GEOCODE STATUS TRACKING ───────────────────────────────────────────────────
+  // Tracks whether a job's service address has been successfully geocoded.
+  // Values: 'not_attempted' | 'resolved' | 'failed'
+  // 'not_attempted' = no address or geocode not yet run (default for existing rows)
+  // 'resolved'      = lat/lng on file, marker will appear on Dispatch map
+  // 'failed'        = address present but Google could not resolve it (API error or missing key)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geocode_status TEXT NOT NULL DEFAULT 'not_attempted'`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_geocode_status ON jobs(account_id, geocode_status) WHERE geocode_status = 'failed'`,
+
+  // Scheduling timezone audit columns (added 2026-08-02 — must be idempotent)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS scheduling_timezone  TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS original_local_start TEXT`,
 ];
 
 async function runMigrations() {

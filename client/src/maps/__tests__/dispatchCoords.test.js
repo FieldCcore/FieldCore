@@ -14,6 +14,10 @@ describe('isValidCoord', () => {
     expect(isValidCoord(25.7617, -80.1918)).toBe(true);   // Miami
   });
 
+  it('accepts Deerfield Beach FL coordinate (26.1224, -80.1373)', () => {
+    expect(isValidCoord(26.1224, -80.1373)).toBe(true);
+  });
+
   it('accepts a valid southern-hemisphere coordinate', () => {
     expect(isValidCoord(-33.8688, 151.2093)).toBe(true);  // Sydney
   });

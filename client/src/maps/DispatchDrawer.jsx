@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, GPS_LIVE_MS, GPS_STALE_MS, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
 import { formatTZ } from '../utils/calendarTimezone';
+import { isValidCoord } from './dispatchCoords';
+import api from '../api';
 
 // #2E7D32 (Job Completed green) is intentionally excluded — must not conflict with job status colors
 const AVATAR_COLORS = ['#0369A1', '#1565C0', '#E65100', '#6A1B9A', '#AD1457'];
@@ -54,6 +56,7 @@ export default function DispatchDrawer({
   onClose,
   onCenterTech,
   onCenterJob,
+  onJobGeocoded,
   timezone,
 }) {
   const isOpen = item != null;
@@ -147,6 +150,7 @@ export default function DispatchDrawer({
             job={job}
             jobTech={jobTech}
             onCenter={() => onCenterJob?.(job)}
+            onJobGeocoded={onJobGeocoded}
             timezone={timezone}
           />
         )}
@@ -254,11 +258,34 @@ function TechView({ tech, loc, activeJob, nextJob, avatarColor, onCenter, jobs =
 
 // ── Job detail view ───────────────────────────────────────────────────────────
 
-function JobView({ job, jobTech, onCenter, timezone }) {
-  const p        = getJobStatusPresentation(job.status);
-  const sStyle   = { background: p.badgeBg, color: p.badgeColor };
-  const sLabel   = p.label;
-  const hasCoords = job.service_lat && job.service_lng;
+function JobView({ job, jobTech, onCenter, onJobGeocoded, timezone }) {
+  const p         = getJobStatusPresentation(job.status);
+  const sStyle    = { background: p.badgeBg, color: p.badgeColor };
+  const sLabel    = p.label;
+  const hasCoords = isValidCoord(job.service_lat, job.service_lng);
+
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState(null);
+
+  const handleRetryGeocode = async () => {
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const res = await api.post(`/jobs/${job.id}/geocode`);
+      if (res.data?.service_lat && res.data?.service_lng) {
+        onJobGeocoded?.({ id: job.id, ...res.data });
+      } else {
+        setGeocodeError('Address could not be placed on the map.');
+      }
+    } catch (err) {
+      setGeocodeError(err.response?.data?.error || 'Geocoding failed. Try again later.');
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  const showGeocodeStatus = job.service_address && !hasCoords;
+  const geocodeFailed     = job.geocode_status === 'failed' || (showGeocodeStatus && job.geocode_status !== 'not_attempted');
 
   return (
     <>
@@ -332,10 +359,35 @@ function JobView({ job, jobTech, onCenter, timezone }) {
         </div>
       )}
 
+      {showGeocodeStatus && (
+        <div style={{ margin: '10px 0', padding: '8px 10px', borderRadius: 6,
+          background: geocodeFailed ? 'var(--red-lt, #FEE2E2)' : 'var(--off, #EDEBE7)',
+          fontSize: 11, color: geocodeFailed ? 'var(--red, #DC2626)' : 'var(--slate, #5F667A)',
+        }}>
+          {geocodeFailed
+            ? 'Address could not be placed on map.'
+            : 'Map location pending.'}
+          {geocodeError && (
+            <div style={{ marginTop: 4, fontWeight: 600 }}>{geocodeError}</div>
+          )}
+        </div>
+      )}
+
       <div className="dispatch-drawer-actions">
         {hasCoords && (
           <button type="button" className="dispatch-drawer-btn primary" onClick={onCenter}>
             Center Map
+          </button>
+        )}
+        {showGeocodeStatus && (
+          <button
+            type="button"
+            className="dispatch-drawer-btn"
+            onClick={handleRetryGeocode}
+            disabled={geocoding}
+            aria-busy={geocoding}
+          >
+            {geocoding ? 'Locating…' : 'Retry Geocoding'}
           </button>
         )}
         <a href="/jobs" className="dispatch-drawer-btn">

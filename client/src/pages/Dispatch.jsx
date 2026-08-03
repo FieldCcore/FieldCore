@@ -375,6 +375,8 @@ export default function Dispatch() {
           title:    tech.name,
           zIndex:   isSel ? 100 : 10,
         });
+        m.set('fieldcoreMarker', 'tech');
+        m.set('techId', techId);
         m.addListener('click', () => setSelectedItem(prev =>
           prev?.type === 'tech' && prev?.id === techId ? null : { type: 'tech', id: techId }
         ));
@@ -422,6 +424,8 @@ export default function Dispatch() {
           title:    `${job.client_name} — ${job.service_type}`,
           zIndex:   isSel ? 100 : 5,
         });
+        m.set('fieldcoreMarker', 'job');
+        m.set('jobId', jobId);
         m.addListener('click', () => setSelectedItem(prev =>
           prev?.type === 'job' && prev?.id === jobId ? null : { type: 'job', id: jobId }
         ));
@@ -566,6 +570,10 @@ export default function Dispatch() {
   }, []);
 
   const handleCloseDrawer = useCallback(() => { setSelectedItem(null); }, []);
+
+  const handleJobGeocoded = useCallback((updatedJob) => {
+    setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
+  }, []);
 
   const handleCenterOnTech = useCallback((techId) => {
     const loc = techLocsRef.current.find(l => l.user_id === techId);
@@ -719,6 +727,7 @@ export default function Dispatch() {
                 onClose={handleCloseDrawer}
                 onCenterTech={handleCenterOnTech}
                 onCenterJob={handleCenterOnJob}
+                onJobGeocoded={handleJobGeocoded}
                 timezone={dispatchTZ}
               />
 

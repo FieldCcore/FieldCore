@@ -1,6 +1,14 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import DispatchDrawer from '../DispatchDrawer';
+
+vi.mock('../../api', () => ({
+  default: {
+    post: vi.fn(),
+  },
+}));
+
+import api from '../../api';
 
 const NOW = Date.now();
 const LIVE_TS = new Date(NOW - 60 * 1000).toISOString();
@@ -272,6 +280,98 @@ describe('DispatchDrawer — active job uses ACTIVE_STATUSES', () => {
     ];
     render(<DispatchDrawer {...defaultProps({ item: { type: 'tech', id: 't1' }, jobs })} />);
     expect(screen.queryByText('Cancelled Co')).not.toBeInTheDocument();
+  });
+});
+
+// ── Geocode status display ────────────────────────────────────────────────────
+
+const JOB_NO_COORDS = {
+  id: 'j3', client_name: 'Rule Check Co', service_type: 'Rule Check — Full Detail',
+  status: 'scheduled', tech_id: null,
+  scheduled_at: '2026-08-02T00:15:00Z',
+  service_address: '305 Lincoln Court', service_city: 'Deerfield Beach',
+  service_state: 'FL', service_zip: '33442',
+  service_lat: null, service_lng: null,
+  geocode_status: 'failed',
+  priority: 'normal', amount: null, notes: null,
+};
+
+describe('DispatchDrawer — geocode status', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows geocode pending indicator when address present but no coords', () => {
+    const jobPending = { ...JOB_NO_COORDS, geocode_status: 'not_attempted' };
+    const jobs = [...JOBS, jobPending];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
+    expect(screen.getByText(/map location pending/i)).toBeInTheDocument();
+  });
+
+  it('shows geocode failed indicator when geocode_status is failed', () => {
+    const jobs = [...JOBS, JOB_NO_COORDS];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
+    expect(screen.getByText(/could not be placed on map/i)).toBeInTheDocument();
+  });
+
+  it('shows Retry Geocoding button when coords are missing and address is present', () => {
+    const jobs = [...JOBS, JOB_NO_COORDS];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
+    expect(screen.getByRole('button', { name: /retry geocoding/i })).toBeInTheDocument();
+  });
+
+  it('does NOT show Retry Geocoding button when job has valid coords', () => {
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j1' } })} />);
+    expect(screen.queryByRole('button', { name: /retry geocoding/i })).not.toBeInTheDocument();
+  });
+
+  it('does NOT show geocode status when job has no address at all', () => {
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j2' } })} />);
+    expect(screen.queryByText(/map location pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry geocoding/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onJobGeocoded after successful retry', async () => {
+    api.post.mockResolvedValueOnce({
+      data: { service_lat: 26.1224, service_lng: -80.1373, service_address: '305 Lincoln Court', geocode_status: 'resolved' },
+    });
+    const onJobGeocoded = vi.fn();
+    const jobs = [...JOBS, JOB_NO_COORDS];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs, onJobGeocoded })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /retry geocoding/i }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/jobs/j3/geocode');
+      expect(onJobGeocoded).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'j3',
+        service_lat: 26.1224,
+        service_lng: -80.1373,
+        geocode_status: 'resolved',
+      }));
+    });
+  });
+
+  it('shows error message when retry fails', async () => {
+    api.post.mockRejectedValueOnce({
+      response: { data: { error: 'Address could not be geocoded.' } },
+    });
+    const jobs = [...JOBS, JOB_NO_COORDS];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /retry geocoding/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Address could not be geocoded.')).toBeInTheDocument();
+    });
+  });
+
+  it('shows isValidCoord-based hasCoords — Deerfield Beach coordinate is valid', () => {
+    const jobWithCoords = { ...JOB_NO_COORDS, service_lat: 26.1224, service_lng: -80.1373, geocode_status: 'resolved' };
+    const jobs = [...JOBS, jobWithCoords];
+    render(<DispatchDrawer {...defaultProps({ item: { type: 'job', id: 'j3' }, jobs })} />);
+    expect(screen.getByRole('button', { name: /center map/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry geocoding/i })).not.toBeInTheDocument();
   });
 });
 
