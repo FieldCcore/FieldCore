@@ -49,6 +49,26 @@ export function extractValidPoints(items, latKey = 'lat', lngKey = 'lng') {
   }, []);
 }
 
+/**
+ * Resolve the best available coordinate pair for a job, in priority order:
+ *   1. job.service_lat / service_lng  — geocoded service address (most specific)
+ *   2. job.client_lat  / client_lng   — canonical client address (fallback)
+ *   3. null                           — no usable location
+ *
+ * Returns { lat: number, lng: number } or null.
+ * Never returns coordinates from an invalid pair (0,0, null, NaN, etc.).
+ */
+export function resolveJobCoordinates(job) {
+  if (!job) return null;
+  if (isValidCoord(job.service_lat, job.service_lng)) {
+    return { lat: _parseNum(job.service_lat), lng: _parseNum(job.service_lng) };
+  }
+  if (isValidCoord(job.client_lat, job.client_lng)) {
+    return { lat: _parseNum(job.client_lat), lng: _parseNum(job.client_lng) };
+  }
+  return null;
+}
+
 function _parseNum(v) {
   if (v == null) return NaN;
   if (typeof v === 'number') return v;

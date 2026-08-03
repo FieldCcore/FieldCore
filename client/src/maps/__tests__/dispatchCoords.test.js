@@ -3,6 +3,7 @@ import {
   isValidCoord,
   classifyTechGPS,
   extractValidPoints,
+  resolveJobCoordinates,
   TECH_LIVE_MS,
   TECH_STALE_MS,
 } from '../dispatchCoords';
@@ -176,5 +177,51 @@ describe('extractValidPoints', () => {
     const items = [null, { lat: 25.7617, lng: -80.1918 }, undefined];
     const pts   = extractValidPoints(items);
     expect(pts).toHaveLength(1);
+  });
+});
+
+// ── resolveJobCoordinates ────────────────────────────────────────────────────
+
+describe('resolveJobCoordinates', () => {
+  it('returns service coords when both service_lat and service_lng are valid', () => {
+    const job = { service_lat: 25.7617, service_lng: -80.1918, client_lat: 1.0, client_lng: 1.0 };
+    expect(resolveJobCoordinates(job)).toEqual({ lat: 25.7617, lng: -80.1918 });
+  });
+
+  it('falls back to client coords when service coords are null', () => {
+    const job = { service_lat: null, service_lng: null, client_lat: 51.5074, client_lng: -0.1278 };
+    expect(resolveJobCoordinates(job)).toEqual({ lat: 51.5074, lng: -0.1278 });
+  });
+
+  it('falls back to client coords when service coords are 0,0 sentinel', () => {
+    const job = { service_lat: 0, service_lng: 0, client_lat: 51.5074, client_lng: -0.1278 };
+    expect(resolveJobCoordinates(job)).toEqual({ lat: 51.5074, lng: -0.1278 });
+  });
+
+  it('returns null when no valid coords exist on the job', () => {
+    const job = { service_lat: null, service_lng: null, client_lat: null, client_lng: null };
+    expect(resolveJobCoordinates(job)).toBeNull();
+  });
+
+  it('returns null when job is null', () => {
+    expect(resolveJobCoordinates(null)).toBeNull();
+  });
+
+  it('returns null when job is undefined', () => {
+    expect(resolveJobCoordinates(undefined)).toBeNull();
+  });
+
+  it('accepts numeric strings for service coords', () => {
+    const job = { service_lat: '26.1224', service_lng: '-80.1373' };
+    const result = resolveJobCoordinates(job);
+    expect(result).not.toBeNull();
+    expect(result.lat).toBeCloseTo(26.1224);
+    expect(result.lng).toBeCloseTo(-80.1373);
+  });
+
+  it('does not return service coords when only one coordinate is valid', () => {
+    const job = { service_lat: 25.7617, service_lng: null, client_lat: 51.5074, client_lng: -0.1278 };
+    // service pair is invalid (lat valid, lng null) — should fall back to client
+    expect(resolveJobCoordinates(job)).toEqual({ lat: 51.5074, lng: -0.1278 });
   });
 });

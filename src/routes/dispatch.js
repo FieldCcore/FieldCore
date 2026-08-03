@@ -44,6 +44,7 @@ function metric(key, label, status, value, displayValue, supportingText, extras 
  */
 router.get('/summary', requireAuth, async (req, res) => {
   const { accountId } = req;
+  const t0 = Date.now();
 
   try {
     // Load tenant timezone and KPI settings in one round-trip
@@ -270,7 +271,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     const metricsOut = [liveTechsMetric, activeJobsMetric, todaysJobsMetric, completedMetric];
     if (showAvgResp) metricsOut.push(avgRespMetric);
 
-    res.json({
+    const payload = {
       metrics: metricsOut,
       // Legacy shape preserved for backward-compat during transition
       liveTechnicians:     { total: online + stale, online, stale },
@@ -282,9 +283,17 @@ router.get('/summary', requireAuth, async (req, res) => {
       timezone:    tz,
       dateLocal:   dateParam || null,
       isToday:     isToday,
-    });
+    };
+    console.log(JSON.stringify({
+      event: 'dispatch.summary', accountId, durationMs: Date.now() - t0,
+      dateParam: dateParam || null, metricCount: metricsOut.length,
+    }));
+    res.json(payload);
   } catch (err) {
-    console.error('[dispatch/summary]', err.message);
+    console.error(JSON.stringify({
+      event: 'dispatch.summary.error', accountId, durationMs: Date.now() - t0,
+      errorCode: err.code || null, error: err.message,
+    }));
     res.status(500).json({ error: 'Failed to load dispatch summary.' });
   }
 });
@@ -302,6 +311,7 @@ router.get('/summary', requireAuth, async (req, res) => {
  */
 router.get('/schedule', requireAuth, async (req, res) => {
   const { accountId } = req;
+  const t0 = Date.now();
 
   try {
     // Resolve tenant timezone and compute today in that timezone server-side
@@ -358,6 +368,10 @@ router.get('/schedule', requireAuth, async (req, res) => {
       ),
     ]);
 
+    console.log(JSON.stringify({
+      event: 'dispatch.schedule', accountId, durationMs: Date.now() - t0,
+      dateLocal, jobCount: jobsRes.rows.length, sessionCount: sessionsRes.rows.length,
+    }));
     res.json({
       jobs:        jobsRes.rows,
       sessions:    sessionsRes.rows,
@@ -366,7 +380,10 @@ router.get('/schedule', requireAuth, async (req, res) => {
       generatedAt: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[dispatch/schedule]', err.message);
+    console.error(JSON.stringify({
+      event: 'dispatch.schedule.error', accountId, durationMs: Date.now() - t0,
+      errorCode: err.code || null, error: err.message,
+    }));
     res.status(500).json({ error: 'Failed to load dispatch schedule.' });
   }
 });

@@ -119,6 +119,7 @@ export default function Dispatch() {
   const sidebarMode = useDispatchSidebarMode();
   const [loading,          setLoading]          = useState(true);
   const [overlayError,     setOverlayError]     = useState(false);
+  const [isDataStale,      setIsDataStale]      = useState(false);
   const [retryKey,         setRetryKey]         = useState(0);
   const [dispatchDate,     setDispatchDate]     = useState(null);
   const [dispatchSettings, setDispatchSettings] = useState(null);
@@ -267,14 +268,29 @@ export default function Dispatch() {
         ? { lat: parseFloat(fetchedAcct.lat), lng: parseFloat(fetchedAcct.lng) }
         : null;
       dataLoadedRef.current = true;
+      setIsDataStale(false);
       if (import.meta.env.DEV) {
-        window.__FIELDCORE_DISPATCH_DATA_DIAGNOSTICS__ = {
-          ts: new Date().toISOString(), source: 'initial',
-          dispatchDate: dispatchDate || 'today',
-          jobCount: fetchedJobs.length, sessionCount: fetchedSessions.length,
-          techCount: usersRes.data.filter(u => u.role === 'tech').length,
-          locCount: fetchedLocs.length,
-          jobStatuses: fetchedJobs.reduce((acc, j) => { acc[j.status] = (acc[j.status] || 0) + 1; return acc; }, {}),
+        window.__FIELDCORE_DISPATCH_DIAGNOSTICS__ = {
+          source: 'initial',
+          generatedAt: new Date().toISOString(),
+          selectedDate: dispatchDate || 'today',
+          timezone: resolveCalendarTimeZone({ businessTimezone: fetchedAcct?.timezone }).timezone,
+          summary: {
+            jobCount: fetchedJobs.length,
+            sessionCount: fetchedSessions.length,
+            techCount: usersRes.data.filter(u =>
+              u.field_work_eligible === true ||
+              (u.field_work_eligible == null && u.role === 'tech')
+            ).length,
+            locCount: fetchedLocs.length,
+          },
+          markerCounts: {
+            jobs: fetchedJobs.filter(j => j.service_lat != null && j.service_lng != null).length,
+            techs: fetchedLocs.length,
+          },
+          layerState: { techs: true, jobs: true, traffic: false },
+          stale: false,
+          lastErrorCode: null,
         };
       }
       if (mapRef.current && !initialFitDoneRef.current) {
@@ -289,8 +305,8 @@ export default function Dispatch() {
   useEffect(() => {
     const id = setInterval(() => {
       api.get('/mobile/locations')
-        .then(r => { setTechLocs(r.data); techLocsRef.current = r.data; })
-        .catch(() => {});
+        .then(r => { setTechLocs(r.data); techLocsRef.current = r.data; setIsDataStale(false); })
+        .catch(() => { setIsDataStale(true); });
     }, 15000);
     return () => clearInterval(id);
   }, []);
@@ -305,7 +321,8 @@ export default function Dispatch() {
         setJobs(j);
         setSessions(s);
         jobsRef.current = j;
-      }).catch(() => {});
+        setIsDataStale(false);
+      }).catch(() => { setIsDataStale(true); });
     }, 30000);
     return () => clearInterval(id);
   }, [dispatchDate]);
@@ -717,7 +734,7 @@ export default function Dispatch() {
               <DispatchOverlayStatus
                 loading={loading}
                 error={overlayError}
-                stale={false}
+                stale={isDataStale}
                 onRetry={() => setRetryKey(k => k + 1)}
               />
 
