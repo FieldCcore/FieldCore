@@ -558,6 +558,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       is_multi_day: !!is_multi_day, session_count: createdSessions.length,
     }, req.ip);
 
+    // Activity timeline event — backfillable baseline for all new jobs
+    pool.query(
+      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details, created_at)
+       VALUES ($1,$2,'job.created',$3,$4,$5) ON CONFLICT DO NOTHING`,
+      [req.accountId, job.id, req.userId,
+       JSON.stringify({ service_type: job.service_type, is_multi_day: !!is_multi_day }),
+       job.created_at || new Date().toISOString()],
+    ).catch(() => {});
+
     const response = { ...job, sessions: createdSessions };
     if (mappingWarning) response.geocode_warning = mappingWarning;
     res.status(201).json(response);
@@ -1264,6 +1273,11 @@ router.post('/:id/cancel', requireAuth, requireRole('owner', 'manager'), async (
     );
     audit.log(req.accountId, req.userId, 'job.cancelled', 'job', req.params.id,
       { from: job.status, reason: reason || null }, req.ip);
+    pool.query(
+      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details)
+       VALUES ($1,$2,'job.cancelled',$3,$4)`,
+      [req.accountId, req.params.id, req.userId, JSON.stringify({ from: job.status, reason: reason || null })],
+    ).catch(() => {});
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1288,6 +1302,11 @@ router.post('/:id/reopen', requireAuth, requireRole('owner', 'manager'), async (
     );
     audit.log(req.accountId, req.userId, 'job.reopened', 'job', req.params.id,
       { from: 'cancelled', to: 'scheduled' }, req.ip);
+    pool.query(
+      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details)
+       VALUES ($1,$2,'job.reopened',$3,$4)`,
+      [req.accountId, req.params.id, req.userId, JSON.stringify({ from: 'cancelled', to: 'scheduled' })],
+    ).catch(() => {});
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import api from '../api';
 
 // Compact map control overlay for the Dispatch page.
 // Must set pointerEvents: 'auto' — parent .dispatch-map-overlays uses
@@ -141,12 +142,33 @@ function LayersDropdown({ layers, onToggle, serviceAreasEnabled, hasServiceAreas
   );
 }
 
+const READINESS_BADGE = {
+  insufficient_data:              { label: 'Insufficient Data', bg: '#FEE2E2', color: '#C62828' },
+  collecting:                     { label: 'Collecting',        bg: '#E0F2FE', color: '#0369A1' },
+  needs_data_cleanup:             { label: 'Needs Attention',   bg: '#FEF3C7', color: '#B45309' },
+  ready_for_baseline_analytics:   { label: 'Ready (Baseline)',  bg: '#E8F5E9', color: '#2E7D32' },
+  ready_for_limited_predictions:  { label: 'Ready (Limited)',   bg: '#E8F5E9', color: '#2E7D32' },
+  ready_for_advanced_predictions: { label: 'Ready',             bg: '#E8F5E9', color: '#2E7D32' },
+};
+
 function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
+  const [predictiveReadiness, setPredictiveReadiness] = useState(null);
+
+  useEffect(() => {
+    api.get('/dispatch/predictive-operations/readiness')
+      .then(res => setPredictiveReadiness(res.data))
+      .catch(() => {});
+  }, []);
+
   const fieldTechs = (techs || []).filter(t =>
     t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
   );
   const unassignedJobs = (jobs || []).filter(j => !j.tech_id && !['complete','cancelled','no_show','draft'].includes(j.status));
   const assignedJobs   = (jobs || []).filter(j => j.tech_id);
+
+  const predBadge = predictiveReadiness
+    ? (READINESS_BADGE[predictiveReadiness.readinessState] ?? { label: predictiveReadiness.readinessState, bg: '#F3F4F6', color: '#5F667A' })
+    : { label: 'Loading…', bg: '#F3F4F6', color: '#5F667A' };
 
   const rows = [
     {
@@ -222,12 +244,14 @@ function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
       block:   null,
     },
     {
-      name:    'Predictive Ops Foundation',
-      flag:    'dispatch_predictive_operations_foundation',
-      enabled: flags?.dispatch_predictive_operations_foundation,
-      front:   false,
-      back:    false,
-      block:   'Not yet implemented',
+      name:      'Predictive Ops Foundation',
+      flag:      'dispatch_predictive_operations_foundation',
+      enabled:   flags?.dispatch_predictive_operations_foundation,
+      front:     true,
+      back:      true,
+      block:     null,
+      predBadge,
+      predScore: predictiveReadiness?.readinessScore ?? null,
     },
   ];
 
@@ -285,6 +309,21 @@ function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
             {r.block && (
               <div style={{ marginLeft: 13, marginTop: 2, fontSize: 10, color: '#B45309' }}>
                 ⚠ {r.block}
+              </div>
+            )}
+            {r.predBadge && (
+              <div style={{ marginLeft: 13, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 99,
+                  background: r.predBadge.bg, color: r.predBadge.color,
+                }}>
+                  {r.predBadge.label}
+                </span>
+                {r.predScore !== null && (
+                  <span style={{ fontSize: 9, color: 'var(--slate)' }}>
+                    {r.predScore}/100
+                  </span>
+                )}
               </div>
             )}
           </div>

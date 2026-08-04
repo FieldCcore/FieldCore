@@ -1215,6 +1215,46 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_deactivation_reason         TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_version                     INT NOT NULL DEFAULT 0`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_emergency ON jobs(account_id, is_emergency) WHERE is_emergency = TRUE`,
+
+  // ── Predictive Operations Foundation ─────────────────────────────────────
+  // Normalized operational event store — foundation for future analytics.
+  // Populated from real domain events only. No synthetic or invented data.
+  `CREATE TABLE IF NOT EXISTS predictive_operational_events (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     event_type       TEXT NOT NULL,
+     job_id           UUID REFERENCES jobs(id)  ON DELETE SET NULL,
+     technician_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+     occurred_at_utc  TIMESTAMPTZ NOT NULL,
+     operational_date DATE,
+     numeric_metrics  JSONB NOT NULL DEFAULT '{}',
+     categorical_metrics JSONB NOT NULL DEFAULT '{}',
+     data_source      TEXT NOT NULL DEFAULT 'live',
+     source_record_id TEXT,
+     source_version   INT NOT NULL DEFAULT 0,
+     quality_state    TEXT NOT NULL DEFAULT 'valid',
+     idempotency_key  TEXT UNIQUE,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_pred_events_account   ON predictive_operational_events(account_id, occurred_at_utc DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_pred_events_job       ON predictive_operational_events(job_id) WHERE job_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_pred_events_tech      ON predictive_operational_events(technician_id) WHERE technician_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_pred_events_type      ON predictive_operational_events(account_id, event_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_pred_events_idem      ON predictive_operational_events(idempotency_key) WHERE idempotency_key IS NOT NULL`,
+
+  // Cached readiness summary — avoid recalculating on every page load.
+  `CREATE TABLE IF NOT EXISTS predictive_readiness_cache (
+     account_id       UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+     readiness_state  TEXT NOT NULL DEFAULT 'insufficient_data',
+     readiness_score  INT NOT NULL DEFAULT 0,
+     collection_active BOOLEAN NOT NULL DEFAULT TRUE,
+     usable_job_count INT NOT NULL DEFAULT 0,
+     data_completeness JSONB NOT NULL DEFAULT '{}',
+     quality_issues   JSONB NOT NULL DEFAULT '[]',
+     capability_readiness JSONB NOT NULL DEFAULT '{}',
+     explanation      JSONB NOT NULL DEFAULT '[]',
+     calculated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
 ];
 
 async function runMigrations() {

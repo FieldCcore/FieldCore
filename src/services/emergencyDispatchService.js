@@ -76,6 +76,15 @@ async function activate(jobId, accountId, userId, {
   audit.log(accountId, userId, 'job.emergency_activated', 'job', jobId,
     { priority, reasonCode, responseTargetMinutes }, null);
 
+  const { rows: [actor] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
+    .catch(() => ({ rows: [{}] }));
+  await pool.query(
+    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
+     VALUES ($1,$2,'job.emergency_activated',$3,$4,$5)`,
+    [accountId, jobId, userId, actor?.name || null,
+     JSON.stringify({ priority, reasonCode: reasonCode || null, responseTargetMinutes: responseTargetMinutes || null })],
+  ).catch(() => {});
+
   return { job: rows[0] };
 }
 
@@ -111,6 +120,15 @@ async function update(jobId, accountId, userId, fields = {}) {
   if (!rows.length) return { error: 'Job not found', status: 404 };
 
   audit.log(accountId, userId, 'job.emergency_updated', 'job', jobId, fields, null);
+
+  const { rows: [actor2] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
+    .catch(() => ({ rows: [{}] }));
+  await pool.query(
+    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
+     VALUES ($1,$2,'job.emergency_updated',$3,$4,$5)`,
+    [accountId, jobId, userId, actor2?.name || null, JSON.stringify(fields)],
+  ).catch(() => {});
+
   return { job: rows[0] };
 }
 
@@ -139,6 +157,14 @@ async function resolve(jobId, accountId, userId, { notes } = {}) {
   audit.log(accountId, userId, 'job.emergency_resolved', 'job', jobId,
     { notes: notes || null }, null);
 
+  const { rows: [actor3] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
+    .catch(() => ({ rows: [{}] }));
+  await pool.query(
+    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
+     VALUES ($1,$2,'job.emergency_resolved',$3,$4,$5)`,
+    [accountId, jobId, userId, actor3?.name || null, JSON.stringify({ notes: notes || null })],
+  ).catch(() => {});
+
   return { job: rows[0] };
 }
 
@@ -164,6 +190,14 @@ async function deactivate(jobId, accountId, userId, { reason } = {}) {
 
   audit.log(accountId, userId, 'job.emergency_deactivated', 'job', jobId,
     { reason: reason || null }, null);
+
+  const { rows: [actor4] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
+    .catch(() => ({ rows: [{}] }));
+  await pool.query(
+    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
+     VALUES ($1,$2,'job.emergency_deactivated',$3,$4,$5)`,
+    [accountId, jobId, userId, actor4?.name || null, JSON.stringify({ reason: reason || null })],
+  ).catch(() => {});
 
   return { job: rows[0] };
 }

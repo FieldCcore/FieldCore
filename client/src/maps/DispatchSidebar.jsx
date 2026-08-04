@@ -74,6 +74,225 @@ function fmtAge(ts) {
   return m > 0 ? `${m}m ago` : 'just now';
 }
 
+// ── Emergency Details inline view ────────────────────────────────────────────
+
+const PRIORITY_LABELS = { p1: 'P1 — Critical', p2: 'P2 — High', p3: 'P3 — Elevated' };
+const NOTIF_LABELS    = { none: 'None', sms: 'SMS', call: 'Phone call', sms_and_call: 'SMS + call' };
+const PAY_LABELS      = { none: 'Standard pay', flat_bonus: 'Flat bonus', time_and_half: 'Time and a half', double_time: 'Double time' };
+const EM_STATUS_LABELS = { active: 'Active', resolved: 'Resolved', deactivated: 'Deactivated' };
+
+function fmtDateTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function EmDetailRow({ label, value }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 10 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div>
+      <div style={{ fontSize: 11, color: 'var(--navy)', lineHeight: 1.5 }}>{value}</div>
+    </div>
+  );
+}
+
+function EmergencyDetailsView({ job, onBack, onJobUpdated, userRole, flags, techs, onViewComms, onViewActivity }) {
+  const [actionBusy,   setActionBusy]   = useState(false);
+  const [actionError,  setActionError]  = useState(null);
+  const [showDeact,    setShowDeact]    = useState(false);
+  const [deactReason,  setDeactReason]  = useState('');
+  const [showUpdate,   setShowUpdate]   = useState(false);
+
+  const canManage   = flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager');
+  const isActive    = job.is_emergency && job.emergency_status === 'active';
+  const emStatus    = EM_STATUS_LABELS[job.emergency_status] || job.emergency_status || '—';
+  const priority    = PRIORITY_LABELS[job.emergency_priority] || job.emergency_priority || '—';
+  const notifPolicy = NOTIF_LABELS[job.emergency_customer_notification_policy] || job.emergency_customer_notification_policy || 'None';
+  const payPolicy   = PAY_LABELS[job.emergency_premium_pay_policy] || job.emergency_premium_pay_policy || 'Standard pay';
+  const reasonLabel = job.emergency_reason_code
+    ? job.emergency_reason_code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null;
+
+  async function doAction(url, body, successMsg) {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const res = await api.post(url, body || {});
+      onJobUpdated?.(res.data);
+    } catch (err) {
+      setActionError(err.response?.data?.error || successMsg ? `Failed: ${err.response?.data?.error || 'try again'}` : 'Action failed.');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  const statusColor = isActive ? '#DC2626' : job.emergency_status === 'resolved' ? '#2E7D32' : '#5F667A';
+  const statusBg    = isActive ? '#FEE2E2' : job.emergency_status === 'resolved' ? '#E8F5E9' : '#F3F4F6';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '10px 14px', borderBottom: '1px solid var(--lightgray)', flexShrink: 0,
+      }}>
+        <button type="button" onClick={onBack} aria-label="Back to job details"
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px', marginLeft: -6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)', fontSize: 11, fontWeight: 600, borderRadius: 4 }}>
+          <BackIcon />
+          Job Details
+        </button>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}>Emergency</span>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', minHeight: 0 }}>
+
+        {/* Status badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+            background: statusBg, color: statusColor,
+          }}>
+            {emStatus}
+          </span>
+          {job.emergency_priority && (
+            <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626' }}>
+              {job.emergency_priority.toUpperCase()}
+            </span>
+          )}
+        </div>
+
+        <EmDetailRow label="Job" value={`${job.client_name} — ${job.service_type}`} />
+        <EmDetailRow label="Priority" value={priority} />
+        {reasonLabel && <EmDetailRow label="Reason" value={reasonLabel} />}
+        {job.emergency_reason_text && <EmDetailRow label="Details" value={job.emergency_reason_text} />}
+        {job.emergency_response_target_minutes && (
+          <EmDetailRow label="Response target" value={`${job.emergency_response_target_minutes} min`} />
+        )}
+        <EmDetailRow label="Declared" value={fmtDateTime(job.emergency_declared_at)} />
+        <EmDetailRow label="Customer notification" value={notifPolicy} />
+        <EmDetailRow label="Premium pay" value={payPolicy} />
+
+        {/* Assigned tech */}
+        {job.tech_name && <EmDetailRow label="Assigned technician" value={job.tech_name} />}
+        {!job.tech_id && <EmDetailRow label="Assigned technician" value="Unassigned" />}
+
+        {/* Resolution info */}
+        {(job.emergency_status === 'resolved' || job.emergency_status === 'deactivated') && (
+          <>
+            <div style={{ height: 1, background: 'var(--lightgray)', margin: '10px 0' }} />
+            <EmDetailRow
+              label={job.emergency_status === 'resolved' ? 'Resolved' : 'Deactivated'}
+              value={fmtDateTime(job.emergency_deactivated_at)}
+            />
+            {job.emergency_deactivation_reason && (
+              <EmDetailRow label="Reason" value={job.emergency_deactivation_reason} />
+            )}
+          </>
+        )}
+
+        {actionError && (
+          <div style={{ fontSize: 11, color: '#DC2626', padding: '6px 10px', background: '#FEE2E2', borderRadius: 6, marginBottom: 10 }}>
+            {actionError}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {canManage && isActive && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+            <button type="button" className="dispatch-drawer-btn"
+              onClick={() => setShowUpdate(true)}>
+              Update Emergency
+            </button>
+            {flags?.dispatch_quick_communications && (
+              <button type="button" className="dispatch-drawer-btn"
+                onClick={() => onViewComms?.(job.id)}>
+                Send Update
+              </button>
+            )}
+            {flags?.dispatch_activity_timeline && (
+              <button type="button" className="dispatch-drawer-btn"
+                onClick={() => onViewActivity?.('job', job.id)}>
+                View Activity
+              </button>
+            )}
+            <button type="button" className="dispatch-drawer-btn"
+              disabled={actionBusy}
+              onClick={() => doAction(`/jobs/${job.id}/emergency/resolve`, {}, 'Resolved')}
+              style={{ color: '#2E7D32' }}>
+              {actionBusy ? '…' : 'Resolve Emergency'}
+            </button>
+            <button type="button" className="dispatch-drawer-btn"
+              onClick={() => setShowDeact(v => !v)}
+              style={{ color: 'var(--slate)' }}>
+              Deactivate Emergency
+            </button>
+          </div>
+        )}
+
+        {canManage && !isActive && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+            {flags?.dispatch_activity_timeline && (
+              <button type="button" className="dispatch-drawer-btn"
+                onClick={() => onViewActivity?.('job', job.id)}>
+                View Activity
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Deactivate confirm */}
+        {showDeact && (
+          <div style={{ marginTop: 10, padding: '10px', background: '#FFF8F0', borderRadius: 6, border: '1px solid #FDE68A' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--navy)', marginBottom: 6 }}>
+              Reason for deactivation (required):
+            </div>
+            <textarea
+              value={deactReason}
+              onChange={e => setDeactReason(e.target.value)}
+              placeholder="Explain why this emergency is being deactivated…"
+              rows={2}
+              style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid var(--lightgray)', borderRadius: 4, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button type="button" className="dispatch-drawer-btn" style={{ flex: 1 }}
+                onClick={() => setShowDeact(false)}>
+                Cancel
+              </button>
+              <button type="button" className="dispatch-drawer-btn" style={{ flex: 1, color: 'var(--slate)' }}
+                disabled={!deactReason.trim() || actionBusy}
+                onClick={() => doAction(`/jobs/${job.id}/emergency/deactivate`, { reason: deactReason }, 'Deactivated')}>
+                {actionBusy ? '…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Update Emergency modal */}
+        {showUpdate && (
+          <EmergencyDispatchModal
+            job={job}
+            initialValues={{
+              priority:                       job.emergency_priority || 'p2',
+              reasonCode:                     job.emergency_reason_code || '',
+              reasonText:                     job.emergency_reason_text || '',
+              responseTarget:                 job.emergency_response_target_minutes ? String(job.emergency_response_target_minutes) : '',
+              notifPolicy:                    job.emergency_customer_notification_policy || 'none',
+              payPolicy:                      job.emergency_premium_pay_policy || 'none',
+            }}
+            onClose={() => setShowUpdate(false)}
+            onActivated={(updatedJob) => {
+              setShowUpdate(false);
+              onJobUpdated?.(updatedJob);
+            }}
+            isUpdate
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Job Details inline view ───────────────────────────────────────────────────
 
 const NON_ASSIGNABLE_STATUSES = new Set(['complete', 'cancelled', 'no_show', 'draft']);
@@ -89,6 +308,7 @@ function JobDetailView({
   const sLabel    = p.label;
   const hasCoords = isValidCoord(job.service_lat, job.service_lng);
 
+  const [innerView,          setInnerView]         = useState('main'); // 'main' | 'emergency_details'
   const [geocoding,         setGeocoding]         = useState(false);
   const [geocodeError,      setGeocodeError]      = useState(job.geocode_error || null);
   const [showAssignPicker,  setShowAssignPicker]  = useState(false);
@@ -105,6 +325,35 @@ function JobDetailView({
   const canDeclareEmergency = flags?.dispatch_emergency_mode
     && (userRole === 'owner' || userRole === 'manager')
     && !['complete', 'cancelled', 'no_show', 'draft'].includes(job.status);
+
+  async function handleResolveEmergency() {
+    setEmergencyBusy(true);
+    setEmergencyError(null);
+    try {
+      const res = await api.post(`/jobs/${job.id}/emergency/resolve`);
+      onJobUpdated?.(res.data);
+    } catch (err) {
+      setEmergencyError(err.response?.data?.error || 'Failed to resolve emergency.');
+    } finally {
+      setEmergencyBusy(false);
+    }
+  }
+
+  // Show emergency details inner view when triggered
+  if (innerView === 'emergency_details') {
+    return (
+      <EmergencyDetailsView
+        job={job}
+        onBack={() => setInnerView('main')}
+        onJobUpdated={onJobUpdated}
+        userRole={userRole}
+        flags={flags}
+        techs={techs}
+        onViewComms={onViewComms}
+        onViewActivity={onViewActivity}
+      />
+    );
+  }
 
   const handleRetryGeocode = async () => {
     setGeocoding(true);
@@ -343,39 +592,44 @@ function JobDetailView({
             )
           )}
 
-          {/* Emergency status badge — visible when emergency is active on this job */}
+          {/* Emergency status row — clickable summary + separate Resolve button */}
           {job.is_emergency && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '6px 10px', borderRadius: 6,
-              background: '#FEE2E2', border: '1px solid #FCA5A5',
-            }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>
-                ⚡ Emergency Active
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={() => setInnerView('emergency_details')}
+                aria-label="View emergency details"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  flex: '1 1 auto', minWidth: 0, overflow: 'hidden',
+                  padding: '6px 10px', borderRadius: 6,
+                  background: '#FEE2E2', border: '1px solid #FCA5A5',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <span aria-hidden="true" style={{ flexShrink: 0 }}>⚡</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Emergency Active
+                </span>
                 {job.emergency_priority && (
-                  <span style={{ marginLeft: 6, fontWeight: 600, textTransform: 'uppercase', fontSize: 10 }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, flexShrink: 0, whiteSpace: 'nowrap',
+                    padding: '1px 6px', borderRadius: 99,
+                    background: 'rgba(220,38,38,0.12)', color: '#DC2626',
+                  }}>
                     {job.emergency_priority.toUpperCase()}
                   </span>
                 )}
-              </span>
+              </button>
               {canDeclareEmergency && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    setEmergencyBusy(true);
-                    setEmergencyError(null);
-                    try {
-                      const res = await api.post(`/jobs/${job.id}/emergency/resolve`);
-                      onJobUpdated?.(res.data);
-                    } catch (err) {
-                      setEmergencyError(err.response?.data?.error || 'Failed to resolve emergency.');
-                    } finally {
-                      setEmergencyBusy(false);
-                    }
-                  }}
+                  onClick={handleResolveEmergency}
                   disabled={emergencyBusy}
+                  aria-label="Resolve emergency"
                   style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                    fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 6,
                     border: '1px solid #DC2626', background: 'transparent', color: '#DC2626',
                     cursor: emergencyBusy ? 'not-allowed' : 'pointer',
                   }}
@@ -386,7 +640,7 @@ function JobDetailView({
             </div>
           )}
           {emergencyError && (
-            <div style={{ fontSize: 10, color: '#DC2626', padding: '2px 4px' }}>{emergencyError}</div>
+            <div style={{ fontSize: 10, color: '#DC2626', padding: '2px 4px' }} role="alert">{emergencyError}</div>
           )}
 
           {/* More — expandable advanced actions */}
@@ -405,12 +659,21 @@ function JobDetailView({
               </button>
               {showMore && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 8 }}>
+                  {canDeclareEmergency && job.is_emergency && (
+                    <button
+                      type="button"
+                      className="dispatch-drawer-btn"
+                      onClick={() => { setShowMore(false); setInnerView('emergency_details'); }}
+                    >
+                      Manage Emergency
+                    </button>
+                  )}
                   {canDeclareEmergency && !job.is_emergency && (
                     <button
                       type="button"
                       className="dispatch-drawer-btn"
                       onClick={() => { setShowMore(false); setShowEmergencyModal(true); }}
-                      style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                      style={{ color: '#DC2626' }}
                     >
                       Declare Emergency
                     </button>
@@ -697,11 +960,15 @@ export default function DispatchSidebar({
   const isFullMap  = mode === 'full_map';
   const showToggle = !isMobile && !isFullMap;
 
+  // Job-related views where we need a resolved selectedJob
+  const JOB_DETAIL_VIEWS = new Set(['job_details', 'quick_comms', 'activity_timeline']);
+
   // Resolve selected job/tech data for detail views
   const selectedJob = useMemo(() => {
-    if (sidebarView !== 'job_details' || !selectedItem?.id) return null;
+    if (!selectedItem?.id || selectedItem.type !== 'job') return null;
+    if (!JOB_DETAIL_VIEWS.has(sidebarView)) return null;
     return (jobs || []).find(j => j.id === selectedItem.id) ?? null;
-  }, [sidebarView, selectedItem, jobs]);
+  }, [sidebarView, selectedItem, jobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedJobTech = useMemo(() => {
     if (!selectedJob?.tech_id) return null;

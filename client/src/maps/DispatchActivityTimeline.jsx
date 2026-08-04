@@ -8,12 +8,21 @@ function BackIcon() {
 }
 
 const EVENT_META = {
-  'job.assigned':       { label: 'Assigned',       color: '#1C2333', bg: '#E8F5E9' },
-  'job.reassigned':     { label: 'Reassigned',     color: '#B45309', bg: '#FEF3C7' },
-  'route.saved':        { label: 'Route Saved',    color: '#0369A1', bg: '#E0F2FE' },
-  'communication.sent': { label: 'Message Sent',   color: '#6A1B9A', bg: '#F3E8FF' },
-  'emergency.on':       { label: 'Emergency On',   color: '#DC2626', bg: '#FEE2E2' },
-  'emergency.off':      { label: 'Emergency Off',  color: '#2E7D32', bg: '#E8F5E9' },
+  'job.created':              { label: 'Job Created',          color: '#1C2333', bg: '#E8F5E9' },
+  'job.assigned':             { label: 'Assigned',             color: '#1C2333', bg: '#E8F5E9' },
+  'job.reassigned':           { label: 'Reassigned',           color: '#B45309', bg: '#FEF3C7' },
+  'job.cancelled':            { label: 'Cancelled',            color: '#C62828', bg: '#FEE2E2' },
+  'job.reopened':             { label: 'Reopened',             color: '#2E7D32', bg: '#E8F5E9' },
+  'job.geocoded':             { label: 'Address Located',      color: '#0369A1', bg: '#E0F2FE' },
+  'job.geocode_failed':       { label: 'Geocode Failed',       color: '#C62828', bg: '#FEE2E2' },
+  'job.emergency_activated':  { label: 'Emergency Activated',  color: '#DC2626', bg: '#FEE2E2' },
+  'job.emergency_updated':    { label: 'Emergency Updated',    color: '#DC2626', bg: '#FFF3CD' },
+  'job.emergency_resolved':   { label: 'Emergency Resolved',   color: '#2E7D32', bg: '#E8F5E9' },
+  'job.emergency_deactivated':{ label: 'Emergency Deactivated',color: '#5F667A', bg: '#F3F4F6' },
+  'route.saved':              { label: 'Route Saved',          color: '#0369A1', bg: '#E0F2FE' },
+  'communication.sent':       { label: 'Update Sent',          color: '#6A1B9A', bg: '#F3E8FF' },
+  'emergency.on':             { label: 'Emergency On',         color: '#DC2626', bg: '#FEE2E2' },
+  'emergency.off':            { label: 'Emergency Off',        color: '#2E7D32', bg: '#E8F5E9' },
 };
 
 function fmtAge(ts) {
@@ -43,21 +52,41 @@ function eventDotStyle(eventType) {
 
 function describeEvent(ev) {
   const actor = ev.actor_name_live || ev.actor_name || 'System';
-  const d     = ev.details || {};
+  const d     = typeof ev.details === 'string' ? JSON.parse(ev.details || '{}') : (ev.details || {});
 
   switch (ev.event_type) {
+    case 'job.created':
+      return `Job created by ${actor}`;
     case 'job.assigned':
       return `Assigned by ${actor}`;
     case 'job.reassigned':
       return `Reassigned by ${actor}`;
+    case 'job.cancelled':
+      return d.reason ? `Cancelled by ${actor} — ${d.reason}` : `Cancelled by ${actor}`;
+    case 'job.reopened':
+      return `Reopened by ${actor}`;
+    case 'job.geocoded':
+      return `Address located by system`;
+    case 'job.geocode_failed':
+      return `Address could not be located`;
+    case 'job.emergency_activated': {
+      const p = d.priority ? d.priority.toUpperCase() : '';
+      return `Emergency declared ${p ? `(${p}) ` : ''}by ${actor}`;
+    }
+    case 'job.emergency_updated':
+      return `Emergency updated by ${actor}`;
+    case 'job.emergency_resolved':
+      return d.notes ? `Emergency resolved by ${actor} — ${d.notes}` : `Emergency resolved by ${actor}`;
+    case 'job.emergency_deactivated':
+      return d.reason ? `Emergency deactivated by ${actor} — ${d.reason}` : `Emergency deactivated by ${actor}`;
     case 'route.saved':
-      return `Route saved by ${actor} (${d.jobCount || '?'} jobs)`;
+      return `Route saved by ${actor}${d.jobCount ? ` (${d.jobCount} jobs)` : ''}`;
     case 'communication.sent': {
       const parts = [];
       if (d.clientNotified) parts.push('client');
       if (d.techNotified)   parts.push('tech');
-      const who = parts.length ? parts.join(' & ') : 'unknown';
-      return `Message sent to ${who} by ${actor}`;
+      const who = parts.length ? parts.join(' & ') : 'recipient';
+      return `Update sent to ${who} by ${actor}`;
     }
     case 'dispatch.emergency_mode.activated':
       return `Emergency mode activated by ${actor}`;

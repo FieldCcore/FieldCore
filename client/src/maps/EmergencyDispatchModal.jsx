@@ -46,32 +46,45 @@ const INPUT_STYLE = {
 
 const FIELD_STYLE = { marginBottom: 12 };
 
-export default function EmergencyDispatchModal({ job, onClose, onActivated }) {
-  const [priority,          setPriority]          = useState('p2');
-  const [reasonCode,        setReasonCode]        = useState('');
-  const [reasonText,        setReasonText]        = useState('');
-  const [responseTarget,    setResponseTarget]    = useState('');
-  const [notifPolicy,       setNotifPolicy]       = useState('none');
-  const [payPolicy,         setPayPolicy]         = useState('none');
-  const [submitting,        setSubmitting]        = useState(false);
-  const [error,             setError]             = useState(null);
+export default function EmergencyDispatchModal({ job, initialValues, isUpdate = false, onClose, onActivated }) {
+  const [priority,       setPriority]       = useState(initialValues?.priority    || 'p2');
+  const [reasonCode,     setReasonCode]     = useState(initialValues?.reasonCode  || '');
+  const [reasonText,     setReasonText]     = useState(initialValues?.reasonText  || '');
+  const [responseTarget, setResponseTarget] = useState(initialValues?.responseTarget || '');
+  const [notifPolicy,    setNotifPolicy]    = useState(initialValues?.notifPolicy  || 'none');
+  const [payPolicy,      setPayPolicy]      = useState(initialValues?.payPolicy    || 'none');
+  const [submitting,     setSubmitting]     = useState(false);
+  const [error,          setError]          = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.post(`/jobs/${job.id}/emergency/activate`, {
+      const payload = {
         priority,
-        reasonCode:                       reasonCode || undefined,
-        reasonText:                       reasonText || undefined,
-        responseTargetMinutes:            responseTarget ? parseInt(responseTarget, 10) : undefined,
-        customerNotificationPolicy:       notifPolicy,
-        premiumPayPolicy:                 payPolicy,
-      });
+        reasonCode:                    reasonCode || undefined,
+        reasonText:                    reasonText || undefined,
+        responseTargetMinutes:         responseTarget ? parseInt(responseTarget, 10) : undefined,
+        customerNotificationPolicy:    notifPolicy,
+        premiumPayPolicy:              payPolicy,
+      };
+      const url = isUpdate
+        ? `/jobs/${job.id}/emergency`          // PATCH — update existing
+        : `/jobs/${job.id}/emergency/activate`; // POST — activate new
+      const res = isUpdate
+        ? await api.patch(url, {
+            emergency_priority:                     priority,
+            emergency_reason_code:                  reasonCode || null,
+            emergency_reason_text:                  reasonText || null,
+            emergency_response_target_minutes:      responseTarget ? parseInt(responseTarget, 10) : null,
+            emergency_customer_notification_policy: notifPolicy,
+            emergency_premium_pay_policy:           payPolicy,
+          })
+        : await api.post(url, payload);
       onActivated(res.data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to activate emergency. Try again.');
+      setError(err.response?.data?.error || `Failed to ${isUpdate ? 'update' : 'activate'} emergency. Try again.`);
     } finally {
       setSubmitting(false);
     }
@@ -107,7 +120,7 @@ export default function EmergencyDispatchModal({ job, onClose, onActivated }) {
         }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#DC2626' }}>
-              Declare Emergency
+              {isUpdate ? 'Update Emergency' : 'Declare Emergency'}
             </div>
             <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
               {job.client_name} — {job.service_type}
@@ -266,7 +279,7 @@ export default function EmergencyDispatchModal({ job, onClose, onActivated }) {
                 opacity: submitting ? 0.7 : 1,
               }}
             >
-              {submitting ? 'Activating…' : 'Declare Emergency'}
+              {submitting ? (isUpdate ? 'Saving…' : 'Activating…') : (isUpdate ? 'Save Changes' : 'Declare Emergency')}
             </button>
           </div>
         </form>

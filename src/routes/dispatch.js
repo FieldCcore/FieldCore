@@ -12,6 +12,7 @@ const {
 } = require('../services/serviceAreaService');
 const { predictDelays }       = require('../services/routeDelayService');
 const { sendQuickMessage }    = require('../services/dispatchCommunicationService');
+const predictiveOps           = require('../services/dispatchPredictiveOpsService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -419,7 +420,7 @@ const ALL_FLAG_DEFAULTS = {
   ...PHASE1_DEFAULTS,
   ...PHASE2_DEFAULTS,
   ...PHASE3_DEFAULTS,
-  dispatch_predictive_operations_foundation: false,
+  dispatch_predictive_operations_foundation: true,
 };
 
 /**
@@ -933,6 +934,63 @@ router.get('/technicians/:techId/activity', requireAuth, async (req, res) => {
     res.json({ events: rows, techId: req.params.techId });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load activity.' });
+  }
+});
+
+// ── Predictive Operations Foundation ─────────────────────────────────────────
+
+/**
+ * GET /api/dispatch/predictive-operations/readiness
+ * Returns data readiness state for predictive analytics features.
+ */
+router.get('/predictive-operations/readiness', requireAuth, async (req, res) => {
+  try {
+    const readiness = await predictiveOps.getReadiness(req.accountId);
+    res.json(readiness);
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.predictive-ops.readiness.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to load predictive readiness.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/predictive-operations/recalculate
+ * Recalculates and caches readiness state for the account.
+ * Requires owner or manager role.
+ */
+router.post('/predictive-operations/recalculate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const readiness = await predictiveOps.recalculate(req.accountId);
+    res.json(readiness);
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.predictive-ops.recalculate.error', error: err.message }));
+    res.status(500).json({ error: 'Failed to recalculate predictive readiness.' });
+  }
+});
+
+/**
+ * GET /api/dispatch/predictive-operations/data-quality
+ * Returns data quality issues and completeness metrics.
+ */
+router.get('/predictive-operations/data-quality', requireAuth, async (req, res) => {
+  try {
+    const quality = await predictiveOps.getDataQuality(req.accountId);
+    res.json(quality);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load data quality.' });
+  }
+});
+
+/**
+ * GET /api/dispatch/predictive-operations/capabilities
+ * Returns per-capability readiness state.
+ */
+router.get('/predictive-operations/capabilities', requireAuth, async (req, res) => {
+  try {
+    const caps = await predictiveOps.getCapabilities(req.accountId);
+    res.json(caps);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load capabilities.' });
   }
 });
 
