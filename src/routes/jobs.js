@@ -9,6 +9,7 @@ const notify     = require('../services/notify');
 const audit      = require('../services/audit');
 const { geocodeAddress } = require('../services/geocode');
 const { validateIanaTimezone, utcScheduleToLocal, localScheduleToUtc } = require('../services/scheduleTimeService');
+const emergencySvc = require('../services/emergencyDispatchService');
 
 // Valid status values — single-day and multi-day parent job statuses
 const VALID_STATUSES = [
@@ -1241,6 +1242,91 @@ router.post('/:id/assets', requireAuth, requireRole('owner', 'manager'), async (
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── POST /api/jobs/:id/cancel ─────────────────────────────────────────────────
+router.post('/:id/cancel', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { reason } = req.body;
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT id, status FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId],
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Not found' });
+    const job = existing[0];
+    if (job.status === 'cancelled') return res.status(409).json({ error: 'Job is already cancelled' });
+    if (job.status === 'complete')  return res.status(422).json({ error: 'Cannot cancel a completed job' });
+
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'cancelled', updated_at = NOW()
+       WHERE id = $1 AND account_id = $2 RETURNING *`,
+      [req.params.id, req.accountId],
+    );
+    audit.log(req.accountId, req.userId, 'job.cancelled', 'job', req.params.id,
+      { from: job.status, reason: reason || null }, req.ip);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/jobs/:id/reopen ─────────────────────────────────────────────────
+router.post('/:id/reopen', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT id, status FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId],
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Not found' });
+    const job = existing[0];
+    if (job.status !== 'cancelled') return res.status(422).json({ error: 'Only cancelled jobs can be reopened' });
+
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'scheduled', updated_at = NOW()
+       WHERE id = $1 AND account_id = $2 RETURNING *`,
+      [req.params.id, req.accountId],
+    );
+    audit.log(req.accountId, req.userId, 'job.reopened', 'job', req.params.id,
+      { from: 'cancelled', to: 'scheduled' }, req.ip);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/jobs/:id/emergency ───────────────────────────────────────────────
+router.get('/:id/emergency', requireAuth, async (req, res) => {
+  const result = await emergencySvc.getStatus(req.params.id, req.accountId);
+  if (result.error) return res.status(result.status || 500).json({ error: result.error });
+  res.json(result);
+});
+
+// ── POST /api/jobs/:id/emergency/activate ─────────────────────────────────────
+router.post('/:id/emergency/activate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const result = await emergencySvc.activate(req.params.id, req.accountId, req.userId, req.body);
+  if (result.error) return res.status(result.status || 500).json({ error: result.error });
+  res.json(result.job);
+});
+
+// ── PATCH /api/jobs/:id/emergency ─────────────────────────────────────────────
+router.patch('/:id/emergency', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const result = await emergencySvc.update(req.params.id, req.accountId, req.userId, req.body);
+  if (result.error) return res.status(result.status || 500).json({ error: result.error });
+  res.json(result.job);
+});
+
+// ── POST /api/jobs/:id/emergency/resolve ──────────────────────────────────────
+router.post('/:id/emergency/resolve', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const result = await emergencySvc.resolve(req.params.id, req.accountId, req.userId, req.body);
+  if (result.error) return res.status(result.status || 500).json({ error: result.error });
+  res.json(result.job);
+});
+
+// ── POST /api/jobs/:id/emergency/deactivate ───────────────────────────────────
+router.post('/:id/emergency/deactivate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const result = await emergencySvc.deactivate(req.params.id, req.accountId, req.userId, req.body);
+  if (result.error) return res.status(result.status || 500).json({ error: result.error });
+  res.json(result.job);
 });
 
 // ── PATCH /api/jobs/:id/assets/:aid ──────────────────────────────────────────

@@ -94,11 +94,8 @@ export default function DispatchTeamPanel({
   workloadsByTechId = null,  // Map<techId, WorkloadEntry>
   onAssignJob     = null,    // (jobId, techId) => void
   userRole        = 'tech',
-  // Phase 2 — route + emergency
+  // Phase 2 — route sequencing
   onViewRoute       = null,  // (techId) => void
-  emergencyMode     = false,
-  onToggleEmergency = null,  // () => void
-  emergencyToggling = false,
   // Phase 3 — delay predictions
   delaysByTechId    = null,  // Map<techId, DelayPrediction>
 }) {
@@ -188,7 +185,12 @@ export default function DispatchTeamPanel({
     );
     if (jobFilter === 'unassigned') list = list.filter(j => !j.tech_id);
     if (jobFilter === 'completed')  list = list.filter(j => j.status === 'complete');
-    return list;
+    // Emergency jobs always float to the top of whatever filter is applied
+    return [...list].sort((a, b) => {
+      if (a.is_emergency && !b.is_emergency) return -1;
+      if (!a.is_emergency && b.is_emergency) return 1;
+      return 0;
+    });
   }, [jobs, search, jobFilter]);
 
   function switchTab(t) { setTab(t); setSearch(''); }
@@ -271,39 +273,6 @@ export default function DispatchTeamPanel({
           )}
         </button>
       </div>
-
-      {/* Emergency mode toggle strip — shown only to owners/managers when flag is on */}
-      {flags.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager') && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '5px 12px',
-          background: emergencyMode ? '#DC2626' : 'var(--off)',
-          borderBottom: '1px solid var(--lightgray)',
-        }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: emergencyMode ? '#fff' : 'var(--slate)',
-          }}>
-            {emergencyMode ? '⚡ Emergency Mode' : 'Emergency Mode'}
-          </span>
-          <button
-            type="button"
-            onClick={onToggleEmergency}
-            disabled={emergencyToggling}
-            aria-pressed={emergencyMode}
-            style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 4,
-              border: emergencyMode ? '1.5px solid rgba(255,255,255,0.7)' : '1px solid var(--lightgray)',
-              background: emergencyMode ? 'transparent' : '#fff',
-              color: emergencyMode ? '#fff' : 'var(--navy)',
-              cursor: emergencyToggling ? 'not-allowed' : 'pointer',
-              opacity: emergencyToggling ? 0.6 : 1,
-            }}
-          >
-            {emergencyToggling ? '…' : emergencyMode ? 'Deactivate' : 'Activate'}
-          </button>
-        </div>
-      )}
 
       {/* Pending-assign banner */}
       {pendingAssignJob && tab === 'team' && (

@@ -1198,6 +1198,23 @@ const MIGRATIONS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_dispatch_comms_account ON dispatch_communications(account_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_dispatch_comms_job     ON dispatch_communications(job_id, created_at DESC)`,
+
+  // ── Job-scoped emergency dispatch columns ─────────────────────────────────
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_emergency                          BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_priority                    TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_reason_code                 TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_reason_text                 TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_declared_at                 TIMESTAMPTZ`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_declared_by                 UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_response_target_minutes     INT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_customer_notification_policy TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_premium_pay_policy          TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_status                      TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_deactivated_at              TIMESTAMPTZ`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_deactivated_by              UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_deactivation_reason         TEXT`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_version                     INT NOT NULL DEFAULT 0`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_emergency ON jobs(account_id, is_emergency) WHERE is_emergency = TRUE`,
 ];
 
 async function runMigrations() {

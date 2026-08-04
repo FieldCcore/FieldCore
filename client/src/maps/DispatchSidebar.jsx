@@ -8,6 +8,7 @@ import DispatchRoutePanel from './DispatchRoutePanel';
 import DispatchActivityTimeline from './DispatchActivityTimeline';
 import DispatchQuickCommsPanel from './DispatchQuickCommsPanel';
 import DispatchDateControl from './DispatchDateControl';
+import EmergencyDispatchModal from './EmergencyDispatchModal';
 import { getJobStatusPresentation } from '../domain/jobStatusPresentation';
 import { getTechStatus, ACTIVE_STATUSES } from '../domain/technicianStatusPresentation';
 import { formatTZ } from '../utils/calendarTimezone';
@@ -81,28 +82,29 @@ function JobDetailView({
   job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone,
   onViewActivity, onViewComms, flags,
   onAssignJob, userRole, techs,
-  emergencyMode, onToggleEmergency, emergencyToggling,
+  onJobUpdated,
 }) {
   const p         = getJobStatusPresentation(job.status);
   const sStyle    = { background: p.badgeBg, color: p.badgeColor };
   const sLabel    = p.label;
   const hasCoords = isValidCoord(job.service_lat, job.service_lng);
 
-  const [geocoding,       setGeocoding]       = useState(false);
-  const [geocodeError,    setGeocodeError]    = useState(job.geocode_error || null);
-  const [showAssignPicker, setShowAssignPicker] = useState(false);
-  const [showMore,        setShowMore]        = useState(false);
+  const [geocoding,         setGeocoding]         = useState(false);
+  const [geocodeError,      setGeocodeError]      = useState(job.geocode_error || null);
+  const [showAssignPicker,  setShowAssignPicker]  = useState(false);
+  const [showMore,          setShowMore]          = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyBusy,     setEmergencyBusy]     = useState(false);
+  const [emergencyError,    setEmergencyError]    = useState(null);
 
   const isAssignable  = !NON_ASSIGNABLE_STATUSES.has(job.status);
   const canAssign     = onAssignJob && (userRole === 'owner' || userRole === 'manager');
   const fieldTechs    = (techs || []).filter(t =>
     t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
   );
-
-  const hasAdvancedActions = flags?.dispatch_quick_communications
-    || flags?.dispatch_activity_timeline
-    || (flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager'))
-    || showGeocodeStatus; // referenced below
+  const canDeclareEmergency = flags?.dispatch_emergency_mode
+    && (userRole === 'owner' || userRole === 'manager')
+    && !['complete', 'cancelled', 'no_show', 'draft'].includes(job.status);
 
   const handleRetryGeocode = async () => {
     setGeocoding(true);
@@ -179,7 +181,7 @@ function JobDetailView({
               High Priority
             </span>
           )}
-          {emergencyMode && (
+          {job.is_emergency && (
             <span style={{
               fontSize: 10, fontWeight: 700, color: '#DC2626',
               background: '#FEE2E2', borderRadius: 99, padding: '2px 8px',
@@ -341,10 +343,55 @@ function JobDetailView({
             )
           )}
 
+          {/* Emergency status badge — visible when emergency is active on this job */}
+          {job.is_emergency && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px 10px', borderRadius: 6,
+              background: '#FEE2E2', border: '1px solid #FCA5A5',
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>
+                ⚡ Emergency Active
+                {job.emergency_priority && (
+                  <span style={{ marginLeft: 6, fontWeight: 600, textTransform: 'uppercase', fontSize: 10 }}>
+                    {job.emergency_priority.toUpperCase()}
+                  </span>
+                )}
+              </span>
+              {canDeclareEmergency && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setEmergencyBusy(true);
+                    setEmergencyError(null);
+                    try {
+                      const res = await api.post(`/jobs/${job.id}/emergency/resolve`);
+                      onJobUpdated?.(res.data);
+                    } catch (err) {
+                      setEmergencyError(err.response?.data?.error || 'Failed to resolve emergency.');
+                    } finally {
+                      setEmergencyBusy(false);
+                    }
+                  }}
+                  disabled={emergencyBusy}
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                    border: '1px solid #DC2626', background: 'transparent', color: '#DC2626',
+                    cursor: emergencyBusy ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {emergencyBusy ? '…' : 'Resolve'}
+                </button>
+              )}
+            </div>
+          )}
+          {emergencyError && (
+            <div style={{ fontSize: 10, color: '#DC2626', padding: '2px 4px' }}>{emergencyError}</div>
+          )}
+
           {/* More — expandable advanced actions */}
           {(flags?.dispatch_quick_communications || flags?.dispatch_activity_timeline ||
-            (flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager')) ||
-            showGeocodeStatus) && (
+            canDeclareEmergency || showGeocodeStatus) && (
             <>
               <button
                 type="button"
@@ -358,15 +405,14 @@ function JobDetailView({
               </button>
               {showMore && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 8 }}>
-                  {flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager') && (
+                  {canDeclareEmergency && !job.is_emergency && (
                     <button
                       type="button"
                       className="dispatch-drawer-btn"
-                      onClick={onToggleEmergency}
-                      disabled={emergencyToggling}
-                      style={emergencyMode ? { background: '#FEE2E2', color: '#DC2626' } : undefined}
+                      onClick={() => { setShowMore(false); setShowEmergencyModal(true); }}
+                      style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
                     >
-                      {emergencyToggling ? '…' : emergencyMode ? 'Deactivate Emergency' : 'Emergency Dispatch'}
+                      Declare Emergency
                     </button>
                   )}
                   {flags?.dispatch_quick_communications && (
@@ -395,6 +441,18 @@ function JobDetailView({
                 </div>
               )}
             </>
+          )}
+
+          {/* Emergency activation modal */}
+          {showEmergencyModal && (
+            <EmergencyDispatchModal
+              job={job}
+              onClose={() => setShowEmergencyModal(false)}
+              onActivated={(updatedJob) => {
+                setShowEmergencyModal(false);
+                onJobUpdated?.(updatedJob);
+              }}
+            />
           )}
         </div>
       </div>
@@ -621,13 +679,10 @@ export default function DispatchSidebar({
   flags,                 // dispatch feature flags
   workloadsByTechId,     // Map<techId, WorkloadEntry>
   userRole,              // 'owner' | 'manager' | 'tech'
-  // Phase 2 — route + emergency
+  // Phase 2 — route sequencing
   routeState,            // { route, loading, saving, error } from useDispatchRouteSequence
   onSaveRoute,           // (techId, jobIds) => void
   onViewRoute,           // (techId) => void
-  emergencyMode,         // boolean
-  onToggleEmergency,     // () => void
-  emergencyToggling,     // boolean
   // Phase 3 — activity + comms + delay
   activityState,         // { events, subject, loading, error } from useDispatchActivity
   onViewActivity,        // (type: 'job'|'tech', id) => void
@@ -738,9 +793,7 @@ export default function DispatchSidebar({
           onAssignJob={onAssignJob}
           userRole={userRole}
           techs={techs}
-          emergencyMode={emergencyMode}
-          onToggleEmergency={onToggleEmergency}
-          emergencyToggling={emergencyToggling}
+          onJobUpdated={onJobGeocoded}
         />
       )}
 
@@ -840,9 +893,6 @@ export default function DispatchSidebar({
             onAssignJob={onAssignJob}
             userRole={userRole}
             onViewRoute={onViewRoute}
-            emergencyMode={emergencyMode}
-            onToggleEmergency={onToggleEmergency}
-            emergencyToggling={emergencyToggling}
             delaysByTechId={delaysByTechId}
           />
         </>

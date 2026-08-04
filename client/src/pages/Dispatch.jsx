@@ -6,13 +6,11 @@ import DispatchMapLegend from '../maps/DispatchMapLegend';
 import DispatchSidebar from '../maps/DispatchSidebar';
 import DispatchFullMapControl from '../maps/DispatchFullMapControl';
 import DispatchOverlayStatus from '../maps/DispatchOverlayStatus';
-import DispatchEmergencyBanner from '../maps/DispatchEmergencyBanner';
 import { useDispatchSidebarMode } from '../hooks/useDispatchSidebarMode';
 import { useDispatchFeatureFlags } from '../hooks/useDispatchFeatureFlags';
 import { useDispatchWorkloads } from '../hooks/useDispatchWorkloads';
 import { useDispatchRouteSequence } from '../hooks/useDispatchRouteSequence';
 import { useDispatchServiceAreas } from '../hooks/useDispatchServiceAreas';
-import { useDispatchEmergencyMode } from '../hooks/useDispatchEmergencyMode';
 import { useDispatchDelayPredictions } from '../hooks/useDispatchDelayPredictions';
 import { useDispatchActivity } from '../hooks/useDispatchActivity';
 import LocationPermissionBanner from '../maps/LocationPermissionBanner';
@@ -37,7 +35,7 @@ function getUserRoleFromToken() {
 const MAP_MARKER_STATUSES = new Set([
   'scheduled', 'en_route', 'arrived', 'in_progress', 'paused',
   'awaiting_client', 'awaiting_parts', 'partially_completed',
-  'ready_for_inspection', 'complete',
+  'ready_for_inspection', 'complete', 'cancelled',
 ]);
 
 // ── Viewport persistence ──────────────────────────────────────────────────────
@@ -121,6 +119,43 @@ function jobMarkerIcon(color, isSelected) {
   };
 }
 
+// Cancelled job marker — red pin with X
+function cancelledMarkerSvg(isSelected) {
+  const stroke = isSelected ? 'white' : 'rgba(0,0,0,0.25)';
+  const sw     = isSelected ? 2 : 1;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="30" viewBox="0 0 22 30">
+    <path d="M11 1C6.58 1 3 4.58 3 9c0 5.25 8 19 8 19s8-13.75 8-19c0-4.42-3.58-8-8-8z" fill="#C62828" stroke="${stroke}" stroke-width="${sw}"/>
+    <line x1="7.5" y1="5.5" x2="14.5" y2="12.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="14.5" y1="5.5" x2="7.5" y2="12.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function cancelledMarkerIcon(isSelected) {
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(cancelledMarkerSvg(isSelected))}`,
+    scaledSize: new window.google.maps.Size(22, 30),
+    anchor:     new window.google.maps.Point(11, 30),
+  };
+}
+
+// Emergency job marker — enlarged bright-red pin with "!" label
+function emergencyMarkerSvg(isSelected) {
+  const stroke = isSelected ? 'white' : 'rgba(0,0,0,0.3)';
+  const sw     = isSelected ? 2.5 : 1.5;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
+    <path d="M14 1C8.48 1 4 5.48 4 11c0 6.56 10 26 10 26s10-19.44 10-26c0-5.52-4.48-10-10-10z" fill="#DC2626" stroke="${stroke}" stroke-width="${sw}"/>
+    <text x="14" y="14" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="900" fill="white">!</text>
+  </svg>`;
+}
+
+function emergencyMarkerIcon(isSelected) {
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(emergencyMarkerSvg(isSelected))}`,
+    scaledSize: new window.google.maps.Size(28, 38),
+    anchor:     new window.google.maps.Point(14, 38),
+  };
+}
+
 export default function Dispatch() {
   const [jobs,             setJobs]             = useState([]);
   const [sessions,         setSessions]         = useState([]);
@@ -143,8 +178,6 @@ export default function Dispatch() {
   const { byTechId: workloadsByTechId } = useDispatchWorkloads(dispatchDate, flags.dispatch_workload_balancing);
   const routeSeq    = useDispatchRouteSequence();
   const { areas: serviceAreas } = useDispatchServiceAreas(flags.dispatch_service_areas);
-  const { active: emergencyMode, toggling: emergencyToggling, toggle: toggleEmergencyMode } =
-    useDispatchEmergencyMode(flags.dispatch_emergency_mode);
   const { byTechId: delaysByTechId } = useDispatchDelayPredictions(dispatchDate, flags.dispatch_delay_prediction);
   const activityState = useDispatchActivity();
   const [dispatchSettings, setDispatchSettings] = useState(null);
@@ -409,14 +442,20 @@ export default function Dispatch() {
       if (!isValidCoord(job.service_lat, job.service_lng)) return;
       if (!MAP_MARKER_STATUSES.has(job.status)) return;
       activeIds.add(job.id);
-      const color = getJobMarkerColor(job.status);
-      const isSel = selectedItem?.type === 'job' && selectedItem?.id === job.id;
-      const icon  = jobMarkerIcon(color, isSel);
+      const isSel      = selectedItem?.type === 'job' && selectedItem?.id === job.id;
+      const isCancelled = job.status === 'cancelled';
+      const isEmergency = job.is_emergency === true;
+      const icon = isEmergency
+        ? emergencyMarkerIcon(isSel)
+        : isCancelled
+          ? cancelledMarkerIcon(isSel)
+          : jobMarkerIcon(getJobMarkerColor(job.status), isSel);
+      const zBase = isEmergency ? 20 : isCancelled ? 3 : 5;
       if (jobMarkersRef.current[job.id]) {
         const m = jobMarkersRef.current[job.id];
         m.setPosition({ lat: parseFloat(job.service_lat), lng: parseFloat(job.service_lng) });
         m.setIcon(icon);
-        m.setZIndex(isSel ? 100 : 5);
+        m.setZIndex(isSel ? 100 : zBase);
         m.setMap(layers.jobs ? map : null);
       } else {
         const jobId = job.id;
@@ -424,7 +463,7 @@ export default function Dispatch() {
           position: { lat: parseFloat(job.service_lat), lng: parseFloat(job.service_lng) },
           map:      layers.jobs ? map : null,
           icon, title: `${job.client_name} — ${job.service_type}`,
-          zIndex: isSel ? 100 : 5,
+          zIndex: isSel ? 100 : zBase,
         });
         m.set('fieldcoreMarker', 'job');
         m.set('jobId', jobId);
@@ -672,7 +711,7 @@ export default function Dispatch() {
     if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     try {
       const res = await api.post('/dispatch/assignments/validate', {
-        jobId, techId, isEmergency: emergencyMode,
+        jobId, techId, isEmergency: job.is_emergency ?? false,
       });
       setAssignmentPending({ job, tech, validation: res.data });
       setSidebarView('assignment_confirm');
@@ -688,7 +727,7 @@ export default function Dispatch() {
       });
       setSidebarView('assignment_confirm');
     }
-  }, [techs, sidebarMode, emergencyMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [techs, sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAssignConfirmed = useCallback((updatedJob) => {
     if (updatedJob) {
@@ -830,9 +869,6 @@ export default function Dispatch() {
             routeState={routeSeq}
             onSaveRoute={handleSaveRoute}
             onViewRoute={handleViewRoute}
-            emergencyMode={emergencyMode}
-            onToggleEmergency={toggleEmergencyMode}
-            emergencyToggling={emergencyToggling}
             activityState={activityState}
             onViewActivity={handleViewActivity}
             onViewComms={handleViewComms}
@@ -899,15 +935,6 @@ export default function Dispatch() {
                 </div>
               )}
 
-              {flags.dispatch_emergency_mode && (
-                <DispatchEmergencyBanner
-                  active={emergencyMode}
-                  toggling={emergencyToggling}
-                  onToggle={toggleEmergencyMode}
-                  userRole={userRole}
-                />
-              )}
-
               <DispatchOverlayStatus
                 loading={loading}
                 error={overlayError}
@@ -923,6 +950,7 @@ export default function Dispatch() {
                 techLocs={techLocs}
                 jobs={jobs}
                 layers={layers}
+                flags={flags}
               />
             </div>
           </div>
