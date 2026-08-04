@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
 
 // Address autocomplete backed by the server-side /api/maps/autocomplete proxy.
-// No dependency on useMapsLibrary or client-side Places API.
-// Backend geocodes coordinates on job save — lat/lng from onPlace are optional.
+// On selection, fetches /api/maps/place-details for coordinates + full address.
+// All Google API calls are proxied through the server — no client-side Places library needed.
 export default function AddressAutocomplete({ value, onChange, onPlace, placeholder, style, className }) {
-  const inputRef = useRef(null);
-  const timerRef = useRef(null);
-  const [preds, setPreds] = useState([]);
-  const [open,  setOpen]  = useState(false);
+  const inputRef  = useRef(null);
+  const timerRef  = useRef(null);
+  const [preds,    setPreds]    = useState([]);
+  const [open,     setOpen]     = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   // Debounced fetch — 300 ms to avoid a backend call on every keystroke
   const fetchPreds = useCallback((input) => {
@@ -16,30 +17,59 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
     if (!input?.trim() || input.length < 3) { setPreds([]); setOpen(false); return; }
     timerRef.current = setTimeout(async () => {
       try {
-        const res   = await api.get('/maps/autocomplete', { params: { input: input.trim() } });
-        const preds = res.data?.predictions || [];
-        setPreds(preds);
-        setOpen(preds.length > 0);
+        const res  = await api.get('/maps/autocomplete', { params: { input: input.trim() } });
+        const list = res.data?.predictions || [];
+        setPreds(list);
+        setOpen(list.length > 0);
       } catch {
         setPreds([]); setOpen(false);
       }
     }, 300);
   }, []);
 
-  function selectPred(pred) {
-    setPreds([]); setOpen(false);
-    const sf          = pred.structured_formatting;
-    const street      = sf?.main_text    || pred.description || '';
-    const secondary   = sf?.secondary_text || '';               // e.g. "Coral Springs, FL 33065, USA"
-    const parts       = secondary.split(',').map(s => s.trim());
-    const city        = parts[0] || '';
-    const stateZip    = (parts[1] || '').trim().split(' ').filter(Boolean);
-    const state       = stateZip[0] || '';
-    const zip         = stateZip[1] || '';
+  async function selectPred(pred) {
+    setPreds([]);
+    setOpen(false);
 
+    const sf        = pred.structured_formatting;
+    const street    = sf?.main_text || pred.description || '';
+    const secondary = sf?.secondary_text || '';
+    const parts     = secondary.split(',').map(s => s.trim());
+    const city      = parts[0] || '';
+    const stateZip  = (parts[1] || '').trim().split(' ').filter(Boolean);
+    const state     = stateZip[0] || '';
+    const zip       = stateZip[1] || '';
+
+    // Update visible text immediately so the input doesn't appear frozen
     onChange?.(street);
-    // lat/lng are null — backend geocodes on save
-    onPlace?.({ street, city, state, zip, lat: null, lng: null, place_id: pred.place_id ?? null });
+
+    if (!pred.place_id) {
+      onPlace?.({ street, city, state, zip, lat: null, lng: null, place_id: null });
+      return;
+    }
+
+    // Fetch place details for coordinates + full address components
+    try {
+      setResolving(true);
+      const { data } = await api.get('/maps/place-details', { params: { placeId: pred.place_id } });
+      onPlace?.({
+        street:           data.addressLine1   || street,
+        city:             data.city           || city,
+        state:            data.region         || state,
+        zip:              data.postalCode      || zip,
+        lat:              data.latitude        ?? null,
+        lng:              data.longitude       ?? null,
+        place_id:         data.placeId         || pred.place_id,
+        formattedAddress: data.formattedAddress || '',
+        country:          data.country          || '',
+        countryCode:      data.countryCode       || '',
+      });
+    } catch {
+      // Coordinates not critical — backend will geocode on save
+      onPlace?.({ street, city, state, zip, lat: null, lng: null, place_id: pred.place_id });
+    } finally {
+      setResolving(false);
+    }
   }
 
   function handleChange(e) {
@@ -66,11 +96,12 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
         ref={inputRef}
         value={value}
         onChange={handleChange}
-        placeholder={placeholder || 'Street address'}
+        placeholder={resolving ? 'Looking up address…' : (placeholder || 'Street address')}
         style={style}
         className={className}
         autoComplete="off"
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        aria-busy={resolving}
       />
       {open && preds.length > 0 && (
         <ul style={{

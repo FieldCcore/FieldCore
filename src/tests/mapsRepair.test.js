@@ -166,6 +166,89 @@ describe('GET /api/maps/autocomplete — input validation', () => {
   });
 });
 
+// ── /api/maps/place-details — auth and input validation ──────────────────────
+
+describe('GET /api/maps/place-details — authentication', () => {
+  test('requires auth', async () => {
+    const res = await request(app).get('/api/maps/place-details?placeId=ChIJN1t_tDeuEmsRUsoyG83frY4');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/maps/place-details — missing GOOGLE_MAPS_API_KEY', () => {
+  beforeEach(() => { delete process.env.GOOGLE_MAPS_API_KEY; });
+
+  test('returns 503 when key is absent', async () => {
+    const res = await request(app)
+      .get('/api/maps/place-details?placeId=ChIJN1t_tDeuEmsRUsoyG83frY4')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty('error');
+  });
+});
+
+describe('GET /api/maps/place-details — input validation', () => {
+  test('returns 400 when placeId is missing', async () => {
+    const res = await request(app)
+      .get('/api/maps/place-details')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/placeId/i);
+  });
+
+  test('returns 400 when placeId is empty string', async () => {
+    const res = await request(app)
+      .get('/api/maps/place-details?placeId=')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/maps/place-details — key never exposed in responses', () => {
+  const dummyKey = 'AIzaFAKEKEY_place_details_test_only';
+
+  beforeEach(() => { process.env.GOOGLE_MAPS_API_KEY = dummyKey; });
+
+  test('error response does not contain the API key', async () => {
+    const res = await request(app)
+      .get('/api/maps/place-details?placeId=INVALID_PLACE_ID_FOR_TESTING')
+      .set('Authorization', `Bearer ${token}`);
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain(dummyKey);
+  });
+});
+
+// ── Frontend isolation — server key never referenced in browser code ──────────
+
+describe('AddressAutocomplete.jsx — server key isolation', () => {
+  const fs   = require('fs');
+  const path = require('path');
+
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../client/src/components/AddressAutocomplete.jsx'),
+    'utf8',
+  );
+
+  test('does not reference GOOGLE_MAPS_SERVER_KEY', () => {
+    expect(source).not.toContain('GOOGLE_MAPS_SERVER_KEY');
+  });
+
+  test('does not reference process.env in browser component', () => {
+    expect(source).not.toContain('process.env');
+  });
+
+  test('does not import loadGoogleMaps or Maps libraries directly', () => {
+    expect(source).not.toContain('loadGoogleMaps');
+    expect(source).not.toContain('useMapsLibrary');
+    expect(source).not.toContain('google.maps.places');
+  });
+
+  test('uses server proxy endpoint, not Google directly', () => {
+    expect(source).toContain('/maps/autocomplete');
+    expect(source).toContain('/maps/place-details');
+  });
+});
+
 // ── Key masking — responses never expose the raw API key ─────────────────────
 
 describe('Maps routes — key never exposed in responses', () => {

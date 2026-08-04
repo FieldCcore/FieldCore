@@ -159,6 +159,70 @@ router.post('/route', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/maps/place-details?placeId=...
+// Returns full address components and coordinates for a given Place ID.
+// Uses GOOGLE_MAPS_API_KEY (server-side proxy — never exposes the key to the browser).
+router.get('/place-details', requireAuth, async (req, res) => {
+  const { placeId } = req.query;
+  if (!placeId?.trim()) return res.status(400).json({ error: 'placeId is required' });
+
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return res.status(503).json({ error: 'Maps not configured' });
+
+  try {
+    const r = await fetch(
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId.trim())}`,
+      {
+        headers: {
+          'X-Goog-Api-Key':   key,
+          'X-Goog-FieldMask': 'id,formattedAddress,addressComponents,location',
+        },
+      },
+    );
+
+    const body = await r.json();
+
+    if (body.error) {
+      console.error('[maps/place-details] error:', body.error.status, body.error.message || '');
+      return res.status(422).json({ error: body.error.message || 'Place lookup failed' });
+    }
+
+    const comps = body.addressComponents || [];
+    const get   = (type, short = false) => {
+      const c = comps.find(c => c.types?.includes(type));
+      return (short ? c?.shortText : c?.longText) || '';
+    };
+
+    const streetNumber = get('street_number', true);
+    const route        = get('route', false);
+    const addressLine1 = [streetNumber, route].filter(Boolean).join(' ');
+    const city         = get('locality', false)
+                      || get('sublocality_level_1', false)
+                      || get('administrative_area_level_2', false);
+    const region       = get('administrative_area_level_1', true);
+    const postalCode   = get('postal_code', true);
+    const country      = get('country', false);
+    const countryCode  = get('country', true);
+
+    res.json({
+      placeId:          body.id || placeId.trim(),
+      formattedAddress: body.formattedAddress || '',
+      addressLine1,
+      addressLine2:     '',
+      city,
+      region,
+      postalCode,
+      country,
+      countryCode,
+      latitude:         body.location?.latitude  ?? null,
+      longitude:        body.location?.longitude ?? null,
+    });
+  } catch (err) {
+    console.error('[maps/place-details]', err.message);
+    res.status(500).json({ error: 'Place details request failed' });
+  }
+});
+
 // POST /api/maps/geocode-diagnostic
 // Owner-only diagnostic — verifies the server key and geocoding pipeline.
 // REMOVE or DEV-gate this endpoint after production verification.
