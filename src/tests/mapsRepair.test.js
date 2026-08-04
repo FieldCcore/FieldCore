@@ -40,14 +40,14 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  savedKey = process.env.GOOGLE_MAPS_API_KEY;
+  savedKey = process.env.GOOGLE_MAPS_SERVER_KEY;
 });
 
 afterEach(() => {
   if (savedKey !== undefined) {
-    process.env.GOOGLE_MAPS_API_KEY = savedKey;
+    process.env.GOOGLE_MAPS_SERVER_KEY = savedKey;
   } else {
-    delete process.env.GOOGLE_MAPS_API_KEY;
+    delete process.env.GOOGLE_MAPS_SERVER_KEY;
   }
 });
 
@@ -75,9 +75,9 @@ describe('Maps routes — authentication', () => {
 
 // ── Missing server key — graceful degradation ─────────────────────────────────
 
-describe('Maps routes — missing GOOGLE_MAPS_API_KEY', () => {
+describe('Maps routes — missing GOOGLE_MAPS_SERVER_KEY', () => {
   beforeEach(() => {
-    delete process.env.GOOGLE_MAPS_API_KEY;
+    delete process.env.GOOGLE_MAPS_SERVER_KEY;
   });
 
   test('GET /api/maps/geocode returns 503 when key is absent', async () => {
@@ -93,7 +93,7 @@ describe('Maps routes — missing GOOGLE_MAPS_API_KEY', () => {
       .get('/api/maps/autocomplete?input=Tampa')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ predictions: [] });
+    expect(res.body.predictions).toEqual([]);
   });
 
   test('POST /api/maps/route returns 503 when key is absent', async () => {
@@ -175,8 +175,8 @@ describe('GET /api/maps/place-details — authentication', () => {
   });
 });
 
-describe('GET /api/maps/place-details — missing GOOGLE_MAPS_API_KEY', () => {
-  beforeEach(() => { delete process.env.GOOGLE_MAPS_API_KEY; });
+describe('GET /api/maps/place-details — missing GOOGLE_MAPS_SERVER_KEY', () => {
+  beforeEach(() => { delete process.env.GOOGLE_MAPS_SERVER_KEY; });
 
   test('returns 503 when key is absent', async () => {
     const res = await request(app)
@@ -207,7 +207,7 @@ describe('GET /api/maps/place-details — input validation', () => {
 describe('GET /api/maps/place-details — key never exposed in responses', () => {
   const dummyKey = 'AIzaFAKEKEY_place_details_test_only';
 
-  beforeEach(() => { process.env.GOOGLE_MAPS_API_KEY = dummyKey; });
+  beforeEach(() => { process.env.GOOGLE_MAPS_SERVER_KEY = dummyKey; });
 
   test('error response does not contain the API key', async () => {
     const res = await request(app)
@@ -255,7 +255,7 @@ describe('Maps routes — key never exposed in responses', () => {
   const dummyKey = 'AIzaFAKEKEY_for_testing_purposes_only';
 
   beforeEach(() => {
-    process.env.GOOGLE_MAPS_API_KEY = dummyKey;
+    process.env.GOOGLE_MAPS_SERVER_KEY = dummyKey;
   });
 
   test('geocode error response does not contain the API key', async () => {

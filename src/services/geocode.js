@@ -10,7 +10,7 @@
     browserKeyFallbackEnabled:      false,
   });
   if (!sk) {
-    console.error('[Geocode] GOOGLE_MAPS_SERVER_KEY is absent — geocoding disabled until this variable is set in Railway (Application restrictions: None, API restrictions: Geocoding API)');
+    console.error('[Geocode] GOOGLE_MAPS_SERVER_KEY is absent — geocoding disabled until this variable is set in Railway (Application restrictions: None, API restrictions: Geocoding API, Places API (New))');
   }
 }());
 

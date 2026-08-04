@@ -2,17 +2,29 @@ const router = require('express').Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { geocodeAddress } = require('../services/geocode');
 
+// All server-side Google Maps API calls use GOOGLE_MAPS_SERVER_KEY exclusively.
+// Required API restrictions on that key: Geocoding API, Places API (New), Routes API.
+// GOOGLE_MAPS_API_KEY is not used by any server-side route.
+// VITE_GOOGLE_MAPS_API_KEY is the browser-only key for the Maps JavaScript loader — never read here.
+
+function getServerKey() {
+  return (process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
+}
+
 // GET /api/maps/autocomplete?input=...
 // Server-side Places Autocomplete proxy using Places API (New).
 // Returns { predictions: [{description, place_id, structured_formatting}] }
+// In development, also returns _error code when the key is missing or Google returns an error.
 router.get('/autocomplete', requireAuth, async (req, res) => {
   const { input } = req.query;
-  if (!input?.trim() || input.trim().length < 3) return res.json({ predictions: [] });
+  if (!input?.trim() || input.trim().length < 3)  return res.json({ predictions: [] });
+  if (input.trim().length > 200)                   return res.json({ predictions: [] });
 
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = getServerKey();
   if (!key) {
-    console.warn('[maps/autocomplete] GOOGLE_MAPS_API_KEY not set — returning empty predictions');
-    return res.json({ predictions: [] });
+    console.warn('[maps/autocomplete] GOOGLE_MAPS_SERVER_KEY not set — returning empty predictions');
+    const extra = process.env.NODE_ENV !== 'production' ? { _error: 'PLACES_KEY_MISSING' } : {};
+    return res.json({ predictions: [], ...extra });
   }
 
   try {
@@ -23,20 +35,25 @@ router.get('/autocomplete', requireAuth, async (req, res) => {
         'X-Goog-Api-Key':   key,
         'X-Goog-FieldMask': 'suggestions.placePrediction.text,suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat',
       },
-      body: JSON.stringify({
-        input:              input.trim(),
-        includedRegionCodes: ['US'],
-      }),
+      body: JSON.stringify({ input: input.trim() }),
     });
 
     const body = await r.json();
 
     if (body.error) {
-      console.error('[maps/autocomplete] error:', body.error.status, body.error.message || '');
-      return res.json({ predictions: [] });
+      const status = body.error.status || 'UNKNOWN';
+      console.error('[maps/autocomplete] provider error:', status, body.error.message || '');
+      const errCodeMap = {
+        PERMISSION_DENIED:  'PLACES_REQUEST_DENIED',
+        API_NOT_ENABLED:    'PLACES_API_NOT_ENABLED',
+        RESOURCE_EXHAUSTED: 'PLACES_QUOTA_EXCEEDED',
+      };
+      const extra = process.env.NODE_ENV !== 'production'
+        ? { _error: errCodeMap[status] || 'PLACES_REQUEST_DENIED' }
+        : {};
+      return res.json({ predictions: [], ...extra });
     }
 
-    // Map Places API (New) shape → legacy shape expected by the frontend
     const predictions = (body.suggestions || []).map(s => {
       const p = s.placePrediction;
       return {
@@ -57,12 +74,12 @@ router.get('/autocomplete', requireAuth, async (req, res) => {
 });
 
 // GET /api/maps/geocode?address=...
-// Server-side geocoding proxy — keeps the API key off the client.
+// Server-side geocoding proxy — keeps GOOGLE_MAPS_SERVER_KEY off the client.
 router.get('/geocode', requireAuth, async (req, res) => {
   const { address } = req.query;
   if (!address?.trim()) return res.status(400).json({ error: 'address is required' });
 
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = getServerKey();
   if (!key) return res.status(503).json({ error: 'Maps not configured' });
 
   try {
@@ -94,7 +111,6 @@ router.get('/geocode', requireAuth, async (req, res) => {
 // Body: { origin, destination, mode }
 //   origin / destination: { address: string } | { lat: number, lng: number }
 //   mode: 'DRIVE' | 'WALK' | 'BICYCLE' | 'TRANSIT'  (default: 'DRIVE')
-// Response: { distance: { meters, miles }, duration: { seconds, minutes, text }, polyline }
 router.post('/route', requireAuth, async (req, res) => {
   const { origin, destination, mode = 'DRIVE' } = req.body;
 
@@ -102,7 +118,7 @@ router.post('/route', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'origin and destination are required' });
   }
 
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = getServerKey();
   if (!key) return res.status(503).json({ error: 'Maps not configured' });
 
   function toWaypoint(loc) {
@@ -161,12 +177,12 @@ router.post('/route', requireAuth, async (req, res) => {
 
 // GET /api/maps/place-details?placeId=...
 // Returns full address components and coordinates for a given Place ID.
-// Uses GOOGLE_MAPS_API_KEY (server-side proxy — never exposes the key to the browser).
+// Uses GOOGLE_MAPS_SERVER_KEY (server-side proxy — key never exposed to the browser).
 router.get('/place-details', requireAuth, async (req, res) => {
   const { placeId } = req.query;
   if (!placeId?.trim()) return res.status(400).json({ error: 'placeId is required' });
 
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = getServerKey();
   if (!key) return res.status(503).json({ error: 'Maps not configured' });
 
   try {
@@ -224,48 +240,39 @@ router.get('/place-details', requireAuth, async (req, res) => {
 });
 
 // POST /api/maps/geocode-diagnostic
-// Owner-only diagnostic — verifies the server key and geocoding pipeline.
-// REMOVE or DEV-gate this endpoint after production verification.
+// Owner-only diagnostic — verifies the server key and service configuration.
 router.post('/geocode-diagnostic', requireAuth, requireRole('owner'), async (req, res) => {
-  const serverKeySet  = !!process.env.GOOGLE_MAPS_SERVER_KEY;
-  const browserKeySet = !!process.env.GOOGLE_MAPS_API_KEY;
-  const sk = process.env.GOOGLE_MAPS_SERVER_KEY || '';
-  const bk = process.env.GOOGLE_MAPS_API_KEY    || '';
+  const sk = (process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
 
   const keyInfo = {
-    GOOGLE_MAPS_SERVER_KEY_set: serverKeySet,
-    GOOGLE_MAPS_SERVER_KEY_len: sk.length,
-    GOOGLE_MAPS_SERVER_KEY_first6: sk.slice(0, 6) || null,
-    GOOGLE_MAPS_SERVER_KEY_last4:  sk.slice(-4)   || null,
-    GOOGLE_MAPS_API_KEY_set:   browserKeySet,
-    activeKeySource: serverKeySet ? 'GOOGLE_MAPS_SERVER_KEY' : (browserKeySet ? 'GOOGLE_MAPS_API_KEY' : 'NONE'),
+    googleMapsServerKeyPresent:   !!sk,
+    googleMapsServerKeyLength:    sk.length,
+    googleMapsServerKeyFirst6:    sk.slice(0, 6)  || null,
+    googleMapsServerKeyLast4:     sk.slice(-4)    || null,
+    placesServiceConfigured:      !!sk,
+    geocodingServiceConfigured:   !!sk,
   };
 
   const testAddress = (req.body?.address || '305 Lincoln Court, Deerfield Beach, FL, United States').trim();
   const geo = await geocodeAddress(testAddress);
 
-  const result = {
-    keyInfo,
-    normalizedAddress: testAddress,
-    httpStatus: 200,
+  console.log('[maps/geocode-diagnostic]', {
+    serverKeyPresent:     keyInfo.googleMapsServerKeyPresent,
     providerStatus:       geo.geocode_provider_status || (geo.error ? 'ERROR' : 'OK'),
-    providerErrorMessage: geo.geocode_error || null,
-    resultCount:          geo.lat != null ? 1 : 0,
-    firstFormattedAddress: geo.formatted_address || null,
-    placeId:              geo.place_id    || null,
-    lat:                  geo.lat         || null,
-    lng:                  geo.lng         || null,
     hasCoordinates:       geo.lat != null && geo.lng != null,
-  };
-
-  console.log('[maps/geocode-diagnostic] result', {
-    activeKeySource: keyInfo.activeKeySource,
-    providerStatus: result.providerStatus,
-    hasCoordinates: result.hasCoordinates,
-    providerErrorMessage: result.providerErrorMessage,
+    providerErrorMessage: geo.geocode_error || null,
   });
 
-  res.json(result);
+  res.json({
+    keyInfo,
+    normalizedAddress:     testAddress,
+    providerStatus:        geo.geocode_provider_status || (geo.error ? 'ERROR' : 'OK'),
+    providerErrorMessage:  geo.geocode_error || null,
+    hasCoordinates:        geo.lat != null && geo.lng != null,
+    firstFormattedAddress: geo.formatted_address || null,
+    lat:                   geo.lat ?? null,
+    lng:                   geo.lng ?? null,
+  });
 });
 
 function formatDuration(sec) {
