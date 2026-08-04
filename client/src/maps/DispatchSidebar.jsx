@@ -1108,9 +1108,16 @@ export default function DispatchSidebar({
       {showDetailView && sidebarView === 'activity_timeline' && (
         <DispatchActivityTimeline
           subject={activityState?.subject ?? null}
-          events={activityState?.events ?? []}
+          events={activityState?.items ?? activityState?.events ?? []}
           loading={activityState?.loading ?? false}
           error={activityState?.error ?? null}
+          hasData={activityState?.hasData ?? false}
+          activeCategory={activityState?.category ?? null}
+          onCategoryFilter={activityState?.filterByCategory ?? null}
+          onRetry={() => {
+            const s = activityState?.subject;
+            if (s) activityState?.loadActivity(s.type, s.id);
+          }}
           onBack={onSidebarBack}
           title={
             activityState?.subject?.type === 'job' && selectedJob

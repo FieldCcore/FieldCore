@@ -9,7 +9,8 @@ const notify     = require('../services/notify');
 const audit      = require('../services/audit');
 const { geocodeAddress } = require('../services/geocode');
 const { validateIanaTimezone, utcScheduleToLocal, localScheduleToUtc } = require('../services/scheduleTimeService');
-const emergencySvc = require('../services/emergencyDispatchService');
+const emergencySvc       = require('../services/emergencyDispatchService');
+const { recordActivity } = require('../services/jobActivityService');
 
 // Valid status values — single-day and multi-day parent job statuses
 const VALID_STATUSES = [
@@ -558,14 +559,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       is_multi_day: !!is_multi_day, session_count: createdSessions.length,
     }, req.ip);
 
-    // Activity timeline event — backfillable baseline for all new jobs
-    pool.query(
-      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details, created_at)
-       VALUES ($1,$2,'job.created',$3,$4,$5) ON CONFLICT DO NOTHING`,
-      [req.accountId, job.id, req.userId,
-       JSON.stringify({ service_type: job.service_type, is_multi_day: !!is_multi_day }),
-       job.created_at || new Date().toISOString()],
-    ).catch(() => {});
+    recordActivity({
+      accountId: req.accountId, jobId: job.id,
+      eventType: 'job.created',
+      actor: { id: req.userId, type: 'user' },
+      summary: `Job created — ${job.service_type || 'unknown service'}`,
+      metadata: { service_type: job.service_type, is_multi_day: !!is_multi_day },
+      occurredAt: new Date(job.created_at || Date.now()),
+      source: 'domain',
+    });
 
     const response = { ...job, sessions: createdSessions };
     if (mappingWarning) response.geocode_warning = mappingWarning;
@@ -1273,11 +1275,14 @@ router.post('/:id/cancel', requireAuth, requireRole('owner', 'manager'), async (
     );
     audit.log(req.accountId, req.userId, 'job.cancelled', 'job', req.params.id,
       { from: job.status, reason: reason || null }, req.ip);
-    pool.query(
-      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details)
-       VALUES ($1,$2,'job.cancelled',$3,$4)`,
-      [req.accountId, req.params.id, req.userId, JSON.stringify({ from: job.status, reason: reason || null })],
-    ).catch(() => {});
+    recordActivity({
+      accountId: req.accountId, jobId: req.params.id,
+      eventType: 'job.cancelled',
+      actor: { id: req.userId, type: 'user' },
+      summary: reason ? `Job cancelled — ${reason}` : 'Job cancelled',
+      metadata: { from: job.status, reason: reason || null },
+      source: 'domain',
+    });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1302,11 +1307,14 @@ router.post('/:id/reopen', requireAuth, requireRole('owner', 'manager'), async (
     );
     audit.log(req.accountId, req.userId, 'job.reopened', 'job', req.params.id,
       { from: 'cancelled', to: 'scheduled' }, req.ip);
-    pool.query(
-      `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, details)
-       VALUES ($1,$2,'job.reopened',$3,$4)`,
-      [req.accountId, req.params.id, req.userId, JSON.stringify({ from: 'cancelled', to: 'scheduled' })],
-    ).catch(() => {});
+    recordActivity({
+      accountId: req.accountId, jobId: req.params.id,
+      eventType: 'job.reopened',
+      actor: { id: req.userId, type: 'user' },
+      summary: 'Job reopened',
+      metadata: { from: 'cancelled', to: 'scheduled' },
+      source: 'domain',
+    });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -772,8 +772,9 @@ export default function Dispatch() {
   }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCommsSent = useCallback(() => {
+    activityState.invalidate?.();
     setSidebarView('list');
-  }, []);
+  }, [activityState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCenterOnTech = useCallback((techId) => {
     const loc = techLocsRef.current.find(l => l.user_id === techId);

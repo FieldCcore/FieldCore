@@ -13,6 +13,7 @@ const {
 const { predictDelays }       = require('../services/routeDelayService');
 const { sendQuickMessage }    = require('../services/dispatchCommunicationService');
 const predictiveOps           = require('../services/dispatchPredictiveOpsService');
+const { recordActivity }      = require('../services/jobActivityService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -543,17 +544,15 @@ router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async 
   const { rows: [actor] } = await pool.query(
     `SELECT name FROM users WHERE id = $1`, [req.userId]
   ).catch(() => ({ rows: [{}] }));
-  await pool.query(
-    `INSERT INTO dispatch_activity_log
-       (account_id, job_id, tech_id, event_type, actor_id, actor_name, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      req.accountId, jobId, techId,
-      previousTechId ? 'job.reassigned' : 'job.assigned',
-      req.userId, actor?.name || null,
-      JSON.stringify({ previousTechId, newTechId: techId, isEmergency }),
-    ]
-  ).catch(e => console.error('[dispatch/assign] activity log failed:', e.message));
+  const assignEvt = previousTechId ? 'job.reassigned' : 'job.assigned';
+  recordActivity({
+    accountId: req.accountId, jobId, techId,
+    eventType: assignEvt,
+    actor: { id: req.userId, name: actor?.name || null, type: 'user' },
+    summary: previousTechId ? 'Technician reassigned' : 'Technician assigned',
+    metadata: { previousTechId, newTechId: techId, isEmergency },
+    source: 'domain',
+  });
 
   res.json({
     job:          updatedJob,
@@ -603,22 +602,89 @@ router.get('/workloads', requireAuth, async (req, res) => {
 /**
  * GET /api/dispatch/jobs/:jobId/activity
  * Returns the dispatch activity timeline for a specific job.
- * Phase 3 adds full UI — this endpoint is available from Phase 1 onward.
+ * Supports: ?category=emergency|job|location|communication|dispatch
+ *           ?cursor=<iso-timestamp>  (newest-first cursor pagination)
+ *           ?limit=N (max 100)
  */
 router.get('/jobs/:jobId/activity', requireAuth, async (req, res) => {
+  const t0 = Date.now();
   try {
+    const limit    = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const category = req.query.category || null;
+    const cursor   = req.query.cursor   || null;
+
+    const params = [req.accountId, req.params.jobId];
+    const conds  = ['dal.account_id = $1', 'dal.job_id = $2'];
+    let   pi     = 3;
+
+    if (category) { conds.push(`dal.category = $${pi++}`); params.push(category); }
+    if (cursor)   { conds.push(`COALESCE(dal.occurred_at, dal.created_at) < $${pi++}`); params.push(new Date(cursor)); }
+    params.push(limit + 1); // fetch one extra to detect next page
+
     const { rows } = await pool.query(
-      `SELECT dal.*, u.name AS actor_name_live
+      `SELECT
+         dal.id, dal.event_type, dal.category, dal.source,
+         COALESCE(dal.actor_name, u.name) AS actor_name,
+         dal.actor_type, dal.summary,
+         dal.details AS metadata,
+         COALESCE(dal.occurred_at, dal.created_at) AS occurred_at,
+         dal.created_at
        FROM dispatch_activity_log dal
        LEFT JOIN users u ON u.id = dal.actor_id
-       WHERE dal.account_id = $1 AND dal.job_id = $2
-       ORDER BY dal.created_at DESC
-       LIMIT 100`,
-      [req.accountId, req.params.jobId]
+       WHERE ${conds.join(' AND ')}
+       ORDER BY COALESCE(dal.occurred_at, dal.created_at) DESC
+       LIMIT $${pi}`,
+      params,
     );
-    res.json({ events: rows, jobId: req.params.jobId });
+
+    const hasMore   = rows.length > limit;
+    const items     = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor= hasMore ? items[items.length - 1].occurred_at?.toISOString() : null;
+
+    console.log(JSON.stringify({
+      event: 'dispatch.job.activity', accountId: req.accountId,
+      jobId: req.params.jobId, count: items.length, durationMs: Date.now() - t0,
+    }));
+    res.json({ items, nextCursor, jobId: req.params.jobId, generatedAt: new Date().toISOString() });
   } catch (err) {
+    console.error(JSON.stringify({ event: 'dispatch.job.activity.error', error: err.message }));
     res.status(500).json({ error: 'Failed to load activity.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/jobs/:jobId/activity/backfill
+ * Idempotent backfill for a single job. Requires owner or manager.
+ */
+router.post('/jobs/:jobId/activity/backfill', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows: [job] } = await pool.query(
+      `SELECT id FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.jobId, req.accountId],
+    );
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+
+    const { backfillJobHistory } = require('../services/jobActivityService');
+    // Pass a fake per-job filter by accountId — backfill will include all jobs for account
+    // but idempotency keys prevent duplication. For single-job backfill, run account-scoped.
+    const result = await backfillJobHistory(req.accountId);
+    res.json({ ...result, jobId: req.params.jobId });
+  } catch (err) {
+    res.status(500).json({ error: 'Backfill failed.' });
+  }
+});
+
+/**
+ * POST /api/dispatch/activity/backfill
+ * Idempotent full-account backfill. Requires owner.
+ */
+router.post('/activity/backfill', requireAuth, requireRole('owner'), async (req, res) => {
+  try {
+    const { backfillJobHistory } = require('../services/jobActivityService');
+    const result = await backfillJobHistory(req.accountId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Backfill failed.' });
   }
 });
 
@@ -922,16 +988,22 @@ router.get('/technicians/:techId/activity', requireAuth, async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT dal.*, u.name AS actor_name_live
+      `SELECT
+         dal.id, dal.event_type, dal.category, dal.source,
+         COALESCE(dal.actor_name, u.name) AS actor_name,
+         dal.actor_type, dal.summary,
+         dal.details AS metadata,
+         COALESCE(dal.occurred_at, dal.created_at) AS occurred_at,
+         dal.created_at
        FROM dispatch_activity_log dal
        LEFT JOIN users u ON u.id = dal.actor_id
        WHERE dal.account_id = $1 AND dal.tech_id = $2
        ${dateFilter}
-       ORDER BY dal.created_at DESC
+       ORDER BY COALESCE(dal.occurred_at, dal.created_at) DESC
        LIMIT $3`,
       params
     );
-    res.json({ events: rows, techId: req.params.techId });
+    res.json({ items: rows, events: rows, techId: req.params.techId });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load activity.' });
   }

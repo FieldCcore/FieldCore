@@ -1216,6 +1216,19 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS emergency_version                     INT NOT NULL DEFAULT 0`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_emergency ON jobs(account_id, is_emergency) WHERE is_emergency = TRUE`,
 
+  // ── dispatch_activity_log schema extensions ───────────────────────────────
+  // Added after initial creation — all IF NOT EXISTS so safe to re-run.
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS category      TEXT`,
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS actor_type    TEXT NOT NULL DEFAULT 'user'`,
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS summary       TEXT`,
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS source        TEXT NOT NULL DEFAULT 'domain'`,
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS occurred_at   TIMESTAMPTZ`,
+  `ALTER TABLE dispatch_activity_log ADD COLUMN IF NOT EXISTS idempotency_key TEXT`,
+  `DROP INDEX IF EXISTS idx_dispatch_activity_idem`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_activity_idem ON dispatch_activity_log(idempotency_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_category ON dispatch_activity_log(job_id, category) WHERE category IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_dispatch_activity_occurred ON dispatch_activity_log(job_id, occurred_at DESC) WHERE occurred_at IS NOT NULL`,
+
   // ── Predictive Operations Foundation ─────────────────────────────────────
   // Normalized operational event store — foundation for future analytics.
   // Populated from real domain events only. No synthetic or invented data.

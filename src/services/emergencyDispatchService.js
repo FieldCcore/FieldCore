@@ -1,5 +1,6 @@
-const pool  = require('../db/pool');
-const audit = require('./audit');
+const pool         = require('../db/pool');
+const audit        = require('./audit');
+const { recordActivity } = require('./jobActivityService');
 
 const VALID_PRIORITIES    = ['p1', 'p2', 'p3'];
 const VALID_NOTIF_POLICY  = ['none', 'sms', 'call', 'sms_and_call'];
@@ -78,12 +79,15 @@ async function activate(jobId, accountId, userId, {
 
   const { rows: [actor] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
     .catch(() => ({ rows: [{}] }));
-  await pool.query(
-    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
-     VALUES ($1,$2,'job.emergency_activated',$3,$4,$5)`,
-    [accountId, jobId, userId, actor?.name || null,
-     JSON.stringify({ priority, reasonCode: reasonCode || null, responseTargetMinutes: responseTargetMinutes || null })],
-  ).catch(() => {});
+  recordActivity({
+    accountId, jobId,
+    eventType: 'job.emergency_activated',
+    actor: { id: userId, name: actor?.name || null, type: 'user' },
+    summary: `Emergency declared — ${priority.toUpperCase()}`,
+    metadata: { priority, reasonCode: reasonCode || null, responseTargetMinutes: responseTargetMinutes || null },
+    occurredAt: new Date(),
+    source: 'domain',
+  });
 
   return { job: rows[0] };
 }
@@ -123,11 +127,15 @@ async function update(jobId, accountId, userId, fields = {}) {
 
   const { rows: [actor2] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
     .catch(() => ({ rows: [{}] }));
-  await pool.query(
-    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
-     VALUES ($1,$2,'job.emergency_updated',$3,$4,$5)`,
-    [accountId, jobId, userId, actor2?.name || null, JSON.stringify(fields)],
-  ).catch(() => {});
+  recordActivity({
+    accountId, jobId,
+    eventType: 'job.emergency_updated',
+    actor: { id: userId, name: actor2?.name || null, type: 'user' },
+    summary: 'Emergency updated',
+    metadata: fields,
+    occurredAt: new Date(),
+    source: 'domain',
+  });
 
   return { job: rows[0] };
 }
@@ -159,11 +167,15 @@ async function resolve(jobId, accountId, userId, { notes } = {}) {
 
   const { rows: [actor3] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
     .catch(() => ({ rows: [{}] }));
-  await pool.query(
-    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
-     VALUES ($1,$2,'job.emergency_resolved',$3,$4,$5)`,
-    [accountId, jobId, userId, actor3?.name || null, JSON.stringify({ notes: notes || null })],
-  ).catch(() => {});
+  recordActivity({
+    accountId, jobId,
+    eventType: 'job.emergency_resolved',
+    actor: { id: userId, name: actor3?.name || null, type: 'user' },
+    summary: notes ? `Emergency resolved — ${notes}` : 'Emergency resolved',
+    metadata: { notes: notes || null },
+    occurredAt: new Date(),
+    source: 'domain',
+  });
 
   return { job: rows[0] };
 }
@@ -193,11 +205,15 @@ async function deactivate(jobId, accountId, userId, { reason } = {}) {
 
   const { rows: [actor4] } = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId])
     .catch(() => ({ rows: [{}] }));
-  await pool.query(
-    `INSERT INTO dispatch_activity_log (account_id, job_id, event_type, actor_id, actor_name, details)
-     VALUES ($1,$2,'job.emergency_deactivated',$3,$4,$5)`,
-    [accountId, jobId, userId, actor4?.name || null, JSON.stringify({ reason: reason || null })],
-  ).catch(() => {});
+  recordActivity({
+    accountId, jobId,
+    eventType: 'job.emergency_deactivated',
+    actor: { id: userId, name: actor4?.name || null, type: 'user' },
+    summary: reason ? `Emergency deactivated — ${reason}` : 'Emergency deactivated',
+    metadata: { reason: reason || null },
+    occurredAt: new Date(),
+    source: 'domain',
+  });
 
   return { job: rows[0] };
 }
