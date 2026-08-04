@@ -128,7 +128,7 @@ export default function Dispatch() {
   const [techLocs,         setTechLocs]         = useState([]);
   const [selectedItem,     setSelectedItem]     = useState(null);
   const [sidebarView,      setSidebarView]      = useState('list');
-  const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false });
+  const [layers,           setLayers]           = useState({ techs: true, jobs: true, traffic: false, service_areas: true });
   const [isLegendCollapsed, setIsLegendCollapsed] = useState(getInitialLegendCollapsed);
   const [panelFocus,       setPanelFocus]       = useState(null);
   const [activeKpiKey,     setActiveKpiKey]     = useState(null);
@@ -457,9 +457,10 @@ export default function Dispatch() {
 
   // ── Service area circles ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!mapReady || !window.google?.maps || !flags.dispatch_service_areas) {
+    const shouldShow = mapReady && window.google?.maps && flags.dispatch_service_areas && layers.service_areas;
+    if (!shouldShow) {
       Object.values(serviceAreaCirclesRef.current).forEach(c => c.setMap(null));
-      serviceAreaCirclesRef.current = {};
+      if (!flags.dispatch_service_areas) serviceAreaCirclesRef.current = {};
       return;
     }
     const map = mapRef.current;
@@ -474,15 +475,15 @@ export default function Dispatch() {
       }
       serviceAreaCirclesRef.current[area.id] = new window.google.maps.Circle({
         map,
-        center:      { lat: parseFloat(area.center_lat), lng: parseFloat(area.center_lng) },
-        radius:      parseFloat(area.radius_km) * 1000, // metres
-        strokeColor: '#1C2333',
+        center:        { lat: parseFloat(area.center_lat), lng: parseFloat(area.center_lng) },
+        radius:        parseFloat(area.radius_km) * 1000,
+        strokeColor:   '#1C2333',
         strokeOpacity: 0.4,
         strokeWeight:  1.5,
-        fillColor:   '#1C2333',
-        fillOpacity: 0.04,
-        clickable:   false,
-        zIndex:      1,
+        fillColor:     '#1C2333',
+        fillOpacity:   0.04,
+        clickable:     false,
+        zIndex:        1,
       });
     });
     Object.keys(serviceAreaCirclesRef.current).forEach(id => {
@@ -491,7 +492,7 @@ export default function Dispatch() {
         delete serviceAreaCirclesRef.current[id];
       }
     });
-  }, [mapReady, serviceAreas, flags.dispatch_service_areas]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mapReady, serviceAreas, flags.dispatch_service_areas, layers.service_areas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── selectedItem → sidebarView ────────────────────────────────────────────
   // When a job or tech is selected (via map click or sidebar card), switch the
@@ -859,6 +860,13 @@ export default function Dispatch() {
                 onLayerToggle={handleLayerToggle}
                 showLegend={!isLegendCollapsed}
                 onLegendToggle={handleLegendToggle}
+                serviceAreasEnabled={flags.dispatch_service_areas}
+                hasServiceAreas={serviceAreas.length > 0}
+                flags={flags}
+                techs={techs}
+                jobs={jobs}
+                serviceAreas={serviceAreas}
+                userRole={userRole}
               />
 
               {!promptDismissed && permissionState === 'prompt' && (

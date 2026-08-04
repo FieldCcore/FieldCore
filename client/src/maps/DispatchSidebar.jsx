@@ -75,14 +75,34 @@ function fmtAge(ts) {
 
 // ── Job Details inline view ───────────────────────────────────────────────────
 
-function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone, onViewActivity, onViewComms, flags }) {
+const NON_ASSIGNABLE_STATUSES = new Set(['complete', 'cancelled', 'no_show', 'draft']);
+
+function JobDetailView({
+  job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone,
+  onViewActivity, onViewComms, flags,
+  onAssignJob, userRole, techs,
+  emergencyMode, onToggleEmergency, emergencyToggling,
+}) {
   const p         = getJobStatusPresentation(job.status);
   const sStyle    = { background: p.badgeBg, color: p.badgeColor };
   const sLabel    = p.label;
   const hasCoords = isValidCoord(job.service_lat, job.service_lng);
 
-  const [geocoding,    setGeocoding]    = useState(false);
-  const [geocodeError, setGeocodeError] = useState(job.geocode_error || null);
+  const [geocoding,       setGeocoding]       = useState(false);
+  const [geocodeError,    setGeocodeError]    = useState(job.geocode_error || null);
+  const [showAssignPicker, setShowAssignPicker] = useState(false);
+  const [showMore,        setShowMore]        = useState(false);
+
+  const isAssignable  = !NON_ASSIGNABLE_STATUSES.has(job.status);
+  const canAssign     = onAssignJob && (userRole === 'owner' || userRole === 'manager');
+  const fieldTechs    = (techs || []).filter(t =>
+    t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
+  );
+
+  const hasAdvancedActions = flags?.dispatch_quick_communications
+    || flags?.dispatch_activity_timeline
+    || (flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager'))
+    || showGeocodeStatus; // referenced below
 
   const handleRetryGeocode = async () => {
     setGeocoding(true);
@@ -105,15 +125,14 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
   const geocodeFailed     = job.geocode_status === 'failed' ||
     (showGeocodeStatus && job.geocode_status !== 'not_attempted');
 
-  // Derive a user-friendly message from provider status
   const geocodeMessage = (() => {
     if (geocodeError) return geocodeError;
     if (!geocodeFailed) return 'Map location pending.';
     const ps = job.geocode_provider_status;
-    if (ps === 'ZERO_RESULTS')  return 'We could not find this address. Check the street, city, and state.';
+    if (ps === 'ZERO_RESULTS')   return 'We could not find this address. Check the street, city, and state.';
     if (ps === 'REQUEST_DENIED') return 'Map-location service is temporarily unavailable. Contact support.';
     if (ps === 'INVALID_REQUEST') return 'This address is incomplete.';
-    if (ps === 'NO_API_KEY') return 'Geocoding is not configured. Contact support.';
+    if (ps === 'NO_API_KEY')     return 'Geocoding is not configured. Contact support.';
     return job.geocode_error || 'Address could not be geocoded. Verify the address and retry.';
   })();
 
@@ -158,6 +177,14 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
               background: 'var(--red-lt)', borderRadius: 99, padding: '2px 8px',
             }}>
               High Priority
+            </span>
+          )}
+          {emergencyMode && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: '#DC2626',
+              background: '#FEE2E2', borderRadius: 99, padding: '2px 8px',
+            }}>
+              ⚡ Emergency
             </span>
           )}
         </div>
@@ -231,6 +258,56 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
           </div>
         )}
 
+        {/* Inline tech picker for assignment */}
+        {showAssignPicker && (
+          <div style={{
+            margin: '8px 0', padding: '10px 12px',
+            background: 'var(--off)', borderRadius: 6,
+            border: '1px solid var(--lightgray)',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 6 }}>
+              Select technician:
+            </div>
+            {fieldTechs.length === 0 ? (
+              <div style={{ fontSize: 11, color: 'var(--slate)', lineHeight: 1.5 }}>
+                No field technicians found.{' '}
+                <a href="/team?action=add-member&returnTo=/dispatch"
+                  style={{ color: 'var(--navy)', fontWeight: 600 }}>
+                  Add a field technician
+                </a>{' '}
+                to enable assignment.
+              </div>
+            ) : (
+              fieldTechs.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => { setShowAssignPicker(false); onAssignJob?.(job.id, t.id); }}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '6px 8px', marginBottom: 3,
+                    background: '#fff', border: '1px solid var(--lightgray)',
+                    borderRadius: 4, cursor: 'pointer',
+                    fontSize: 12, fontWeight: 500, color: 'var(--navy)',
+                  }}
+                >
+                  {t.name}
+                </button>
+              ))
+            )}
+            <button
+              type="button"
+              onClick={() => setShowAssignPicker(false)}
+              style={{
+                marginTop: 4, fontSize: 11, color: 'var(--slate)',
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="dispatch-drawer-actions">
           {hasCoords && (
@@ -238,30 +315,87 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
               Center Map
             </button>
           )}
-          {showGeocodeStatus && (
-            <button
-              type="button"
-              className="dispatch-drawer-btn"
-              onClick={handleRetryGeocode}
-              disabled={geocoding}
-              aria-busy={geocoding}
-            >
-              {geocoding ? 'Locating…' : 'Retry Geocoding'}
-            </button>
+
+          <a href="/jobs" className="dispatch-drawer-btn">Open Job</a>
+
+          {/* Assign Technician — always visible to authorized users */}
+          {canAssign && (
+            isAssignable ? (
+              <button
+                type="button"
+                className="dispatch-drawer-btn"
+                onClick={() => setShowAssignPicker(v => !v)}
+                aria-expanded={showAssignPicker}
+              >
+                {showAssignPicker ? 'Cancel' : (jobTech ? 'Reassign Technician' : 'Assign Technician')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="dispatch-drawer-btn"
+                disabled
+                title={`Cannot assign: job is ${job.status.replace(/_/g, ' ')}`}
+              >
+                Assign Technician
+              </button>
+            )
           )}
-          {flags?.dispatch_quick_communications && (
-            <button type="button" className="dispatch-drawer-btn" onClick={() => onViewComms?.(job.id)}>
-              Send Update
-            </button>
+
+          {/* More — expandable advanced actions */}
+          {(flags?.dispatch_quick_communications || flags?.dispatch_activity_timeline ||
+            (flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager')) ||
+            showGeocodeStatus) && (
+            <>
+              <button
+                type="button"
+                className="dispatch-drawer-btn"
+                onClick={() => setShowMore(v => !v)}
+                aria-expanded={showMore}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <span>More</span>
+                <span style={{ fontSize: 9, color: 'var(--steel)' }}>{showMore ? '▲' : '▼'}</span>
+              </button>
+              {showMore && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 8 }}>
+                  {flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager') && (
+                    <button
+                      type="button"
+                      className="dispatch-drawer-btn"
+                      onClick={onToggleEmergency}
+                      disabled={emergencyToggling}
+                      style={emergencyMode ? { background: '#FEE2E2', color: '#DC2626' } : undefined}
+                    >
+                      {emergencyToggling ? '…' : emergencyMode ? 'Deactivate Emergency' : 'Emergency Dispatch'}
+                    </button>
+                  )}
+                  {flags?.dispatch_quick_communications && (
+                    <button type="button" className="dispatch-drawer-btn"
+                      onClick={() => { setShowMore(false); onViewComms?.(job.id); }}>
+                      Send Update
+                    </button>
+                  )}
+                  {flags?.dispatch_activity_timeline && (
+                    <button type="button" className="dispatch-drawer-btn"
+                      onClick={() => { setShowMore(false); onViewActivity?.('job', job.id); }}>
+                      Activity
+                    </button>
+                  )}
+                  {showGeocodeStatus && (
+                    <button
+                      type="button"
+                      className="dispatch-drawer-btn"
+                      onClick={handleRetryGeocode}
+                      disabled={geocoding}
+                      aria-busy={geocoding}
+                    >
+                      {geocoding ? 'Locating…' : 'Retry Geocoding'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
-          {flags?.dispatch_activity_timeline && (
-            <button type="button" className="dispatch-drawer-btn" onClick={() => onViewActivity?.('job', job.id)}>
-              Activity
-            </button>
-          )}
-          <a href={`/jobs`} className="dispatch-drawer-btn">
-            Open Job
-          </a>
         </div>
       </div>
     </div>
@@ -270,9 +404,10 @@ function JobDetailView({ job, jobTech, onCenterJob, onJobGeocoded, onBack, timez
 
 // ── Tech Details inline view ──────────────────────────────────────────────────
 
-function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTech, onBack, jobs = [], timezone, onViewActivity, flags, delayPrediction }) {
-  const st     = getTechStatus(tech, loc ? [{ ...loc, user_id: tech.id }] : [], jobs);
-  const hasLoc = !!loc && st.key !== 'off' && st.key !== 'offline';
+function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTech, onBack, jobs = [], timezone, onViewActivity, onViewRoute, flags, delayPrediction }) {
+  const st       = getTechStatus(tech, loc ? [{ ...loc, user_id: tech.id }] : [], jobs);
+  const hasLoc   = !!loc && st.key !== 'off' && st.key !== 'offline';
+  const techJobs = jobs.filter(j => j.tech_id === tech.id);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -363,26 +498,36 @@ function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTe
         )}
 
         {/* Delay status — Phase 3 */}
-        {flags?.dispatch_delay_prediction && delayPrediction && delayPrediction.status !== 'no_upcoming_job' && delayPrediction.status !== 'no_location' && (
-          <div style={{
-            margin: '8px 0', padding: '8px 10px', borderRadius: 6,
-            background: delayPrediction.status === 'delayed' ? '#FEE2E2'
-                      : delayPrediction.status === 'at_risk'  ? '#FEF3C7' : '#E8F5E9',
-            borderLeft: `3px solid ${delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? 'var(--amber)' : '#2E7D32'}`,
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2,
-              color: delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? '#92400E' : '#2E7D32' }}>
-              {delayPrediction.status === 'delayed' ? `~${delayPrediction.delayMinutes}m behind schedule`
-               : delayPrediction.status === 'at_risk' ? 'At risk of delay'
-               : 'On schedule'}
-            </div>
-            {delayPrediction.nextJobClientName && (
-              <div style={{ fontSize: 10, color: 'var(--slate)' }}>
-                Next: {delayPrediction.nextJobServiceType} for {delayPrediction.nextJobClientName}
-                {delayPrediction.distanceKm > 0 && ` · ${(delayPrediction.distanceKm * 0.621371).toFixed(1)} mi away`}
+        {flags?.dispatch_delay_prediction && (
+          delayPrediction && !['no_upcoming_job', 'no_location'].includes(delayPrediction.status) ? (
+            <div style={{
+              margin: '8px 0', padding: '8px 10px', borderRadius: 6,
+              background: delayPrediction.status === 'delayed' ? '#FEE2E2'
+                        : delayPrediction.status === 'at_risk'  ? '#FEF3C7' : '#E8F5E9',
+              borderLeft: `3px solid ${delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? 'var(--amber)' : '#2E7D32'}`,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2,
+                color: delayPrediction.status === 'delayed' ? 'var(--red)' : delayPrediction.status === 'at_risk' ? '#92400E' : '#2E7D32' }}>
+                {delayPrediction.status === 'delayed' ? `~${delayPrediction.delayMinutes}m behind schedule`
+                 : delayPrediction.status === 'at_risk' ? 'At risk of delay'
+                 : 'On schedule'}
               </div>
-            )}
-          </div>
+              {delayPrediction.nextJobClientName && (
+                <div style={{ fontSize: 10, color: 'var(--slate)' }}>
+                  Next: {delayPrediction.nextJobServiceType} for {delayPrediction.nextJobClientName}
+                  {delayPrediction.distanceKm > 0 && ` · ${(delayPrediction.distanceKm * 0.621371).toFixed(1)} mi away`}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{
+              margin: '8px 0', padding: '7px 10px', borderRadius: 6,
+              background: 'var(--off)', borderLeft: '3px solid var(--steel)',
+              fontSize: 11, color: 'var(--steel)',
+            }}>
+              Delay estimate unavailable
+            </div>
+          )
         )}
 
         <div className="dispatch-drawer-actions">
@@ -395,6 +540,27 @@ function TechDetailView({ tech, loc, activeJob, nextJob, avatarColor, onCenterTe
             <a href={`tel:${tech.phone}`} className="dispatch-drawer-btn" aria-label={`Call ${tech.name}`}>
               Call
             </a>
+          )}
+          {/* Route sequencing — Phase 2 */}
+          {flags?.dispatch_route_sequencing && (
+            techJobs.length > 0 ? (
+              <button
+                type="button"
+                className="dispatch-drawer-btn"
+                onClick={() => onViewRoute?.(tech.id)}
+              >
+                View Route
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="dispatch-drawer-btn"
+                disabled
+                title="Assign jobs to this technician to enable route sequencing"
+              >
+                View Route
+              </button>
+            )
           )}
           {flags?.dispatch_activity_timeline && (
             <button type="button" className="dispatch-drawer-btn" onClick={() => onViewActivity?.('tech', tech.id)}>
@@ -569,6 +735,12 @@ export default function DispatchSidebar({
           onViewActivity={onViewActivity}
           onViewComms={onViewComms}
           flags={flags}
+          onAssignJob={onAssignJob}
+          userRole={userRole}
+          techs={techs}
+          emergencyMode={emergencyMode}
+          onToggleEmergency={onToggleEmergency}
+          emergencyToggling={emergencyToggling}
         />
       )}
 
@@ -584,6 +756,7 @@ export default function DispatchSidebar({
           jobs={jobs}
           timezone={timezone}
           onViewActivity={onViewActivity}
+          onViewRoute={onViewRoute}
           flags={flags}
           delayPrediction={delaysByTechId?.get(selectedTech.id) ?? null}
         />

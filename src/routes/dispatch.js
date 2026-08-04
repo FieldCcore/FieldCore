@@ -398,21 +398,22 @@ router.get('/schedule', requireAuth, async (req, res) => {
   }
 });
 
-// ── Feature flag defaults — dev enables current phase, prod remains off ───────
+// ── Feature flag defaults — all fully-implemented features are on by default ──
+// Per-tenant overrides stored in dispatch_settings.feature_flags (JSONB).
 const PHASE1_DEFAULTS = {
-  dispatch_drag_assignment:    process.env.NODE_ENV !== 'production',
-  dispatch_conflict_engine:    process.env.NODE_ENV !== 'production',
-  dispatch_workload_balancing: process.env.NODE_ENV !== 'production',
+  dispatch_drag_assignment:    true,
+  dispatch_conflict_engine:    true,
+  dispatch_workload_balancing: true,
 };
 const PHASE2_DEFAULTS = {
-  dispatch_route_sequencing: process.env.NODE_ENV !== 'production',
-  dispatch_service_areas:    process.env.NODE_ENV !== 'production',
-  dispatch_emergency_mode:   process.env.NODE_ENV !== 'production',
+  dispatch_route_sequencing: true,
+  dispatch_service_areas:    true,
+  dispatch_emergency_mode:   true,
 };
 const PHASE3_DEFAULTS = {
-  dispatch_delay_prediction:    process.env.NODE_ENV !== 'production',
-  dispatch_quick_communications: process.env.NODE_ENV !== 'production',
-  dispatch_activity_timeline:   process.env.NODE_ENV !== 'production',
+  dispatch_delay_prediction:    true,
+  dispatch_quick_communications: true,
+  dispatch_activity_timeline:   true,
 };
 const ALL_FLAG_DEFAULTS = {
   ...PHASE1_DEFAULTS,

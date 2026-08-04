@@ -5,19 +5,6 @@ import { useState, useRef, useEffect } from 'react';
 // pointer-events: none so the Google map remains pannable everywhere
 // outside this card. Without auto here, buttons are unclickable.
 
-const CARD_STYLE = {
-  position:      'absolute',
-  top:           16,
-  right:         16,
-  zIndex:        5,
-  background:    'rgba(255,255,255,0.97)',
-  border:        '1px solid var(--lightgray, #e6e6e6)',
-  borderRadius:  8,
-  boxShadow:     '0 2px 8px rgba(0,0,0,.10)',
-  minWidth:      180,
-  overflow:      'visible',
-  pointerEvents: 'auto',
-};
 
 const BTN = {
   display:      'flex',
@@ -61,7 +48,7 @@ const PERM_DOT = {
   unsupported:{ color: '#8A90A2', title: 'Location unsupported' },
 };
 
-const LAYER_ITEMS = [
+const BASE_LAYER_ITEMS = [
   { key: 'techs',   label: 'Technicians' },
   { key: 'jobs',    label: 'Jobs'        },
   { key: 'traffic', label: 'Traffic'     },
@@ -93,7 +80,11 @@ function CtrlBtn({ label, iconPath, onClick, disabled, title, active }) {
 }
 
 
-function LayersDropdown({ layers, onToggle }) {
+function LayersDropdown({ layers, onToggle, serviceAreasEnabled, hasServiceAreas, onSetupServiceAreas }) {
+  const items = serviceAreasEnabled
+    ? [...BASE_LAYER_ITEMS, { key: 'service_areas', label: 'Service Areas' }]
+    : BASE_LAYER_ITEMS;
+
   return (
     <div style={{
       position:     'absolute',
@@ -109,16 +100,13 @@ function LayersDropdown({ layers, onToggle }) {
       zIndex:       20,
       overflow:     'hidden',
     }}>
-      {LAYER_ITEMS.map(item => (
+      {items.map(item => (
         <button
           key={item.key}
           type="button"
           aria-pressed={layers[item.key]}
           onClick={() => onToggle(item.key)}
-          style={{
-            ...BTN,
-            gap: 8,
-          }}
+          style={{ ...BTN, gap: 8 }}
         >
           <span style={{
             width: 14, height: 14, borderRadius: 3, flexShrink: 0,
@@ -138,6 +126,170 @@ function LayersDropdown({ layers, onToggle }) {
           {item.label}
         </button>
       ))}
+      {serviceAreasEnabled && !hasServiceAreas && (
+        <div style={{ padding: '6px 11px', borderTop: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: 'var(--steel)', flex: 1 }}>No service areas defined</span>
+          <a
+            href="/settings/service-areas"
+            style={{ fontSize: 10, fontWeight: 600, color: 'var(--navy)', textDecoration: 'none' }}
+          >
+            Set Up
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
+  const fieldTechs = (techs || []).filter(t =>
+    t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
+  );
+  const unassignedJobs = (jobs || []).filter(j => !j.tech_id && !['complete','cancelled','no_show','draft'].includes(j.status));
+  const assignedJobs   = (jobs || []).filter(j => j.tech_id);
+
+  const rows = [
+    {
+      name:    'Drag Assignment',
+      flag:    'dispatch_drag_assignment',
+      enabled: flags?.dispatch_drag_assignment,
+      front:   true,
+      back:    true,
+      block:   fieldTechs.length === 0 ? 'No field technicians' : unassignedJobs.length === 0 ? 'No unassigned jobs' : null,
+    },
+    {
+      name:    'Conflict Engine',
+      flag:    'dispatch_conflict_engine',
+      enabled: flags?.dispatch_conflict_engine,
+      front:   true,
+      back:    true,
+      block:   null,
+    },
+    {
+      name:    'Workload Balancing',
+      flag:    'dispatch_workload_balancing',
+      enabled: flags?.dispatch_workload_balancing,
+      front:   true,
+      back:    true,
+      block:   fieldTechs.length === 0 ? 'No field technicians' : null,
+    },
+    {
+      name:    'Route Sequencing',
+      flag:    'dispatch_route_sequencing',
+      enabled: flags?.dispatch_route_sequencing,
+      front:   true,
+      back:    true,
+      block:   assignedJobs.length < 2 ? 'Need ≥2 assigned jobs per tech' : null,
+    },
+    {
+      name:    'Service Areas',
+      flag:    'dispatch_service_areas',
+      enabled: flags?.dispatch_service_areas,
+      front:   true,
+      back:    true,
+      block:   (serviceAreas || []).length === 0 ? 'No service areas defined — Set Up in Settings' : null,
+    },
+    {
+      name:    'Emergency Mode',
+      flag:    'dispatch_emergency_mode',
+      enabled: flags?.dispatch_emergency_mode,
+      front:   true,
+      back:    true,
+      block:   null,
+    },
+    {
+      name:    'Delay Prediction',
+      flag:    'dispatch_delay_prediction',
+      enabled: flags?.dispatch_delay_prediction,
+      front:   true,
+      back:    true,
+      block:   fieldTechs.length === 0 ? 'No field technicians with GPS' : null,
+    },
+    {
+      name:    'Quick Communications',
+      flag:    'dispatch_quick_communications',
+      enabled: flags?.dispatch_quick_communications,
+      front:   true,
+      back:    true,
+      block:   null,
+    },
+    {
+      name:    'Activity Timeline',
+      flag:    'dispatch_activity_timeline',
+      enabled: flags?.dispatch_activity_timeline,
+      front:   true,
+      back:    true,
+      block:   null,
+    },
+    {
+      name:    'Predictive Ops Foundation',
+      flag:    'dispatch_predictive_operations_foundation',
+      enabled: flags?.dispatch_predictive_operations_foundation,
+      front:   false,
+      back:    false,
+      block:   'Not yet implemented',
+    },
+  ];
+
+  return (
+    <div style={{
+      position: 'absolute', top: 0, right: 196, zIndex: 30,
+      background: 'rgba(255,255,255,0.98)',
+      border: '1px solid var(--lightgray)',
+      borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,.15)',
+      width: 340, maxHeight: '80vh', overflow: 'auto',
+      pointerEvents: 'auto',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 12px', borderBottom: '1px solid var(--lightgray)',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>Feature Status</div>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--slate)' }}
+          aria-label="Close feature status"
+        >
+          ✕
+        </button>
+      </div>
+      <div style={{ padding: '6px 0' }}>
+        {rows.map(r => (
+          <div key={r.flag} style={{
+            padding: '7px 12px',
+            borderBottom: '1px solid var(--lightgray, #e6e6e6)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                background: r.enabled ? '#2E7D32' : '#DC2626',
+              }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', flex: 1 }}>{r.name}</span>
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99,
+                background: r.enabled ? '#E8F5E9' : '#FEE2E2',
+                color: r.enabled ? '#2E7D32' : '#DC2626',
+              }}>
+                {r.enabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 13 }}>
+              <span style={{ fontSize: 10, color: r.front ? '#2E7D32' : '#DC2626' }}>
+                {r.front ? '✓' : '✗'} Frontend
+              </span>
+              <span style={{ fontSize: 10, color: r.back ? '#2E7D32' : '#DC2626' }}>
+                {r.back ? '✓' : '✗'} Backend
+              </span>
+            </div>
+            {r.block && (
+              <div style={{ marginLeft: 13, marginTop: 2, fontSize: 10, color: '#B45309' }}>
+                ⚠ {r.block}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -164,15 +316,28 @@ export default function DispatchMapControls({
   onRecenter,
   locating,
   hasInteracted,
-  mapReady      = true,
-  permState     = 'unknown',
-  layers        = { techs: true, jobs: true, traffic: false },
+  mapReady            = true,
+  permState           = 'unknown',
+  layers              = { techs: true, jobs: true, traffic: false, service_areas: true },
   onLayerToggle,
-  showLegend    = false,
+  showLegend          = false,
   onLegendToggle,
+  // Service areas
+  serviceAreasEnabled = false,
+  hasServiceAreas     = false,
+  // Feature Status diagnostic (owner/dev only)
+  flags               = null,
+  techs               = [],
+  jobs                = [],
+  serviceAreas        = [],
+  userRole            = 'tech',
 }) {
-  const [showLayers, setShowLayers] = useState(false);
-  const layersWrapRef = useRef(null);
+  const [showLayers,        setShowLayers]        = useState(false);
+  const [showFeatureStatus, setShowFeatureStatus] = useState(false);
+  const layersWrapRef       = useRef(null);
+  const featureStatusRef    = useRef(null);
+
+  const showFeaturesBtn = userRole === 'owner' || userRole === 'manager' || import.meta.env.DEV;
 
   // Close layers dropdown on outside click
   useEffect(() => {
@@ -186,94 +351,143 @@ export default function DispatchMapControls({
     return () => document.removeEventListener('mousedown', onDown);
   }, [showLayers]);
 
-  const centerLabel   = locating ? 'Locating…' : 'Center on Me';
-  const dot           = PERM_DOT[permState];
-  const anyLayerOff   = !layers.techs || !layers.jobs || layers.traffic;
+  // Close feature status panel on outside click
+  useEffect(() => {
+    if (!showFeatureStatus) return;
+    function onDown(e) {
+      if (featureStatusRef.current && !featureStatusRef.current.contains(e.target)) {
+        setShowFeatureStatus(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showFeatureStatus]);
+
+  const centerLabel = locating ? 'Locating…' : 'Center on Me';
+  const dot         = PERM_DOT[permState];
+  const anyLayerOff = !layers.techs || !layers.jobs || layers.traffic
+    || (serviceAreasEnabled && !layers.service_areas);
 
   return (
-    <div style={CARD_STYLE} role="group" aria-label="Map controls">
-      <div style={{ padding: '4px 0' }}>
-        <CtrlBtn
-          label="Fit All"
-          iconPath={ICONS.fitAll}
-          onClick={onFitAll}
-          disabled={!mapReady}
-          title="Fit map to all technicians and jobs"
+    <div ref={featureStatusRef} style={{ position: 'absolute', top: 16, right: 16, zIndex: 5, pointerEvents: 'auto' }}>
+      {/* Feature Status panel — floats to the left of the controls card */}
+      {showFeatureStatus && (
+        <FeatureStatusPanel
+          flags={flags}
+          techs={techs}
+          jobs={jobs}
+          serviceAreas={serviceAreas}
+          onClose={() => setShowFeatureStatus(false)}
         />
+      )}
 
-        {hasInteracted && (
+      <div style={{
+        background:    'rgba(255,255,255,0.97)',
+        border:        '1px solid var(--lightgray, #e6e6e6)',
+        borderRadius:  8,
+        boxShadow:     '0 2px 8px rgba(0,0,0,.10)',
+        minWidth:      180,
+        overflow:      'visible',
+      }} role="group" aria-label="Map controls">
+        <div style={{ padding: '4px 0' }}>
           <CtrlBtn
-            label="Recenter"
-            iconPath={ICONS.recenter}
-            onClick={onRecenter}
+            label="Fit All"
+            iconPath={ICONS.fitAll}
+            onClick={onFitAll}
             disabled={!mapReady}
-            title="Restore automatic tenant viewport"
+            title="Fit map to all technicians and jobs"
           />
-        )}
 
-        <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
-
-        <CtrlBtn
-          label={centerLabel}
-          iconPath={ICONS.centerMe}
-          onClick={onCenterOnMe}
-          disabled={locating || !mapReady}
-          title={
-            permState === 'denied'      ? 'Location blocked — click for help' :
-            permState === 'unsupported' ? 'Geolocation not supported in this browser' :
-            'Center map on your current location'
-          }
-        />
-
-        <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
-
-        {/* Layers toggle */}
-        <div ref={layersWrapRef} style={{ position: 'relative' }}>
-          <CtrlBtn
-            label="Layers"
-            iconPath={ICONS.layers}
-            onClick={() => { setShowLayers(v => !v); }}
-            disabled={!mapReady}
-            active={showLayers || anyLayerOff}
-            title="Toggle map layers"
-          />
-          {showLayers && (
-            <LayersDropdown
-              layers={layers}
-              onToggle={(key) => { onLayerToggle?.(key); }}
+          {hasInteracted && (
+            <CtrlBtn
+              label="Recenter"
+              iconPath={ICONS.recenter}
+              onClick={onRecenter}
+              disabled={!mapReady}
+              title="Restore automatic tenant viewport"
             />
+          )}
+
+          <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
+
+          <CtrlBtn
+            label={centerLabel}
+            iconPath={ICONS.centerMe}
+            onClick={onCenterOnMe}
+            disabled={locating || !mapReady}
+            title={
+              permState === 'denied'      ? 'Location blocked — click for help' :
+              permState === 'unsupported' ? 'Geolocation not supported in this browser' :
+              'Center map on your current location'
+            }
+          />
+
+          <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
+
+          {/* Layers toggle */}
+          <div ref={layersWrapRef} style={{ position: 'relative' }}>
+            <CtrlBtn
+              label="Layers"
+              iconPath={ICONS.layers}
+              onClick={() => { setShowLayers(v => !v); setShowFeatureStatus(false); }}
+              disabled={!mapReady}
+              active={showLayers || anyLayerOff}
+              title="Toggle map layers"
+            />
+            {showLayers && (
+              <LayersDropdown
+                layers={layers}
+                onToggle={key => { onLayerToggle?.(key); }}
+                serviceAreasEnabled={serviceAreasEnabled}
+                hasServiceAreas={hasServiceAreas}
+              />
+            )}
+          </div>
+
+          {/* Legend toggle */}
+          <CtrlBtn
+            label="Legend"
+            iconPath="M3 5h10M3 8h7M3 11h4M13 8l2 2 3-3"
+            onClick={() => { onLegendToggle?.(); setShowLayers(false); }}
+            disabled={!mapReady}
+            active={showLegend}
+            title="Toggle map legend"
+          />
+
+          {/* Feature Status — owner/manager or dev only */}
+          {showFeaturesBtn && (
+            <>
+              <div style={{ height: 1, background: 'var(--lightgray, #e6e6e6)', margin: '2px 0' }} />
+              <CtrlBtn
+                label="Feature Status"
+                iconPath="M8 1v6l3 3M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12"
+                onClick={() => { setShowFeatureStatus(v => !v); setShowLayers(false); }}
+                active={showFeatureStatus}
+                title="View dispatch feature status (admin only)"
+              />
+            </>
           )}
         </div>
 
-        {/* Legend toggle */}
-        <CtrlBtn
-          label="Legend"
-          iconPath="M3 5h10M3 8h7M3 11h4M13 8l2 2 3-3"
-          onClick={() => { onLegendToggle?.(); setShowLayers(false); }}
-          disabled={!mapReady}
-          active={showLegend}
-          title="Toggle map legend"
-        />
+        {/* Compact permission status row — prompt/unsupported only */}
+        {dot && permState !== 'granted' && permState !== 'unknown'
+            && permState !== 'denied' && permState !== 'unavailable' && (
+          <div style={{
+            padding:    '5px 11px 6px',
+            fontSize:   10,
+            color:      dot.color,
+            borderTop:  '1px solid var(--lightgray, #e6e6e6)',
+            display:    'flex',
+            alignItems: 'center',
+            gap:        5,
+          }}>
+            <svg viewBox="0 0 8 8" style={{ width: 7, height: 7, flexShrink: 0 }}>
+              <circle cx="4" cy="4" r="3.5" fill={dot.color} />
+            </svg>
+            {dot.title}
+          </div>
+        )}
       </div>
-
-      {/* Compact permission status row — prompt/unsupported only */}
-      {dot && permState !== 'granted' && permState !== 'unknown'
-          && permState !== 'denied' && permState !== 'unavailable' && (
-        <div style={{
-          padding:    '5px 11px 6px',
-          fontSize:   10,
-          color:      dot.color,
-          borderTop:  '1px solid var(--lightgray, #e6e6e6)',
-          display:    'flex',
-          alignItems: 'center',
-          gap:        5,
-        }}>
-          <svg viewBox="0 0 8 8" style={{ width: 7, height: 7, flexShrink: 0 }}>
-            <circle cx="4" cy="4" r="3.5" fill={dot.color} />
-          </svg>
-          {dot.title}
-        </div>
-      )}
     </div>
   );
 }
