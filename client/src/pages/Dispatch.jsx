@@ -703,26 +703,50 @@ export default function Dispatch() {
 
   // ── Phase 1 assignment flow ───────────────────────────────────────────────
   const handleAssignJob = useCallback(async (jobId, techId) => {
-    const job  = jobsRef.current.find(j => j.id === jobId);
-    const tech = techs.find(t => t.id === techId);
+    const job     = jobsRef.current.find(j => j.id === jobId);
+    const tech    = techs.find(t => t.id === techId);
     if (!job || !tech) return;
+    const techLoc = techLocsRef.current.find(l => l.user_id === techId) ?? null;
+
     // Expand sidebar so the confirmation panel is visible
     if (sidebarMode.mode === 'compact') sidebarMode.openTeam?.();
     if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+
+    // Fast path — ALREADY_ASSIGNED: skip API call, show info panel immediately
+    if (job.tech_id === techId) {
+      setAssignmentPending({
+        job, tech, techLoc,
+        validation: {
+          assignmentState: 'ALREADY_ASSIGNED',
+          allowed: false,
+          blockingIssues: [], warnings: [], informational: [],
+          scheduleImpact: { isReassignment: false },
+          workloadImpact: {},
+          techName: tech.name, techIsAvailable: tech.is_available !== false,
+        },
+      });
+      setSidebarView('assignment_confirm');
+      return;
+    }
+
     try {
       const res = await api.post('/dispatch/assignments/validate', {
         jobId, techId, isEmergency: job.is_emergency ?? false,
       });
-      setAssignmentPending({ job, tech, validation: res.data });
+      setAssignmentPending({ job, tech, techLoc, validation: res.data });
       setSidebarView('assignment_confirm');
     } catch (err) {
+      const isUnavailable = err.response?.status === 422 &&
+        err.response?.data?.assignmentState === 'UNAVAILABLE';
       setAssignmentPending({
-        job, tech,
+        job, tech, techLoc,
         validation: {
+          assignmentState: isUnavailable ? 'UNAVAILABLE' : 'UNASSIGNED',
           allowed: false,
           blockingIssues: [{ message: err.response?.data?.error || 'Validation failed. Please try again.' }],
           warnings: [], informational: [],
           scheduleImpact: {}, workloadImpact: {},
+          techName: tech.name, techIsAvailable: false,
         },
       });
       setSidebarView('assignment_confirm');

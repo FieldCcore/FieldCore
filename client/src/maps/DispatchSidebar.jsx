@@ -509,7 +509,7 @@ function JobDetailView({
           </div>
         )}
 
-        {/* Inline tech picker for assignment */}
+        {/* Inline tech picker for assignment — state-aware per tech */}
         {showAssignPicker && (
           <div style={{
             margin: '8px 0', padding: '10px 12px',
@@ -529,22 +529,56 @@ function JobDetailView({
                 to enable assignment.
               </div>
             ) : (
-              fieldTechs.map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => { setShowAssignPicker(false); onAssignJob?.(job.id, t.id); }}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left',
-                    padding: '6px 8px', marginBottom: 3,
-                    background: '#fff', border: '1px solid var(--lightgray)',
-                    borderRadius: 4, cursor: 'pointer',
-                    fontSize: 12, fontWeight: 500, color: 'var(--navy)',
-                  }}
-                >
-                  {t.name}
-                </button>
-              ))
+              fieldTechs.map(t => {
+                // Resolve per-tech assignment state
+                const tState =
+                  (t.field_work_eligible === false) ? 'UNAVAILABLE' :
+                  (job.tech_id === t.id)            ? 'ALREADY_ASSIGNED' :
+                  (job.tech_id)                     ? 'REASSIGN' :
+                                                      'UNASSIGNED';
+
+                const isDisabled = tState === 'UNAVAILABLE';
+                const btnBg =
+                  tState === 'ALREADY_ASSIGNED' ? '#E8F5E9' :
+                  tState === 'REASSIGN'         ? '#FEF9EC' : '#fff';
+                const btnBorder =
+                  tState === 'ALREADY_ASSIGNED' ? '#66BB6A' :
+                  tState === 'REASSIGN'         ? '#D97706' : 'var(--lightgray)';
+                const btnColor =
+                  tState === 'UNAVAILABLE'      ? 'var(--steel)' :
+                  tState === 'ALREADY_ASSIGNED' ? '#2E7D32' :
+                  tState === 'REASSIGN'         ? '#92400E' : 'var(--navy)';
+                const statusLabel =
+                  tState === 'ALREADY_ASSIGNED' ? ' ✓' :
+                  tState === 'REASSIGN'         ? ' — Reassign' :
+                  tState === 'UNAVAILABLE'      ? ' — Unavailable' : '';
+
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => { setShowAssignPicker(false); onAssignJob?.(job.id, t.id); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', textAlign: 'left',
+                      padding: '6px 8px', marginBottom: 3,
+                      background: btnBg, border: `1px solid ${btnBorder}`,
+                      borderRadius: 4,
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isDisabled ? 0.55 : 1,
+                      fontSize: 12, fontWeight: 500, color: btnColor,
+                    }}
+                  >
+                    <span>{t.name}</span>
+                    {statusLabel && (
+                      <span style={{ fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
+                        {statusLabel}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
             )}
             <button
               type="button"
@@ -1087,6 +1121,7 @@ export default function DispatchSidebar({
           job={assignmentPending.job}
           tech={assignmentPending.tech}
           validation={assignmentPending.validation}
+          techLoc={assignmentPending.techLoc ?? null}
           onConfirm={onAssignConfirmed}
           onCancel={onAssignCancel}
         />

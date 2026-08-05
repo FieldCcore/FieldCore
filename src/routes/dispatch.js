@@ -490,10 +490,20 @@ router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async 
   });
 
   if (!validation.allowed) {
+    // Record blocked attempt for audit trail — non-fatal
+    recordActivity({
+      accountId: req.accountId, jobId, techId,
+      eventType: 'assignment.blocked',
+      actor: { id: req.userId, name: null, type: 'user' },
+      summary: `Assignment blocked — ${validation.blockingIssues[0]?.message || 'validation failed'}`,
+      metadata: { blockingIssues: validation.blockingIssues, assignmentState: validation.assignmentState },
+      source: 'domain',
+    });
     return res.status(422).json({
-      error:          'Assignment blocked by validation.',
-      blockingIssues: validation.blockingIssues,
-      warnings:       validation.warnings,
+      error:           'Assignment blocked by validation.',
+      assignmentState: validation.assignmentState,
+      blockingIssues:  validation.blockingIssues,
+      warnings:        validation.warnings,
     });
   }
 
@@ -541,9 +551,13 @@ router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async 
   }, req.ip);
 
   // ── Activity log ──────────────────────────────────────────────────────────
-  const { rows: [actor] } = await pool.query(
-    `SELECT name FROM users WHERE id = $1`, [req.userId]
-  ).catch(() => ({ rows: [{}] }));
+  const [actorRes, techNameRes] = await Promise.all([
+    pool.query(`SELECT name FROM users WHERE id = $1`, [req.userId]).catch(() => ({ rows: [{}] })),
+    pool.query(`SELECT name FROM users WHERE id = $1`, [techId]).catch(() => ({ rows: [{}] })),
+  ]);
+  const actor    = actorRes.rows[0];
+  const techName = techNameRes.rows[0]?.name || 'Technician';
+
   const assignEvt = previousTechId ? 'job.reassigned' : 'job.assigned';
   recordActivity({
     accountId: req.accountId, jobId, techId,
@@ -554,11 +568,25 @@ router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async 
     source: 'domain',
   });
 
+  // Communication event — internal queue, no Twilio required
+  const commType = previousTechId ? 'AssignmentChanged' : 'AssignmentCreated';
+  recordActivity({
+    accountId: req.accountId, jobId, techId,
+    eventType: 'job.communication_sent',
+    actor: { id: req.userId, name: actor?.name || null, type: 'system' },
+    summary: previousTechId
+      ? `Assignment update queued for ${techName}`
+      : `Assignment notification queued for ${techName}`,
+    metadata: { type: commType, recipientId: techId, recipientName: techName, queued: true, providerConfigured: false },
+    source: 'domain',
+  });
+
   res.json({
-    job:          updatedJob,
+    job:             updatedJob,
     validation,
-    assigned:     true,
+    assigned:        true,
     previousTechId,
+    assignmentState: validation.assignmentState,
   });
 });
 

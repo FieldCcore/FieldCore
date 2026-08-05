@@ -215,21 +215,34 @@ async function validate({ accountId, jobId, techId, requestedByUserId, isEmergen
     isReassignment:  !!(job.tech_id && job.tech_id !== techId),
   };
 
+  // Explicit state — the frontend V2 engine reads this instead of inferring from scheduleImpact.
+  const assignmentState =
+    (job.tech_id === techId)                                    ? 'ALREADY_ASSIGNED' :
+    blocking.some(b => b.type === 'not_field_eligible')         ? 'UNAVAILABLE' :
+    !!job.tech_id                                               ? 'REASSIGN' :
+                                                                  'UNASSIGNED';
+
   return {
-    allowed:        blocking.length === 0,
-    blockingIssues: blocking,
+    // ALREADY_ASSIGNED is a no-op — not an error, but not permitted to re-save.
+    allowed:         blocking.length === 0 && assignmentState !== 'ALREADY_ASSIGNED',
+    assignmentState,
+    blockingIssues:  blocking,
     warnings,
     informational,
     scheduleImpact,
     workloadImpact,
+    techName:        tech.name || null,
+    techIsAvailable: tech.is_available !== false,
   };
 }
 
 function _notFound(type, message) {
   return {
-    allowed: false,
+    allowed:        false,
+    assignmentState: 'UNAVAILABLE',
     blockingIssues: [{ type, severity: 'blocking', message }],
-    warnings: [], informational: {}, scheduleImpact: {}, workloadImpact: {},
+    warnings: [], informational: [], scheduleImpact: {}, workloadImpact: {},
+    techName: null, techIsAvailable: false,
   };
 }
 
