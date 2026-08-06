@@ -80,6 +80,26 @@ const MOCK_TREND = {
   interval: 'daily',
 };
 
+const MOCK_SERVICES = [
+  { service: 'Cleaning', jobs: 4, earnedRevenue: 1000, collectedRevenue: 800, avgTicket: 250, laborHours: 8, revenuePerLaborHour: 125, completionRate: 0.9, revenueShare: 66.7 },
+  { service: 'Repair',   jobs: 1, earnedRevenue: 500,  collectedRevenue: 400, avgTicket: 500, laborHours: 2, revenuePerLaborHour: 250, completionRate: 1.0, revenueShare: 33.3 },
+];
+
+const MOCK_QUARTERLY = {
+  year: 2026,
+  quarters: {
+    Q1:   { earnedRevenue: 1200, collectedRevenue: 1000, avgTicket: 300, qoqGrowth: null, yoyGrowth: 5.2 },
+    Q2:   { earnedRevenue: 1500, collectedRevenue: 1300, avgTicket: 320, qoqGrowth: 25.0, yoyGrowth: 8.1 },
+    Q3:   { earnedRevenue: null, collectedRevenue: null,  avgTicket: null, qoqGrowth: null, yoyGrowth: null },
+    Q4:   { earnedRevenue: null, collectedRevenue: null,  avgTicket: null, qoqGrowth: null, yoyGrowth: null },
+    year: { earnedRevenue: 2700, collectedRevenue: 2300, avgTicket: 310, qoqGrowth: null, yoyGrowth: 6.5 },
+  },
+  priorYear: {},
+  financialRows: { cogs: { status: 'unavailable' }, grossProfit: { status: 'unavailable' } },
+  limitations: ['Gross profit unavailable — no cost source connected.'],
+  calculatedAt: '2026-08-06T10:00:00Z',
+};
+
 function renderRevenue(search = '') {
   return render(
     <MemoryRouter initialEntries={[`/revenue${search}`]}>
@@ -91,8 +111,10 @@ function renderRevenue(search = '') {
 beforeEach(() => {
   vi.clearAllMocks();
   api.get.mockImplementation((url) => {
-    if (url.includes('/revenue/overview')) return Promise.resolve({ data: MOCK_OVERVIEW });
-    if (url.includes('/revenue/trend'))    return Promise.resolve({ data: MOCK_TREND });
+    if (url.includes('/revenue/overview'))   return Promise.resolve({ data: MOCK_OVERVIEW });
+    if (url.includes('/revenue/trend'))      return Promise.resolve({ data: MOCK_TREND });
+    if (url.includes('/revenue/services'))   return Promise.resolve({ data: MOCK_SERVICES });
+    if (url.includes('/revenue/quarterly'))  return Promise.resolve({ data: MOCK_QUARTERLY });
     return Promise.reject(new Error('Unknown endpoint: ' + url));
   });
 });
@@ -120,10 +142,10 @@ describe('Revenue — workspace navigation', () => {
     });
   });
 
-  it('non-Overview workspaces show a coming-soon state', async () => {
-    renderRevenue('?view=financials');
+  it('placeholder workspaces show a coming-in-later-phase state', async () => {
+    renderRevenue('?view=customers');
     await waitFor(() => {
-      expect(screen.getByText(/later audit phase/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/coming in a later phase/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -344,8 +366,8 @@ describe('Revenue — Revenue Insight panel', () => {
 // ── Revenue by Service table ───────────────────────────────────────────────────
 
 describe('Revenue — Revenue by Service table', () => {
-  it('renders Revenue by Service heading', async () => {
-    renderRevenue();
+  it('renders Revenue by Service heading in Operations workspace', async () => {
+    renderRevenue('?view=operations');
     await waitFor(() => {
       expect(screen.getByText('Revenue by Service')).toBeInTheDocument();
     });
@@ -366,8 +388,8 @@ describe('Revenue — Revenue by Service table', () => {
     expect(unavailCells.length).toBeGreaterThan(0);
   });
 
-  it('shows "revenue counted once per job" note', async () => {
-    renderRevenue();
+  it('shows "revenue counted once per job" note in Operations workspace', async () => {
+    renderRevenue('?view=operations');
     await waitFor(() => {
       expect(screen.getByText(/revenue counted once per job/i)).toBeInTheDocument();
     });

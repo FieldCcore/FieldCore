@@ -3204,32 +3204,36 @@ body {
 .rev-month-growth { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 700; }
 
 /* ── Revenue Overview Workspace (rov-*) ──────────────────── */
-.rov-root { display: flex; flex-direction: column; gap: 20px; }
+.rov-root { display: flex; flex-direction: column; gap: 0; }
 
 /* Page header */
 .rov-page-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding-bottom: 4px;
+  padding: 12px 0 20px;
 }
 .rov-page-title {
   font-size: 22px; font-weight: 800; color: var(--navy);
-  font-family: 'Inter', sans-serif; margin: 0 0 4px;
+  font-family: 'Inter', sans-serif; margin: 0 0 6px;
   letter-spacing: -.02em;
 }
-.rov-page-sub { font-size: 13px; color: var(--slate); margin: 0; }
+.rov-page-sub { font-size: 13px; color: var(--slate); margin: 0; line-height: 1.5; }
 .rov-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* Workspace tab nav */
 .rov-workspace-nav {
   display: flex; gap: 0;
   border-bottom: 2px solid var(--lightgray);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin-bottom: 24px;
 }
+.rov-workspace-nav::-webkit-scrollbar { display: none; }
 .rov-workspace-tab {
-  padding: 9px 18px; background: none; border: none;
+  padding: 11px 24px; background: none; border: none;
   border-bottom: 2px solid transparent; margin-bottom: -2px;
   font-size: 13px; font-weight: 500; color: var(--steel);
   cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap;
-  transition: color .12s, border-color .12s;
+  transition: color .12s, border-color .12s; flex-shrink: 0;
 }
 .rov-workspace-tab:hover  { color: var(--navy); }
 .rov-workspace-tab--active {
@@ -3243,6 +3247,7 @@ body {
   padding: 10px 14px;
   background: var(--offwhite); border-radius: 8px;
   border: 1px solid var(--lightgray);
+  margin-bottom: 28px;
 }
 .rov-filter-presets { display: flex; gap: 4px; flex-wrap: wrap; }
 .rov-preset-btn {
@@ -3268,22 +3273,20 @@ body {
 .rov-filter-select--sm { font-size: 11px; padding: 4px 6px; }
 
 /* KPI rows */
-.rov-kpi-row {
-  display: grid; gap: 10px;
-}
-.rov-kpi-row--primary   { grid-template-columns: repeat(5, 1fr); }
-.rov-kpi-row--secondary { grid-template-columns: repeat(6, 1fr); }
+.rov-kpi-row { display: grid; gap: 14px; }
+.rov-kpi-row--primary   { grid-template-columns: repeat(5, 1fr); margin-bottom: 18px; }
+.rov-kpi-row--secondary { grid-template-columns: repeat(6, 1fr); margin-bottom: 32px; }
 
 /* KPI card */
 .rov-kpi-card {
   background: #fff; border: 1px solid var(--lightgray); border-radius: 10px;
-  padding: 16px 16px 12px;
+  padding: 18px 18px 14px;
   display: flex; flex-direction: column; gap: 4px;
   position: relative; overflow: hidden;
   transition: border-color .12s;
 }
-.rov-kpi-card--primary   { min-height: 130px; }
-.rov-kpi-card--secondary { min-height: 100px; padding: 12px 14px 10px; }
+.rov-kpi-card--primary   { min-height: 140px; }
+.rov-kpi-card--secondary { min-height: 108px; padding: 14px 16px 12px; }
 .rov-kpi-card--stale { border-color: var(--sand); }
 
 .rov-kpi-label {
@@ -3441,9 +3444,6 @@ body {
 .rov-table-skeleton { height: 120px; background: var(--lightgray); border-radius: 6px; }
 
 /* Risk & Opportunities */
-.rov-risk-section {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-}
 .rov-risk-col     { display: flex; flex-direction: column; gap: 10px; }
 .rov-risk-header  {
   font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
@@ -3492,14 +3492,119 @@ body {
 }
 .rov-coming-text { font-size: 14px; color: var(--slate); line-height: 1.6; max-width: 400px; }
 
+/* Overview bottom row */
+.rov-overview-bottom {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;
+}
+
+/* Top 5 Services (compact) */
+.rov-top5-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.rov-top5-title {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--steel);
+}
+.rov-top5-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rov-top5-table th {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--steel);
+  padding: 0 8px 8px; text-align: right; white-space: nowrap;
+}
+.rov-top5-table th:first-child { text-align: left; padding-left: 0; }
+.rov-top5-table td {
+  padding: 6px 8px; border-top: 1px solid var(--lightgray);
+  color: var(--navy); text-align: right;
+}
+.rov-top5-table td:first-child { text-align: left; font-weight: 600; padding-left: 0; }
+.rov-ws-cta {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-size: 11px; color: var(--navy); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.rov-ws-cta:hover { color: var(--sand-dark); }
+
+/* Risk section — vertical stack */
+.rov-risk-section { display: flex; flex-direction: column; gap: 14px; }
+
+/* Financials workspace */
+.rov-fin-year-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.rov-fin-year-label { font-size: 11px; font-weight: 700; color: var(--steel); }
+.rov-fin-year-select {
+  font-size: 13px; padding: 5px 10px; border: 1px solid var(--lightgray);
+  border-radius: 6px; color: var(--navy); background: #fff; cursor: pointer;
+}
+.rov-fin-integration-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;
+}
+.rov-fin-int-card {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: 10px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.rov-fin-int-name { font-size: 12px; font-weight: 700; color: var(--navy); }
+.rov-fin-int-status { font-size: 11px; color: var(--steel); font-style: italic; }
+.rov-fin-int-desc { font-size: 10px; color: var(--steel); line-height: 1.5; margin-top: 2px; }
+
+/* Quarterly comparison table */
+.rov-quarterly-table-wrap { overflow-x: auto; }
+.rov-q-table { width: 100%; border-collapse: collapse; }
+.rov-q-table th {
+  padding: 10px 16px; text-align: right; font-family: 'DM Mono', monospace;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--steel); border-bottom: 2px solid var(--lightgray); white-space: nowrap;
+}
+.rov-q-table th:first-child { text-align: left; min-width: 200px; }
+.rov-q-table td {
+  padding: 9px 16px; text-align: right; border-bottom: 1px solid var(--lightgray);
+  color: var(--navy); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.rov-q-table td:first-child { text-align: left; font-size: 12px; font-weight: 500; color: var(--slate); }
+.rov-q-table tr:last-child td { border-bottom: none; }
+.rov-q-section-row td {
+  background: var(--offwhite); font-family: 'DM Mono', monospace;
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--steel);
+  padding: 6px 16px; border-top: 2px solid var(--lightgray);
+}
+.rov-q-unavailable { color: var(--steel); font-style: italic; font-size: 11px; }
+.rov-q-growth-pos  { color: var(--green); font-size: 10px; font-family: 'DM Mono', monospace; font-weight: 700; }
+.rov-q-growth-neg  { color: var(--red);   font-size: 10px; font-family: 'DM Mono', monospace; font-weight: 700; }
+.rov-q-growth-none { color: var(--steel); font-size: 10px; font-family: 'DM Mono', monospace; }
+
+/* Workspace body + section structure */
+.rov-ws-body { display: flex; flex-direction: column; gap: 18px; }
+.rov-ws-section {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: 10px; overflow: hidden;
+}
+.rov-ws-section-header {
+  padding: 14px 18px; border-bottom: 1px solid var(--lightgray);
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.rov-ws-section-title { font-size: 14px; font-weight: 700; color: var(--navy); margin: 0; }
+.rov-ws-section-sub   { font-size: 11px; color: var(--steel); flex-shrink: 0; }
+.rov-ws-placeholder   { padding: 20px 20px 18px; }
+.rov-ws-section-list  { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
+.rov-ws-section-list li {
+  display: flex; align-items: flex-start; gap: 10px; font-size: 12px;
+  color: var(--slate); padding: 8px 0; border-bottom: 1px solid var(--lightgray);
+}
+.rov-ws-section-list li:last-child { border-bottom: none; }
+.rov-ws-section-list li::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--steel); flex-shrink: 0; margin-top: 5px;
+}
+.rov-ws-placeholder-note { font-size: 11px; color: var(--steel); margin-top: 12px; font-style: italic; line-height: 1.5; }
+
 /* ── Responsive: Revenue Overview ────────────────────────── */
 @media (max-width: 1200px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(3, 1fr); }
   .rov-kpi-row--secondary { grid-template-columns: repeat(3, 1fr); }
 }
+@media (max-width: 1100px) {
+  .rov-fin-integration-cards { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 900px) {
-  .rov-trend-section  { grid-template-columns: 1fr; }
-  .rov-risk-section   { grid-template-columns: 1fr; }
+  .rov-trend-section    { grid-template-columns: 1fr; }
+  .rov-overview-bottom  { grid-template-columns: 1fr; }
+  .rov-fin-integration-cards { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(2, 1fr); }

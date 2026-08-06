@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import api from '../api';
@@ -18,10 +18,10 @@ const WORKSPACES = [
 const VALID_VIEWS = WORKSPACES.map(w => w.key);
 
 const COMPARISON_OPTIONS = [
-  { value: 'none',            label: 'No comparison'    },
-  { value: 'previous_period', label: 'Previous period'  },
-  { value: 'previous_month',  label: 'Previous month'   },
-  { value: 'previous_year',   label: 'Previous year'    },
+  { value: 'none',            label: 'No comparison'   },
+  { value: 'previous_period', label: 'Previous period' },
+  { value: 'previous_month',  label: 'Previous month'  },
+  { value: 'previous_year',   label: 'Previous year'   },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -58,12 +58,12 @@ function DATE_PRESETS() {
   const weekS  = addDays(today, -6);
 
   return [
-    { label: 'Today',         start: today,     end: today      },
-    { label: 'This Week',     start: weekS,      end: today      },
-    { label: 'Month to Date', start: mtdS,       end: today      },
-    { label: 'Last Month',    start: lastMonthS, end: lastMonthE },
-    { label: 'Quarter to Date', start: qtdS,     end: today      },
-    { label: 'Year to Date',  start: ytdS,       end: today      },
+    { label: 'Today',           start: today,      end: today      },
+    { label: 'This Week',       start: weekS,       end: today      },
+    { label: 'Month to Date',   start: mtdS,        end: today      },
+    { label: 'Last Month',      start: lastMonthS,  end: lastMonthE },
+    { label: 'Quarter to Date', start: qtdS,        end: today      },
+    { label: 'Year to Date',    start: ytdS,        end: today      },
   ];
 }
 
@@ -84,6 +84,12 @@ function fmtPct(v) {
 
 function fmtNum(n) {
   return n != null ? String(Math.round(n)) : null;
+}
+
+function fmtGrowth(val) {
+  if (val == null) return null;
+  const sign = val >= 0 ? '+' : '';
+  return `${sign}${parseFloat(val).toFixed(1)}%`;
 }
 
 // ── Comparison label ──────────────────────────────────────────────────────────
@@ -174,9 +180,6 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
     if (interval === 'monthly') {
       return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
     }
-    if (interval === 'weekly') {
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-    }
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
@@ -229,7 +232,6 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
         ))}
       </div>
 
-      {/* Legend */}
       <div className="rov-trend-legend" role="list" aria-label="Chart legend">
         {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map(m => (
           <div key={m.key} className="rov-trend-legend-item" role="listitem">
@@ -271,11 +273,7 @@ function RevenueInsightPanel({ insights, loading }) {
       ) : (
         <div className="rov-insight-list" role="list">
           {items.map((ins, i) => (
-            <div
-              key={ins.id || i}
-              className="rov-insight-item"
-              role="listitem"
-            >
+            <div key={ins.id || i} className="rov-insight-item" role="listitem">
               <div
                 className="rov-insight-dot"
                 style={{ background: TONE_COLOR[ins.tone] || TONE_COLOR.neutral }}
@@ -304,8 +302,8 @@ function RevenueInsightPanel({ insights, loading }) {
 // ── ServiceTable ──────────────────────────────────────────────────────────────
 
 function ServiceTable({ services, loading, error }) {
-  const [sortKey, setSortKey]   = useState('earnedRevenue');
-  const [sortDir, setSortDir]   = useState('desc');
+  const [sortKey, setSortKey] = useState('earnedRevenue');
+  const [sortDir, setSortDir] = useState('desc');
 
   if (loading) return (
     <div className="dash-card" style={{ padding: 24 }}>
@@ -376,16 +374,16 @@ function ServiceTable({ services, loading, error }) {
             <thead>
               <tr>
                 <th scope="col">Service</th>
-                <SortTh col="jobs"                label="Jobs"              />
-                <SortTh col="earnedRevenue"        label="Earned Revenue"    />
-                <SortTh col="collectedRevenue"     label="Collected Revenue" />
-                <SortTh col="avgTicket"            label="Avg Ticket"        />
+                <SortTh col="jobs"               label="Jobs"             />
+                <SortTh col="earnedRevenue"       label="Earned Revenue"   />
+                <SortTh col="collectedRevenue"    label="Collected Rev."   />
+                <SortTh col="avgTicket"           label="Avg Ticket"       />
                 <th scope="col">Gross Profit</th>
                 <th scope="col">Margin</th>
-                <SortTh col="laborHours"           label="Labor Hrs"         />
-                <SortTh col="revenuePerLaborHour"  label="Rev / Hr"          />
-                <SortTh col="completionRate"       label="Completion"        />
-                <SortTh col="revenueShare"         label="Share"             />
+                <SortTh col="laborHours"          label="Labor Hrs"        />
+                <SortTh col="revenuePerLaborHour" label="Rev / Hr"         />
+                <SortTh col="completionRate"      label="Completion"       />
+                <SortTh col="revenueShare"        label="Share"            />
               </tr>
             </thead>
             <tbody>
@@ -423,8 +421,7 @@ function ServiceTable({ services, loading, error }) {
                 <td><strong>{fmtMoney(totEarned)}</strong></td>
                 <td><strong>{fmtMoney(totCollected)}</strong></td>
                 <td><strong>{totJobs > 0 ? fmtMoney(totEarned / totJobs) : '—'}</strong></td>
-                <td />
-                <td />
+                <td /><td />
                 <td><strong>{totHours > 0 ? `${Math.round(totHours * 10) / 10}h` : '—'}</strong></td>
                 <td><strong>{totHours > 0 && totEarned > 0 ? fmtMoney(totEarned / totHours) : '—'}</strong></td>
                 <td />
@@ -444,15 +441,15 @@ function RiskOpportunities({ data, loading }) {
   const navigate = useNavigate();
   if (loading) return null;
 
-  const risk  = data?.risk  || [];
-  const opps  = data?.opportunities || [];
+  const risk = data?.risk         || [];
+  const opps = data?.opportunities || [];
 
   if (risk.length === 0 && opps.length === 0) return null;
 
   const RISK_COLORS = {
-    overdue_invoices:            '#DC2626',
-    failed_payments:             '#B45309',
-    cancelled_jobs:              '#8A90A2',
+    overdue_invoices: '#DC2626',
+    failed_payments:  '#B45309',
+    cancelled_jobs:   '#8A90A2',
   };
   const OPP_COLORS = {
     accepted_estimate_not_scheduled: '#2E7D32',
@@ -516,18 +513,418 @@ function RiskOpportunities({ data, loading }) {
   );
 }
 
-// ── WorkspaceComingSoon ───────────────────────────────────────────────────────
+// ── Top5Services ──────────────────────────────────────────────────────────────
 
-function WorkspaceComingSoon({ label }) {
+function Top5Services({ services, loading, onViewAll }) {
+  if (loading) return (
+    <div className="dash-card" style={{ padding: 18 }}>
+      <div className="rov-table-skeleton" style={{ height: 80 }} aria-label="Loading top services" />
+    </div>
+  );
+
+  const rows = [...(services || [])].sort((a, b) => b.earnedRevenue - a.earnedRevenue).slice(0, 5);
+
   return (
-    <div className="rov-coming-soon" role="status" aria-label={`${label} workspace not yet available`}>
-      <div className="rov-coming-title">{label}</div>
-      <div className="rov-coming-text">
-        This workspace will be available in a later audit phase.
-        <br />
-        The data infrastructure is in place — the views are being built.
+    <div className="dash-card" style={{ padding: '16px 18px' }}>
+      <div className="rov-top5-header">
+        <span className="rov-top5-title">Top 5 Services</span>
+        <button type="button" className="rov-ws-cta" onClick={onViewAll}>
+          View All →
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--steel)', padding: '8px 0' }}>
+          No service data for this period.
+        </div>
+      ) : (
+        <table className="rov-top5-table" aria-label="Top 5 services by earned revenue">
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Jobs</th>
+              <th>Earned</th>
+              <th>Avg Ticket</th>
+              <th>Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s, i) => (
+              <tr key={i}>
+                <td>{s.service}</td>
+                <td style={{ color: 'var(--slate)' }}>{s.jobs}</td>
+                <td><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
+                <td>{s.avgTicket != null ? fmtMoney(s.avgTicket) : '—'}</td>
+                <td style={{ color: 'var(--slate)' }}>{s.revenueShare.toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// ── FinancialsWorkspace ───────────────────────────────────────────────────────
+
+const QUARTER_KEYS   = ['Q1', 'Q2', 'Q3', 'Q4', 'year'];
+const QUARTER_LABELS = { Q1: 'Q1', Q2: 'Q2', Q3: 'Q3', Q4: 'Q4', year: 'Full Year' };
+
+const INTEGRATION_CARDS = [
+  {
+    name:     'Accounting',
+    examples: 'QuickBooks, Xero, FreshBooks',
+    desc:     'Connect to pull COGS, expenses, and profit/loss data for gross and net margin calculations.',
+  },
+  {
+    name:     'Banking',
+    examples: 'Bank feeds, direct import',
+    desc:     'Connect to reconcile deposits and track cash flow against earned revenue.',
+  },
+  {
+    name:     'Payment Processor',
+    examples: 'Stripe, Square, PayPal',
+    desc:     'Connect to import transactions and merchant fees automatically.',
+  },
+];
+
+const PROFITABILITY_ROWS = [
+  ['COGS',                'cogs'             ],
+  ['Gross Profit',        'grossProfit'      ],
+  ['Gross Margin',        'grossMargin'      ],
+  ['Operating Expenses',  'operatingExpenses'],
+  ['Operating Profit',    'operatingProfit'  ],
+  ['Net Profit',          'netProfit'        ],
+  ['Net Margin',          'netMargin'        ],
+  ['Refunds & Credits',   'refunds'          ],
+  ['Merchant Fees',       'merchantFees'     ],
+];
+
+function FinancialsWorkspace() {
+  const currentYear = new Date().getUTCFullYear();
+  const [finYear, setFinYear] = useState(currentYear);
+  const yearOptions = [currentYear, currentYear - 1, currentYear - 2];
+
+  const { data: quarterly, loading: qLoading } =
+    useRevData('/revenue/quarterly', { year: finYear }, [finYear]);
+
+  const q   = quarterly?.quarters    || {};
+  const lim = quarterly?.limitations || [];
+
+  function GrowthCell({ qKey, type }) {
+    const d = q[qKey];
+    if (!d) return <td>—</td>;
+    const raw = type === 'qoq' ? d.qoqGrowth : d.yoyGrowth;
+    if (raw == null) return <td><span className="rov-q-growth-none">—</span></td>;
+    const cls = raw >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
+    return <td><span className={cls}>{fmtGrowth(raw)}</span></td>;
+  }
+
+  return (
+    <div className="rov-ws-body">
+
+      {/* Year selector */}
+      <div className="rov-fin-year-bar">
+        <span className="rov-fin-year-label">Fiscal Year</span>
+        <select
+          className="rov-fin-year-select"
+          value={finYear}
+          onChange={e => setFinYear(parseInt(e.target.value))}
+          aria-label="Select fiscal year"
+        >
+          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {qLoading && (
+          <span style={{ fontSize: 11, color: 'var(--steel)' }}>Loading…</span>
+        )}
+      </div>
+
+      {/* Integration status cards */}
+      <div className="rov-fin-integration-cards">
+        {INTEGRATION_CARDS.map(ic => (
+          <div key={ic.name} className="rov-fin-int-card">
+            <div className="rov-fin-int-name">{ic.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 2 }}>{ic.examples}</div>
+            <div className="rov-fin-int-status">Not connected</div>
+            <div className="rov-fin-int-desc">{ic.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quarterly comparison table */}
+      <div className="rov-ws-section">
+        <div className="rov-ws-section-header">
+          <h2 className="rov-ws-section-title">Quarterly Financial Review — {finYear}</h2>
+          {quarterly?.calculatedAt && (
+            <span className="rov-ws-section-sub">
+              Calculated {new Date(quarterly.calculatedAt).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+        <div className="rov-quarterly-table-wrap">
+          <table className="rov-q-table" aria-label={`Quarterly financial comparison ${finYear}`}>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                {QUARTER_KEYS.map(k => <th key={k}>{QUARTER_LABELS[k]}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+
+              {/* ── Revenue ── */}
+              <tr className="rov-q-section-row">
+                <td colSpan={6}>Revenue</td>
+              </tr>
+
+              <tr>
+                <td>Earned Revenue</td>
+                {QUARTER_KEYS.map(k => {
+                  const d = q[k];
+                  return <td key={k}>{d?.earnedRevenue != null ? fmtMoney(d.earnedRevenue, false) : '—'}</td>;
+                })}
+              </tr>
+
+              <tr>
+                <td>Collected Revenue</td>
+                {QUARTER_KEYS.map(k => {
+                  const d = q[k];
+                  return <td key={k}>{d?.collectedRevenue != null ? fmtMoney(d.collectedRevenue, false) : '—'}</td>;
+                })}
+              </tr>
+
+              <tr>
+                <td>Avg Ticket</td>
+                {QUARTER_KEYS.map(k => {
+                  const d = q[k];
+                  return <td key={k}>{d?.avgTicket != null ? fmtMoney(d.avgTicket, false) : '—'}</td>;
+                })}
+              </tr>
+
+              <tr>
+                <td>QoQ Growth</td>
+                {QUARTER_KEYS.map(k => {
+                  if (k === 'year') return <td key={k}><span className="rov-q-growth-none">—</span></td>;
+                  const d = q[k];
+                  if (!d || d.qoqGrowth == null) return <td key={k}><span className="rov-q-growth-none">—</span></td>;
+                  const cls = d.qoqGrowth >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
+                  return <td key={k}><span className={cls}>{fmtGrowth(d.qoqGrowth)}</span></td>;
+                })}
+              </tr>
+
+              <tr>
+                <td>YoY Growth</td>
+                {QUARTER_KEYS.map(k => {
+                  const d = q[k];
+                  if (!d || d.yoyGrowth == null) return <td key={k}><span className="rov-q-growth-none">—</span></td>;
+                  const cls = d.yoyGrowth >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
+                  return <td key={k}><span className={cls}>{fmtGrowth(d.yoyGrowth)}</span></td>;
+                })}
+              </tr>
+
+              {/* ── Profitability ── */}
+              <tr className="rov-q-section-row">
+                <td colSpan={6}>Profitability — Requires accounting integration</td>
+              </tr>
+
+              {PROFITABILITY_ROWS.map(([label]) => (
+                <tr key={label}>
+                  <td>{label}</td>
+                  {QUARTER_KEYS.map(k => (
+                    <td key={k}><span className="rov-q-unavailable">Unavailable</span></td>
+                  ))}
+                </tr>
+              ))}
+
+            </tbody>
+          </table>
+        </div>
+
+        {lim.length > 0 && (
+          <div
+            className="rov-limitations"
+            style={{ margin: 0, borderRadius: 0, borderTop: '1px solid var(--lightgray)' }}
+            role="note"
+          >
+            <div className="rov-limitations-header">Data limitations</div>
+            <ul className="rov-limitations-list">
+              {lim.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+// ── OperationsWorkspace ───────────────────────────────────────────────────────
+
+function OperationsWorkspace({ filterStart, filterEnd }) {
+  const { data: svcData, loading: svcLoading, error: svcError } =
+    useRevData('/revenue/services', { start: filterStart, end: filterEnd }, [filterStart, filterEnd]);
+
+  return (
+    <div className="rov-ws-body">
+      <ServiceTable services={svcData} loading={svcLoading} error={svcError} />
+
+      <div className="rov-ws-section">
+        <div className="rov-ws-section-header">
+          <h2 className="rov-ws-section-title">Revenue by Technician</h2>
+          <span className="rov-ws-section-sub">Coming in a later phase</span>
+        </div>
+        <div className="rov-ws-placeholder">
+          <ul className="rov-ws-section-list">
+            <li>Per-technician earned and collected revenue</li>
+            <li>Jobs completed, average ticket, and completion rate per tech</li>
+            <li>Labor hours logged and revenue per labor hour</li>
+            <li>Month-over-month performance trend by technician</li>
+          </ul>
+          <p className="rov-ws-placeholder-note">Requires technician assignment data from completed job sessions.</p>
+        </div>
+      </div>
+
+      <div className="rov-ws-section">
+        <div className="rov-ws-section-header">
+          <h2 className="rov-ws-section-title">Job Completion Analysis</h2>
+          <span className="rov-ws-section-sub">Coming in a later phase</span>
+        </div>
+        <div className="rov-ws-placeholder">
+          <ul className="rov-ws-section-list">
+            <li>Jobs scheduled vs. completed vs. cancelled</li>
+            <li>No-show rate and revenue impact per period</li>
+            <li>Cancellation reasons and frequency breakdown</li>
+            <li>Completion rate by service type and technician</li>
+          </ul>
+          <p className="rov-ws-placeholder-note">Built from job status history and session records.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Workspace placeholders ────────────────────────────────────────────────────
+
+function WorkspacePlaceholder({ sections }) {
+  return (
+    <div className="rov-ws-body">
+      {sections.map((sec, i) => (
+        <div key={i} className="rov-ws-section">
+          <div className="rov-ws-section-header">
+            <h2 className="rov-ws-section-title">{sec.title}</h2>
+            <span className="rov-ws-section-sub">Coming in a later phase</span>
+          </div>
+          <div className="rov-ws-placeholder">
+            <ul className="rov-ws-section-list">
+              {sec.items.map((item, j) => <li key={j}>{item}</li>)}
+            </ul>
+            {sec.note && <p className="rov-ws-placeholder-note">{sec.note}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CustomersWorkspace() {
+  return (
+    <WorkspacePlaceholder sections={[
+      {
+        title: 'Client Lifetime Value',
+        items: [
+          'Total and average lifetime revenue per client',
+          'Revenue by client segment (residential, commercial, recurring)',
+          'Churn risk score and at-risk client list',
+          'Top clients by total and recent spend',
+        ],
+        note: 'Requires 6+ months of job history for meaningful LTV projections.',
+      },
+      {
+        title: 'Repeat & Retention',
+        items: [
+          'Repeat visit rate and frequency by client',
+          'First-time vs. returning client revenue split',
+          'Days between visits and booking gap analysis',
+          'Win-back opportunities: clients inactive 90+ days',
+        ],
+      },
+      {
+        title: 'Client Segments',
+        items: [
+          'Revenue by ZIP code, neighborhood, or territory',
+          'Service preference mapping by client type',
+          'New client acquisition cost estimate',
+          'Referral attribution (if tracked)',
+        ],
+      },
+    ]} />
+  );
+}
+
+function ForecastingWorkspace() {
+  return (
+    <WorkspacePlaceholder sections={[
+      {
+        title: 'Revenue Projection',
+        items: [
+          'Month-end projected revenue with confidence bands',
+          'Quarter and year-end forecast based on historical trend',
+          'Scenario modeling: optimistic, base, conservative',
+          'Variance tracking: forecast vs. actuals',
+        ],
+        note: 'Projections require at least 3 months of completed job history.',
+      },
+      {
+        title: 'Pipeline',
+        items: [
+          'Open estimates × expected close rate = pipeline value',
+          'Scheduled jobs with revenue attached',
+          'Accepted estimates not yet scheduled',
+          'Seasonal demand pattern overlay',
+        ],
+      },
+      {
+        title: 'Capacity & Demand',
+        items: [
+          'Projected labor hours needed vs. available capacity',
+          'Peak and trough period identification',
+          'Booking lead time trend',
+          'Revenue-per-available-hour capacity ceiling',
+        ],
+      },
+    ]} />
+  );
+}
+
+function ReportsWorkspace() {
+  return (
+    <WorkspacePlaceholder sections={[
+      {
+        title: 'Detailed Revenue Reports',
+        items: [
+          'Invoice-level detail export (all statuses)',
+          'Deposit reconciliation report',
+          'Revenue by period, service, and technician',
+          'Collections aging report (30 / 60 / 90+ days)',
+        ],
+      },
+      {
+        title: 'No-Show & Cancellation Report',
+        items: [
+          'No-show log with client and revenue impact',
+          'Cancellation reason breakdown',
+          'Recovery rate: rescheduled vs. lost',
+          'Cost of no-shows by quarter',
+        ],
+      },
+      {
+        title: 'Financial Exports',
+        items: [
+          'P&L summary export (requires accounting integration)',
+          'Quarterly financial package (PDF)',
+          'Accountant-ready CSV with all line items',
+          'Tax-year revenue summary',
+        ],
+        note: 'P&L and tax exports require a connected accounting integration.',
+      },
+    ]} />
   );
 }
 
@@ -537,40 +934,37 @@ export default function Revenue() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL state
-  const view       = VALID_VIEWS.includes(searchParams.get('view')) ? searchParams.get('view') : 'overview';
-  const urlStart   = searchParams.get('start')      || '';
-  const urlEnd     = searchParams.get('end')        || '';
-  const urlComp    = searchParams.get('comparison') || 'none';
-  const urlInterval = searchParams.get('interval')  || 'daily';
+  const view        = VALID_VIEWS.includes(searchParams.get('view')) ? searchParams.get('view') : 'overview';
+  const urlStart    = searchParams.get('start')      || '';
+  const urlEnd      = searchParams.get('end')        || '';
+  const urlComp     = searchParams.get('comparison') || 'none';
+  const urlInterval = searchParams.get('interval')   || 'daily';
 
-  // Local filter state (synced from URL)
-  const [filterStart,    setFilterStart]    = useState(() => urlStart  || DATE_PRESETS()[2].start);
-  const [filterEnd,      setFilterEnd]      = useState(() => urlEnd    || DATE_PRESETS()[2].end);
-  const [comparison,     setComparison]     = useState(() => urlComp);
-  const [interval,       setInterval]       = useState(() => urlInterval);
-  const [activeMetrics,  setActiveMetrics]  = useState(['earned', 'collected']);
-  const [exportLoading,  setExportLoading]  = useState(false);
-  const [activePreset,   setActivePreset]   = useState('Month to Date');
+  // Filter state
+  const [filterStart,   setFilterStart]   = useState(() => urlStart  || DATE_PRESETS()[2].start);
+  const [filterEnd,     setFilterEnd]     = useState(() => urlEnd    || DATE_PRESETS()[2].end);
+  const [comparison,    setComparison]    = useState(() => urlComp);
+  const [interval,      setInterval]      = useState(() => urlInterval);
+  const [activeMetrics, setActiveMetrics] = useState(['earned', 'collected']);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [activePreset,  setActivePreset]  = useState('Month to Date');
 
-  // Sync URL on filter change
   function applyFilters({ start, end, comp, view: v, intv }) {
     const next = {};
-    const vs = start  ?? filterStart;
-    const ve = end    ?? filterEnd;
-    const vc = comp   ?? comparison;
-    const vv = v      ?? view;
-    const vi = intv   ?? interval;
+    const vs = start ?? filterStart;
+    const ve = end   ?? filterEnd;
+    const vc = comp  ?? comparison;
+    const vv = v     ?? view;
+    const vi = intv  ?? interval;
     if (vv !== 'overview') next.view = vv;
-    next.start      = vs;
-    next.end        = ve;
+    next.start = vs;
+    next.end   = ve;
     if (vc && vc !== 'none') next.comparison = vc;
     if (vi !== 'daily')      next.interval   = vi;
     setSearchParams(next, { replace: true });
   }
 
-  function switchView(key) {
-    applyFilters({ view: key });
-  }
+  function switchView(key) { applyFilters({ view: key }); }
 
   function applyPreset(preset) {
     setFilterStart(preset.start);
@@ -594,24 +988,21 @@ export default function Revenue() {
   const { data: overview, loading: overviewLoading, error: overviewError } =
     useRevData('/revenue/overview', overviewParams, [filterStart, filterEnd, comparison, view]);
 
-  // Trend data (separate fetch to allow interval changes without re-loading KPIs)
+  // Trend data
   const trendParams = { start: filterStart, end: filterEnd, interval, comparison };
   const { data: trendRaw, loading: trendLoading, error: trendError } =
     useRevData('/revenue/trend', trendParams, [filterStart, filterEnd, interval, comparison, view]);
 
   const pk = overview?.primaryKpis   || {};
   const sk = overview?.secondaryKpis || {};
-  const services  = overview?.services  || [];
-  const insights  = overview?.insights  || [];
+  const services     = overview?.services || [];
+  const insights     = overview?.insights || [];
   const calculatedAt = overview?.freshness?.calculatedAt;
-  const compBasis = compLabel(comparison);
+  const compBasis    = compLabel(comparison);
 
-  // Toggle trend metric
   function toggleMetric(key) {
     setActiveMetrics(prev => {
-      if (prev.includes(key)) {
-        return prev.length > 1 ? prev.filter(k => k !== key) : prev;
-      }
+      if (prev.includes(key)) return prev.length > 1 ? prev.filter(k => k !== key) : prev;
       return [...prev, key];
     });
   }
@@ -634,26 +1025,26 @@ export default function Revenue() {
       <div className="rov-page-header">
         <div>
           <h1 className="rov-page-title">Revenue Analytics</h1>
-          <p className="rov-page-sub">Understand what the business earned, collected, lost, and is projected to produce.</p>
+          <p className="rov-page-sub">
+            Understand what the business earned, collected, lost, and is projected to produce.
+          </p>
         </div>
         <div className="rov-header-actions">
-          <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-              onClick={() => handleExport('summary')}
-              disabled={exportLoading || overviewLoading}
-              aria-label="Export revenue summary as CSV"
-            >
-              <Download size={13} aria-hidden="true" />
-              Export
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => handleExport('summary')}
+            disabled={exportLoading || overviewLoading}
+            aria-label="Export revenue summary as CSV"
+          >
+            <Download size={13} aria-hidden="true" />
+            Export
+          </button>
         </div>
       </div>
 
-      {/* Workspace navigation */}
+      {/* Workspace tab nav */}
       <nav className="rov-workspace-nav" role="tablist" aria-label="Revenue workspaces">
         {WORKSPACES.map(ws => (
           <button
@@ -670,9 +1061,8 @@ export default function Revenue() {
         ))}
       </nav>
 
-      {/* Filter toolbar */}
+      {/* Shared filter bar */}
       <div className="rov-filter-bar" role="toolbar" aria-label="Revenue filters">
-        {/* Date presets */}
         <div className="rov-filter-presets" role="group" aria-label="Date presets">
           {DATE_PRESETS().map(p => (
             <button
@@ -686,7 +1076,6 @@ export default function Revenue() {
           ))}
         </div>
 
-        {/* Custom date range */}
         <div className="rov-filter-dates" role="group" aria-label="Custom date range">
           <input
             type="date"
@@ -705,7 +1094,6 @@ export default function Revenue() {
           />
         </div>
 
-        {/* Comparison */}
         <div className="rov-filter-group">
           <label className="rov-filter-label" htmlFor="rov-comparison">Compare</label>
           <select
@@ -719,13 +1107,12 @@ export default function Revenue() {
         </div>
       </div>
 
-      {/* ── OVERVIEW WORKSPACE ──────────────────────────────────────────── */}
+      {/* ── OVERVIEW ──────────────────────────────────────────────────────── */}
       {view === 'overview' && (
         <div id="rov-panel-overview" role="tabpanel" aria-label="Overview">
 
-          {/* Primary KPI row — 5 cards */}
+          {/* Primary KPIs */}
           <div className="rov-kpi-row rov-kpi-row--primary" role="list" aria-label="Primary revenue KPIs">
-
             <div role="listitem">
               <RevenueKpiCard
                 label="Collected Revenue"
@@ -797,15 +1184,14 @@ export default function Revenue() {
                 isLoading={overviewLoading}
                 size="primary"
                 note={pk.projectedMonthEnd?.status === 'ok'
-                  ? `${Math.round((pk.projectedMonthEnd.completionRate || 0) * 100)}% completion rate · ${pk.projectedMonthEnd.confidence} confidence`
+                  ? `${Math.round((pk.projectedMonthEnd.completionRate || 0) * 100)}% completion · ${pk.projectedMonthEnd.confidence} confidence`
                   : undefined}
               />
             </div>
           </div>
 
-          {/* Secondary KPI row — 6 cards */}
+          {/* Secondary KPIs */}
           <div className="rov-kpi-row rov-kpi-row--secondary" role="list" aria-label="Secondary revenue KPIs">
-
             <div role="listitem">
               <RevenueKpiCard
                 label="Average Ticket"
@@ -884,7 +1270,7 @@ export default function Revenue() {
             </div>
           </div>
 
-          {/* Error overlay */}
+          {/* Error banner */}
           {overviewError && (
             <div className="rov-error-banner" role="alert">
               Revenue data could not be loaded. Data shown above may be stale.
@@ -897,7 +1283,6 @@ export default function Revenue() {
               <div className="dash-ch">
                 <span className="dash-cht">Revenue Trend</span>
                 <div className="rov-trend-controls" role="group" aria-label="Chart controls">
-                  {/* Metric toggles */}
                   {TREND_METRICS.map(m => (
                     <button
                       key={m.key}
@@ -910,7 +1295,6 @@ export default function Revenue() {
                       {m.label}
                     </button>
                   ))}
-                  {/* Interval selector */}
                   <select
                     className="rov-filter-select rov-filter-select--sm"
                     value={interval}
@@ -932,43 +1316,66 @@ export default function Revenue() {
             <RevenueInsightPanel insights={insights} loading={overviewLoading} />
           </div>
 
-          {/* Service table */}
-          <ServiceTable
-            services={services}
-            loading={overviewLoading}
-            error={overviewError}
-          />
-
-          {/* Risk & Opportunities */}
-          <RiskOpportunities
-            data={{ risk: overview?.risk, opportunities: overview?.opportunities }}
-            loading={overviewLoading}
-          />
+          {/* Bottom: Top 5 Services + Risk & Opportunities */}
+          <div className="rov-overview-bottom">
+            <Top5Services
+              services={services}
+              loading={overviewLoading}
+              onViewAll={() => switchView('operations')}
+            />
+            <RiskOpportunities
+              data={{ risk: overview?.risk, opportunities: overview?.opportunities }}
+              loading={overviewLoading}
+            />
+          </div>
 
           {/* Limitations footer */}
           {overview?.limitations?.length > 0 && (
             <div className="rov-limitations" role="note" aria-label="Data limitations">
               <div className="rov-limitations-header">Data limitations</div>
               <ul className="rov-limitations-list">
-                {overview.limitations.map((l, i) => (
-                  <li key={i}>{l}</li>
-                ))}
+                {overview.limitations.map((l, i) => <li key={i}>{l}</li>)}
               </ul>
             </div>
           )}
         </div>
       )}
 
-      {/* ── OTHER WORKSPACES ─────────────────────────────────────────────── */}
-      {view !== 'overview' && (
-        <div
-          id={`rov-panel-${view}`}
-          role="tabpanel"
-          aria-label={WORKSPACES.find(w => w.key === view)?.label}
-        >
-          <WorkspaceComingSoon label={WORKSPACES.find(w => w.key === view)?.label} />
+      {/* ── FINANCIALS ────────────────────────────────────────────────────── */}
+      {view === 'financials' && (
+        <div id="rov-panel-financials" role="tabpanel" aria-label="Financials">
+          <FinancialsWorkspace />
         </div>
       )}
+
+      {/* ── OPERATIONS ────────────────────────────────────────────────────── */}
+      {view === 'operations' && (
+        <div id="rov-panel-operations" role="tabpanel" aria-label="Operations">
+          <OperationsWorkspace filterStart={filterStart} filterEnd={filterEnd} />
+        </div>
+      )}
+
+      {/* ── CUSTOMERS ─────────────────────────────────────────────────────── */}
+      {view === 'customers' && (
+        <div id="rov-panel-customers" role="tabpanel" aria-label="Customers">
+          <CustomersWorkspace />
+        </div>
+      )}
+
+      {/* ── FORECASTING ───────────────────────────────────────────────────── */}
+      {view === 'forecasting' && (
+        <div id="rov-panel-forecasting" role="tabpanel" aria-label="Forecasting">
+          <ForecastingWorkspace />
+        </div>
+      )}
+
+      {/* ── REPORTS ───────────────────────────────────────────────────────── */}
+      {view === 'reports' && (
+        <div id="rov-panel-reports" role="tabpanel" aria-label="Reports">
+          <ReportsWorkspace />
+        </div>
+      )}
+
     </div>
   );
 }

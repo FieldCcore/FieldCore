@@ -920,6 +920,96 @@ async function getRisk(accountId, { start, end }) {
   return { risk, opportunities: opps };
 }
 
+// ── Quarterly comparison data ─────────────────────────────────────────────────
+// Returns Q1–Q4 + full-year aggregates for a given calendar year.
+// Cost-based metrics (COGS, Gross Profit, etc.) return status: 'unavailable'
+// until a cost source is connected.
+
+async function _fetchQuarterSlice(accountId, start, end) {
+  const [ev, cr, at] = await Promise.all([
+    earnedRevenue(accountId, start, end),
+    collectedRevenue(accountId, start, end),
+    averageTicket(accountId, start, end),
+  ]);
+  return {
+    earnedRevenue:    ev.value,
+    collectedRevenue: cr.value,
+    avgTicket:        at.status === 'ok' ? at.value : null,
+  };
+}
+
+async function getQuarterly(accountId, { year } = {}) {
+  const yr = parseInt(year) || new Date().getUTCFullYear();
+
+  const spans = {
+    Q1:   { start: `${yr}-01-01`, end: `${yr}-03-31` },
+    Q2:   { start: `${yr}-04-01`, end: `${yr}-06-30` },
+    Q3:   { start: `${yr}-07-01`, end: `${yr}-09-30` },
+    Q4:   { start: `${yr}-10-01`, end: `${yr}-12-31` },
+    year: { start: `${yr}-01-01`, end: `${yr}-12-31` },
+  };
+  const pySpans = {
+    Q1:   { start: `${yr - 1}-01-01`, end: `${yr - 1}-03-31` },
+    Q2:   { start: `${yr - 1}-04-01`, end: `${yr - 1}-06-30` },
+    Q3:   { start: `${yr - 1}-07-01`, end: `${yr - 1}-09-30` },
+    Q4:   { start: `${yr - 1}-10-01`, end: `${yr - 1}-12-31` },
+    year: { start: `${yr - 1}-01-01`, end: `${yr - 1}-12-31` },
+  };
+
+  const keys = ['Q1', 'Q2', 'Q3', 'Q4', 'year'];
+  const [curSlices, pySlices] = await Promise.all([
+    Promise.all(keys.map(k => _fetchQuarterSlice(accountId, spans[k].start, spans[k].end))),
+    Promise.all(keys.map(k => _fetchQuarterSlice(accountId, pySpans[k].start, pySpans[k].end))),
+  ]);
+
+  const cur  = Object.fromEntries(keys.map((k, i) => [k, curSlices[i]]));
+  const prev = Object.fromEntries(keys.map((k, i) => [k, pySlices[i]]));
+
+  function pctChg(a, b) {
+    if (b == null || b === 0) return null;
+    return ((a - b) / Math.abs(b)) * 100;
+  }
+
+  // Quarter-over-quarter revenue growth (Q2 vs Q1, Q3 vs Q2, etc.)
+  cur.Q1.qoqGrowth   = pctChg(cur.Q1.earnedRevenue, prev.Q1.earnedRevenue); // vs prior-year Q1
+  cur.Q2.qoqGrowth   = pctChg(cur.Q2.earnedRevenue, cur.Q1.earnedRevenue);
+  cur.Q3.qoqGrowth   = pctChg(cur.Q3.earnedRevenue, cur.Q2.earnedRevenue);
+  cur.Q4.qoqGrowth   = pctChg(cur.Q4.earnedRevenue, cur.Q3.earnedRevenue);
+  cur.year.yoyGrowth = pctChg(cur.year.earnedRevenue, prev.year.earnedRevenue);
+
+  // Year-over-year per quarter
+  keys.forEach(k => { cur[k].yoyGrowth = pctChg(cur[k].earnedRevenue, prev[k].earnedRevenue); });
+
+  const UNAVAILABLE = { status: 'unavailable', value: null, missingSources: ['cost_source'] };
+
+  return {
+    year: yr,
+    quarters: cur,
+    priorYear: prev,
+    // Stub financial rows — all unavailable until cost source connected
+    financialRows: {
+      cogs:              UNAVAILABLE,
+      grossProfit:       UNAVAILABLE,
+      grossMargin:       UNAVAILABLE,
+      operatingExpenses: UNAVAILABLE,
+      operatingProfit:   UNAVAILABLE,
+      netProfit:         UNAVAILABLE,
+      netMargin:         UNAVAILABLE,
+      taxes:             UNAVAILABLE,
+      refunds:           UNAVAILABLE,
+      discounts:         UNAVAILABLE,
+      merchantFees:      UNAVAILABLE,
+    },
+    limitations: [
+      'COGS unavailable — no direct cost source configured.',
+      'Gross Profit, Gross Margin, Operating Profit, Net Profit unavailable.',
+      'Connect accounting software to unlock the full P&L picture.',
+      'Revenue and collection data are authoritative from completed jobs and paid invoices.',
+    ],
+    calculatedAt: new Date().toISOString(),
+  };
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -927,6 +1017,7 @@ module.exports = {
   getTrend,
   getServices,
   getRisk,
+  getQuarterly,
   getComparisonRange,
   defaultPeriod,
   // exported for tests
@@ -939,4 +1030,5 @@ module.exports = {
   _revenueAtRisk:        revenueAtRisk,
   _grossProfit:          grossProfit,
   _technicianUtilization: technicianUtilization,
+  _getQuarterlySlice:    _fetchQuarterSlice,
 };

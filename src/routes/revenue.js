@@ -61,6 +61,20 @@ router.get('/risk', requireAuth, requireRole('owner', 'manager'), async (req, re
   }
 });
 
+// ── GET /api/revenue/quarterly ───────────────────────────────────────────────
+// Q1–Q4 + full-year revenue aggregates for Financials comparison table
+// Query params: year (defaults to current calendar year)
+
+router.get('/quarterly', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { year } = req.query;
+  try {
+    const result = await svc.getQuarterly(req.accountId, { year });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Quarterly data could not be loaded.' });
+  }
+});
+
 // ── GET /api/revenue/export ───────────────────────────────────────────────────
 // CSV export of revenue data
 // Query params: start, end, type (summary|services|invoices)
