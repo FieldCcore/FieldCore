@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Map, Video, ClipboardList, Users, CreditCard, Bell, Plus, AlertTriangle, Lock, CheckCircle, Check, X, Search } from 'lucide-react';
 import axios from 'axios';
+import JobTeamSelector from '../components/JobTeamSelector';
 
 const BACKEND = import.meta.env.VITE_API_URL || '';
 const mtApi = axios.create({ baseURL: `${BACKEND}/api` });
@@ -309,10 +310,12 @@ function NoticesPanel() {
 function BookPanel({ onBooked }) {
   const [clients,setClients]=useState([]);
   const [techs,setTechs]=useState([]);
+  const [crews,setCrews]=useState([]);
   const [services,setServices]=useState([]);
   const [search,setSearch]=useState('');
   const [selectedClient,setSelectedClient]=useState(null);
-  const [form,setForm]=useState({first:'',last:'',phone:'',email:'',service:'',tech_id:'',date:'',time:'',amount:'',notes:''});
+  const [form,setForm]=useState({first:'',last:'',phone:'',email:'',service:'',date:'',time:'',amount:'',notes:''});
+  const [assignment,setAssignment]=useState({members:[],crewId:null});
   const [saving,setSaving]=useState(false);
   const [done,setDone]=useState(false);
   const [err,setErr]=useState('');
@@ -320,6 +323,7 @@ function BookPanel({ onBooked }) {
   useEffect(()=>{
     mtApi.get('/clients').then(r=>setClients(r.data)).catch(()=>{});
     mtApi.get('/users').then(r=>setTechs(r.data.filter(u=>['tech','manager','owner'].includes(u.role)))).catch(()=>{});
+    mtApi.get('/dispatch/crews').then(r=>setCrews(r.data||[])).catch(()=>{});
     mtApi.get('/booking-settings').then(r=>{
       const s=r.data?.services;
       if(Array.isArray(s)&&s.length)setServices(s.map(sv=>typeof sv==='string'?sv:sv.name||sv));
@@ -349,7 +353,11 @@ function BookPanel({ onBooked }) {
         clientId=r.data.id;
       }
       const scheduled_at=new Date(`${form.date}T${form.time}`).toISOString();
-      await mtApi.post('/jobs',{client_id:clientId,tech_id:form.tech_id||undefined,service_type:form.service,scheduled_at,amount:form.amount?parseFloat(form.amount):undefined,notes:form.notes});
+      const assignmentPayload=assignment.members.length>0?{
+        members:assignment.members.map(m=>({userId:m.userId,assignmentRole:m.assignmentRole,isPrimary:m.isPrimary})),
+        crewId:assignment.crewId||null,
+      }:undefined;
+      await mtApi.post('/jobs',{client_id:clientId,service_type:form.service,scheduled_at,amount:form.amount?parseFloat(form.amount):undefined,notes:form.notes,...(assignmentPayload?{assignment:assignmentPayload}:{})});
       setDone(true);
       if(onBooked)onBooked();
     }catch(e2){setErr(e2.response?.data?.error||'Failed to book job.');}
@@ -367,7 +375,7 @@ function BookPanel({ onBooked }) {
       <div style={{marginBottom:16,color:C.gn,display:'flex',justifyContent:'center'}}><CheckCircle size={52} strokeWidth={1.5}/></div>
       <div style={{fontSize:18,fontWeight:700,color:C.n,marginBottom:8}}>Job Booked</div>
       <div style={{fontSize:13,color:C.sl,marginBottom:24}}>Confirmation SMS sent if phone number was provided.</div>
-      <button onClick={()=>{setDone(false);setForm({first:'',last:'',phone:'',email:'',service:'',tech_id:'',date:'',time:'',amount:'',notes:''});setSelectedClient(null);}} style={{padding:'10px 28px',background:C.sd,color:C.n,border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Book Another Job</button>
+      <button onClick={()=>{setDone(false);setForm({first:'',last:'',phone:'',email:'',service:'',date:'',time:'',amount:'',notes:''});setAssignment({members:[],crewId:null});setSelectedClient(null);}} style={{padding:'10px 28px',background:C.sd,color:C.n,border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Book Another Job</button>
     </div>
   );
 
@@ -402,11 +410,8 @@ function BookPanel({ onBooked }) {
                 {services.length>0?services.map(s=><option key={s} value={s}>{s}</option>):<option value="General Service">General Service</option>}
               </select>
             </BF>
-            <BF label="Assign Tech">
-              <select value={form.tech_id} onChange={e=>setForm(f=>({...f,tech_id:e.target.value}))} style={inputStyle}>
-                <option value="">Unassigned</option>
-                {techs.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+            <BF label="Assign Team">
+              <JobTeamSelector value={assignment} onChange={setAssignment} techs={techs} crews={crews}/>
             </BF>
           </Row>
           <Row>
