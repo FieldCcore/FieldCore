@@ -1352,6 +1352,19 @@ const MIGRATIONS = [
        SELECT 1 FROM job_assignments ja
        WHERE ja.job_id = j.id AND ja.user_id = j.tech_id AND ja.removed_at IS NULL
      )`,
+
+  // ── REVENUE ANALYTICS — timestamp columns ─────────────────────────────────
+  // paid_at on invoices and collected_at on deposits are referenced in
+  // webhooks.js UPDATE statements since initial build but were missing from
+  // the database schema.
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`,
+  `ALTER TABLE deposits ADD COLUMN IF NOT EXISTS collected_at TIMESTAMPTZ`,
+  `ALTER TABLE deposits ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT`,
+  `ALTER TABLE deposits ADD COLUMN IF NOT EXISTS stripe_charge_id TEXT`,
+  // Back-fill: any invoice already marked paid gets paid_at = created_at
+  `UPDATE invoices SET paid_at = created_at WHERE status = 'paid' AND paid_at IS NULL`,
+  // Back-fill: any deposit already marked collected gets collected_at = created_at
+  `UPDATE deposits SET collected_at = created_at WHERE status = 'collected' AND collected_at IS NULL`,
 ];
 
 async function runMigrations() {
