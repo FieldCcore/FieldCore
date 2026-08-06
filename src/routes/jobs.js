@@ -348,6 +348,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     scheduled_at_local, input_timezone, input_timezone_source, creator_timezone,
     // Legacy timezone audit fields
     scheduling_timezone, original_local_start,
+    // Team assignment payload (new path) — assignment.members drives tech_id (Phase A).
+    // Legacy callers may still send tech_id directly; both paths are supported.
+    assignment,
   } = req.body;
 
   if (!client_id || !service_type) {
@@ -384,6 +387,14 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
   // rejecting saves (backward compatibility with legacy payloads).
   const validatedTZ = validatedInputTZ
     || ((scheduling_timezone && validateIanaTimezone(scheduling_timezone)) ? scheduling_timezone : null);
+
+  // Resolve the effective tech_id (Phase A: keep jobs.tech_id in sync with primary assignment).
+  // New path: derive from assignment.members; legacy path: use tech_id directly.
+  let effectiveTechId = tech_id || null;
+  if (assignment?.members?.length > 0) {
+    const primaryMember = assignment.members.find(m => m.isPrimary) || assignment.members[0];
+    effectiveTechId = primaryMember?.userId || null;
+  }
 
   // Enforce entitlements before touching the DB
   const ent = await getEntitlements(req.accountId);
@@ -477,7 +488,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW())
        RETURNING *`,
       [
-        req.accountId, client_id, tech_id || null, service_type,
+        req.accountId, client_id, effectiveTechId, service_type,
         finalScheduledAt, amount || null, notes, recurring || 'none',
         travelFee, finalServiceAddress || null, service_city || null,
         service_state || null, service_zip || null, finalServiceLat, finalServiceLng,
@@ -492,6 +503,67 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       ]
     );
     const job = rows[0];
+
+    // Create job_assignments for the initial team (single-day jobs).
+    // New path: assignment.members; legacy path: tech_id solo assignment.
+    // Both paths run inside the transaction — rollback if either fails.
+    if (!is_multi_day) {
+      const membersToInsert = assignment?.members?.length > 0
+        ? assignment.members
+        : (effectiveTechId ? [{ userId: effectiveTechId, assignmentRole: 'lead_technician', isPrimary: true }] : []);
+
+      if (membersToInsert.length > 0) {
+        // Verify every member belongs to this account (tenant isolation).
+        const memberIds = membersToInsert.map(m => m.userId).filter(Boolean);
+        const { rows: validUsers } = await client.query(
+          `SELECT id FROM users WHERE id = ANY($1::uuid[]) AND account_id = $2`,
+          [memberIds, req.accountId]
+        );
+        const validSet = new Set(validUsers.map(u => u.id));
+        const safeMembers = membersToInsert.filter(m => validSet.has(m.userId));
+
+        const crewId = assignment?.crewId || null;
+        const hasExplicitPrimary = safeMembers.some(m => m.isPrimary);
+
+        for (let i = 0; i < safeMembers.length; i++) {
+          const m = safeMembers[i];
+          const isPrimary = hasExplicitPrimary ? !!m.isPrimary : i === 0;
+          const role = [
+            'lead_technician','technician','helper','apprentice',
+            'specialist','driver','observer','crew_lead',
+          ].includes(m.assignmentRole) ? m.assignmentRole : 'technician';
+          await client.query(
+            `INSERT INTO job_assignments
+               (account_id, job_id, user_id, crew_id, assignment_role, is_primary,
+                status, assigned_at, assigned_by)
+             VALUES ($1, $2, $3, $4, $5, $6, 'assigned', NOW(), $7)`,
+            [req.accountId, job.id, m.userId, crewId, role, isPrimary, req.userId]
+          );
+        }
+
+        // Reconcile jobs.tech_id: derive from validated primary (tenant-safe).
+        const validatedPrimary = hasExplicitPrimary
+          ? safeMembers.find(m => m.isPrimary)
+          : safeMembers[0];
+        const validatedTechId = validatedPrimary?.userId || null;
+        if (validatedTechId !== effectiveTechId) {
+          await client.query(
+            `UPDATE jobs SET tech_id = $1 WHERE id = $2 AND account_id = $3`,
+            [validatedTechId, job.id, req.accountId]
+          );
+          effectiveTechId = validatedTechId;
+        }
+      } else {
+        // All proposed members were invalid — clear tech_id if it was set from assignment.
+        if (assignment?.members?.length > 0 && effectiveTechId) {
+          await client.query(
+            `UPDATE jobs SET tech_id = NULL WHERE id = $1 AND account_id = $2`,
+            [job.id, req.accountId]
+          );
+          effectiveTechId = null;
+        }
+      }
+    }
 
     // Create sessions for multi-day job
     const createdSessions = [];
@@ -569,6 +641,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       occurredAt: new Date(job.created_at || Date.now()),
       source: 'domain',
     });
+
+    if (effectiveTechId && !is_multi_day) {
+      const members = assignment?.members?.length > 0 ? assignment.members
+        : [{ userId: effectiveTechId, isPrimary: true }];
+      recordActivity({
+        accountId: req.accountId, jobId: job.id, techId: effectiveTechId,
+        eventType: 'job.team_assigned',
+        actor: { id: req.userId, type: 'user' },
+        summary: members.length === 1
+          ? `Assigned to technician on creation`
+          : `Team of ${members.length} assigned on creation`,
+        metadata: { memberIds: members.map(m => m.userId), primaryUserId: effectiveTechId },
+        source: 'domain',
+      });
+    }
 
     const response = { ...job, sessions: createdSessions };
     if (mappingWarning) response.geocode_warning = mappingWarning;

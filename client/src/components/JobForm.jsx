@@ -4,6 +4,7 @@ import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { Plus, Trash2, Lock } from 'lucide-react';
 import api from '../api';
 import AddressAutocomplete from './AddressAutocomplete';
+import JobTeamSelector from './JobTeamSelector';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimezone';
 import { TIMEZONES } from '../utils/timezones';
@@ -57,6 +58,11 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
   const [clients,   setClients]   = useState([]);
   const [techs,     setTechs]     = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [crews,     setCrews]     = useState([]);
+  const [assignment, setAssignment] = useState({ members: [], crewId: null });
+  // Track whether the existing assignment was loaded (edit mode). Prevents
+  // accidentally clearing a team if the /assignments fetch fails.
+  const [assignmentLoaded, setAssignmentLoaded] = useState(!job);
 
   // ── Input timezone: the timezone the user is entering times in ──────────────
   // This is explicitly separate from the calendar display timezone (schedulingTimezone).
@@ -94,7 +100,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
 
   const [form, setForm] = useState({
     client_id:       job?.client_id    || '',
-    tech_id:         job?.tech_id      || '',
     service_type:    job?.service_type || '',
     scheduled_at:    initialScheduledAt,
     amount:          job?.amount     || '',
@@ -138,11 +143,31 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     api.get('/business-settings').then(r => {
       if (r.data?.services) setTemplates(r.data.services.filter(s => s.is_active !== false));
     }).catch(() => {});
+    api.get('/dispatch/crews').then(r => setCrews(r.data || [])).catch(() => {});
     if (!job) {
       api.get('/booking-settings').then(r => {
         const tf = parseFloat(r.data?.travel_fee || 0);
         if (tf > 0) setForm(prev => ({ ...prev, travel_fee: String(tf) }));
       }).catch(() => {});
+    } else {
+      // Pre-populate team assignment from existing job_assignments
+      api.get(`/jobs/${job.id}/assignments`)
+        .then(r => {
+          const rows = r.data?.assignments || [];
+          if (rows.length > 0) {
+            setAssignment({
+              members: rows.map(a => ({
+                userId:         a.user_id,
+                memberName:     a.member_name,
+                assignmentRole: a.assignment_role,
+                isPrimary:      a.is_primary,
+              })),
+              crewId: rows.find(a => a.crew_id)?.crew_id || null,
+            });
+          }
+          setAssignmentLoaded(true);
+        })
+        .catch(() => { setAssignmentLoaded(true); });
     }
   }, []);
 
@@ -234,7 +259,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         // scheduling_timezone mirrors input_timezone for legacy scheduler / SMS paths.
         scheduling_timezone: inputTimezone,
         amount:      form.amount      || null,
-        tech_id:     form.tech_id     || null,
         service_lat: form.service_lat || null,
         service_lng: form.service_lng || null,
         job_manager_id: form.job_manager_id || null,
@@ -243,6 +267,18 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       delete payload.scheduled_at;
       delete payload._duration_minutes;
       delete payload._end_at;
+
+      // For new single-day jobs: include team assignment in POST body (transactional).
+      if (!job && !form.is_multi_day && assignment.members.length > 0) {
+        payload.assignment = {
+          members: assignment.members.map(m => ({
+            userId:         m.userId,
+            assignmentRole: m.assignmentRole,
+            isPrimary:      m.isPrimary,
+          })),
+          crewId: assignment.crewId || null,
+        };
+      }
 
       if (form.is_multi_day) {
         payload.sessions = sessions.map(s => ({
@@ -264,6 +300,31 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       const res = job
         ? await api.patch(`/jobs/${job.id}`, payload)
         : await api.post('/jobs', payload);
+
+      // For single-day edits: sync team assignments via PUT (only if we successfully
+      // loaded the existing team — prevents accidental unassign on fetch failure).
+      if (job && !form.is_multi_day && assignmentLoaded) {
+        try {
+          await api.put(`/jobs/${job.id}/assignments`, {
+            members: assignment.members.map(m => ({
+              userId:         m.userId,
+              assignmentRole: m.assignmentRole,
+              isPrimary:      m.isPrimary,
+            })),
+            crewId:           assignment.crewId || null,
+            overrideWarnings: true,
+          });
+        } catch (assignErr) {
+          const data = assignErr.response?.data;
+          const teamMsg = data?.blockingIssues?.map(b => b.message).join('; ')
+            || data?.error
+            || 'Team assignment could not be updated.';
+          setError(`Job saved. Team assignment failed: ${teamMsg}`);
+          setSaving(false);
+          return;
+        }
+      }
+
       onSave(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong.');
@@ -373,12 +434,20 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
           </select>
         </div>
         <div className="form-group">
-          <label>{isMultiDay ? 'Job Manager' : 'Assign Tech'}</label>
-          <select value={isMultiDay ? form.job_manager_id : form.tech_id}
-            onChange={isMultiDay ? set('job_manager_id') : set('tech_id')}>
-            <option value="">{isMultiDay ? 'No manager assigned' : 'Unassigned'}</option>
-            {techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <label>{isMultiDay ? 'Job Manager' : 'Assign Team'}</label>
+          {isMultiDay ? (
+            <select value={form.job_manager_id} onChange={set('job_manager_id')}>
+              <option value="">No manager assigned</option>
+              {techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          ) : (
+            <JobTeamSelector
+              value={assignment}
+              onChange={setAssignment}
+              techs={techs}
+              crews={crews}
+            />
+          )}
         </div>
       </div>
 
