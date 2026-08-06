@@ -173,7 +173,10 @@ export default function DispatchRoutePanel({ tech, route, loading, saving, error
               <div style={{ fontSize: 10, color: 'var(--slate)' }}>
                 <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 12 }}>
                   {(route.totalDistanceKm * 0.621371).toFixed(1)}
-                </span>{' '}mi (straight-line)
+                </span>{' '}mi
+                <span style={{ marginLeft: 3, fontSize: 9, color: 'var(--steel)' }} title="Straight-line distance — no road-routing provider connected">
+                  approx.
+                </span>
               </div>
             )}
             {isDirty && (

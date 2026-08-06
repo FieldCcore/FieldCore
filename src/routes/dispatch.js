@@ -437,7 +437,13 @@ router.get('/feature-flags', requireAuth, async (req, res) => {
       [req.accountId]
     );
     const overrides = rows[0]?.feature_flags || {};
-    res.json({ ...ALL_FLAG_DEFAULTS, ...overrides });
+    const smsProviderConfigured = !!(
+      process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_PHONE_NUMBER &&
+      process.env.TWILIO_ACCOUNT_SID !== 'AC'
+    );
+    res.json({ ...ALL_FLAG_DEFAULTS, ...overrides, smsProviderConfigured });
   } catch (err) {
     console.error(JSON.stringify({ event: 'dispatch.feature-flags.error', error: err.message }));
     res.status(500).json({ error: 'Failed to load feature flags.' });

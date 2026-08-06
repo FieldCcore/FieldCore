@@ -10,11 +10,11 @@ const NON_ASSIGNABLE_STATUSES = new Set(['complete', 'cancelled', 'no_show', 'dr
 
 // Workload state → visual config
 const WL_STATE_STYLE = {
-  open:          { color: '#2E7D32', bg: '#E8F5E9', label: 'Open'     },
-  balanced:      { color: '#2E7D32', bg: '#E8F5E9', label: 'Balanced' },
-  near_capacity: { color: '#B45309', bg: '#FEF3C7', label: 'Near Cap' },
-  over_capacity: { color: '#DC2626', bg: '#FEE2E2', label: 'Over Cap' },
-  unavailable:   { color: '#5F667A', bg: '#F3F4F6', label: 'N/A'      },
+  open:          { color: '#2E7D32', bg: '#E8F5E9', label: 'Available Load' },
+  balanced:      { color: '#2E7D32', bg: '#E8F5E9', label: 'Available Load' },
+  near_capacity: { color: '#B45309', bg: '#FEF3C7', label: 'Nearly Full'    },
+  over_capacity: { color: '#DC2626', bg: '#FEE2E2', label: 'Overloaded'     },
+  unavailable:   { color: '#5F667A', bg: '#F3F4F6', label: 'N/A'            },
 };
 
 function initials(name) {
@@ -44,13 +44,13 @@ function WorkloadBadge({ wl }) {
   const s = WL_STATE_STYLE[wl.state] || WL_STATE_STYLE.unavailable;
   return (
     <span
-      aria-label={`Workload: ${wl.capacityPercent}%`}
+      aria-label={`Workload: ${s.label} (${wl.capacityPercent}%)`}
       style={{
         fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99,
         color: s.color, background: s.bg, marginLeft: 4, flexShrink: 0,
       }}
     >
-      {wl.capacityPercent}%
+      {s.label} · {wl.capacityPercent}%
     </span>
   );
 }
@@ -65,9 +65,9 @@ const BASE_TEAM_FILTERS = [
 ];
 
 const WORKLOAD_FILTERS = [
-  { key: 'wl_open', label: 'Open Cap'  },
-  { key: 'wl_near', label: 'Near Cap'  },
-  { key: 'wl_over', label: 'Over Cap'  },
+  { key: 'wl_open', label: 'Available Load' },
+  { key: 'wl_near', label: 'Nearly Full'    },
+  { key: 'wl_over', label: 'Overloaded'     },
 ];
 
 const JOB_FILTERS = [
@@ -179,11 +179,11 @@ export default function DispatchTeamPanel({
     }
     if (jobFilter === 'active')     list = list.filter(j => ACTIVE_STATUSES.has(j.status));
     if (jobFilter === 'assigned')   list = list.filter(j =>
-      j.tech_id &&
+      (j.tech_id || j.tech_name) &&
       !ACTIVE_STATUSES.has(j.status) &&
       !['complete', 'cancelled', 'no_show'].includes(j.status)
     );
-    if (jobFilter === 'unassigned') list = list.filter(j => !j.tech_id);
+    if (jobFilter === 'unassigned') list = list.filter(j => !j.tech_id && !j.tech_name);
     if (jobFilter === 'completed')  list = list.filter(j => j.status === 'complete');
     // Emergency jobs always float to the top of whatever filter is applied
     return [...list].sort((a, b) => {
@@ -540,9 +540,9 @@ export default function DispatchTeamPanel({
                         background: 'var(--sand)', color: '#fff',
                         border: 'none', borderRadius: 4, cursor: 'pointer',
                       }}
-                      aria-label={`Assign ${j.client_name} — ${j.service_type} to a technician`}
+                      aria-label={`Assign team for ${j.client_name} — ${j.service_type}`}
                     >
-                      Assign Tech
+                      Assign Team
                     </button>
                   )}
                 </div>

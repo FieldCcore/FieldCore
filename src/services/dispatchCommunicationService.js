@@ -3,6 +3,13 @@ const pool   = require('../db/pool');
 const sms    = require('./sms');
 const notify = require('./notify');
 
+function isSmsProviderConfigured() {
+  const sid   = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from  = process.env.TWILIO_PHONE_NUMBER;
+  return !!(sid && token && from && sid !== 'AC' && token !== '');
+}
+
 const TEMPLATES = {
   on_the_way:   ({ techName, serviceType }) =>
     `${techName} is on the way for your ${serviceType} appointment. See you soon!`,
@@ -33,14 +40,22 @@ async function sendQuickMessage({
   accountId, jobId, actorId, actorName,
   template, customMessage, recipient,
 }) {
-  // ── Fetch job + client + tech ─────────────────────────────────────────────
+  // ── Fetch job + client + lead tech (prefer job_assignments primary, fall back to jobs.tech_id) ──
   const { rows: [job] } = await pool.query(
     `SELECT j.*, c.name AS client_name, c.phone AS client_phone,
-            u.name AS tech_name, u.phone AS tech_phone, u.id AS tech_id,
-            EXTRACT(HOUR FROM j.scheduled_at) AS sched_hour
+            EXTRACT(HOUR FROM j.scheduled_at) AS sched_hour,
+            COALESCE(lead_u.name, legacy_u.name)  AS tech_name,
+            COALESCE(lead_u.phone, legacy_u.phone) AS tech_phone,
+            COALESCE(lead_u.id,   legacy_u.id)     AS tech_id
      FROM jobs j
      JOIN clients c ON c.id = j.client_id
-     LEFT JOIN users u ON u.id = j.tech_id
+     LEFT JOIN (
+       SELECT ja.job_id, u.id, u.name, u.phone
+       FROM job_assignments ja
+       JOIN users u ON u.id = ja.user_id
+       WHERE ja.is_primary = TRUE AND ja.removed_at IS NULL
+     ) lead_u ON lead_u.job_id = j.id
+     LEFT JOIN users legacy_u ON legacy_u.id = j.tech_id
      WHERE j.id = $1 AND j.account_id = $2`,
     [jobId, accountId]
   );
@@ -123,7 +138,7 @@ async function sendQuickMessage({
     ]
   ).catch(e => console.error('[dispatchComm] activity log failed:', e.message));
 
-  return { sent: true, status, clientResult, techResult, commId: comm.id };
+  return { sent: true, status, clientResult, techResult, commId: comm.id, providerConfigured: isSmsProviderConfigured() };
 }
 
 module.exports = { sendQuickMessage };

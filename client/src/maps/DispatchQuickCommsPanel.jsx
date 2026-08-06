@@ -34,7 +34,7 @@ const RECIPIENTS = [
  *   onBack      — () => void
  *   onSent      — () => void  — called after successful send
  */
-export default function DispatchQuickCommsPanel({ job, onBack, onSent }) {
+export default function DispatchQuickCommsPanel({ job, onBack, onSent, flags }) {
   const [template,   setTemplate]   = useState('on_the_way');
   const [recipient,  setRecipient]  = useState('client');
   const [custom,     setCustom]     = useState('');
@@ -92,6 +92,17 @@ export default function DispatchQuickCommsPanel({ job, onBack, onSent }) {
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', minHeight: 0 }}>
 
+        {/* Provider status banner */}
+        {flags?.smsProviderConfigured === false && (
+          <div style={{
+            background: '#FEF3C7', border: '1px solid #D97706', borderRadius: 6,
+            padding: '7px 10px', marginBottom: 14, fontSize: 10, color: '#B45309',
+          }}>
+            <strong>SMS provider not configured</strong> — in-app notifications will be sent to
+            technicians, but client SMS messages cannot be delivered externally.
+          </div>
+        )}
+
         {/* Job context */}
         <div style={{
           background: 'var(--off)', borderRadius: 6, padding: '8px 10px', marginBottom: 14,
@@ -101,7 +112,7 @@ export default function DispatchQuickCommsPanel({ job, onBack, onSent }) {
             {job?.client_name} — {job?.service_type}
           </div>
           {job?.tech_name && (
-            <div>Assigned: {job.tech_name}</div>
+            <div>Lead: {job.tech_name}{job?.team_size > 1 ? ` +${job.team_size - 1} more` : ''}</div>
           )}
         </div>
 
@@ -193,7 +204,9 @@ export default function DispatchQuickCommsPanel({ job, onBack, onSent }) {
             background: '#E8F5E9', color: '#2E7D32', borderRadius: 4,
             padding: '7px 10px', fontSize: 11, fontWeight: 700, marginBottom: 10,
           }} role="status">
-            Message sent successfully.
+            {flags?.smsProviderConfigured === false
+              ? 'Notification queued. SMS delivery unavailable — provider not configured.'
+              : 'Message sent.'}
           </div>
         )}
       </div>

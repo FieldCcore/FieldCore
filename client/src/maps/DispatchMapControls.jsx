@@ -163,8 +163,8 @@ function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
   const fieldTechs = (techs || []).filter(t =>
     t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
   );
-  const unassignedJobs = (jobs || []).filter(j => !j.tech_id && !['complete','cancelled','no_show','draft'].includes(j.status));
-  const assignedJobs   = (jobs || []).filter(j => j.tech_id);
+  const unassignedJobs = (jobs || []).filter(j => !j.tech_id && !j.tech_name && !['complete','cancelled','no_show','draft'].includes(j.status));
+  const assignedJobs   = (jobs || []).filter(j => j.tech_id || j.tech_name);
 
   const predBadge = predictiveReadiness
     ? (READINESS_BADGE[predictiveReadiness.readinessState] ?? { label: predictiveReadiness.readinessState, bg: '#F3F4F6', color: '#5F667A' })
@@ -228,12 +228,17 @@ function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
       block:   fieldTechs.length === 0 ? 'No field technicians with GPS' : null,
     },
     {
-      name:    'Quick Communications',
-      flag:    'dispatch_quick_communications',
-      enabled: flags?.dispatch_quick_communications,
-      front:   true,
-      back:    true,
-      block:   null,
+      name:     'Quick Communications',
+      flag:     'dispatch_quick_communications',
+      enabled:  flags?.dispatch_quick_communications,
+      front:    true,
+      back:     true,
+      block:    null,
+      provider: flags?.smsProviderConfigured === false
+        ? 'SMS provider not configured — external delivery unavailable'
+        : flags?.smsProviderConfigured === true
+          ? 'SMS provider: Twilio'
+          : null,
     },
     {
       name:    'Activity Timeline',
@@ -306,6 +311,11 @@ function FeatureStatusPanel({ flags, techs, jobs, serviceAreas, onClose }) {
                 {r.back ? '✓' : '✗'} Backend
               </span>
             </div>
+            {r.provider && (
+              <div style={{ marginLeft: 13, marginTop: 2, fontSize: 10, color: r.provider.includes('not configured') ? '#B45309' : '#2E7D32' }}>
+                {r.provider.includes('not configured') ? '⚠' : '✓'} {r.provider}
+              </div>
+            )}
             {r.block && (
               <div style={{ marginLeft: 13, marginTop: 2, fontSize: 10, color: '#B45309' }}>
                 ⚠ {r.block}

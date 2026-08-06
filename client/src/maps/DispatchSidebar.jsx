@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useDispatchKpiMetrics } from '../hooks/useDispatchKpiMetrics';
 import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
@@ -103,6 +103,17 @@ function EmergencyDetailsView({ job, onBack, onJobUpdated, userRole, flags, tech
   const [showDeact,    setShowDeact]    = useState(false);
   const [deactReason,  setDeactReason]  = useState('');
   const [showUpdate,   setShowUpdate]   = useState(false);
+  const [teamMembers,  setTeamMembers]  = useState(null);
+  const [teamLoading,  setTeamLoading]  = useState(false);
+
+  useEffect(() => {
+    if (!job?.id) return;
+    setTeamLoading(true);
+    api.get(`/jobs/${job.id}/assignments`)
+      .then(res => setTeamMembers(res.data || []))
+      .catch(() => setTeamMembers([]))
+      .finally(() => setTeamLoading(false));
+  }, [job?.id]);
 
   const canManage   = flags?.dispatch_emergency_mode && (userRole === 'owner' || userRole === 'manager');
   const isActive    = job.is_emergency && job.emergency_status === 'active';
@@ -174,9 +185,33 @@ function EmergencyDetailsView({ job, onBack, onJobUpdated, userRole, flags, tech
         <EmDetailRow label="Customer notification" value={notifPolicy} />
         <EmDetailRow label="Premium pay" value={payPolicy} />
 
-        {/* Assigned tech */}
-        {job.tech_name && <EmDetailRow label="Assigned technician" value={job.tech_name} />}
-        {!job.tech_id && <EmDetailRow label="Assigned technician" value="Unassigned" />}
+        {/* Assigned team */}
+        {teamLoading && (
+          <div style={{ fontSize: 10, color: 'var(--slate)', marginBottom: 10 }}>Loading team…</div>
+        )}
+        {!teamLoading && teamMembers !== null && teamMembers.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
+              Assigned team
+            </div>
+            {teamMembers.map(m => (
+              <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                {m.is_primary && (
+                  <span style={{ fontSize: 9, color: '#B45309' }} title="Lead">★</span>
+                )}
+                <span style={{ fontSize: 11, color: 'var(--navy)', fontWeight: m.is_primary ? 700 : 400 }}>
+                  {m.member_name}
+                </span>
+                <span style={{ fontSize: 9, color: 'var(--slate)' }}>
+                  {(m.assignment_role || '').replace(/_/g, ' ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!teamLoading && teamMembers !== null && teamMembers.length === 0 && !job.tech_id && (
+          <EmDetailRow label="Assigned team" value="Unassigned" />
+        )}
 
         {/* Resolution info */}
         {(job.emergency_status === 'resolved' || job.emergency_status === 'deactivated') && (
@@ -1099,6 +1134,7 @@ export default function DispatchSidebar({
           job={selectedJob}
           onBack={onSidebarBack}
           onSent={() => { onCommsSent?.(); onSidebarBack?.(); }}
+          flags={flags}
         />
       )}
 
