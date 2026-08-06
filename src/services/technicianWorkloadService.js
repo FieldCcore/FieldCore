@@ -39,25 +39,30 @@ async function getWorkloads({ accountId, dateLocal, timezone = 'UTC' }) {
 
   const techIds = techs.map(t => t.id);
 
+  // Phase A: read from job_assignments (many-to-many) with jobs.tech_id fallback
+  // for any jobs that predate the backfill. Revenue is attributed only to
+  // primary assignments to avoid multiplying it across team members.
   const { rows: jobRows } = await pool.query(
     `SELECT
-       j.tech_id,
-       COUNT(*)                                                                   AS job_count,
+       ja.user_id                                                                 AS tech_id,
+       COUNT(DISTINCT j.id)                                                       AS job_count,
        COALESCE(SUM(j.duration_minutes), 0)                                      AS total_service_minutes,
-       COALESCE(SUM(j.amount), 0)                                                AS assigned_revenue,
-       COUNT(*) FILTER (WHERE j.status IN (
+       COALESCE(SUM(j.amount) FILTER (WHERE ja.is_primary = TRUE), 0)            AS assigned_revenue,
+       COUNT(DISTINCT j.id) FILTER (WHERE j.status IN (
          'in_progress','en_route','arrived','paused',
          'awaiting_client','awaiting_parts','partially_completed','ready_for_inspection'
        ))                                                                         AS active_count,
-       COUNT(*) FILTER (WHERE j.status = 'complete')                             AS completed_count,
-       COUNT(*) FILTER (WHERE j.status = 'scheduled')                            AS scheduled_count,
+       COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'complete')                 AS completed_count,
+       COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'scheduled')                AS scheduled_count,
        COALESCE(MIN(j.scheduled_at) FILTER (WHERE j.status NOT IN ('complete','cancelled','no_show')), NULL) AS next_job_at
-     FROM jobs j
-     WHERE j.account_id = $1
-       AND j.tech_id    = ANY($2::uuid[])
+     FROM job_assignments ja
+     JOIN jobs j ON j.id = ja.job_id
+     WHERE ja.account_id   = $1
+       AND ja.user_id       = ANY($2::uuid[])
+       AND ja.removed_at    IS NULL
        AND j.status NOT IN ('cancelled','no_show','draft','unscheduled')
        AND (j.scheduled_at AT TIME ZONE $3)::date = $4::date
-     GROUP BY j.tech_id`,
+     GROUP BY ja.user_id`,
     [accountId, techIds, timezone, safeDate]
   );
 

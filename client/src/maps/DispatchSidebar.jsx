@@ -4,6 +4,7 @@ import DispatchSidebarKpiGrid from './DispatchSidebarKpiGrid';
 import DispatchCompactRail from './DispatchCompactRail';
 import DispatchTeamPanel from './DispatchTeamPanel';
 import DispatchAssignmentPanel from './DispatchAssignmentPanel';
+import DispatchAssignTeamPanel from './DispatchAssignTeamPanel';
 import DispatchRoutePanel from './DispatchRoutePanel';
 import DispatchActivityTimeline from './DispatchActivityTimeline';
 import DispatchQuickCommsPanel from './DispatchQuickCommsPanel';
@@ -300,7 +301,7 @@ const NON_ASSIGNABLE_STATUSES = new Set(['complete', 'cancelled', 'no_show', 'dr
 function JobDetailView({
   job, jobTech, onCenterJob, onJobGeocoded, onBack, timezone,
   onViewActivity, onViewComms, flags,
-  onAssignJob, userRole, techs,
+  onAssignJob, onOpenAssignTeam, userRole, techs,
   onJobUpdated,
 }) {
   const p         = getJobStatusPresentation(job.status);
@@ -311,17 +312,13 @@ function JobDetailView({
   const [innerView,          setInnerView]         = useState('main'); // 'main' | 'emergency_details'
   const [geocoding,         setGeocoding]         = useState(false);
   const [geocodeError,      setGeocodeError]      = useState(job.geocode_error || null);
-  const [showAssignPicker,  setShowAssignPicker]  = useState(false);
   const [showMore,          setShowMore]          = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [emergencyBusy,     setEmergencyBusy]     = useState(false);
   const [emergencyError,    setEmergencyError]    = useState(null);
 
   const isAssignable  = !NON_ASSIGNABLE_STATUSES.has(job.status);
-  const canAssign     = onAssignJob && (userRole === 'owner' || userRole === 'manager');
-  const fieldTechs    = (techs || []).filter(t =>
-    t.field_work_eligible === true || (t.field_work_eligible == null && t.role === 'tech')
-  );
+  const canAssign     = (onOpenAssignTeam || onAssignJob) && (userRole === 'owner' || userRole === 'manager');
   const canDeclareEmergency = flags?.dispatch_emergency_mode
     && (userRole === 'owner' || userRole === 'manager')
     && !['complete', 'cancelled', 'no_show', 'draft'].includes(job.status);
@@ -509,90 +506,6 @@ function JobDetailView({
           </div>
         )}
 
-        {/* Inline tech picker for assignment — state-aware per tech */}
-        {showAssignPicker && (
-          <div style={{
-            margin: '8px 0', padding: '10px 12px',
-            background: 'var(--off)', borderRadius: 6,
-            border: '1px solid var(--lightgray)',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 6 }}>
-              Select technician:
-            </div>
-            {fieldTechs.length === 0 ? (
-              <div style={{ fontSize: 11, color: 'var(--slate)', lineHeight: 1.5 }}>
-                No field technicians found.{' '}
-                <a href="/team?action=add-member&returnTo=/dispatch"
-                  style={{ color: 'var(--navy)', fontWeight: 600 }}>
-                  Add a field technician
-                </a>{' '}
-                to enable assignment.
-              </div>
-            ) : (
-              fieldTechs.map(t => {
-                // Resolve per-tech assignment state
-                const tState =
-                  (t.field_work_eligible === false) ? 'UNAVAILABLE' :
-                  (job.tech_id === t.id)            ? 'ALREADY_ASSIGNED' :
-                  (job.tech_id)                     ? 'REASSIGN' :
-                                                      'UNASSIGNED';
-
-                const isDisabled = tState === 'UNAVAILABLE';
-                const btnBg =
-                  tState === 'ALREADY_ASSIGNED' ? '#E8F5E9' :
-                  tState === 'REASSIGN'         ? '#FEF9EC' : '#fff';
-                const btnBorder =
-                  tState === 'ALREADY_ASSIGNED' ? '#66BB6A' :
-                  tState === 'REASSIGN'         ? '#D97706' : 'var(--lightgray)';
-                const btnColor =
-                  tState === 'UNAVAILABLE'      ? 'var(--steel)' :
-                  tState === 'ALREADY_ASSIGNED' ? '#2E7D32' :
-                  tState === 'REASSIGN'         ? '#92400E' : 'var(--navy)';
-                const statusLabel =
-                  tState === 'ALREADY_ASSIGNED' ? ' ✓' :
-                  tState === 'REASSIGN'         ? ' — Reassign' :
-                  tState === 'UNAVAILABLE'      ? ' — Unavailable' : '';
-
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => { setShowAssignPicker(false); onAssignJob?.(job.id, t.id); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', textAlign: 'left',
-                      padding: '6px 8px', marginBottom: 3,
-                      background: btnBg, border: `1px solid ${btnBorder}`,
-                      borderRadius: 4,
-                      cursor: isDisabled ? 'not-allowed' : 'pointer',
-                      opacity: isDisabled ? 0.55 : 1,
-                      fontSize: 12, fontWeight: 500, color: btnColor,
-                    }}
-                  >
-                    <span>{t.name}</span>
-                    {statusLabel && (
-                      <span style={{ fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
-                        {statusLabel}
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-            <button
-              type="button"
-              onClick={() => setShowAssignPicker(false)}
-              style={{
-                marginTop: 4, fontSize: 11, color: 'var(--slate)',
-                background: 'none', border: 'none', cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
         {/* Actions */}
         <div className="dispatch-drawer-actions">
           {hasCoords && (
@@ -603,16 +516,15 @@ function JobDetailView({
 
           <a href="/jobs" className="dispatch-drawer-btn">Open Job</a>
 
-          {/* Assign Technician — always visible to authorized users */}
+          {/* Assign Team — opens DispatchAssignTeamPanel */}
           {canAssign && (
             isAssignable ? (
               <button
                 type="button"
                 className="dispatch-drawer-btn"
-                onClick={() => setShowAssignPicker(v => !v)}
-                aria-expanded={showAssignPicker}
+                onClick={() => onOpenAssignTeam?.(job.id)}
               >
-                {showAssignPicker ? 'Cancel' : (jobTech ? 'Reassign Technician' : 'Assign Technician')}
+                {job.tech_id ? 'Manage Team' : 'Assign Team'}
               </button>
             ) : (
               <button
@@ -621,7 +533,7 @@ function JobDetailView({
                 disabled
                 title={`Cannot assign: job is ${job.status.replace(/_/g, ' ')}`}
               >
-                Assign Technician
+                Assign Team
               </button>
             )
           )}
@@ -963,7 +875,7 @@ export default function DispatchSidebar({
   onDateChange,
   timezone,
   // Detail views
-  sidebarView,     // 'list' | 'job_details' | 'tech_details' | 'assignment_confirm'
+  sidebarView,     // 'list' | 'job_details' | 'tech_details' | 'assignment_confirm' | 'assign_team'
   onSidebarBack,   // () => void — go back to list
   onCenterJob,     // (job) => void
   onCenterTech,    // (techId) => void
@@ -972,7 +884,11 @@ export default function DispatchSidebar({
   assignmentPending,     // { job, tech, validation } | null
   onAssignConfirmed,     // (updatedJob) => void
   onAssignCancel,        // () => void
-  onAssignJob,           // (jobId, techId) => void
+  onAssignJob,           // (jobId, techId) => void — drag-and-drop single tech
+  // Team assignment
+  teamAssignment,        // { job, currentTeam, loadingTeam } | null
+  onOpenAssignTeam,      // (jobId) => void
+  onTeamAssigned,        // (updatedJob?) => void
   flags,                 // dispatch feature flags
   workloadsByTechId,     // Map<techId, WorkloadEntry>
   userRole,              // 'owner' | 'manager' | 'tech'
@@ -995,7 +911,7 @@ export default function DispatchSidebar({
   const showToggle = !isMobile && !isFullMap;
 
   // Job-related views where we need a resolved selectedJob
-  const JOB_DETAIL_VIEWS = new Set(['job_details', 'quick_comms', 'activity_timeline']);
+  const JOB_DETAIL_VIEWS = new Set(['job_details', 'quick_comms', 'activity_timeline', 'assign_team']);
 
   // Resolve selected job/tech data for detail views
   const selectedJob = useMemo(() => {
@@ -1045,7 +961,8 @@ export default function DispatchSidebar({
 
   const showDetailView = (isExpanded || isMobile) &&
     (sidebarView === 'job_details' || sidebarView === 'tech_details' ||
-     sidebarView === 'assignment_confirm' || sidebarView === 'route_view' ||
+     sidebarView === 'assignment_confirm' || sidebarView === 'assign_team' ||
+     sidebarView === 'route_view' ||
      sidebarView === 'activity_timeline' || sidebarView === 'quick_comms');
 
   return (
@@ -1092,9 +1009,22 @@ export default function DispatchSidebar({
           onViewComms={onViewComms}
           flags={flags}
           onAssignJob={onAssignJob}
+          onOpenAssignTeam={onOpenAssignTeam}
           userRole={userRole}
           techs={techs}
           onJobUpdated={onJobGeocoded}
+        />
+      )}
+
+      {showDetailView && sidebarView === 'assign_team' && teamAssignment && (
+        <DispatchAssignTeamPanel
+          job={teamAssignment.job}
+          currentTeam={teamAssignment.currentTeam}
+          loadingTeam={teamAssignment.loadingTeam}
+          techs={techs}
+          workloadsByTechId={workloadsByTechId}
+          onTeamAssigned={onTeamAssigned}
+          onClose={onSidebarBack}
         />
       )}
 

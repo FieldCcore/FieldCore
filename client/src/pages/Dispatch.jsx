@@ -190,6 +190,7 @@ export default function Dispatch() {
   const [promptDismissed,  setPromptDismissed]  = useState(false);
   const [recenterMsg,      setRecenterMsg]      = useState(null);
   const [assignmentPending, setAssignmentPending] = useState(null); // { job, tech, validation }
+  const [teamAssignment,    setTeamAssignment]    = useState(null); // { job, currentTeam, loadingTeam }
   const userRole = getUserRoleFromToken();
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -539,11 +540,11 @@ export default function Dispatch() {
   // Route view sets selectedItem itself and manages sidebarView directly — skip.
   useEffect(() => {
     if (!selectedItem) {
-      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'list');
+      setSidebarView(v => (v === 'route_view' || v === 'assignment_confirm' || v === 'assign_team' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'list');
       return;
     }
     if (selectedItem.type === 'job') {
-      setSidebarView(v => (v === 'assignment_confirm' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'job_details');
+      setSidebarView(v => (v === 'assignment_confirm' || v === 'assign_team' || v === 'activity_timeline' || v === 'quick_comms') ? v : 'job_details');
       if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
       if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
     } else if (selectedItem.type === 'tech') {
@@ -693,6 +694,7 @@ export default function Dispatch() {
   const handleSidebarBack = useCallback(() => {
     setSelectedItem(null);
     setSidebarView('list');
+    setTeamAssignment(null);
     routeSeq.clearRoute();
     activityState.clearActivity();
   }, [routeSeq, activityState]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -765,6 +767,31 @@ export default function Dispatch() {
   const handleAssignCancel = useCallback(() => {
     setAssignmentPending(null);
     setSidebarView('list');
+  }, []);
+
+  // ── Team assignment flow ──────────────────────────────────────────────────
+  const handleOpenAssignTeam = useCallback(async (jobId) => {
+    const job = jobsRef.current.find(j => j.id === jobId);
+    if (!job) return;
+    if (sidebarMode.mode === 'compact') sidebarMode.openJobs?.();
+    if (sidebarMode.mode === 'full_map') sidebarMode.exitFullMap?.();
+    setTeamAssignment({ job, currentTeam: null, loadingTeam: true });
+    setSelectedItem({ type: 'job', id: jobId });
+    setSidebarView('assign_team');
+    try {
+      const { data } = await api.get(`/jobs/${jobId}/assignments`);
+      setTeamAssignment(prev => prev ? { ...prev, currentTeam: data, loadingTeam: false } : null);
+    } catch {
+      setTeamAssignment(prev => prev ? { ...prev, loadingTeam: false } : null);
+    }
+  }, [sidebarMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTeamAssigned = useCallback((updatedJob) => {
+    if (updatedJob?.id) {
+      setJobs(prev => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
+    }
+    setTeamAssignment(null);
+    setSidebarView('job_details');
   }, []);
 
   // ── Phase 2 route sequencing ──────────────────────────────────────────────
@@ -888,6 +915,9 @@ export default function Dispatch() {
             onAssignConfirmed={handleAssignConfirmed}
             onAssignCancel={handleAssignCancel}
             onAssignJob={handleAssignJob}
+            teamAssignment={teamAssignment}
+            onOpenAssignTeam={handleOpenAssignTeam}
+            onTeamAssigned={handleTeamAssigned}
             flags={flags}
             workloadsByTechId={workloadsByTechId}
             userRole={userRole}

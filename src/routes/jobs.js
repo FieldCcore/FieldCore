@@ -9,8 +9,9 @@ const notify     = require('../services/notify');
 const audit      = require('../services/audit');
 const { geocodeAddress } = require('../services/geocode');
 const { validateIanaTimezone, utcScheduleToLocal, localScheduleToUtc } = require('../services/scheduleTimeService');
-const emergencySvc       = require('../services/emergencyDispatchService');
-const { recordActivity } = require('../services/jobActivityService');
+const emergencySvc          = require('../services/emergencyDispatchService');
+const { recordActivity }    = require('../services/jobActivityService');
+const teamSvc               = require('../services/jobTeamAssignmentService');
 
 // Valid status values — single-day and multi-day parent job statuses
 const VALID_STATUSES = [
@@ -1354,6 +1355,101 @@ router.post('/:id/emergency/deactivate', requireAuth, requireRole('owner', 'mana
   const result = await emergencySvc.deactivate(req.params.id, req.accountId, req.userId, req.body);
   if (result.error) return res.status(result.status || 500).json({ error: result.error });
   res.json(result.job);
+});
+
+// ── GET /api/jobs/:id/assignments — current team ─────────────────────────────
+router.get('/:id/assignments', requireAuth, async (req, res) => {
+  try {
+    const { rows: jobRows } = await pool.query(
+      `SELECT id FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!jobRows.length) return res.status(404).json({ error: 'Job not found' });
+
+    const team = await teamSvc.getJobTeam(req.accountId, req.params.id);
+    res.json(team);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/jobs/:id/assignments/validate — validate proposed team ──────────
+router.post('/:id/assignments/validate', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { members, crewId } = req.body;
+  if (!Array.isArray(members)) {
+    return res.status(400).json({ error: 'members must be an array' });
+  }
+
+  try {
+    const result = await teamSvc.validateTeamUpdate({
+      accountId:          req.accountId,
+      jobId:              req.params.id,
+      requestedByUserId:  req.userId,
+      members,
+      crewId: crewId || null,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/jobs/:id/assignments — apply team update ─────────────────────────
+router.put('/:id/assignments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { members, crewId, overrideWarnings = false } = req.body;
+  if (!Array.isArray(members)) {
+    return res.status(400).json({ error: 'members must be an array' });
+  }
+
+  try {
+    const validation = await teamSvc.validateTeamUpdate({
+      accountId:         req.accountId,
+      jobId:             req.params.id,
+      requestedByUserId: req.userId,
+      members,
+      crewId: crewId || null,
+    });
+
+    if (!validation.allowed) {
+      return res.status(422).json({
+        ...validation,
+        assigned: false,
+      });
+    }
+
+    if (validation.warnings.length > 0 && !overrideWarnings) {
+      const memberWarnings = validation.memberResults.flatMap(r => r.warnings || []);
+      if (memberWarnings.length > 0 || validation.warnings.length > 0) {
+        return res.status(422).json({
+          ...validation,
+          assigned: false,
+          requiresConfirmation: true,
+        });
+      }
+    }
+
+    if (validation.teamState === 'NO_CHANGES') {
+      const currentTeam = await teamSvc.getJobTeam(req.accountId, req.params.id);
+      return res.json({ ...currentTeam, assigned: false, teamState: 'NO_CHANGES' });
+    }
+
+    const team = await teamSvc.applyTeamUpdate({
+      accountId:         req.accountId,
+      jobId:             req.params.id,
+      requestedByUserId: req.userId,
+      members,
+      crewId: crewId || null,
+    });
+
+    res.json({
+      ...team,
+      assigned:    true,
+      teamState:   team.teamState,
+      validation,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PATCH /api/jobs/:id/assets/:aid ──────────────────────────────────────────

@@ -14,6 +14,7 @@ const { predictDelays }       = require('../services/routeDelayService');
 const { sendQuickMessage }    = require('../services/dispatchCommunicationService');
 const predictiveOps           = require('../services/dispatchPredictiveOpsService');
 const { recordActivity }      = require('../services/jobActivityService');
+const { getCrews, createCrew } = require('../services/jobTeamAssignmentService');
 
 // GPS freshness thresholds (must stay in sync with client/src/maps/dispatchCoords.js)
 const LIVE_MIN  = 5;   // ≤ 5 min  → online (Live GPS marker)
@@ -1091,6 +1092,31 @@ router.get('/predictive-operations/capabilities', requireAuth, async (req, res) 
     res.json(caps);
   } catch (err) {
     res.status(500).json({ error: 'Failed to load capabilities.' });
+  }
+});
+
+// ── GET /api/dispatch/crews — list saved crews ────────────────────────────────
+router.get('/crews', requireAuth, async (req, res) => {
+  try {
+    const crews = await getCrews(req.accountId);
+    res.json(crews);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/dispatch/crews — create saved crew ──────────────────────────────
+router.post('/crews', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { name, members = [] } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  try {
+    const crew = await createCrew(req.accountId, name.trim(), members);
+    res.status(201).json(crew);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

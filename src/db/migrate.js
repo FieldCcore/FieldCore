@@ -1268,6 +1268,90 @@ const MIGRATIONS = [
      explanation      JSONB NOT NULL DEFAULT '[]',
      calculated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+
+  // ── MULTI-TECH JOB ASSIGNMENT ENGINE — Phase A ────────────────────────────
+  // Many-to-many assignment model. Phase A: create tables + backfill legacy
+  // jobs.tech_id. Phase B: all reads move to job_assignments. Phase C: drop legacy.
+
+  // Saved crew templates
+  `CREATE TABLE IF NOT EXISTS crews (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name       TEXT NOT NULL,
+     active     BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_crews_account ON crews(account_id)`,
+
+  // Per-crew member defaults (role, lead flag)
+  `CREATE TABLE IF NOT EXISTS crew_members (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     crew_id      UUID NOT NULL REFERENCES crews(id) ON DELETE CASCADE,
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     default_role TEXT NOT NULL DEFAULT 'technician',
+     is_lead      BOOLEAN NOT NULL DEFAULT FALSE,
+     active       BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (crew_id, user_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_crew_members_crew    ON crew_members(crew_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_crew_members_account ON crew_members(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_crew_members_user    ON crew_members(account_id, user_id)`,
+
+  // Job assignments — one row per active team member per job
+  `CREATE TABLE IF NOT EXISTS job_assignments (
+     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id      UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id          UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     crew_id         UUID REFERENCES crews(id) ON DELETE SET NULL,
+     assignment_role TEXT NOT NULL DEFAULT 'technician',
+     is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+     status          TEXT NOT NULL DEFAULT 'assigned'
+                       CHECK (status IN (
+                         'assigned','accepted','en_route','arrived',
+                         'working','finished','declined','removed'
+                       )),
+     assigned_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     assigned_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+     accepted_at     TIMESTAMPTZ,
+     removed_at      TIMESTAMPTZ,
+     removed_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+     removal_reason  TEXT,
+     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_account ON job_assignments(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_job     ON job_assignments(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_user    ON job_assignments(account_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_crew    ON job_assignments(crew_id) WHERE crew_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_status  ON job_assignments(job_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_assignments_active  ON job_assignments(job_id) WHERE removed_at IS NULL`,
+
+  // Exactly one active primary per job (prevents duplicate leads)
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_job_assignments_one_primary
+     ON job_assignments(job_id)
+     WHERE is_primary = TRUE AND removed_at IS NULL`,
+
+  // One active assignment per job/member pair (prevents duplicates)
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_job_assignments_active_member
+     ON job_assignments(job_id, user_id)
+     WHERE removed_at IS NULL`,
+
+  // Phase A backfill: copy existing jobs.tech_id → job_assignments.
+  // NOT EXISTS guard makes this idempotent on redeploy.
+  `INSERT INTO job_assignments
+     (account_id, job_id, user_id, assignment_role, is_primary, status, assigned_at)
+   SELECT j.account_id, j.id, j.tech_id, 'lead_technician', TRUE, 'assigned',
+          COALESCE(j.updated_at, j.created_at)
+   FROM jobs j
+   WHERE j.tech_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM job_assignments ja
+       WHERE ja.job_id = j.id AND ja.user_id = j.tech_id AND ja.removed_at IS NULL
+     )`,
 ];
 
 async function runMigrations() {
