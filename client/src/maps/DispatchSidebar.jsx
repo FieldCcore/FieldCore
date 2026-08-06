@@ -343,6 +343,14 @@ function JobDetailView({
   const sStyle    = { background: p.badgeBg, color: p.badgeColor };
   const sLabel    = p.label;
   const hasCoords = isValidCoord(job.service_lat, job.service_lng);
+  const [teamMembers, setTeamMembers] = useState(null);
+
+  useEffect(() => {
+    if (!job?.id) return;
+    api.get(`/jobs/${job.id}/assignments`)
+      .then(res => setTeamMembers((res.data?.assignments || res.data) || []))
+      .catch(() => setTeamMembers([]));
+  }, [job?.id]);
 
   const [innerView,          setInnerView]         = useState('main'); // 'main' | 'emergency_details'
   const [geocoding,         setGeocoding]         = useState(false);
@@ -498,8 +506,16 @@ function JobDetailView({
 
         <div className="dispatch-drawer-stat-row">
           <span className="dispatch-drawer-stat-label">Assigned</span>
-          <span style={{ fontSize: 12, color: jobTech ? 'var(--navy)' : 'var(--amber)' }}>
-            {jobTech?.name ?? 'Unassigned'}
+          <span style={{ fontSize: 12, color: (jobTech || (teamMembers && teamMembers.length > 0)) ? 'var(--navy)' : 'var(--amber)' }}>
+            {(() => {
+              if (teamMembers && teamMembers.length > 0) {
+                const lead = teamMembers.find(m => m.is_primary) || teamMembers[0];
+                return teamMembers.length > 1
+                  ? `${lead.member_name} +${teamMembers.length - 1} more`
+                  : lead.member_name;
+              }
+              return jobTech?.name ?? 'Unassigned';
+            })()}
           </span>
         </div>
 

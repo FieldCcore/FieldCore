@@ -532,18 +532,43 @@ router.post('/assignments', requireAuth, requireRole('owner', 'manager'), async 
   );
   const previousTechId = prevJob?.tech_id || null;
 
-  // ── Persist assignment ────────────────────────────────────────────────────
-  const { rows: [updatedJob] } = await pool.query(
-    `UPDATE jobs
-     SET tech_id    = $1,
-         updated_at = NOW()
-     WHERE id = $2 AND account_id = $3
-     RETURNING *`,
-    [techId, jobId, req.accountId]
-  );
-  if (!updatedJob) {
-    return res.status(404).json({ error: 'Job not found.' });
+  // ── Persist assignment (transactional: jobs.tech_id + job_assignments) ────
+  const client = await pool.connect();
+  let updatedJob;
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [j] } = await client.query(
+      `UPDATE jobs SET tech_id = $1, updated_at = NOW()
+       WHERE id = $2 AND account_id = $3 RETURNING *`,
+      [techId, jobId, req.accountId]
+    );
+    if (!j) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Job not found.' }); }
+    updatedJob = j;
+
+    // Soft-remove any existing active assignments, then insert solo primary.
+    await client.query(
+      `UPDATE job_assignments
+         SET removed_at = NOW(), removed_by = $1, removal_reason = 'dispatch_reassign'
+       WHERE job_id = $2 AND account_id = $3 AND removed_at IS NULL`,
+      [req.userId, jobId, req.accountId]
+    );
+    await client.query(
+      `INSERT INTO job_assignments
+         (account_id, job_id, user_id, assignment_role, is_primary, status, assigned_by)
+       VALUES ($1, $2, $3, 'lead_technician', TRUE, 'assigned', $4)
+       ON CONFLICT DO NOTHING`,
+      [req.accountId, jobId, techId, req.userId]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    client.release();
+    console.error(JSON.stringify({ event: 'dispatch.assign.tx.error', error: err.message }));
+    return res.status(500).json({ error: 'Assignment failed.' });
   }
+  client.release();
 
   // ── Audit log ─────────────────────────────────────────────────────────────
   const auditAction = previousTechId ? 'dispatch.job.reassigned' : 'dispatch.job.assigned';
