@@ -1,13 +1,139 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
 import api from '../api';
+import RevenueKpiCard from '../components/RevenueKpiCard';
 
-async function triggerCsvDownload(url) {
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const WORKSPACES = [
+  { key: 'overview',     label: 'Overview'     },
+  { key: 'financials',   label: 'Financials'   },
+  { key: 'operations',   label: 'Operations'   },
+  { key: 'customers',    label: 'Customers'    },
+  { key: 'forecasting',  label: 'Forecasting'  },
+  { key: 'reports',      label: 'Reports'      },
+];
+
+const VALID_VIEWS = WORKSPACES.map(w => w.key);
+
+const COMPARISON_OPTIONS = [
+  { value: 'none',            label: 'No comparison'    },
+  { value: 'previous_period', label: 'Previous period'  },
+  { value: 'previous_month',  label: 'Previous month'   },
+  { value: 'previous_year',   label: 'Previous year'    },
+];
+
+const INTERVAL_OPTIONS = [
+  { value: 'daily',   label: 'Daily'   },
+  { value: 'weekly',  label: 'Weekly'  },
+  { value: 'monthly', label: 'Monthly' },
+];
+
+const TREND_METRICS = [
+  { key: 'earned',    label: 'Earned Revenue',    color: '#1C2333' },
+  { key: 'collected', label: 'Collected Revenue', color: '#D6B58A' },
+];
+
+// ── Date presets ──────────────────────────────────────────────────────────────
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function DATE_PRESETS() {
+  const today  = todayStr();
+  const now    = new Date(today + 'T00:00:00Z');
+  const mtdS   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const lastMonthS = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 10);
+  const lastMonthE = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).toISOString().slice(0, 10);
+  const qtdS   = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1)).toISOString().slice(0, 10);
+  const ytdS   = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString().slice(0, 10);
+  const weekS  = addDays(today, -6);
+
+  return [
+    { label: 'Today',         start: today,     end: today      },
+    { label: 'This Week',     start: weekS,      end: today      },
+    { label: 'Month to Date', start: mtdS,       end: today      },
+    { label: 'Last Month',    start: lastMonthS, end: lastMonthE },
+    { label: 'Quarter to Date', start: qtdS,     end: today      },
+    { label: 'Year to Date',  start: ytdS,       end: today      },
+  ];
+}
+
+// ── Money formatters ──────────────────────────────────────────────────────────
+
+function fmtMoney(n, compact = true) {
+  const v = parseFloat(n) || 0;
+  if (!compact) return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
+  if (v >= 1000)    return `$${(v / 1000).toFixed(1)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function fmtPct(v) {
+  if (v == null) return null;
+  return `${parseFloat(v).toFixed(1)}%`;
+}
+
+function fmtNum(n) {
+  return n != null ? String(Math.round(n)) : null;
+}
+
+// ── Comparison label ──────────────────────────────────────────────────────────
+
+function compLabel(comparison) {
+  const opt = COMPARISON_OPTIONS.find(o => o.value === comparison);
+  if (!opt || comparison === 'none') return null;
+  return `vs. ${opt.label.toLowerCase()}`;
+}
+
+// ── Hook: fetch with abort ─────────────────────────────────────────────────────
+
+function useRevData(url, params, deps) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+  const abortRef = useRef(null);
+
+  const fetch = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setError(null);
+
+    const qp = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => { if (v) qp.set(k, v); });
+    const fullUrl = qp.toString() ? `${url}?${qp}` : url;
+
+    api.get(fullUrl, { signal: ctrl.signal })
+      .then(r => { setData(r.data); setLoading(false); })
+      .catch(e => {
+        if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError') return;
+        setError(e);
+        setLoading(false);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  useEffect(() => { fetch(); return () => { abortRef.current?.abort(); }; }, [fetch]);
+  return { data, loading, error, refetch: fetch };
+}
+
+// ── Export trigger ────────────────────────────────────────────────────────────
+
+async function triggerExport(url) {
   try {
     const res = await api.get(url, { responseType: 'blob' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(res.data);
+    const a   = document.createElement('a');
+    a.href    = URL.createObjectURL(res.data);
     a.download = '';
     document.body.appendChild(a);
     a.click();
@@ -18,453 +144,831 @@ async function triggerCsvDownload(url) {
   }
 }
 
-const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// ── RevenueTrendChart ─────────────────────────────────────────────────────────
 
-function fmt$(n) {
-  const v = parseFloat(n) || 0;
-  if (v >= 1000) return `$${(v / 1000).toFixed(1)}K`;
-  return `$${v.toFixed(0)}`;
+function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
+  const [hovered, setHovered] = useState(null);
+
+  if (loading) return (
+    <div className="rov-trend-loading" role="status" aria-label="Loading chart">
+      <div className="rov-trend-skeleton" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="rov-trend-empty">Revenue trend data could not be loaded.</div>
+  );
+
+  const rows = data?.current || [];
+  if (rows.length === 0) return (
+    <div className="rov-trend-empty">No completed revenue-producing jobs in this period.</div>
+  );
+
+  const maxVal = Math.max(
+    ...rows.flatMap(r => activeMetrics.map(m => parseFloat(r[m]) || 0)),
+    1
+  );
+
+  function periodLabel(iso) {
+    const d = new Date(iso + 'T00:00:00Z');
+    if (interval === 'monthly') {
+      return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+    }
+    if (interval === 'weekly') {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+
+  const barWidth = Math.max(14, Math.min(40, Math.floor(460 / rows.length) - 6));
+
+  return (
+    <div className="rov-trend-chart" role="img" aria-label="Revenue trend chart">
+      <div className="rov-trend-bars">
+        {rows.map((row, i) => (
+          <div
+            key={i}
+            className="rov-trend-col"
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            style={{ width: barWidth }}
+          >
+            {hovered === i && (
+              <div className="rov-trend-tooltip" role="tooltip">
+                <div className="rov-trend-tt-date">{periodLabel(row.periodStart)}</div>
+                {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map(m => (
+                  <div key={m.key} className="rov-trend-tt-row">
+                    <span className="rov-trend-tt-dot" style={{ background: m.color }} aria-hidden="true" />
+                    <span>{m.label}: {fmtMoney(row[m.key])}</span>
+                  </div>
+                ))}
+                {row.jobs > 0 && <div className="rov-trend-tt-jobs">{row.jobs} job{row.jobs !== 1 ? 's' : ''}</div>}
+              </div>
+            )}
+            <div className="rov-trend-bar-group">
+              {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map((m, mi) => {
+                const h = Math.max(3, (parseFloat(row[m.key]) / maxVal) * 100);
+                return (
+                  <div
+                    key={m.key}
+                    className="rov-trend-bar"
+                    style={{
+                      height:     `${h}%`,
+                      background: m.color,
+                      opacity:    hovered !== null && hovered !== i ? 0.45 : 1,
+                      width:      activeMetrics.length > 1 ? `${Math.floor(barWidth / 2) - 1}px` : `${barWidth}px`,
+                      marginLeft: mi === 1 ? '2px' : 0,
+                    }}
+                    aria-label={`${m.label}: ${fmtMoney(row[m.key])}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="rov-trend-lbl">{periodLabel(row.periodStart)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="rov-trend-legend" role="list" aria-label="Chart legend">
+        {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map(m => (
+          <div key={m.key} className="rov-trend-legend-item" role="listitem">
+            <span className="rov-trend-legend-dot" style={{ background: m.color }} aria-hidden="true" />
+            <span>{m.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function weekLabel(iso) {
-  const d = new Date(iso);
-  return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+// ── RevenueInsightPanel ───────────────────────────────────────────────────────
+
+function RevenueInsightPanel({ insights, loading }) {
+  const navigate = useNavigate();
+
+  if (loading) return (
+    <div className="rov-insight-panel">
+      <div className="rov-insight-header">Revenue Insight</div>
+      <div className="rov-insight-skeleton" />
+    </div>
+  );
+
+  const items = insights || [];
+
+  const TONE_COLOR = {
+    positive: 'var(--green)',
+    warning:  'var(--yellow-dk, #B45309)',
+    critical: 'var(--red)',
+    neutral:  'var(--slate)',
+  };
+
+  return (
+    <div className="rov-insight-panel" aria-label="Revenue insights">
+      <div className="rov-insight-header">Revenue Insight</div>
+      {items.length === 0 ? (
+        <div className="rov-insight-empty">No meaningful insight yet — add more data to see trends.</div>
+      ) : (
+        <div className="rov-insight-list" role="list">
+          {items.map((ins, i) => (
+            <div
+              key={ins.id || i}
+              className="rov-insight-item"
+              role="listitem"
+            >
+              <div
+                className="rov-insight-dot"
+                style={{ background: TONE_COLOR[ins.tone] || TONE_COLOR.neutral }}
+                aria-hidden="true"
+              />
+              <div className="rov-insight-body">
+                <p className="rov-insight-text">{ins.text}</p>
+                {ins.route && (
+                  <button
+                    type="button"
+                    className="rov-insight-link"
+                    onClick={() => navigate(ins.route)}
+                  >
+                    View details
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function monthLabel(iso) {
-  const d = new Date(iso);
-  return MONTH_NAMES[d.getMonth()];
+// ── ServiceTable ──────────────────────────────────────────────────────────────
+
+function ServiceTable({ services, loading, error }) {
+  const [sortKey, setSortKey]   = useState('earnedRevenue');
+  const [sortDir, setSortDir]   = useState('desc');
+
+  if (loading) return (
+    <div className="dash-card" style={{ padding: 24 }}>
+      <div className="rov-table-skeleton" aria-label="Loading service table" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="dash-card" style={{ padding: 24, color: 'var(--red)', fontSize: 13 }}>
+      Service breakdown data could not be loaded.
+    </div>
+  );
+
+  const rows = services || [];
+
+  function handleSort(key) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity;
+    const bv = b[sortKey] ?? -Infinity;
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+
+  function SortTh({ col, label }) {
+    const active = sortKey === col;
+    return (
+      <th
+        onClick={() => handleSort(col)}
+        className={`rov-th-sort${active ? ' rov-th-sort--active' : ''}`}
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        scope="col"
+      >
+        {label}
+        <span aria-hidden="true" className="rov-th-arrow">
+          {active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}
+        </span>
+      </th>
+    );
+  }
+
+  const totEarned    = rows.reduce((s, r) => s + r.earnedRevenue,    0);
+  const totCollected = rows.reduce((s, r) => s + r.collectedRevenue, 0);
+  const totJobs      = rows.reduce((s, r) => s + r.jobs,             0);
+  const totHours     = rows.reduce((s, r) => s + r.laborHours,       0);
+
+  return (
+    <div className="dash-card" style={{ overflow: 'hidden' }}>
+      <div className="dash-ch">
+        <span className="dash-cht">Revenue by Service</span>
+        <span style={{ fontSize: 11, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
+          {rows.length} service type{rows.length !== 1 ? 's' : ''} · revenue counted once per job
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
+          No completed jobs with revenue in this period.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table rov-service-table" aria-label="Revenue by service type">
+            <thead>
+              <tr>
+                <th scope="col">Service</th>
+                <SortTh col="jobs"                label="Jobs"              />
+                <SortTh col="earnedRevenue"        label="Earned Revenue"    />
+                <SortTh col="collectedRevenue"     label="Collected Revenue" />
+                <SortTh col="avgTicket"            label="Avg Ticket"        />
+                <th scope="col">Gross Profit</th>
+                <th scope="col">Margin</th>
+                <SortTh col="laborHours"           label="Labor Hrs"         />
+                <SortTh col="revenuePerLaborHour"  label="Rev / Hr"          />
+                <SortTh col="completionRate"       label="Completion"        />
+                <SortTh col="revenueShare"         label="Share"             />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((s, i) => (
+                <tr key={i}>
+                  <td><strong>{s.service}</strong></td>
+                  <td>{s.jobs}</td>
+                  <td><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
+                  <td>{fmtMoney(s.collectedRevenue)}</td>
+                  <td>{s.avgTicket != null ? fmtMoney(s.avgTicket) : '—'}</td>
+                  <td style={{ color: 'var(--steel)', fontStyle: 'italic', fontSize: 11 }}>Unavailable</td>
+                  <td style={{ color: 'var(--steel)', fontStyle: 'italic', fontSize: 11 }}>Unavailable</td>
+                  <td>{s.laborHours > 0 ? `${s.laborHours}h` : '—'}</td>
+                  <td>{s.revenuePerLaborHour != null ? fmtMoney(s.revenuePerLaborHour) : '—'}</td>
+                  <td>
+                    {s.completionRate != null
+                      ? <span style={{ color: s.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
+                          {fmtPct(s.completionRate * 100)}
+                        </span>
+                      : '—'}
+                  </td>
+                  <td>
+                    <div className="rov-share-bar-wrap" aria-label={`${s.revenueShare.toFixed(1)}% of total`}>
+                      <div className="rov-share-bar-fill" style={{ width: `${Math.min(100, s.revenueShare)}%` }} />
+                      <span className="rov-share-bar-pct">{s.revenueShare.toFixed(0)}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="rov-table-total">
+                <td><strong>Total</strong></td>
+                <td><strong>{totJobs}</strong></td>
+                <td><strong>{fmtMoney(totEarned)}</strong></td>
+                <td><strong>{fmtMoney(totCollected)}</strong></td>
+                <td><strong>{totJobs > 0 ? fmtMoney(totEarned / totJobs) : '—'}</strong></td>
+                <td />
+                <td />
+                <td><strong>{totHours > 0 ? `${Math.round(totHours * 10) / 10}h` : '—'}</strong></td>
+                <td><strong>{totHours > 0 && totEarned > 0 ? fmtMoney(totEarned / totHours) : '—'}</strong></td>
+                <td />
+                <td><strong>100%</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
-const VALID_VIEWS = ['revenue', 'scheduled', 'noshows'];
+// ── RiskOpportunities ─────────────────────────────────────────────────────────
+
+function RiskOpportunities({ data, loading }) {
+  const navigate = useNavigate();
+  if (loading) return null;
+
+  const risk  = data?.risk  || [];
+  const opps  = data?.opportunities || [];
+
+  if (risk.length === 0 && opps.length === 0) return null;
+
+  const RISK_COLORS = {
+    overdue_invoices:            '#DC2626',
+    failed_payments:             '#B45309',
+    cancelled_jobs:              '#8A90A2',
+  };
+  const OPP_COLORS = {
+    accepted_estimate_not_scheduled: '#2E7D32',
+    repeat_client_due:               '#1C2333',
+  };
+
+  return (
+    <div className="rov-risk-section">
+      {risk.length > 0 && (
+        <div className="rov-risk-col">
+          <div className="rov-risk-header">Revenue at Risk</div>
+          <div className="rov-risk-items" role="list">
+            {risk.map((r, i) => (
+              <div key={i} className="rov-risk-item" role="listitem"
+                style={{ borderLeftColor: RISK_COLORS[r.type] || 'var(--red)' }}>
+                <div className="rov-risk-item-top">
+                  <span className="rov-risk-label">{r.label}</span>
+                  <span className="rov-risk-amount" style={{ color: RISK_COLORS[r.type] || 'var(--red)' }}>
+                    {r.value != null ? fmtMoney(r.value) : ''}
+                    {r.count > 0 && <span className="rov-risk-count"> ({r.count})</span>}
+                  </span>
+                </div>
+                <div className="rov-risk-reason">{r.reason}</div>
+                {r.route && (
+                  <button type="button" className="rov-risk-action" onClick={() => navigate(r.route)}>
+                    {r.action} →
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {opps.length > 0 && (
+        <div className="rov-risk-col">
+          <div className="rov-risk-header">Opportunities</div>
+          <div className="rov-risk-items" role="list">
+            {opps.map((o, i) => (
+              <div key={i} className="rov-risk-item rov-risk-item--opp" role="listitem"
+                style={{ borderLeftColor: OPP_COLORS[o.type] || 'var(--green)' }}>
+                <div className="rov-risk-item-top">
+                  <span className="rov-risk-label">{o.label}</span>
+                  <span className="rov-risk-amount" style={{ color: OPP_COLORS[o.type] || 'var(--green)' }}>
+                    {o.value != null ? fmtMoney(o.value) : ''}
+                    {o.count > 0 && <span className="rov-risk-count"> ({o.count})</span>}
+                  </span>
+                </div>
+                <div className="rov-risk-reason">{o.reason}</div>
+                {o.route && (
+                  <button type="button" className="rov-risk-action" onClick={() => navigate(o.route)}>
+                    {o.action} →
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WorkspaceComingSoon ───────────────────────────────────────────────────────
+
+function WorkspaceComingSoon({ label }) {
+  return (
+    <div className="rov-coming-soon" role="status" aria-label={`${label} workspace not yet available`}>
+      <div className="rov-coming-title">{label}</div>
+      <div className="rov-coming-text">
+        This workspace will be available in a later audit phase.
+        <br />
+        The data infrastructure is in place — the views are being built.
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function Revenue() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [data,        setData]        = useState(null);
-  const [hovered,     setHovered]     = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [tab,         setTab]         = useState(() => {
-    const v = searchParams.get('view');
-    return VALID_VIEWS.includes(v) ? v : 'revenue';
-  });
-  const [nsData,      setNsData]      = useState([]);
-  const [nsLoading,   setNsLoading]   = useState(false);
-  const [nsRecords,   setNsRecords]   = useState([]);
-  const [schedData,   setSchedData]   = useState(null);
-  const [schedLoading,setSchedLoading]= useState(false);
-  const [exportFrom,  setExportFrom]  = useState('');
-  const [exportTo,    setExportTo]    = useState('');
+  // URL state
+  const view       = VALID_VIEWS.includes(searchParams.get('view')) ? searchParams.get('view') : 'overview';
+  const urlStart   = searchParams.get('start')      || '';
+  const urlEnd     = searchParams.get('end')        || '';
+  const urlComp    = searchParams.get('comparison') || 'none';
+  const urlInterval = searchParams.get('interval')  || 'daily';
 
-  function switchTab(key) {
-    setTab(key);
-    if (key === 'revenue') setSearchParams({}, { replace: true });
-    else setSearchParams({ view: key }, { replace: true });
+  // Local filter state (synced from URL)
+  const [filterStart,    setFilterStart]    = useState(() => urlStart  || DATE_PRESETS()[2].start);
+  const [filterEnd,      setFilterEnd]      = useState(() => urlEnd    || DATE_PRESETS()[2].end);
+  const [comparison,     setComparison]     = useState(() => urlComp);
+  const [interval,       setInterval]       = useState(() => urlInterval);
+  const [activeMetrics,  setActiveMetrics]  = useState(['earned', 'collected']);
+  const [exportLoading,  setExportLoading]  = useState(false);
+  const [activePreset,   setActivePreset]   = useState('Month to Date');
+
+  // Sync URL on filter change
+  function applyFilters({ start, end, comp, view: v, intv }) {
+    const next = {};
+    const vs = start  ?? filterStart;
+    const ve = end    ?? filterEnd;
+    const vc = comp   ?? comparison;
+    const vv = v      ?? view;
+    const vi = intv   ?? interval;
+    if (vv !== 'overview') next.view = vv;
+    next.start      = vs;
+    next.end        = ve;
+    if (vc && vc !== 'none') next.comparison = vc;
+    if (vi !== 'daily')      next.interval   = vi;
+    setSearchParams(next, { replace: true });
   }
 
-  useEffect(() => {
-    api.get('/analytics/revenue')
-      .then(r => setData(r.data))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (tab !== 'noshows') return;
-    setNsLoading(true);
-    Promise.all([
-      api.get('/no-show/report'),
-      api.get('/no-show/records'),
-    ]).then(([rep, rec]) => {
-      setNsData(rep.data);
-      setNsRecords(rec.data);
-    }).catch(() => {}).finally(() => setNsLoading(false));
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'scheduled') return;
-    if (schedData) return; // already loaded
-    setSchedLoading(true);
-    api.get('/analytics/scheduled')
-      .then(r => setSchedData(r.data))
-      .catch(() => setSchedData({ scheduledRevenue: 0, scheduledJobCount: 0, byWeek: [], byService: [] }))
-      .finally(() => setSchedLoading(false));
-  }, [tab]);
-
-  if (loading) {
-    return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading revenue data…</div>;
+  function switchView(key) {
+    applyFilters({ view: key });
   }
 
-  const { weekly = [], byService = [], monthly = [] } = data || {};
+  function applyPreset(preset) {
+    setFilterStart(preset.start);
+    setFilterEnd(preset.end);
+    setActivePreset(preset.label);
+    applyFilters({ start: preset.start, end: preset.end });
+  }
 
-  const maxWeekRev = Math.max(...weekly.map(w => parseFloat(w.revenue)), 1);
-  const maxServiceRev = Math.max(...byService.map(s => parseFloat(s.revenue)), 1);
+  function applyComparison(comp) {
+    setComparison(comp);
+    applyFilters({ comp });
+  }
 
-  const mtdRevenue = parseFloat(monthly[monthly.length - 1]?.revenue || 0);
-  const totalJobs  = monthly.reduce((s, m) => s + parseInt(m.jobs || 0), 0);
+  function applyInterval(intv) {
+    setInterval(intv);
+    applyFilters({ intv });
+  }
 
-  const totalNsRetained = nsData.reduce((s, r) => s + parseFloat(r.total_retained || 0), 0);
-  const totalNsCount    = nsData.reduce((s, r) => s + parseInt(r.total_no_shows || 0), 0);
+  // Overview data
+  const overviewParams = { start: filterStart, end: filterEnd, comparison };
+  const { data: overview, loading: overviewLoading, error: overviewError } =
+    useRevData('/revenue/overview', overviewParams, [filterStart, filterEnd, comparison, view]);
 
-  const exportParams = `${exportFrom ? `&from=${exportFrom}` : ''}${exportTo ? `&to=${exportTo}` : ''}`;
+  // Trend data (separate fetch to allow interval changes without re-loading KPIs)
+  const trendParams = { start: filterStart, end: filterEnd, interval, comparison };
+  const { data: trendRaw, loading: trendLoading, error: trendError } =
+    useRevData('/revenue/trend', trendParams, [filterStart, filterEnd, interval, comparison, view]);
 
+  const pk = overview?.primaryKpis   || {};
+  const sk = overview?.secondaryKpis || {};
+  const services  = overview?.services  || [];
+  const insights  = overview?.insights  || [];
+  const calculatedAt = overview?.freshness?.calculatedAt;
+  const compBasis = compLabel(comparison);
+
+  // Toggle trend metric
+  function toggleMetric(key) {
+    setActiveMetrics(prev => {
+      if (prev.includes(key)) {
+        return prev.length > 1 ? prev.filter(k => k !== key) : prev;
+      }
+      return [...prev, key];
+    });
+  }
+
+  async function handleExport(type) {
+    setExportLoading(true);
+    try {
+      const qp = new URLSearchParams({ start: filterStart, end: filterEnd, type });
+      await triggerExport(`/revenue/export?${qp}`);
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div>
-      {/* Export bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>Export</span>
-        <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e0d8', borderRadius: 6, color: 'var(--navy)', background: '#fff' }} />
-        <span style={{ fontSize: 12, color: 'var(--steel)' }}>to</span>
-        <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e0d8', borderRadius: 6, color: 'var(--navy)', background: '#fff' }} />
-        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-          onClick={() => triggerCsvDownload(`/analytics/export?type=jobs${exportParams}`)}>
-          <Download size={11} />Jobs
-        </button>
-        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-          onClick={() => triggerCsvDownload(`/analytics/export?type=revenue${exportParams}`)}>
-          <Download size={11} />Invoices
-        </button>
-        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
-          onClick={() => triggerCsvDownload(`/analytics/export?type=clients`)}>
-          <Download size={11} />Clients
-        </button>
+    <div className="rov-root">
+
+      {/* Page header */}
+      <div className="rov-page-header">
+        <div>
+          <h1 className="rov-page-title">Revenue Analytics</h1>
+          <p className="rov-page-sub">Understand what the business earned, collected, lost, and is projected to produce.</p>
+        </div>
+        <div className="rov-header-actions">
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+              onClick={() => handleExport('summary')}
+              disabled={exportLoading || overviewLoading}
+              aria-label="Export revenue summary as CSV"
+            >
+              <Download size={13} aria-hidden="true" />
+              Export
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--lightgray)' }}>
-        {[{ key: 'revenue', label: 'Revenue' }, { key: 'scheduled', label: 'Upcoming' }, { key: 'noshows', label: 'No-Show Report' }].map(t => (
-          <button key={t.key} onClick={() => switchTab(t.key)}
-            style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent', marginBottom: -2, fontSize: 13, fontWeight: tab === t.key ? 700 : 500, color: tab === t.key ? 'var(--navy)' : 'var(--steel)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-            {t.label}
+      {/* Workspace navigation */}
+      <nav className="rov-workspace-nav" role="tablist" aria-label="Revenue workspaces">
+        {WORKSPACES.map(ws => (
+          <button
+            key={ws.key}
+            type="button"
+            role="tab"
+            className={`rov-workspace-tab${view === ws.key ? ' rov-workspace-tab--active' : ''}`}
+            onClick={() => switchView(ws.key)}
+            aria-selected={view === ws.key}
+            aria-controls={`rov-panel-${ws.key}`}
+          >
+            {ws.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {tab === 'noshows' && (
-        nsLoading ? <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading no-show data…</div> : (
-          <div>
-            <div className="dash-stat-grid" style={{ marginBottom: 20 }}>
-              <div className="dash-sc">
-                <div className="dash-sc-l">Total No-Shows</div>
-                <div className="dash-sc-v">{totalNsCount}</div>
-              </div>
-              <div className="dash-sc">
-                <div className="dash-sc-l">Deposits Retained</div>
-                <div className="dash-sc-v">{fmt$(totalNsRetained)}</div>
-              </div>
-              <div className="dash-sc">
-                <div className="dash-sc-l">Avg Retained</div>
-                <div className="dash-sc-v">{totalNsCount > 0 ? fmt$(totalNsRetained / totalNsCount) : '$0'}</div>
-              </div>
-            </div>
-
-            <div className="dash-card" style={{ padding: 24, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 16, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 10 }}>Monthly Breakdown</div>
-              {nsData.length === 0 ? (
-                <div style={{ color: 'var(--steel)', fontSize: 13, padding: '12px 0' }}>No no-show records yet.</div>
-              ) : (
-                <div className="table-wrap"><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--lightgray)' }}>
-                      {['Month', 'No-Shows', 'Deposits Retained', 'Avg'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nsData.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
-                        <td style={{ padding: '12px', color: 'var(--slate)' }}>{new Date(r.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
-                        <td style={{ padding: '12px', color: 'var(--navy)', fontWeight: 600 }}>{r.total_no_shows}</td>
-                        <td style={{ padding: '12px', color: 'var(--red)', fontWeight: 700 }}>{fmt$(r.total_retained)}</td>
-                        <td style={{ padding: '12px', color: 'var(--slate)' }}>{fmt$(r.avg_retained)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></div>
-              )}
-            </div>
-
-            {nsRecords.length > 0 && (
-              <div className="dash-card" style={{ padding: 24 }}>
-                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 16 }}>All Records</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {nsRecords.map(ns => (
-                    <div key={ns.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', border: '1px solid var(--lightgray)', borderLeft: '3px solid var(--red)', borderRadius: 8, gap: 16, flexWrap: 'wrap' }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{ns.client_name} — {ns.service_type}</div>
-                        <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>
-                          {new Date(ns.declared_at).toLocaleDateString('en-US', { dateStyle: 'medium' })} · Tech: {ns.tech_name || 'Unassigned'}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--red)' }}>${parseFloat(ns.deposit_retained || 0).toFixed(2)}</div>
-                          <div style={{ fontSize: 10, color: 'var(--steel)' }}>retained</div>
-                        </div>
-                        <a href={`/api/no-show/jobs/${ns.job_id}/pdf`} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 12, color: 'var(--navy)', textDecoration: 'underline' }}>PDF</a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      )}
-
-      {tab === 'scheduled' && (
-        schedLoading ? (
-          <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading upcoming jobs…</div>
-        ) : (
-          <div>
-            <div className="dash-stat-grid" style={{ marginBottom: 20 }}>
-              <div className="dash-sc">
-                <div className="dash-sc-header"><div className="dash-sc-l">Scheduled Revenue</div></div>
-                <div className="dash-sc-v">{fmt$(schedData?.scheduledRevenue || 0)}</div>
-                <div className="dash-sc-s">Expected from upcoming jobs</div>
-              </div>
-              <div className="dash-sc">
-                <div className="dash-sc-header"><div className="dash-sc-l">Upcoming Jobs</div></div>
-                <div className="dash-sc-v">{schedData?.scheduledJobCount || 0}</div>
-                <div className="dash-sc-s">Not yet completed or cancelled</div>
-              </div>
-              <div className="dash-sc">
-                <div className="dash-sc-header"><div className="dash-sc-l">Service Types</div></div>
-                <div className="dash-sc-v">{schedData?.byService?.length || 0}</div>
-                <div className="dash-sc-s">In scheduled pipeline</div>
-              </div>
-              <div className="dash-sc">
-                <div className="dash-sc-header"><div className="dash-sc-l">Avg per Job</div></div>
-                <div className="dash-sc-v">
-                  {schedData?.scheduledJobCount > 0
-                    ? fmt$((schedData.scheduledRevenue || 0) / schedData.scheduledJobCount)
-                    : '$0'}
-                </div>
-                <div className="dash-sc-s">Expected value</div>
-              </div>
-            </div>
-
-            {(schedData?.byWeek?.length || 0) === 0 ? (
-              <div className="dash-card" style={{ padding: 32, textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
-                No upcoming scheduled jobs found.
-              </div>
-            ) : (
-              <div className="rev-layout">
-                <div className="rev-main">
-                  <div className="dash-card">
-                    <div className="dash-ch"><span className="dash-cht">Upcoming Revenue by Week</span></div>
-                    <div className="table-wrap"><table className="table">
-                      <thead>
-                        <tr>
-                          <th>Week of</th>
-                          <th>Jobs</th>
-                          <th>Expected Revenue</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {schedData.byWeek.map((w, i) => (
-                          <tr key={i}>
-                            <td>{weekLabel(w.week_start)}</td>
-                            <td>{w.jobs}</td>
-                            <td><strong>{fmt$(w.revenue)}</strong></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table></div>
-                  </div>
-                </div>
-                <div className="rev-side">
-                  <div className="dash-card">
-                    <div className="dash-ch"><span className="dash-cht">By Service Type</span></div>
-                    {schedData.byService.length === 0 ? (
-                      <div style={{ padding: '24px 16px', color: 'var(--steel)', fontSize: 13 }}>No data yet.</div>
-                    ) : (
-                      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {(() => {
-                          const maxRev = Math.max(...schedData.byService.map(s => parseFloat(s.revenue)), 1);
-                          return schedData.byService.map((s, i) => (
-                            <div key={i}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
-                                <span style={{ color: 'var(--slate)', fontWeight: 600 }}>{s.service_type}</span>
-                                <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 14, color: 'var(--navy)' }}>{fmt$(s.revenue)}</span>
-                              </div>
-                              <div style={{ height: 6, background: 'var(--lightgray)', borderRadius: 99 }}>
-                                <div style={{ height: '100%', width: `${(parseFloat(s.revenue) / maxRev) * 100}%`, background: i === 0 ? 'var(--navy)' : 'var(--sand)', borderRadius: 99 }} />
-                              </div>
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      )}
-
-      {tab === 'revenue' && <div>
-      <div className="dash-stat-grid">
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Month to Date</div>
-            {mtdRevenue > 0 && <span className="dash-sc-b bg">Active</span>}
-          </div>
-          <div className="dash-sc-v">{fmt$(mtdRevenue)}</div>
-          <div className="dash-sc-s">{parseInt(monthly[monthly.length - 1]?.jobs || 0)} jobs this month</div>
+      {/* Filter toolbar */}
+      <div className="rov-filter-bar" role="toolbar" aria-label="Revenue filters">
+        {/* Date presets */}
+        <div className="rov-filter-presets" role="group" aria-label="Date presets">
+          {DATE_PRESETS().map(p => (
+            <button
+              key={p.label}
+              type="button"
+              className={`rov-preset-btn${activePreset === p.label ? ' rov-preset-btn--active' : ''}`}
+              onClick={() => applyPreset(p)}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Total Jobs</div>
-          </div>
-          <div className="dash-sc-v">{totalJobs}</div>
-          <div className="dash-sc-s">Last 6 months</div>
+
+        {/* Custom date range */}
+        <div className="rov-filter-dates" role="group" aria-label="Custom date range">
+          <input
+            type="date"
+            value={filterStart}
+            onChange={e => { setFilterStart(e.target.value); setActivePreset(''); applyFilters({ start: e.target.value }); }}
+            className="rov-date-input"
+            aria-label="Start date"
+          />
+          <span className="rov-date-sep" aria-hidden="true">–</span>
+          <input
+            type="date"
+            value={filterEnd}
+            onChange={e => { setFilterEnd(e.target.value); setActivePreset(''); applyFilters({ end: e.target.value }); }}
+            className="rov-date-input"
+            aria-label="End date"
+          />
         </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Services</div>
-          </div>
-          <div className="dash-sc-v">{byService.length}</div>
-          <div className="dash-sc-s">Service types billed</div>
-        </div>
-        <div className="dash-sc">
-          <div className="dash-sc-header">
-            <div className="dash-sc-l">Avg per Job</div>
-          </div>
-          <div className="dash-sc-v">{totalJobs > 0 ? fmt$(monthly.reduce((s,m) => s + parseFloat(m.revenue||0), 0) / totalJobs) : '$0'}</div>
-          <div className="dash-sc-s">All time average</div>
+
+        {/* Comparison */}
+        <div className="rov-filter-group">
+          <label className="rov-filter-label" htmlFor="rov-comparison">Compare</label>
+          <select
+            id="rov-comparison"
+            className="rov-filter-select"
+            value={comparison}
+            onChange={e => applyComparison(e.target.value)}
+          >
+            {COMPARISON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
       </div>
 
-      <div className="rev-layout">
-        <div className="rev-main">
-          <div className="dash-card rev-chart-card">
-            <div className="dash-ch">
-              <span className="dash-cht">Revenue by Week — Last 8 Weeks</span>
+      {/* ── OVERVIEW WORKSPACE ──────────────────────────────────────────── */}
+      {view === 'overview' && (
+        <div id="rov-panel-overview" role="tabpanel" aria-label="Overview">
+
+          {/* Primary KPI row — 5 cards */}
+          <div className="rov-kpi-row rov-kpi-row--primary" role="list" aria-label="Primary revenue KPIs">
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Collected Revenue"
+                value={pk.collectedRevenue?.status === 'ok' ? fmtMoney(pk.collectedRevenue.value) : null}
+                status={pk.collectedRevenue?.status || 'loading'}
+                comparison={pk.collectedRevenue?.comparison}
+                comparisonBasis={compBasis}
+                calculatedAt={calculatedAt}
+                provenance={pk.collectedRevenue?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+                note={pk.collectedRevenue?.breakdown
+                  ? `${pk.collectedRevenue.breakdown.invoiceCount} invoice(s) + ${pk.collectedRevenue.breakdown.depositCount} deposit(s)`
+                  : undefined}
+              />
             </div>
-            {weekly.every(w => parseFloat(w.revenue) === 0) ? (
-              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
-                No completed jobs with revenue yet.
-              </div>
-            ) : (
-              <div className="rev-chart-area">
-                {weekly.map((w, i) => {
-                  const h = Math.max(4, (parseFloat(w.revenue) / maxWeekRev) * 100);
-                  const isCurrent = i === weekly.length - 1;
-                  return (
-                    <div
-                      key={i}
-                      className="rev-bar-wrap"
-                      onMouseEnter={() => setHovered(i)}
-                      onMouseLeave={() => setHovered(null)}
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Earned Revenue"
+                value={pk.earnedRevenue?.status === 'ok' ? fmtMoney(pk.earnedRevenue.value) : null}
+                status={pk.earnedRevenue?.status || 'loading'}
+                comparison={pk.earnedRevenue?.comparison}
+                comparisonBasis={compBasis}
+                calculatedAt={calculatedAt}
+                provenance={pk.earnedRevenue?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+                note={pk.earnedRevenue?.jobCount > 0 ? `${pk.earnedRevenue.jobCount} completed job(s)` : undefined}
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Gross Profit"
+                value={null}
+                status={pk.grossProfit?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={pk.grossProfit?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Outstanding AR"
+                value={pk.outstandingAr?.status === 'ok' ? fmtMoney(pk.outstandingAr.value) : null}
+                status={pk.outstandingAr?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={pk.outstandingAr?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+                note={pk.outstandingAr?.invoiceCount > 0
+                  ? `${pk.outstandingAr.invoiceCount} invoice(s)${pk.outstandingAr.overdueCount > 0 ? ` · ${pk.outstandingAr.overdueCount} overdue` : ''}`
+                  : undefined}
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Projected Month-End"
+                value={pk.projectedMonthEnd?.status === 'ok'
+                  ? `${fmtMoney(pk.projectedMonthEnd.lower)}–${fmtMoney(pk.projectedMonthEnd.upper)}`
+                  : null}
+                status={pk.projectedMonthEnd?.status || 'loading'}
+                calculatedAt={pk.projectedMonthEnd?.calculatedAt}
+                provenance={pk.projectedMonthEnd?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+                note={pk.projectedMonthEnd?.status === 'ok'
+                  ? `${Math.round((pk.projectedMonthEnd.completionRate || 0) * 100)}% completion rate · ${pk.projectedMonthEnd.confidence} confidence`
+                  : undefined}
+              />
+            </div>
+          </div>
+
+          {/* Secondary KPI row — 6 cards */}
+          <div className="rov-kpi-row rov-kpi-row--secondary" role="list" aria-label="Secondary revenue KPIs">
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Average Ticket"
+                value={sk.averageTicket?.status === 'ok' ? fmtMoney(sk.averageTicket.value) : null}
+                status={sk.averageTicket?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.averageTicket?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Revenue per Labor Hour"
+                value={sk.revenuePerLaborHour?.status === 'ok' ? fmtMoney(sk.revenuePerLaborHour.value) : null}
+                status={sk.revenuePerLaborHour?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.revenuePerLaborHour?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+                note={sk.revenuePerLaborHour?.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined}
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Completion Rate"
+                value={sk.completionRate?.status === 'ok' ? fmtPct(sk.completionRate.pct) : null}
+                status={sk.completionRate?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.completionRate?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+                note={sk.completionRate?.eligible > 0
+                  ? `${sk.completionRate.completed} of ${sk.completionRate.eligible} eligible`
+                  : undefined}
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Technician Utilization"
+                value={null}
+                status={sk.technicianUtilization?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.technicianUtilization?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Repeat Revenue"
+                value={sk.repeatRevenue?.status === 'ok' ? fmtMoney(sk.repeatRevenue.value) : null}
+                status={sk.repeatRevenue?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.repeatRevenue?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+                note={sk.repeatRevenue?.clientCount > 0 ? `${sk.repeatRevenue.clientCount} returning client(s)` : undefined}
+              />
+            </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Revenue at Risk"
+                value={sk.revenueAtRisk?.status === 'ok' ? fmtMoney(sk.revenueAtRisk.value) : null}
+                status={sk.revenueAtRisk?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={sk.revenueAtRisk?.provenance}
+                isLoading={overviewLoading}
+                size="secondary"
+              />
+            </div>
+          </div>
+
+          {/* Error overlay */}
+          {overviewError && (
+            <div className="rov-error-banner" role="alert">
+              Revenue data could not be loaded. Data shown above may be stale.
+            </div>
+          )}
+
+          {/* Trend + Insight */}
+          <div className="rov-trend-section">
+            <div className="rov-trend-main dash-card">
+              <div className="dash-ch">
+                <span className="dash-cht">Revenue Trend</span>
+                <div className="rov-trend-controls" role="group" aria-label="Chart controls">
+                  {/* Metric toggles */}
+                  {TREND_METRICS.map(m => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={`rov-metric-btn${activeMetrics.includes(m.key) ? ' rov-metric-btn--active' : ''}`}
+                      onClick={() => toggleMetric(m.key)}
+                      aria-pressed={activeMetrics.includes(m.key)}
                     >
-                      <div className="rev-bar-tooltip" style={{ opacity: hovered === i ? 1 : 0 }}>
-                        {fmt$(w.revenue)} · {w.jobs} job{w.jobs !== '1' ? 's' : ''}
-                      </div>
-                      <div
-                        className="rev-bar"
-                        style={{
-                          height: `${h}%`,
-                          background: isCurrent ? 'var(--sand)' : hovered === i ? 'var(--navy)' : 'var(--slate)',
-                        }}
-                      />
-                      <div className="rev-bar-lbl">{weekLabel(w.week_start)}</div>
-                      <div className="rev-bar-val">{parseFloat(w.revenue) > 0 ? fmt$(w.revenue) : '—'}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="dash-card">
-            <div className="dash-ch">
-              <span className="dash-cht">Revenue by Service — All Time</span>
-            </div>
-            {byService.length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
-                No completed jobs yet.
-              </div>
-            ) : (
-              <div className="table-wrap"><table className="table">
-                <thead>
-                  <tr>
-                    <th>Service</th>
-                    <th>Jobs</th>
-                    <th>Revenue</th>
-                    <th>Avg per Job</th>
-                    <th style={{ width: 120 }}>Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byService.map((s, i) => (
-                    <tr key={i} className="clickable-row">
-                      <td><strong>{s.service_type}</strong></td>
-                      <td>{s.jobs}</td>
-                      <td><strong>{fmt$(s.revenue)}</strong></td>
-                      <td>{fmt$(s.avg_amount)}</td>
-                      <td>
-                        <div className="rev-pct-bar">
-                          <div className="rev-pct-fill" style={{ width: `${(parseFloat(s.revenue) / maxServiceRev) * 100}%` }} />
-                        </div>
-                      </td>
-                    </tr>
+                      <span className="rov-metric-dot" style={{ background: m.color }} aria-hidden="true" />
+                      {m.label}
+                    </button>
                   ))}
-                </tbody>
-              </table></div>
-            )}
-          </div>
-        </div>
-
-        <div className="rev-side">
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Monthly Summary</span></div>
-            {monthly.map((m, i) => {
-              const isCurrent = i === monthly.length - 1;
-              const prev = monthly[i - 1];
-              const growth = prev && parseFloat(prev.revenue) > 0
-                ? Math.round(((parseFloat(m.revenue) - parseFloat(prev.revenue)) / parseFloat(prev.revenue)) * 100)
-                : null;
-              return (
-                <div key={i} className="rev-month-row" style={isCurrent ? { background: 'var(--sand-lt)' } : {}}>
-                  <div className="rev-month-lbl">{monthLabel(m.month_start)}{isCurrent ? ' (MTD)' : ''}</div>
-                  <div className="rev-month-rev">{fmt$(m.revenue)}</div>
-                  <div className="rev-month-jobs">{m.jobs} jobs</div>
-                  {growth !== null && (
-                    <span className="rev-month-growth" style={{ color: growth >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                      {growth >= 0 ? '+' : ''}{growth}%
-                    </span>
-                  )}
+                  {/* Interval selector */}
+                  <select
+                    className="rov-filter-select rov-filter-select--sm"
+                    value={interval}
+                    onChange={e => applyInterval(e.target.value)}
+                    aria-label="Chart interval"
+                  >
+                    {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 </div>
-              );
-            })}
-          </div>
-
-          <div className="dash-card">
-            <div className="dash-ch"><span className="dash-cht">Top Services</span></div>
-            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {byService.slice(0, 3).length === 0 ? (
-                <div style={{ color: 'var(--steel)', fontSize: 13 }}>No data yet.</div>
-              ) : byService.slice(0, 3).map((s, i) => (
-                <div key={i}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
-                    <span style={{ color: 'var(--slate)', fontWeight: 600 }}>{s.service_type}</span>
-                    <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 14, color: 'var(--navy)' }}>{fmt$(s.revenue)}</span>
-                  </div>
-                  <div style={{ height: 6, background: 'var(--lightgray)', borderRadius: 99 }}>
-                    <div style={{ height: '100%', width: `${(parseFloat(s.revenue) / maxServiceRev) * 100}%`, background: i === 0 ? 'var(--navy)' : 'var(--sand)', borderRadius: 99 }} />
-                  </div>
-                </div>
-              ))}
+              </div>
+              <RevenueTrendChart
+                data={trendRaw}
+                loading={trendLoading}
+                error={trendError}
+                activeMetrics={activeMetrics}
+                interval={interval}
+              />
             </div>
+            <RevenueInsightPanel insights={insights} loading={overviewLoading} />
           </div>
+
+          {/* Service table */}
+          <ServiceTable
+            services={services}
+            loading={overviewLoading}
+            error={overviewError}
+          />
+
+          {/* Risk & Opportunities */}
+          <RiskOpportunities
+            data={{ risk: overview?.risk, opportunities: overview?.opportunities }}
+            loading={overviewLoading}
+          />
+
+          {/* Limitations footer */}
+          {overview?.limitations?.length > 0 && (
+            <div className="rov-limitations" role="note" aria-label="Data limitations">
+              <div className="rov-limitations-header">Data limitations</div>
+              <ul className="rov-limitations-list">
+                {overview.limitations.map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
-      </div>
-      </div>} {/* end revenue tab */}
+      )}
+
+      {/* ── OTHER WORKSPACES ─────────────────────────────────────────────── */}
+      {view !== 'overview' && (
+        <div
+          id={`rov-panel-${view}`}
+          role="tabpanel"
+          aria-label={WORKSPACES.find(w => w.key === view)?.label}
+        >
+          <WorkspaceComingSoon label={WORKSPACES.find(w => w.key === view)?.label} />
+        </div>
+      )}
     </div>
   );
 }
