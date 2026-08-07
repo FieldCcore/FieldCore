@@ -3204,20 +3204,7 @@ body {
 .rev-month-growth { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 700; }
 
 /* ── Revenue Overview Workspace (rov-*) ──────────────────── */
-.rov-root { display: flex; flex-direction: column; gap: 0; }
-
-/* Page header */
-.rov-page-header {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding: 12px 0 20px;
-}
-.rov-page-title {
-  font-size: 22px; font-weight: 800; color: var(--navy);
-  font-family: 'Inter', sans-serif; margin: 0 0 6px;
-  letter-spacing: -.02em;
-}
-.rov-page-sub { font-size: 13px; color: var(--slate); margin: 0; line-height: 1.5; }
-.rov-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.rov-root { display: flex; flex-direction: column; gap: 0; padding-top: 4px; }
 
 /* Workspace tab nav */
 .rov-workspace-nav {
@@ -3225,20 +3212,29 @@ body {
   border-bottom: 2px solid var(--lightgray);
   overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 .rov-workspace-nav::-webkit-scrollbar { display: none; }
 .rov-workspace-tab {
-  padding: 11px 24px; background: none; border: none;
+  padding: 11px 22px; background: none; border: none;
   border-bottom: 2px solid transparent; margin-bottom: -2px;
   font-size: 13px; font-weight: 500; color: var(--steel);
   cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap;
-  transition: color .12s, border-color .12s; flex-shrink: 0;
+  border-radius: 6px 6px 0 0;
+  transition: color .14s ease, background-color .14s ease, border-color .12s ease;
+  flex-shrink: 0; outline: none;
 }
-.rov-workspace-tab:hover  { color: var(--navy); }
+.rov-workspace-tab:hover {
+  color: var(--navy);
+  background: rgba(28, 35, 51, 0.04);
+}
 .rov-workspace-tab--active {
   border-bottom-color: var(--navy);
   font-weight: 700; color: var(--navy);
+}
+.rov-workspace-tab:focus-visible {
+  outline: 2px solid var(--sand);
+  outline-offset: -2px;
 }
 
 /* Filter bar */
@@ -3253,22 +3249,33 @@ body {
 .rov-preset-btn {
   padding: 5px 10px; background: #fff; border: 1px solid var(--lightgray);
   border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--slate);
-  cursor: pointer; white-space: nowrap; transition: all .12s;
+  cursor: pointer; white-space: nowrap; transition: all .12s; outline: none;
 }
 .rov-preset-btn:hover             { border-color: var(--navy); color: var(--navy); }
 .rov-preset-btn--active           { background: var(--navy); color: #fff; border-color: var(--navy); }
+.rov-preset-btn:focus-visible     { outline: 2px solid var(--sand); outline-offset: 1px; }
 .rov-filter-dates { display: flex; align-items: center; gap: 6px; }
 .rov-date-sep     { font-size: 12px; color: var(--steel); }
 .rov-date-input {
   font-size: 12px; padding: 5px 8px; border: 1px solid var(--lightgray);
   border-radius: 6px; color: var(--navy); background: #fff;
-  font-family: 'DM Mono', monospace;
+  font-family: 'DM Mono', monospace; outline: none;
+  transition: border-color .12s;
+}
+.rov-date-input:focus {
+  border-color: var(--sand);
+  box-shadow: 0 0 0 2px rgba(214, 181, 138, 0.22);
 }
 .rov-filter-group  { display: flex; align-items: center; gap: 6px; }
 .rov-filter-label  { font-size: 11px; font-weight: 700; color: var(--steel); white-space: nowrap; }
 .rov-filter-select {
   font-size: 12px; padding: 5px 8px; border: 1px solid var(--lightgray);
   border-radius: 6px; color: var(--navy); background: #fff; cursor: pointer;
+  outline: none; transition: border-color .12s;
+}
+.rov-filter-select:focus {
+  border-color: var(--sand);
+  box-shadow: 0 0 0 2px rgba(214, 181, 138, 0.22);
 }
 .rov-filter-select--sm { font-size: 11px; padding: 4px 6px; }
 
@@ -3333,9 +3340,10 @@ body {
   background: none; border: none; cursor: pointer; padding: 0;
   font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
   color: var(--steel); text-decoration: underline; text-decoration-style: dotted;
-  font-family: 'DM Mono', monospace;
+  font-family: 'DM Mono', monospace; outline: none;
 }
-.rov-kpi-how-btn:hover { color: var(--navy); }
+.rov-kpi-how-btn:hover           { color: var(--navy); }
+.rov-kpi-how-btn:focus-visible   { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 .rov-kpi-how-panel {
   position: absolute; bottom: 36px; left: 0; right: 0;
   background: #fff; border: 1px solid var(--lightgray); border-radius: 8px;
@@ -3399,10 +3407,12 @@ body {
 .rov-metric-btn {
   display: flex; align-items: center; gap: 5px; padding: 4px 10px;
   background: var(--offwhite); border: 1px solid var(--lightgray); border-radius: 6px;
-  font-size: 11px; font-weight: 600; color: var(--slate); cursor: pointer; transition: all .12s;
+  font-size: 11px; font-weight: 600; color: var(--slate); cursor: pointer;
+  transition: all .12s; outline: none;
 }
-.rov-metric-btn:hover    { border-color: var(--navy); color: var(--navy); }
-.rov-metric-btn--active  { border-color: var(--navy); color: var(--navy); background: #fff; }
+.rov-metric-btn:hover           { border-color: var(--navy); color: var(--navy); }
+.rov-metric-btn--active         { border-color: var(--navy); color: var(--navy); background: #fff; }
+.rov-metric-btn:focus-visible   { outline: 2px solid var(--sand); outline-offset: 1px; }
 .rov-metric-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
 /* Insight panel */
@@ -3424,7 +3434,9 @@ body {
 .rov-insight-link {
   background: none; border: none; cursor: pointer; padding: 0;
   font-size: 11px; color: var(--navy); text-decoration: underline; font-weight: 600;
+  outline: none;
 }
+.rov-insight-link:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 
 /* Service table */
 .rov-service-table th { cursor: default; }
@@ -3465,8 +3477,10 @@ body {
 .rov-risk-action {
   background: none; border: none; cursor: pointer; padding: 0;
   font-size: 11px; color: var(--navy); font-weight: 600; text-align: left;
+  outline: none;
 }
-.rov-risk-action:hover { text-decoration: underline; }
+.rov-risk-action:hover           { text-decoration: underline; }
+.rov-risk-action:focus-visible   { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 
 /* Limitations */
 .rov-limitations {
@@ -3519,8 +3533,10 @@ body {
   background: none; border: none; cursor: pointer; padding: 0;
   font-size: 11px; color: var(--navy); font-weight: 600;
   text-decoration: underline; text-underline-offset: 2px;
+  outline: none;
 }
-.rov-ws-cta:hover { color: var(--sand-dark); }
+.rov-ws-cta:hover           { color: var(--sand-dark); }
+.rov-ws-cta:focus-visible   { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 
 /* Risk section — vertical stack */
 .rov-risk-section { display: flex; flex-direction: column; gap: 14px; }
@@ -3531,6 +3547,11 @@ body {
 .rov-fin-year-select {
   font-size: 13px; padding: 5px 10px; border: 1px solid var(--lightgray);
   border-radius: 6px; color: var(--navy); background: #fff; cursor: pointer;
+  outline: none; transition: border-color .12s;
+}
+.rov-fin-year-select:focus {
+  border-color: var(--sand);
+  box-shadow: 0 0 0 2px rgba(214, 181, 138, 0.22);
 }
 .rov-fin-integration-cards {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;
@@ -3611,7 +3632,6 @@ body {
   .rov-kpi-row--secondary { grid-template-columns: repeat(2, 1fr); overflow-x: auto; }
   .rov-workspace-nav { overflow-x: auto; }
   .rov-filter-bar     { gap: 8px; }
-  .rov-page-header    { flex-direction: column; }
 }
 @media (max-width: 480px) {
   .rov-kpi-row--primary   { grid-template-columns: 1fr; }

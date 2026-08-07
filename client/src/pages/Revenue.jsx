@@ -1021,29 +1021,6 @@ export default function Revenue() {
   return (
     <div className="rov-root">
 
-      {/* Page header */}
-      <div className="rov-page-header">
-        <div>
-          <h1 className="rov-page-title">Revenue Analytics</h1>
-          <p className="rov-page-sub">
-            Understand what the business earned, collected, lost, and is projected to produce.
-          </p>
-        </div>
-        <div className="rov-header-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => handleExport('summary')}
-            disabled={exportLoading || overviewLoading}
-            aria-label="Export revenue summary as CSV"
-          >
-            <Download size={13} aria-hidden="true" />
-            Export
-          </button>
-        </div>
-      </div>
-
       {/* Workspace tab nav */}
       <nav className="rov-workspace-nav" role="tablist" aria-label="Revenue workspaces">
         {WORKSPACES.map(ws => (
@@ -1105,6 +1082,18 @@ export default function Revenue() {
             {COMPARISON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ marginLeft: 'auto', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+          onClick={() => handleExport('summary')}
+          disabled={exportLoading || overviewLoading}
+          aria-label="Export revenue summary as CSV"
+        >
+          <Download size={13} aria-hidden="true" />
+          Export
+        </button>
       </div>
 
       {/* ── OVERVIEW ──────────────────────────────────────────────────────── */}

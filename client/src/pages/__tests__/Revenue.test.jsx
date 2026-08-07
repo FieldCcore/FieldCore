@@ -167,28 +167,20 @@ describe('Revenue — workspace navigation', () => {
   });
 });
 
-// ── Page header ────────────────────────────────────────────────────────────────
+// ── Filter bar and export ─────────────────────────────────────────────────────
 
-describe('Revenue — page header', () => {
-  it('shows the correct page title', async () => {
-    renderRevenue();
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Revenue Analytics' })).toBeInTheDocument();
-    });
-  });
-
-  it('shows the subtitle', async () => {
-    renderRevenue();
-    await waitFor(() => {
-      expect(screen.getByText(/Understand what the business earned/i)).toBeInTheDocument();
-    });
-  });
-
-  it('shows an Export button', async () => {
+describe('Revenue — filter bar', () => {
+  it('shows an Export button in the filter bar', async () => {
     renderRevenue();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /export/i })).toBeInTheDocument();
     });
+  });
+
+  it('does not render an inline page heading (title is in global topbar)', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
+    expect(screen.queryByRole('heading', { name: 'Revenue Analytics' })).not.toBeInTheDocument();
   });
 });
 
@@ -197,13 +189,15 @@ describe('Revenue — page header', () => {
 describe('Revenue — no permanent right-side rail', () => {
   it('does not render Monthly Summary card', async () => {
     renderRevenue();
-    await waitFor(() => screen.getByText('Revenue Analytics'));
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.queryByText('Monthly Summary')).not.toBeInTheDocument();
   });
 
-  it('does not render Top Services card', async () => {
+  it('does not render Top Services card as a standalone rail', async () => {
     renderRevenue();
-    await waitFor(() => screen.getByText('Revenue Analytics'));
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
+    // "Top Services" as a standalone right-side card should not exist;
+    // the compact "Top 5 Services" table is inline within the Overview workspace
     expect(screen.queryByText('Top Services')).not.toBeInTheDocument();
   });
 });
