@@ -109,13 +109,43 @@ function renderRevenue(search = '') {
   );
 }
 
+const MOCK_CUSTOMERS = {
+  topClients: [
+    { id: 'client-1', name: 'Acme Corp', job_count: 4, earned_revenue: 1200.00, last_job_at: '2026-08-01T10:00:00Z' },
+    { id: 'client-2', name: 'Beta LLC',  job_count: 2, earned_revenue:  600.00, last_job_at: '2026-07-28T10:00:00Z' },
+  ],
+  summary: { activeClientCount: 2 },
+  limitations: ['Churn threshold not configured.'],
+  provenance: { calculationState: 'complete' },
+};
+
+const MOCK_FORECAST_READINESS = {
+  ready: false,
+  score: 50,
+  year: 2026,
+  items: [
+    { key: 'history_sufficient',      label: 'Historical data (3+ months)', met: true,  value: '4 month(s)' },
+    { key: 'revenue_recognition_policy', label: 'Revenue recognition policy', met: false, value: null },
+    { key: 'forecasting_policy',      label: 'Forecasting method',           met: false, value: null },
+    { key: 'job_volume',              label: 'Sufficient job volume',        met: true,  value: '12 completed' },
+  ],
+  missingPolicies: ['revenueRecognitionPolicy', 'forecastingPolicy'],
+  message: 'To enable forecasting: revenue recognition policy; forecasting method.',
+  disclaimer: 'No AI. Rules-based when ready.',
+};
+
+const MOCK_SAVED_VIEWS = { savedViews: [] };
+
 beforeEach(() => {
   vi.clearAllMocks();
   api.get.mockImplementation((url) => {
-    if (url.includes('/revenue/overview'))   return Promise.resolve({ data: MOCK_OVERVIEW });
-    if (url.includes('/revenue/trend'))      return Promise.resolve({ data: MOCK_TREND });
-    if (url.includes('/revenue/services'))   return Promise.resolve({ data: MOCK_SERVICES });
-    if (url.includes('/revenue/quarterly'))  return Promise.resolve({ data: MOCK_QUARTERLY });
+    if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+    if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+    if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+    if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+    if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+    if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+    if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
     return Promise.reject(new Error('Unknown endpoint: ' + url));
   });
 });
@@ -143,8 +173,8 @@ describe('Revenue — workspace navigation', () => {
     });
   });
 
-  it('placeholder workspaces show a coming-in-later-phase state', async () => {
-    renderRevenue('?view=customers');
+  it('Operations workspace shows coming-soon sections for unbuilt features', async () => {
+    renderRevenue('?view=operations');
     await waitFor(() => {
       expect(screen.getAllByText(/coming in a later phase/i).length).toBeGreaterThan(0);
     });
@@ -424,8 +454,13 @@ describe('Revenue — filter toolbar', () => {
 describe('Revenue — error state does not show zero', () => {
   it('shows error banner when overview API fails', async () => {
     api.get.mockImplementation((url) => {
-      if (url.includes('/revenue/overview')) return Promise.reject(new Error('Server error'));
-      if (url.includes('/revenue/trend'))    return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/overview'))           return Promise.reject(new Error('Server error'));
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
       return Promise.reject(new Error('Unknown'));
     });
 
@@ -527,6 +562,9 @@ describe('Revenue — trend chart date parsing', () => {
 
   it('renders trend bars when period_start has a full ISO timestamp suffix', async () => {
     api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/trend'))     return Promise.resolve({
         data: {
@@ -551,11 +589,116 @@ describe('Revenue — trend chart date parsing', () => {
   });
 });
 
+// ── Customers workspace ────────────────────────────────────────────────────────
+
+describe('Revenue — Customers workspace', () => {
+  it('renders Top Clients section with client names', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText('Top Clients')).toBeInTheDocument();
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+      expect(screen.getByText('Beta LLC')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Customer inactivity policy required message', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText(/customer inactivity policy required/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows At-Risk / Churn Detection section', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText(/at-risk/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Forecasting workspace ──────────────────────────────────────────────────────
+
+describe('Revenue — Forecasting workspace', () => {
+  it('renders Forecast Readiness section', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText('Forecast Readiness')).toBeInTheDocument();
+    });
+  });
+
+  it('shows readiness score', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText(/50% ready/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows checklist items from API', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getAllByText(/historical data/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/revenue recognition policy/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows no-AI disclaimer', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText(/no ai or machine learning/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does not show fake forecast numbers', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => screen.getByText('Forecast Readiness'));
+    // No fabricated dollar amounts should appear in forecasting when not ready
+    expect(screen.queryByText(/\$3,200/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Reports workspace ──────────────────────────────────────────────────────────
+
+describe('Revenue — Reports workspace', () => {
+  it('renders Report Catalog', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Report Catalog')).toBeInTheDocument();
+    });
+  });
+
+  it('shows available report types with Export CSV buttons', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Revenue Summary')).toBeInTheDocument();
+      expect(screen.getByText('Revenue by Service')).toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows Saved Views section', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Saved Views')).toBeInTheDocument();
+    });
+  });
+
+  it('shows P&L requires accounting integration', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getAllByText(/p&l statement/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/requires accounting integration/i).length).toBeGreaterThan(0);
+    });
+  });
+});
+
 // ── Trend chart empty state ────────────────────────────────────────────────────
 
 describe('Revenue — trend chart empty state', () => {
   it('shows compact empty state when trend data has no rows', async () => {
     api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/trend'))     return Promise.resolve({
         data: { current: [], comparison: null, interval: 'daily' },

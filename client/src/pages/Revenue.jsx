@@ -4,6 +4,11 @@ import { Download } from 'lucide-react';
 import api from '../api';
 import RevenueKpiCard from '../components/RevenueKpiCard';
 import { CHART } from '../theme/revenueChartTokens';
+import {
+  CustomersWorkspace,
+  ForecastingWorkspace,
+  ReportsWorkspace,
+} from '../components/revenue/RevenueWorkspaceShells';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -862,110 +867,8 @@ function WorkspacePlaceholder({ sections }) {
   );
 }
 
-function CustomersWorkspace() {
-  return (
-    <WorkspacePlaceholder sections={[
-      {
-        title: 'Client Lifetime Value',
-        items: [
-          'Total and average lifetime revenue per client',
-          'Revenue by client segment (residential, commercial, recurring)',
-          'Churn risk score and at-risk client list',
-          'Top clients by total and recent spend',
-        ],
-        note: 'Requires 6+ months of job history for meaningful LTV projections.',
-      },
-      {
-        title: 'Repeat & Retention',
-        items: [
-          'Repeat visit rate and frequency by client',
-          'First-time vs. returning client revenue split',
-          'Days between visits and booking gap analysis',
-          'Win-back opportunities: clients inactive 90+ days',
-        ],
-      },
-      {
-        title: 'Client Segments',
-        items: [
-          'Revenue by ZIP code, neighborhood, or territory',
-          'Service preference mapping by client type',
-          'New client acquisition cost estimate',
-          'Referral attribution (if tracked)',
-        ],
-      },
-    ]} />
-  );
-}
-
-function ForecastingWorkspace() {
-  return (
-    <WorkspacePlaceholder sections={[
-      {
-        title: 'Revenue Projection',
-        items: [
-          'Month-end projected revenue with confidence bands',
-          'Quarter and year-end forecast based on historical trend',
-          'Scenario modeling: optimistic, base, conservative',
-          'Variance tracking: forecast vs. actuals',
-        ],
-        note: 'Projections require at least 3 months of completed job history.',
-      },
-      {
-        title: 'Pipeline',
-        items: [
-          'Open estimates × expected close rate = pipeline value',
-          'Scheduled jobs with revenue attached',
-          'Accepted estimates not yet scheduled',
-          'Seasonal demand pattern overlay',
-        ],
-      },
-      {
-        title: 'Capacity & Demand',
-        items: [
-          'Projected labor hours needed vs. available capacity',
-          'Peak and trough period identification',
-          'Booking lead time trend',
-          'Revenue-per-available-hour capacity ceiling',
-        ],
-      },
-    ]} />
-  );
-}
-
-function ReportsWorkspace() {
-  return (
-    <WorkspacePlaceholder sections={[
-      {
-        title: 'Detailed Revenue Reports',
-        items: [
-          'Invoice-level detail export (all statuses)',
-          'Deposit reconciliation report',
-          'Revenue by period, service, and technician',
-          'Collections aging report (30 / 60 / 90+ days)',
-        ],
-      },
-      {
-        title: 'No-Show & Cancellation Report',
-        items: [
-          'No-show log with client and revenue impact',
-          'Cancellation reason breakdown',
-          'Recovery rate: rescheduled vs. lost',
-          'Cost of no-shows by quarter',
-        ],
-      },
-      {
-        title: 'Financial Exports',
-        items: [
-          'P&L summary export (requires accounting integration)',
-          'Quarterly financial package (PDF)',
-          'Accountant-ready CSV with all line items',
-          'Tax-year revenue summary',
-        ],
-        note: 'P&L and tax exports require a connected accounting integration.',
-      },
-    ]} />
-  );
-}
+// CustomersWorkspace, ForecastingWorkspace, ReportsWorkspace are imported from
+// ../components/revenue/RevenueWorkspaceShells — they replaced placeholder stubs here.
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -1389,21 +1292,21 @@ export default function Revenue() {
       {/* ── CUSTOMERS ─────────────────────────────────────────────────────── */}
       {view === 'customers' && (
         <div id="rov-panel-customers" role="tabpanel" aria-label="Customers">
-          <CustomersWorkspace />
+          <CustomersWorkspace filterStart={filterStart} filterEnd={filterEnd} />
         </div>
       )}
 
       {/* ── FORECASTING ───────────────────────────────────────────────────── */}
       {view === 'forecasting' && (
         <div id="rov-panel-forecasting" role="tabpanel" aria-label="Forecasting">
-          <ForecastingWorkspace />
+          <ForecastingWorkspace filterStart={filterStart} filterEnd={filterEnd} />
         </div>
       )}
 
       {/* ── REPORTS ───────────────────────────────────────────────────────── */}
       {view === 'reports' && (
         <div id="rov-panel-reports" role="tabpanel" aria-label="Reports">
-          <ReportsWorkspace />
+          <ReportsWorkspace filterStart={filterStart} filterEnd={filterEnd} />
         </div>
       )}
 
