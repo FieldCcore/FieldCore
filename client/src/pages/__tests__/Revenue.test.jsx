@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Revenue from '../Revenue';
+import { CHART, CATEGORICAL, varianceColor } from '../../theme/revenueChartTokens';
 
 // Mock the API module
 vi.mock('../../api', () => ({
@@ -461,6 +462,111 @@ describe('Revenue — limitations', () => {
     renderRevenue();
     await waitFor(() => {
       expect(screen.getByText(/Gross profit unavailable/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Chart color tokens ─────────────────────────────────────────────────────────
+
+describe('Revenue — chart color tokens', () => {
+  it('CHART.earnedRevenue is the correct blue', () => {
+    expect(CHART.earnedRevenue).toBe('#2563EB');
+  });
+
+  it('CHART.collectedRevenue is the correct teal', () => {
+    expect(CHART.collectedRevenue).toBe('#0F9D8A');
+  });
+
+  it('CHART.grossProfit is the correct green', () => {
+    expect(CHART.grossProfit).toBe('#16A34A');
+  });
+
+  it('CHART.projectedRevenue is the correct purple', () => {
+    expect(CHART.projectedRevenue).toBe('#7C3AED');
+  });
+
+  it('CATEGORICAL palette has 8 entries', () => {
+    expect(CATEGORICAL).toHaveLength(8);
+  });
+
+  it('varianceColor returns positive color when higher_is_better and value goes up', () => {
+    expect(varianceColor('earnedRevenue', 10)).toBe(CHART.positiveVariance);
+  });
+
+  it('varianceColor returns negative color when higher_is_better and value goes down', () => {
+    expect(varianceColor('earnedRevenue', -5)).toBe(CHART.negativeVariance);
+  });
+
+  it('varianceColor returns positive color when lower_is_better and value goes down', () => {
+    expect(varianceColor('outstandingAR', -8)).toBe(CHART.positiveVariance);
+  });
+
+  it('varianceColor returns neutral color for zero change', () => {
+    expect(varianceColor('earnedRevenue', 0)).toBe(CHART.neutralVariance);
+  });
+
+  it('trend chart metric toggles use earned/collected semantic colors', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getAllByText('Earned Revenue').length > 0);
+    const earnedBtn = screen.getAllByRole('button', { name: /earned revenue/i })[0];
+    expect(earnedBtn).toBeInTheDocument();
+    expect(earnedBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+// ── Invalid Date regression ────────────────────────────────────────────────────
+
+describe('Revenue — trend chart date parsing', () => {
+  it('renders trend bars when period_start is a plain YYYY-MM-DD string', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      // chart renders; date labels appear (Aug 1, Aug 2, Aug 3 from MOCK_TREND)
+      expect(screen.getByRole('img', { name: /revenue trend chart/i })).toBeInTheDocument();
+    });
+  });
+
+  it('renders trend bars when period_start has a full ISO timestamp suffix', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))     return Promise.resolve({
+        data: {
+          current: [
+            { periodStart: '2026-08-01T00:00:00.000Z', earned: 300, collected: 250, jobs: 2 },
+            { periodStart: '2026-08-02T00:00:00.000Z', earned: 400, collected: 350, jobs: 3 },
+          ],
+          comparison: null,
+          interval: 'daily',
+        },
+      });
+      if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown endpoint: ' + url));
+    });
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: /revenue trend chart/i })).toBeInTheDocument();
+    });
+    // "Invalid Date" must not appear anywhere in the rendered output
+    expect(screen.queryByText(/invalid date/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Trend chart empty state ────────────────────────────────────────────────────
+
+describe('Revenue — trend chart empty state', () => {
+  it('shows compact empty state when trend data has no rows', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))     return Promise.resolve({
+        data: { current: [], comparison: null, interval: 'daily' },
+      });
+      if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown endpoint: ' + url));
+    });
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText(/no revenue activity for this period/i)).toBeInTheDocument();
     });
   });
 });

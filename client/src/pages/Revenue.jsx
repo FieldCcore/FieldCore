@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import api from '../api';
 import RevenueKpiCard from '../components/RevenueKpiCard';
+import { CHART } from '../theme/revenueChartTokens';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ const INTERVAL_OPTIONS = [
 ];
 
 const TREND_METRICS = [
-  { key: 'earned',    label: 'Earned Revenue',    color: '#1C2333' },
-  { key: 'collected', label: 'Collected Revenue', color: '#D6B58A' },
+  { key: 'earned',    label: 'Earned Revenue',    color: CHART.earnedRevenue    },
+  { key: 'collected', label: 'Collected Revenue', color: CHART.collectedRevenue },
 ];
 
 // ── Date presets ──────────────────────────────────────────────────────────────
@@ -152,6 +153,19 @@ async function triggerExport(url) {
 
 // ── RevenueTrendChart ─────────────────────────────────────────────────────────
 
+/**
+ * Parse a date value from the API safely.
+ * The pg driver may return DATE columns as full ISO strings
+ * (e.g. '2026-08-01T00:00:00.000Z') — take only the YYYY-MM-DD prefix
+ * to avoid building an invalid compound string like '...ZT00:00:00Z'.
+ */
+function safeIsoDate(raw) {
+  if (raw == null) return null;
+  const s = String(raw);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
 function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
   const [hovered, setHovered] = useState(null);
 
@@ -167,7 +181,11 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
 
   const rows = data?.current || [];
   if (rows.length === 0) return (
-    <div className="rov-trend-empty">No completed revenue-producing jobs in this period.</div>
+    <div className="rov-trend-empty-compact" role="status">
+      <div className="rov-trend-empty-icon" aria-hidden="true">—</div>
+      <div className="rov-trend-empty-msg">No revenue activity for this period.</div>
+      <div className="rov-trend-empty-hint">Try a wider date range or confirm completed jobs exist.</div>
+    </div>
   );
 
   const maxVal = Math.max(
@@ -175,15 +193,33 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
     1
   );
 
-  function periodLabel(iso) {
+  function periodLabel(raw) {
+    const iso = safeIsoDate(raw);
+    if (!iso) return '';
     const d = new Date(iso + 'T00:00:00Z');
+    if (isNaN(d.getTime())) return '';
     if (interval === 'monthly') {
       return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
     }
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
+  function tooltipDate(raw) {
+    const iso = safeIsoDate(raw);
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00Z');
+    if (isNaN(d.getTime())) return '';
+    if (interval === 'monthly') {
+      return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    }
+    if (interval === 'weekly') {
+      return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  }
+
   const barWidth = Math.max(14, Math.min(40, Math.floor(460 / rows.length) - 6));
+  const visibleMetrics = TREND_METRICS.filter(m => activeMetrics.includes(m.key));
 
   return (
     <div className="rov-trend-chart" role="img" aria-label="Revenue trend chart">
@@ -198,18 +234,21 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
           >
             {hovered === i && (
               <div className="rov-trend-tooltip" role="tooltip">
-                <div className="rov-trend-tt-date">{periodLabel(row.periodStart)}</div>
-                {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map(m => (
+                <div className="rov-trend-tt-date">{tooltipDate(row.periodStart)}</div>
+                {visibleMetrics.map(m => (
                   <div key={m.key} className="rov-trend-tt-row">
                     <span className="rov-trend-tt-dot" style={{ background: m.color }} aria-hidden="true" />
-                    <span>{m.label}: {fmtMoney(row[m.key])}</span>
+                    <span className="rov-trend-tt-label">{m.label}</span>
+                    <span className="rov-trend-tt-val">{fmtMoney(row[m.key], false)}</span>
                   </div>
                 ))}
-                {row.jobs > 0 && <div className="rov-trend-tt-jobs">{row.jobs} job{row.jobs !== 1 ? 's' : ''}</div>}
+                {row.jobs > 0 && (
+                  <div className="rov-trend-tt-jobs">{row.jobs} job{row.jobs !== 1 ? 's' : ''}</div>
+                )}
               </div>
             )}
             <div className="rov-trend-bar-group">
-              {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map((m, mi) => {
+              {visibleMetrics.map((m, mi) => {
                 const h = Math.max(3, (parseFloat(row[m.key]) / maxVal) * 100);
                 return (
                   <div
@@ -219,10 +258,10 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
                       height:     `${h}%`,
                       background: m.color,
                       opacity:    hovered !== null && hovered !== i ? 0.45 : 1,
-                      width:      activeMetrics.length > 1 ? `${Math.floor(barWidth / 2) - 1}px` : `${barWidth}px`,
+                      width:      visibleMetrics.length > 1 ? `${Math.floor(barWidth / 2) - 1}px` : `${barWidth}px`,
                       marginLeft: mi === 1 ? '2px' : 0,
                     }}
-                    aria-label={`${m.label}: ${fmtMoney(row[m.key])}`}
+                    aria-label={`${m.label}: ${fmtMoney(row[m.key], false)}`}
                   />
                 );
               })}
@@ -233,7 +272,7 @@ function RevenueTrendChart({ data, loading, error, activeMetrics, interval }) {
       </div>
 
       <div className="rov-trend-legend" role="list" aria-label="Chart legend">
-        {TREND_METRICS.filter(m => activeMetrics.includes(m.key)).map(m => (
+        {visibleMetrics.map(m => (
           <div key={m.key} className="rov-trend-legend-item" role="listitem">
             <span className="rov-trend-legend-dot" style={{ background: m.color }} aria-hidden="true" />
             <span>{m.label}</span>
@@ -1277,6 +1316,9 @@ export default function Revenue() {
                       key={m.key}
                       type="button"
                       className={`rov-metric-btn${activeMetrics.includes(m.key) ? ' rov-metric-btn--active' : ''}`}
+                      style={activeMetrics.includes(m.key)
+                        ? { borderColor: m.color, backgroundColor: m.color + '18' }
+                        : {}}
                       onClick={() => toggleMetric(m.key)}
                       aria-pressed={activeMetrics.includes(m.key)}
                     >

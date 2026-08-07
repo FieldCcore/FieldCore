@@ -465,7 +465,7 @@ async function trendData(accountId, start, end, interval, compStart, compEnd) {
   async function fetchSeries(s, e) {
     const { rows } = await pool.query(
       `SELECT
-         date_trunc($1, g)::date                                                          AS period_start,
+         TO_CHAR(date_trunc($1, g), 'YYYY-MM-DD')                                        AS period_start,
          COALESCE(SUM(j.amount)    FILTER (WHERE j.status = 'complete'), 0)               AS earned,
          COALESCE(SUM(i_paid.amount), 0)                                                  AS collected,
          COUNT(DISTINCT j.id)      FILTER (WHERE j.status = 'complete')                   AS jobs

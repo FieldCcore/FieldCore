@@ -3376,6 +3376,13 @@ body {
   background-size: 200% 100%; animation: rov-shimmer 1.4s infinite; border-radius: 6px;
 }
 .rov-trend-empty { padding: 40px 16px; text-align: center; color: var(--steel); font-size: 13px; }
+.rov-trend-empty-compact {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 4px; padding: 24px 16px; text-align: center;
+}
+.rov-trend-empty-icon { font-size: 18px; color: var(--steel); }
+.rov-trend-empty-msg  { font-size: 13px; font-weight: 600; color: var(--slate); }
+.rov-trend-empty-hint { font-size: 11px; color: var(--steel); }
 .rov-trend-chart { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 10px; }
 .rov-trend-bars  {
   display: flex; align-items: flex-end; gap: 4px; height: 140px;
@@ -3396,6 +3403,8 @@ body {
 }
 .rov-trend-tt-date  { font-weight: 700; margin-bottom: 3px; }
 .rov-trend-tt-row   { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+.rov-trend-tt-label { flex: 1; }
+.rov-trend-tt-val   { font-family: 'DM Mono', monospace; font-weight: 700; }
 .rov-trend-tt-dot   { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .rov-trend-tt-jobs  { font-size: 9px; color: rgba(255,255,255,.6); margin-top: 3px; }
 .rov-trend-legend   { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 4px; }
