@@ -18,6 +18,7 @@ import api from '../../api';
 const MOCK_OVERVIEW = {
   period:          { start: '2026-08-01', end: '2026-08-06' },
   comparisonPeriod: null,
+  // Primary KPI set: 6 metrics (Completion Rate and Technician Utilization NOT included)
   primaryKpis: {
     collectedRevenue: {
       value: 1200, status: 'ok',
@@ -46,16 +47,17 @@ const MOCK_OVERVIEW = {
       calculatedAt: '2026-08-06T10:00:00Z',
       provenance: { formula: 'MTD + future × rate', sources: ['jobs'], note: 'Not AI.' },
     },
-    completionRate: { value: 0.87, pct: 87, status: 'ok', completed: 7, eligible: 8 },
-    revenueAtRisk:  { value: 450, status: 'ok', breakdown: { overdueInvoices: { total: 300, count: 1 }, cancelledJobs: { total: 150, count: 1 }, failedPayments: { total: 0, count: 0 } } },
+    revenueAtRisk: {
+      value: 450, status: 'ok',
+      breakdown: { overdueInvoices: { total: 300, count: 1 }, cancelledJobs: { total: 150, count: 1 }, failedPayments: { total: 0, count: 0 } },
+      provenance: { formula: 'Overdue + cancelled + failed', sources: ['invoices', 'jobs'] },
+    },
   },
+  // Secondary KPI set: 3 metrics only
   secondaryKpis: {
-    averageTicket:         { value: 300, status: 'ok', count: 5, provenance: { formula: 'Earned ÷ jobs', sources: ['jobs'] } },
-    revenuePerLaborHour:   { value: 75,  status: 'ok', hours: 20, basis: 'scheduled_labor_hours', provenance: { formula: 'Earned ÷ scheduled hrs', note: 'Scheduled, not actual.' } },
-    completionRate:        { value: 0.87, pct: 87, status: 'ok', completed: 7, eligible: 8, provenance: { formula: 'Completed ÷ eligible' } },
-    technicianUtilization: { value: null, status: 'unavailable', missingSources: ['availability'], provenance: { formula: 'Committed ÷ capacity', note: 'Not configured.' } },
-    repeatRevenue:         { value: 600, status: 'ok', clientCount: 2, jobCount: 3, provenance: { formula: 'Revenue from returning clients' } },
-    revenueAtRisk:         { value: 450, status: 'ok', provenance: { formula: 'Overdue + cancelled + failed' } },
+    averageTicket:       { value: 300, status: 'ok', count: 5, provenance: { formula: 'Earned ÷ jobs', sources: ['jobs'] } },
+    revenuePerLaborHour: { value: 75, status: 'ok', hours: 20, basis: 'scheduled_labor_hours', provenance: { formula: 'Earned ÷ scheduled hrs', note: 'Scheduled, not actual.' } },
+    repeatRevenue:       { value: 600, status: 'ok', clientCount: 2, jobCount: 3, provenance: { formula: 'Revenue from returning clients' } },
   },
   services: [
     { service: 'Cleaning', jobs: 4, earnedRevenue: 1000, collectedRevenue: 800, avgTicket: 250, grossProfit: null, grossProfitStatus: 'unavailable', margin: null, marginStatus: 'unavailable', laborHours: 8, revenuePerLaborHour: 125, completionRate: 0.9, revenueShare: 66.7 },
@@ -67,8 +69,13 @@ const MOCK_OVERVIEW = {
     { id: 'overdue_ar', text: '$150.00 in overdue invoices require follow-up.', tone: 'critical', route: '/invoices' },
     { id: 'top_service', text: 'Cleaning produced 67% of earned revenue.', tone: 'neutral', route: null },
   ],
-  freshness:   { calculatedAt: '2026-08-06T10:00:00Z', staleAfter: '2026-08-06T10:05:00Z' },
-  limitations: ['Gross profit unavailable.', 'Technician utilization unavailable.'],
+  dataQuality: {
+    state: 'partial', limitationCount: 2,
+    limitations: ['Gross profit unavailable — no direct cost source configured.', 'Revenue per labor hour uses scheduled duration, not recorded time.'],
+    missingSources: ['labor costs', 'material costs'],
+    missingPolicies: [],
+  },
+  freshness: { calculatedAt: '2026-08-06T10:00:00Z', staleAfter: '2026-08-06T10:05:00Z' },
 };
 
 const MOCK_TREND = {
@@ -308,35 +315,28 @@ describe('Revenue — secondary KPI row', () => {
     await waitFor(() => expect(screen.getByText('Revenue per Labor Hour')).toBeInTheDocument());
   });
 
-  it('renders Completion Rate', async () => {
-    renderRevenue();
-    await waitFor(() => expect(screen.getByText('Completion Rate')).toBeInTheDocument());
-  });
-
-  it('renders Technician Utilization as unavailable', async () => {
-    renderRevenue();
-    await waitFor(() => {
-      expect(screen.getByText('Technician Utilization')).toBeInTheDocument();
-      // Multiple cards may show Unavailable; check at least one exists
-      expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
-    });
-  });
-
-  it('does NOT show 0% for Technician Utilization', async () => {
-    renderRevenue();
-    await waitFor(() => screen.getByText('Technician Utilization'));
-    // "0%" should NOT appear as utilization value when status is unavailable
-    // We check Unavailable is shown instead
-    const unavailEls = screen.queryAllByText('Unavailable');
-    expect(unavailEls.length).toBeGreaterThan(0);
-  });
-
   it('renders Repeat Revenue', async () => {
     renderRevenue();
     await waitFor(() => expect(screen.getByText('Repeat Revenue')).toBeInTheDocument());
   });
 
-  it('renders Revenue at Risk', async () => {
+  it('does NOT render Completion Rate in Overview', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getAllByText('Collected Revenue').length > 0);
+    expect(screen.queryByText('Completion Rate')).not.toBeInTheDocument();
+  });
+
+  it('does NOT render Technician Utilization in Overview', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getAllByText('Collected Revenue').length > 0);
+    expect(screen.queryByText('Technician Utilization')).not.toBeInTheDocument();
+  });
+});
+
+// ── Revenue at Risk (primary KPI) ─────────────────────────────────────────────
+
+describe('Revenue — Revenue at Risk as primary KPI', () => {
+  it('renders Revenue at Risk in the primary KPI row', async () => {
     renderRevenue();
     await waitFor(() => expect(screen.getByText('Revenue at Risk')).toBeInTheDocument());
   });
@@ -483,20 +483,28 @@ describe('Revenue — data provenance', () => {
   });
 });
 
-// ── Limitations footer ─────────────────────────────────────────────────────────
+// ── Data Quality indicator ─────────────────────────────────────────────────────
 
-describe('Revenue — limitations', () => {
-  it('shows data limitations section', async () => {
+describe('Revenue — Data Quality indicator', () => {
+  it('shows Data Quality indicator button', async () => {
     renderRevenue();
     await waitFor(() => {
-      expect(screen.getByText('Data limitations')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /data quality/i })).toBeInTheDocument();
     });
   });
 
-  it('shows gross profit limitation note', async () => {
+  it('does NOT show a permanent Data limitations block in the page body', async () => {
     renderRevenue();
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
+    expect(screen.queryByText('Data limitations')).not.toBeInTheDocument();
+  });
+
+  it('shows limitation details when Data Quality button is clicked', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('button', { name: /data quality/i }));
+    fireEvent.click(screen.getByRole('button', { name: /data quality/i }));
     await waitFor(() => {
-      expect(screen.getByText(/Gross profit unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText('Revenue Data Quality')).toBeInTheDocument();
     });
   });
 });

@@ -139,7 +139,7 @@ describe('RevenueKpiCard — comparison delta', () => {
   });
 });
 
-// ── How calculated ─────────────────────────────────────────────────────────────
+// ── How calculated (modal) ────────────────────────────────────────────────────
 
 describe('RevenueKpiCard — How calculated', () => {
   it('shows "How calculated" button when provenance is provided', () => {
@@ -149,63 +149,72 @@ describe('RevenueKpiCard — How calculated', () => {
     expect(screen.getByText('How calculated')).toBeInTheDocument();
   });
 
-  it('does not show panel initially', () => {
+  it('does not show modal content initially', () => {
     render(
       <RevenueKpiCard label="Earned Revenue" value="$1K" status="ok" provenance={PROVENANCE} />
     );
     expect(screen.queryByText(/SUM\(jobs\.amount\)/)).not.toBeInTheDocument();
   });
 
-  it('shows panel after clicking "How calculated"', () => {
+  it('opens modal with formula after clicking "How calculated"', () => {
     render(
       <RevenueKpiCard label="Earned Revenue" value="$1K" status="ok" provenance={PROVENANCE} />
     );
     fireEvent.click(screen.getByText('How calculated'));
     expect(screen.getByText(/SUM\(jobs\.amount\)/)).toBeInTheDocument();
-    expect(screen.getByText('jobs')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('toggles to "Hide" after clicking', () => {
+  it('modal title includes the metric label', () => {
+    render(
+      <RevenueKpiCard label="Earned Revenue" value="$1K" status="ok" provenance={PROVENANCE} />
+    );
+    fireEvent.click(screen.getByText('How calculated'));
+    expect(screen.getByText(/How Earned Revenue Is Calculated/i)).toBeInTheDocument();
+  });
+
+  it('closes modal when × button is clicked', () => {
     render(
       <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} />
     );
     fireEvent.click(screen.getByText('How calculated'));
-    expect(screen.getByText('Hide')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('closes panel on second click', () => {
-    render(
-      <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} />
-    );
-    fireEvent.click(screen.getByText('How calculated'));
-    fireEvent.click(screen.getByText('Hide'));
-    expect(screen.queryByText(/SUM\(jobs\.amount\)/)).not.toBeInTheDocument();
-  });
-
-  it('shows lastCalculated time when provided', () => {
+  it('shows Last Calculated section in modal when calculatedAt is provided', () => {
     const iso = '2026-08-06T10:30:00.000Z';
     render(
       <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} calculatedAt={iso} />
     );
     fireEvent.click(screen.getByText('How calculated'));
-    expect(screen.getByText('Last calculated')).toBeInTheDocument();
+    expect(screen.getByText('Last Calculated')).toBeInTheDocument();
   });
 
-  it('has aria-expanded=false before opening', () => {
+  it('"How calculated" button has aria-haspopup=dialog', () => {
     render(
       <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} />
     );
     const btn = screen.getByText('How calculated');
-    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    expect(btn).toHaveAttribute('aria-haspopup', 'dialog');
   });
 
-  it('has aria-expanded=true after opening', () => {
+  it('modal has role=dialog and aria-modal=true', () => {
     render(
       <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} />
     );
     fireEvent.click(screen.getByText('How calculated'));
-    const btn = screen.getByText('Hide');
-    expect(btn).toHaveAttribute('aria-expanded', 'true');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('does not show "Hide" text — modal uses a × close button', () => {
+    render(
+      <RevenueKpiCard label="Test" value="$100" status="ok" provenance={PROVENANCE} />
+    );
+    fireEvent.click(screen.getByText('How calculated'));
+    expect(screen.queryByText('Hide')).not.toBeInTheDocument();
   });
 });
 

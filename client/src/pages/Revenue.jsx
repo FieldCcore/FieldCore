@@ -870,6 +870,88 @@ function WorkspacePlaceholder({ sections }) {
 // CustomersWorkspace, ForecastingWorkspace, ReportsWorkspace are imported from
 // ../components/revenue/RevenueWorkspaceShells — they replaced placeholder stubs here.
 
+// ── DataQualityIndicator ──────────────────────────────────────────────────────
+
+function DataQualityIndicator({ dataQuality, loading }) {
+  const [open, setOpen] = useState(false);
+  if (loading || !dataQuality) return null;
+  const { state, limitationCount, limitations, missingSources } = dataQuality;
+  const color = state === 'complete' ? 'var(--green)' : state === 'partial' ? 'var(--yellow-dk, #B45309)' : 'var(--red)';
+  const label = state === 'complete'
+    ? 'Complete'
+    : `${limitationCount} Limitation${limitationCount !== 1 ? 's' : ''}`;
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        type="button"
+        className="rov-dq-btn"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        aria-label={`Data quality: ${label}`}
+      >
+        <span className="rov-dq-dot" style={{ background: color }} aria-hidden="true" />
+        <span className="rov-dq-label">Data Quality: {label}</span>
+      </button>
+      {open && (
+        <div className="rov-dq-panel" role="status" aria-label="Data quality details">
+          <div className="rov-dq-panel-title">Revenue Data Quality</div>
+          {limitations?.length > 0 && (
+            <ul className="rov-dq-list">
+              {limitations.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          )}
+          {missingSources?.length > 0 && (
+            <div className="rov-dq-sources">Missing sources: {missingSources.join(', ')}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── OpportunitiesStrip ────────────────────────────────────────────────────────
+
+function OpportunitiesStrip({ opportunities, risk, loading }) {
+  const navigate = useNavigate();
+  if (loading) return null;
+
+  const items = [
+    ...(risk         || []).map(r => ({ ...r, _kind: 'risk' })),
+    ...(opportunities || []).map(o => ({ ...o, _kind: 'opp'  })),
+  ].slice(0, 3);
+
+  if (items.length === 0) return (
+    <div className="rov-opps-strip rov-opps-strip--empty">
+      No material opportunities identified for this period.
+    </div>
+  );
+
+  return (
+    <div className="rov-opps-strip" aria-label="Revenue opportunities">
+      <div className="rov-opps-title">Revenue Opportunities</div>
+      <div className="rov-opps-items">
+        {items.map((item, i) => (
+          <div key={i} className={`rov-opps-item rov-opps-item--${item._kind}`}>
+            {item.value != null && (
+              <span className="rov-opps-amount">{fmtMoney(item.value)}</span>
+            )}
+            <span className="rov-opps-reason">{item.label}</span>
+            {item.route && (
+              <button
+                type="button"
+                className="rov-opps-action"
+                onClick={() => navigate(item.route)}
+              >
+                {item.action || 'View'} →
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Revenue() {
@@ -937,8 +1019,10 @@ export default function Revenue() {
 
   const pk = overview?.primaryKpis   || {};
   const sk = overview?.secondaryKpis || {};
-  const services     = overview?.services || [];
-  const insights     = overview?.insights || [];
+  const services     = overview?.services     || [];
+  const insights     = overview?.insights     || [];
+  const opportunities = overview?.opportunities || [];
+  const dataQuality  = overview?.dataQuality  || null;
   const calculatedAt = overview?.freshness?.calculatedAt;
   const compBasis    = compLabel(comparison);
 
@@ -1036,6 +1120,7 @@ export default function Revenue() {
           <Download size={13} aria-hidden="true" />
           Export
         </button>
+        <DataQualityIndicator dataQuality={dataQuality} loading={overviewLoading} />
       </div>
 
       {/* ── OVERVIEW ──────────────────────────────────────────────────────── */}
@@ -1119,9 +1204,21 @@ export default function Revenue() {
                   : undefined}
               />
             </div>
+
+            <div role="listitem">
+              <RevenueKpiCard
+                label="Revenue at Risk"
+                value={pk.revenueAtRisk?.status === 'ok' ? fmtMoney(pk.revenueAtRisk.value) : null}
+                status={pk.revenueAtRisk?.status || 'loading'}
+                calculatedAt={calculatedAt}
+                provenance={pk.revenueAtRisk?.provenance}
+                isLoading={overviewLoading}
+                size="primary"
+              />
+            </div>
           </div>
 
-          {/* Secondary KPIs */}
+          {/* Secondary KPIs — 3 cards: Average Ticket, Revenue per Labor Hour, Repeat Revenue */}
           <div className="rov-kpi-row rov-kpi-row--secondary" role="list" aria-label="Secondary revenue KPIs">
             <div role="listitem">
               <RevenueKpiCard
@@ -1144,34 +1241,7 @@ export default function Revenue() {
                 provenance={sk.revenuePerLaborHour?.provenance}
                 isLoading={overviewLoading}
                 size="secondary"
-                note={sk.revenuePerLaborHour?.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined}
-              />
-            </div>
-
-            <div role="listitem">
-              <RevenueKpiCard
-                label="Completion Rate"
-                value={sk.completionRate?.status === 'ok' ? fmtPct(sk.completionRate.pct) : null}
-                status={sk.completionRate?.status || 'loading'}
-                calculatedAt={calculatedAt}
-                provenance={sk.completionRate?.provenance}
-                isLoading={overviewLoading}
-                size="secondary"
-                note={sk.completionRate?.eligible > 0
-                  ? `${sk.completionRate.completed} of ${sk.completionRate.eligible} eligible`
-                  : undefined}
-              />
-            </div>
-
-            <div role="listitem">
-              <RevenueKpiCard
-                label="Technician Utilization"
-                value={null}
-                status={sk.technicianUtilization?.status || 'loading'}
-                calculatedAt={calculatedAt}
-                provenance={sk.technicianUtilization?.provenance}
-                isLoading={overviewLoading}
-                size="secondary"
+                note={sk.revenuePerLaborHour?.basis === 'scheduled_labor_hours' ? 'Using scheduled hrs' : undefined}
               />
             </div>
 
@@ -1187,18 +1257,6 @@ export default function Revenue() {
                 note={sk.repeatRevenue?.clientCount > 0 ? `${sk.repeatRevenue.clientCount} returning client(s)` : undefined}
               />
             </div>
-
-            <div role="listitem">
-              <RevenueKpiCard
-                label="Revenue at Risk"
-                value={sk.revenueAtRisk?.status === 'ok' ? fmtMoney(sk.revenueAtRisk.value) : null}
-                status={sk.revenueAtRisk?.status || 'loading'}
-                calculatedAt={calculatedAt}
-                provenance={sk.revenueAtRisk?.provenance}
-                isLoading={overviewLoading}
-                size="secondary"
-              />
-            </div>
           </div>
 
           {/* Error banner */}
@@ -1208,7 +1266,7 @@ export default function Revenue() {
             </div>
           )}
 
-          {/* Trend + Insight */}
+          {/* Trend + Executive Context (Revenue Insight + Top 5 Services) */}
           <div className="rov-trend-section">
             <div className="rov-trend-main dash-card">
               <div className="dash-ch">
@@ -1247,31 +1305,22 @@ export default function Revenue() {
                 interval={interval}
               />
             </div>
-            <RevenueInsightPanel insights={insights} loading={overviewLoading} />
-          </div>
-
-          {/* Bottom: Top 5 Services + Risk & Opportunities */}
-          <div className="rov-overview-bottom">
-            <Top5Services
-              services={services}
-              loading={overviewLoading}
-              onViewAll={() => switchView('operations')}
-            />
-            <RiskOpportunities
-              data={{ risk: overview?.risk, opportunities: overview?.opportunities }}
-              loading={overviewLoading}
-            />
-          </div>
-
-          {/* Limitations footer */}
-          {overview?.limitations?.length > 0 && (
-            <div className="rov-limitations" role="note" aria-label="Data limitations">
-              <div className="rov-limitations-header">Data limitations</div>
-              <ul className="rov-limitations-list">
-                {overview.limitations.map((l, i) => <li key={i}>{l}</li>)}
-              </ul>
+            <div className="rov-exec-context">
+              <RevenueInsightPanel insights={insights} loading={overviewLoading} />
+              <Top5Services
+                services={services}
+                loading={overviewLoading}
+                onViewAll={() => switchView('operations')}
+              />
             </div>
-          )}
+          </div>
+
+          {/* Opportunities strip */}
+          <OpportunitiesStrip
+            opportunities={opportunities}
+            risk={overview?.risk}
+            loading={overviewLoading}
+          />
         </div>
       )}
 

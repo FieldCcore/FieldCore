@@ -704,7 +704,7 @@ async function opportunityItems(accountId) {
 
 // ── Rule-based insights ───────────────────────────────────────────────────────
 
-function buildInsights(primaryKpis, compPrimaryKpis, services, risk) {
+function buildInsights(primaryKpis, compPrimaryKpis, services, risk, compRateKpi) {
   const candidates = [];
 
   // Period-over-period earned revenue change
@@ -755,11 +755,11 @@ function buildInsights(primaryKpis, compPrimaryKpis, services, risk) {
     }
   }
 
-  // Low completion rate
-  if (primaryKpis.completionRate?.status === 'ok' && primaryKpis.completionRate.value < 0.75) {
+  // Low completion rate (uses internal compRateKpi — not exposed in Overview KPI set)
+  if (compRateKpi?.status === 'ok' && compRateKpi.value < 0.75) {
     candidates.push({
       id:       'low_completion',
-      text:     `Completion rate is ${Math.round(primaryKpis.completionRate.pct)}% — cancellations may be reducing earned revenue.`,
+      text:     `Completion rate is ${Math.round(compRateKpi.pct)}% — cancellations may be reducing earned revenue.`,
       tone:     'warning',
       route:    null,
       priority: 25,
@@ -845,37 +845,43 @@ async function getOverview(accountId, { start, end, comparison }) {
     };
   }
 
+  // Approved primary KPI set: 6 metrics
   const primaryKpis = {
-    collectedRevenue: { ...cr, comparison: compPrimary ? buildDelta(cr.value, compPrimary.collectedRevenue.value) : null },
-    earnedRevenue:    { ...ev, comparison: compPrimary ? buildDelta(ev.value, compPrimary.earnedRevenue.value)    : null },
-    grossProfit:      gp,
-    outstandingAr:    ar,
+    collectedRevenue:  { ...cr, comparison: compPrimary ? buildDelta(cr.value, compPrimary.collectedRevenue.value) : null },
+    earnedRevenue:     { ...ev, comparison: compPrimary ? buildDelta(ev.value, compPrimary.earnedRevenue.value)    : null },
+    grossProfit:       gp,
+    outstandingAr:     ar,
     projectedMonthEnd: proj,
-    // completionRate accessible for insights
-    completionRate:   compRate,
-    revenueAtRisk:    rar,
+    revenueAtRisk:     rar,
   };
 
+  // Approved secondary KPI set: 3 metrics
+  // Completion Rate and Technician Utilization belong to Operations workspace.
   const secondaryKpis = {
-    averageTicket:          at,
-    revenuePerLaborHour:    rplh,
-    completionRate:         compRate,
-    technicianUtilization:  tu,
-    repeatRevenue:          rr,
-    revenueAtRisk:          rar,
+    averageTicket:       at,
+    revenuePerLaborHour: rplh,
+    repeatRevenue:       rr,
   };
 
-  const insights = buildInsights(primaryKpis, compPrimary, services, risk);
+  // compRate is used internally for insights only — not exposed in KPI sets
+  const insights = buildInsights(primaryKpis, compPrimary, services, risk, compRate);
 
   const limitations = [
     'Gross profit unavailable — no direct cost source configured.',
-    'Technician utilization unavailable — workforce availability not configured.',
     'Revenue per labor hour uses scheduled duration, not recorded time.',
     'Period boundaries are UTC-based (tenant timezone support in Phase 2).',
   ];
 
+  const dataQuality = {
+    state: gp.status === 'unavailable' || rplh.basis === 'scheduled_labor_hours' ? 'partial' : 'complete',
+    limitationCount: limitations.length,
+    limitations,
+    missingSources:  gp.missingSources || [],
+    missingPolicies: [],
+  };
+
   return {
-    period:          { start: s, end: e },
+    period:           { start: s, end: e },
     comparisonPeriod: compRange ? { ...compRange, type: comparison } : null,
     primaryKpis,
     secondaryKpis,
@@ -883,11 +889,11 @@ async function getOverview(accountId, { start, end, comparison }) {
     risk,
     opportunities: opps,
     insights,
+    dataQuality,
     freshness: {
       calculatedAt,
       staleAfter: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     },
-    limitations,
   };
 }
 

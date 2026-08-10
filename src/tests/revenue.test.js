@@ -429,13 +429,14 @@ describe('GET /api/revenue/overview — response shape', () => {
     expect(res.body.comparisonPeriod.type).toBe('previous_month');
   });
 
-  it('has five primary KPIs', () => {
+  it('has six primary KPIs', () => {
     const pk = res.body.primaryKpis;
     expect(pk).toHaveProperty('collectedRevenue');
     expect(pk).toHaveProperty('earnedRevenue');
     expect(pk).toHaveProperty('grossProfit');
     expect(pk).toHaveProperty('outstandingAr');
     expect(pk).toHaveProperty('projectedMonthEnd');
+    expect(pk).toHaveProperty('revenueAtRisk');
   });
 
   it('gross profit is unavailable', () => {
@@ -443,18 +444,14 @@ describe('GET /api/revenue/overview — response shape', () => {
     expect(res.body.primaryKpis.grossProfit.value).toBeNull();
   });
 
-  it('has six secondary KPIs', () => {
+  it('has three secondary KPIs', () => {
     const sk = res.body.secondaryKpis;
     expect(sk).toHaveProperty('averageTicket');
     expect(sk).toHaveProperty('revenuePerLaborHour');
-    expect(sk).toHaveProperty('completionRate');
-    expect(sk).toHaveProperty('technicianUtilization');
     expect(sk).toHaveProperty('repeatRevenue');
-    expect(sk).toHaveProperty('revenueAtRisk');
-  });
-
-  it('technician utilization is unavailable', () => {
-    expect(res.body.secondaryKpis.technicianUtilization.status).toBe('unavailable');
+    expect(sk).not.toHaveProperty('completionRate');
+    expect(sk).not.toHaveProperty('technicianUtilization');
+    expect(sk).not.toHaveProperty('revenueAtRisk');
   });
 
   it('has freshness', () => {
@@ -462,9 +459,10 @@ describe('GET /api/revenue/overview — response shape', () => {
     expect(res.body.freshness).toHaveProperty('staleAfter');
   });
 
-  it('has limitations array', () => {
-    expect(Array.isArray(res.body.limitations)).toBe(true);
-    expect(res.body.limitations.length).toBeGreaterThan(0);
+  it('has dataQuality with limitations', () => {
+    expect(res.body.dataQuality).toBeDefined();
+    expect(Array.isArray(res.body.dataQuality.limitations)).toBe(true);
+    expect(res.body.dataQuality.limitations.length).toBeGreaterThan(0);
   });
 
   it('has insights (max 3)', () => {
