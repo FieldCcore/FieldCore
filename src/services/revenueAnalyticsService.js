@@ -702,6 +702,48 @@ async function opportunityItems(accountId) {
   return items;
 }
 
+// ── Structured data limitations ───────────────────────────────────────────────
+
+function buildDataLimitations({ gp, rplh }) {
+  const items = [];
+
+  if (gp.status === 'unavailable') {
+    items.push({
+      code:            'gross_profit_no_source',
+      severity:        'warning',
+      title:           'Gross Profit Unavailable',
+      description:     'No direct cost source is connected — COGS data is required to calculate profit.',
+      metricKeys:      ['grossProfit'],
+      source:          'cost_source',
+      actionAvailable: false,
+    });
+  }
+
+  if (rplh.basis === 'scheduled_labor_hours') {
+    items.push({
+      code:            'rev_per_hr_scheduled',
+      severity:        'info',
+      title:           'Revenue / Hr Uses Scheduled Duration',
+      description:     'Actual time tracking is not connected. Calculated from scheduled job duration.',
+      metricKeys:      ['revenuePerLaborHour'],
+      source:          'time_tracking',
+      actionAvailable: false,
+    });
+  }
+
+  items.push({
+    code:            'utc_period_boundaries',
+    severity:        'info',
+    title:           'Period Boundaries Are UTC',
+    description:     'All date ranges are calculated in UTC. Tenant timezone support is planned.',
+    metricKeys:      [],
+    source:          'configuration',
+    actionAvailable: false,
+  });
+
+  return items;
+}
+
 // ── Rule-based insights ───────────────────────────────────────────────────────
 
 function buildInsights(primaryKpis, compPrimaryKpis, services, risk, compRateKpi) {
@@ -866,11 +908,7 @@ async function getOverview(accountId, { start, end, comparison }) {
   // compRate is used internally for insights only — not exposed in KPI sets
   const insights = buildInsights(primaryKpis, compPrimary, services, risk, compRate);
 
-  const limitations = [
-    'Gross profit unavailable — no direct cost source configured.',
-    'Revenue per labor hour uses scheduled duration, not recorded time.',
-    'Period boundaries are UTC-based (tenant timezone support in Phase 2).',
-  ];
+  const limitations = buildDataLimitations({ gp, rplh });
 
   const dataQuality = {
     state: gp.status === 'unavailable' || rplh.basis === 'scheduled_labor_hours' ? 'partial' : 'complete',

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Download } from 'lucide-react';
+import { Download, ChevronDown } from 'lucide-react';
 import api from '../api';
 import RevenueKpiCard from '../components/RevenueKpiCard';
 import { CHART } from '../theme/revenueChartTokens';
@@ -154,6 +154,94 @@ async function triggerExport(url) {
   } catch {
     alert('Export failed. Please try again.');
   }
+}
+
+// ── FieldCoreSelect ───────────────────────────────────────────────────────────
+
+function FieldCoreSelect({ options, value, onChange, label }) {
+  const [open, setOpen] = useState(false);
+  const [focusIdx, setFocusIdx] = useState(-1);
+  const containerRef = useRef(null);
+  const triggerRef   = useRef(null);
+
+  const current = options.find(o => o.value === value) || options[0];
+
+  function close() {
+    setOpen(false);
+    setFocusIdx(-1);
+    triggerRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function onOut(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) close();
+    }
+    document.addEventListener('mousedown', onOut);
+    return () => document.removeEventListener('mousedown', onOut);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function handleKey(e) {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setOpen(true);
+        setFocusIdx(options.findIndex(o => o.value === value));
+      }
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setFocusIdx(i => Math.min(i + 1, options.length - 1)); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); setFocusIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (focusIdx >= 0 && options[focusIdx]) { onChange(options[focusIdx].value); close(); }
+    }
+    else if (e.key === 'Tab') { close(); }
+  }
+
+  return (
+    <div ref={containerRef} className="fc-select-wrap">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="fc-select-trigger"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          if (!open) setFocusIdx(options.findIndex(o => o.value === value));
+          setOpen(v => !v);
+        }}
+        onKeyDown={handleKey}
+      >
+        {current.label}
+        <ChevronDown size={11} className="fc-select-chevron" aria-hidden="true" />
+      </button>
+      {open && (
+        <div role="listbox" className="fc-select-menu" aria-label={label} onKeyDown={handleKey}>
+          {options.map((opt, i) => (
+            <button
+              key={opt.value}
+              role="option"
+              type="button"
+              tabIndex={i === focusIdx ? 0 : -1}
+              className={[
+                'fc-select-option',
+                opt.value === value    ? 'fc-select-option--active'  : '',
+                i         === focusIdx ? 'fc-select-option--focused' : '',
+              ].filter(Boolean).join(' ')}
+              aria-selected={opt.value === value}
+              onClick={() => { onChange(opt.value); close(); }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── RevenueTrendChart ─────────────────────────────────────────────────────────
@@ -561,49 +649,92 @@ function RiskOpportunities({ data, loading }) {
 
 function Top5Services({ services, loading, onViewAll }) {
   if (loading) return (
-    <div className="dash-card" style={{ padding: 18 }}>
-      <div className="rov-table-skeleton" style={{ height: 80 }} aria-label="Loading top services" />
+    <div className="rov-top5-card dash-card">
+      <div className="rov-top5-header">
+        <span className="rov-top5-title">Top 5 Services</span>
+      </div>
+      <div className="rov-top5-skeleton" aria-label="Loading top services" />
     </div>
   );
 
   const rows = [...(services || [])].sort((a, b) => b.earnedRevenue - a.earnedRevenue).slice(0, 5);
 
   return (
-    <div className="dash-card" style={{ padding: '16px 18px' }}>
+    <div className="rov-top5-card dash-card">
       <div className="rov-top5-header">
         <span className="rov-top5-title">Top 5 Services</span>
+      </div>
+      <div className="rov-top5-body">
+        {rows.length === 0 ? (
+          <div className="rov-top5-empty">No service revenue in this period.</div>
+        ) : (
+          <table className="rov-top5-table" aria-label="Top 5 services by earned revenue">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Revenue</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s, i) => (
+                <tr key={i}>
+                  <td className="rov-top5-td-service">{s.service}</td>
+                  <td className="rov-top5-td-rev"><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
+                  <td className="rov-top5-td-share">{s.revenueShare.toFixed(0)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <div className="rov-top5-footer">
         <button type="button" className="rov-ws-cta" onClick={onViewAll}>
-          View All →
+          View All Services →
         </button>
       </div>
-      {rows.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--steel)', padding: '8px 0' }}>
-          No service data for this period.
-        </div>
-      ) : (
-        <table className="rov-top5-table" aria-label="Top 5 services by earned revenue">
-          <thead>
-            <tr>
-              <th>Service</th>
-              <th>Jobs</th>
-              <th>Earned</th>
-              <th>Avg Ticket</th>
-              <th>Share</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s, i) => (
-              <tr key={i}>
-                <td>{s.service}</td>
-                <td style={{ color: 'var(--slate)' }}>{s.jobs}</td>
-                <td><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
-                <td>{s.avgTicket != null ? fmtMoney(s.avgTicket) : '—'}</td>
-                <td style={{ color: 'var(--slate)' }}>{s.revenueShare.toFixed(0)}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+    </div>
+  );
+}
+
+// ── DataLimitationsPanel ──────────────────────────────────────────────────────
+
+function DataLimitationsPanel({ dataQuality, loading }) {
+  if (loading || !dataQuality?.limitations?.length) return null;
+
+  const { limitations } = dataQuality;
+
+  const SEVERITY_COLOR = {
+    warning:  'var(--yellow-dk, #B45309)',
+    critical: '#DC2626',
+    info:     'var(--steel)',
+  };
+
+  function limText(lim) {
+    if (typeof lim === 'string') return { title: null, desc: lim, severity: 'info' };
+    return { title: lim.title, desc: lim.description, severity: lim.severity || 'info' };
+  }
+
+  return (
+    <div className="rov-lim-panel" role="note" aria-label="Data limitations">
+      <div className="rov-lim-panel-title">Data Limitations</div>
+      <ul className="rov-lim-panel-list">
+        {limitations.slice(0, 5).map((lim, i) => {
+          const { title, desc, severity } = limText(lim);
+          return (
+            <li key={lim.code || i} className="rov-lim-panel-item">
+              <span
+                className="rov-lim-panel-dot"
+                style={{ background: SEVERITY_COLOR[severity] || SEVERITY_COLOR.info }}
+                aria-hidden="true"
+              />
+              <span className="rov-lim-panel-text">
+                {title && <strong>{title}.</strong>}{title ? ' ' : ''}{desc}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -897,7 +1028,9 @@ function DataQualityIndicator({ dataQuality, loading }) {
           <div className="rov-dq-panel-title">Revenue Data Quality</div>
           {limitations?.length > 0 && (
             <ul className="rov-dq-list">
-              {limitations.map((l, i) => <li key={i}>{l}</li>)}
+              {limitations.map((l, i) => (
+                <li key={i}>{typeof l === 'string' ? l : (l.description || l.title)}</li>
+              ))}
             </ul>
           )}
           {missingSources?.length > 0 && (
@@ -1287,14 +1420,12 @@ export default function Revenue() {
                       {m.label}
                     </button>
                   ))}
-                  <select
-                    className="rov-filter-select rov-filter-select--sm"
+                  <FieldCoreSelect
+                    options={INTERVAL_OPTIONS}
                     value={interval}
-                    onChange={e => applyInterval(e.target.value)}
-                    aria-label="Chart interval"
-                  >
-                    {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                    onChange={applyInterval}
+                    label="Chart interval"
+                  />
                 </div>
               </div>
               <RevenueTrendChart
@@ -1314,6 +1445,9 @@ export default function Revenue() {
               />
             </div>
           </div>
+
+          {/* Data Limitations — full-width, below chart row */}
+          <DataLimitationsPanel dataQuality={dataQuality} loading={overviewLoading} />
 
           {/* Opportunities strip */}
           <OpportunitiesStrip

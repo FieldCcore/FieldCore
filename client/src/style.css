@@ -3280,6 +3280,36 @@ body {
 }
 .rov-filter-select--sm { font-size: 11px; padding: 4px 6px; }
 
+/* FieldCore custom select */
+.fc-select-wrap    { position: relative; }
+.fc-select-trigger {
+  display: flex; align-items: center; gap: 5px;
+  background: #fff; border: 1px solid var(--lightgray); border-radius: 6px;
+  padding: 4px 8px; font-size: 11px; font-family: 'Inter', sans-serif;
+  color: var(--navy); font-weight: 500; cursor: pointer; white-space: nowrap;
+  outline: none; transition: border-color .12s;
+}
+.fc-select-trigger:hover                  { border-color: var(--slate); }
+.fc-select-trigger:focus-visible          { outline: 2px solid var(--sand); outline-offset: 2px; }
+.fc-select-trigger[aria-expanded="true"]  { border-color: var(--navy); }
+.fc-select-chevron { color: var(--steel); flex-shrink: 0; }
+.fc-select-menu {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  background: #fff; border: 1px solid var(--lightgray); border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.10); z-index: 500;
+  min-width: 110px; padding: 4px 0; overflow: hidden;
+}
+.fc-select-option {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 14px; font-size: 12px; font-family: 'Inter', sans-serif;
+  color: var(--navy); background: none; border: none; cursor: pointer;
+  outline: none; transition: background .08s;
+}
+.fc-select-option:hover                                    { background: var(--offwhite); }
+.fc-select-option--active                                  { font-weight: 700; background: rgba(214,181,138,0.15); }
+.fc-select-option--focused                                 { background: var(--offwhite); }
+.fc-select-option--active.fc-select-option--focused        { background: rgba(214,181,138,0.22); }
+
 /* Data quality indicator */
 .rov-dq-btn {
   display: flex; align-items: center; gap: 5px; flex-shrink: 0;
@@ -3304,7 +3334,7 @@ body {
 /* KPI rows */
 .rov-kpi-row { display: grid; gap: 14px; }
 .rov-kpi-row--primary   { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 18px; }
-.rov-kpi-row--secondary { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 32px; }
+.rov-kpi-row--secondary { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 22px; }
 
 /* KPI card */
 .rov-kpi-card {
@@ -3423,11 +3453,11 @@ body {
 
 /* Trend + Executive Context section */
 .rov-trend-section {
-  display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start;
-  margin-bottom: 14px;
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 380px); gap: 14px;
+  align-items: stretch; margin-bottom: 22px;
 }
 .rov-trend-main { min-width: 0; }
-.rov-exec-context { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rov-exec-context { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-width: 0; }
 
 /* Trend chart */
 .rov-trend-loading { padding: 32px; }
@@ -3581,13 +3611,34 @@ body {
   display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;
 }
 
-/* Top 5 Services (compact) */
-.rov-top5-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+/* Top 5 Services */
+.rov-top5-card {
+  display: flex; flex-direction: column; height: 100%;
+  padding: 16px 18px !important;
+}
+.rov-top5-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px; flex-shrink: 0;
+}
 .rov-top5-title {
   font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .07em; color: var(--steel);
 }
-.rov-top5-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rov-top5-body { flex: 1; min-height: 0; overflow: hidden; }
+.rov-top5-footer {
+  padding-top: 10px; margin-top: auto; flex-shrink: 0;
+  border-top: 1px solid var(--lightgray);
+}
+.rov-top5-skeleton {
+  flex: 1; border-radius: 6px;
+  background: linear-gradient(90deg, var(--lightgray) 25%, var(--offwhite) 50%, var(--lightgray) 75%);
+  background-size: 200% 100%; animation: rov-shimmer 1.4s infinite;
+  min-height: 180px;
+}
+.rov-top5-empty { font-size: 12px; color: var(--steel); padding: 20px 0; }
+.rov-top5-table {
+  width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed;
+}
 .rov-top5-table th {
   font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .05em; color: var(--steel);
@@ -3595,10 +3646,13 @@ body {
 }
 .rov-top5-table th:first-child { text-align: left; padding-left: 0; }
 .rov-top5-table td {
-  padding: 6px 8px; border-top: 1px solid var(--lightgray);
-  color: var(--navy); text-align: right;
+  padding: 8px 8px; border-top: 1px solid var(--lightgray);
+  color: var(--navy); text-align: right; height: 36px;
 }
-.rov-top5-table td:first-child { text-align: left; font-weight: 600; padding-left: 0; }
+.rov-top5-td-service { text-align: left !important; font-weight: 600; padding-left: 0 !important;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rov-top5-td-rev  { font-family: 'DM Serif Display', serif; }
+.rov-top5-td-share { color: var(--slate) !important; width: 48px; }
 .rov-ws-cta {
   background: none; border: none; cursor: pointer; padding: 0;
   font-size: 11px; color: var(--navy); font-weight: 600;
@@ -3610,6 +3664,28 @@ body {
 
 /* Risk section — vertical stack */
 .rov-risk-section { display: flex; flex-direction: column; gap: 14px; }
+
+/* Data Limitations Panel (full-width, below chart row) */
+.rov-lim-panel {
+  background: var(--offwhite); border: 1px solid var(--lightgray); border-radius: 10px;
+  padding: 12px 18px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rov-lim-panel-title {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--steel);
+}
+.rov-lim-panel-list {
+  margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px;
+}
+.rov-lim-panel-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 11px; color: var(--slate); line-height: 1.5;
+}
+.rov-lim-panel-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+}
+.rov-lim-panel-text strong { color: var(--navy); }
 
 /* Opportunities strip */
 .rov-opps-strip {
@@ -3727,7 +3803,8 @@ body {
 }
 @media (max-width: 900px) {
   .rov-trend-section    { grid-template-columns: 1fr; }
-  .rov-exec-context     { flex-direction: row; flex-wrap: wrap; }
+  .rov-exec-context     { grid-template-rows: auto auto; }
+  .rov-top5-card        { height: auto; }
   .rov-fin-integration-cards { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {

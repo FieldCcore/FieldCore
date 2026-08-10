@@ -71,7 +71,14 @@ const MOCK_OVERVIEW = {
   ],
   dataQuality: {
     state: 'partial', limitationCount: 2,
-    limitations: ['Gross profit unavailable — no direct cost source configured.', 'Revenue per labor hour uses scheduled duration, not recorded time.'],
+    limitations: [
+      { code: 'gross_profit_no_source', severity: 'warning', title: 'Gross Profit Unavailable',
+        description: 'No direct cost source is connected — COGS data is required to calculate profit.',
+        metricKeys: ['grossProfit'], source: 'cost_source', actionAvailable: false },
+      { code: 'rev_per_hr_scheduled', severity: 'info', title: 'Revenue / Hr Uses Scheduled Duration',
+        description: 'Actual time tracking is not connected. Calculated from scheduled job duration.',
+        metricKeys: ['revenuePerLaborHour'], source: 'time_tracking', actionAvailable: false },
+    ],
     missingSources: ['labor costs', 'material costs'],
     missingPolicies: [],
   },
@@ -493,7 +500,7 @@ describe('Revenue — Data Quality indicator', () => {
     });
   });
 
-  it('does NOT show a permanent Data limitations block in the page body', async () => {
+  it('does NOT show old lowercase "Data limitations" footer block', async () => {
     renderRevenue();
     await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.queryByText('Data limitations')).not.toBeInTheDocument();
@@ -506,6 +513,157 @@ describe('Revenue — Data Quality indicator', () => {
     await waitFor(() => {
       expect(screen.getByText('Revenue Data Quality')).toBeInTheDocument();
     });
+  });
+});
+
+// ── Data Limitations panel ────────────────────────────────────────────────────
+
+describe('Revenue — Data Limitations panel', () => {
+  it('renders Data Limitations panel in Overview', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText('Data Limitations')).toBeInTheDocument();
+    });
+  });
+
+  it('shows limitation titles from provenance data', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText(/Gross Profit Unavailable/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows limitation descriptions from provenance data', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText(/No direct cost source/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows second limitation from structured provenance', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText(/Revenue \/ Hr Uses Scheduled Duration/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Data Limitations panel uses provenance data, not hardcoded text', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByText('Data Limitations'));
+    // Verify the limitation code from MOCK_OVERVIEW fixture appears via structured data
+    expect(screen.getByText(/COGS data is required/i)).toBeInTheDocument();
+  });
+});
+
+// ── FieldCore custom interval selector ────────────────────────────────────────
+
+describe('Revenue — chart interval selector', () => {
+  it('renders interval selector with FieldCore custom control', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Chart interval')).toBeInTheDocument();
+    });
+  });
+
+  it('interval selector is a button, not a native select', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByLabelText('Chart interval'));
+    const el = screen.getByLabelText('Chart interval');
+    expect(el.tagName).toBe('BUTTON');
+  });
+
+  it('interval selector shows current selection label', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByLabelText('Chart interval'));
+    const trigger = screen.getByLabelText('Chart interval');
+    expect(trigger).toHaveTextContent(/Daily|Weekly|Monthly/i);
+  });
+
+  it('interval selector opens menu on click', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByLabelText('Chart interval'));
+    fireEvent.click(screen.getByLabelText('Chart interval'));
+    await waitFor(() => {
+      expect(screen.getByRole('listbox', { name: 'Chart interval' })).toBeInTheDocument();
+    });
+  });
+
+  it('interval menu contains Daily, Weekly, Monthly options', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByLabelText('Chart interval'));
+    fireEvent.click(screen.getByLabelText('Chart interval'));
+    await waitFor(() => screen.getByRole('listbox'));
+    expect(screen.getByRole('option', { name: 'Daily' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Weekly' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Monthly' })).toBeInTheDocument();
+  });
+
+  it('interval menu closes on Escape', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByLabelText('Chart interval'));
+    const trigger = screen.getByLabelText('Chart interval');
+    fireEvent.click(trigger);
+    await waitFor(() => screen.getByRole('listbox'));
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
+});
+
+// ── Top 5 Services sizing ─────────────────────────────────────────────────────
+
+describe('Revenue — Top 5 Services', () => {
+  it('renders Top 5 Services panel in Overview', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText('Top 5 Services')).toBeInTheDocument();
+    });
+  });
+
+  it('shows service names from overview data', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText('Cleaning')).toBeInTheDocument();
+      expect(screen.getByText('Repair')).toBeInTheDocument();
+    });
+  });
+
+  it('shows View All Services button', async () => {
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /View All Services/i })).toBeInTheDocument();
+    });
+  });
+
+  it('View All Services navigates to Operations workspace', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('button', { name: /View All Services/i }));
+    fireEvent.click(screen.getByRole('button', { name: /View All Services/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Operations' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  it('shows empty state without collapsing when no services', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/overview')) return Promise.resolve({
+        data: { ...MOCK_OVERVIEW, services: [] },
+      });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue();
+    await waitFor(() => {
+      expect(screen.getByText(/No service revenue in this period/i)).toBeInTheDocument();
+    });
+    // Top 5 Services header still present
+    expect(screen.getByText('Top 5 Services')).toBeInTheDocument();
   });
 });
 
