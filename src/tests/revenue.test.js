@@ -444,11 +444,11 @@ describe('GET /api/revenue/overview — response shape', () => {
     expect(res.body.primaryKpis.grossProfit.value).toBeNull();
   });
 
-  it('has three secondary KPIs', () => {
+  it('has two secondary KPIs', () => {
     const sk = res.body.secondaryKpis;
     expect(sk).toHaveProperty('averageTicket');
     expect(sk).toHaveProperty('revenuePerLaborHour');
-    expect(sk).toHaveProperty('repeatRevenue');
+    expect(sk).not.toHaveProperty('repeatRevenue');
     expect(sk).not.toHaveProperty('completionRate');
     expect(sk).not.toHaveProperty('technicianUtilization');
     expect(sk).not.toHaveProperty('revenueAtRisk');

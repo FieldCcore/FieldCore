@@ -1351,7 +1351,8 @@ export default function Revenue() {
             </div>
           </div>
 
-          {/* Secondary KPIs — 3 cards: Average Ticket, Revenue per Labor Hour, Repeat Revenue */}
+          {/* Secondary KPIs — 2 cards: Average Ticket, Revenue per Labor Hour */}
+          {/* Repeat Revenue moved to Customers workspace */}
           <div className="rov-kpi-row rov-kpi-row--secondary" role="list" aria-label="Secondary revenue KPIs">
             <div role="listitem">
               <RevenueKpiCard
@@ -1375,19 +1376,6 @@ export default function Revenue() {
                 isLoading={overviewLoading}
                 size="secondary"
                 note={sk.revenuePerLaborHour?.basis === 'scheduled_labor_hours' ? 'Using scheduled hrs' : undefined}
-              />
-            </div>
-
-            <div role="listitem">
-              <RevenueKpiCard
-                label="Repeat Revenue"
-                value={sk.repeatRevenue?.status === 'ok' ? fmtMoney(sk.repeatRevenue.value) : null}
-                status={sk.repeatRevenue?.status || 'loading'}
-                calculatedAt={calculatedAt}
-                provenance={sk.repeatRevenue?.provenance}
-                isLoading={overviewLoading}
-                size="secondary"
-                note={sk.repeatRevenue?.clientCount > 0 ? `${sk.repeatRevenue.clientCount} returning client(s)` : undefined}
               />
             </div>
           </div>

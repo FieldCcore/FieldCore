@@ -57,7 +57,7 @@ const MOCK_OVERVIEW = {
   secondaryKpis: {
     averageTicket:       { value: 300, status: 'ok', count: 5, provenance: { formula: 'Earned ÷ jobs', sources: ['jobs'] } },
     revenuePerLaborHour: { value: 75, status: 'ok', hours: 20, basis: 'scheduled_labor_hours', provenance: { formula: 'Earned ÷ scheduled hrs', note: 'Scheduled, not actual.' } },
-    repeatRevenue:       { value: 600, status: 'ok', clientCount: 2, jobCount: 3, provenance: { formula: 'Revenue from returning clients' } },
+    // repeatRevenue is NOT in Overview — it belongs to Customers workspace
   },
   services: [
     { service: 'Cleaning', jobs: 4, earnedRevenue: 1000, collectedRevenue: 800, avgTicket: 250, grossProfit: null, grossProfitStatus: 'unavailable', margin: null, marginStatus: 'unavailable', laborHours: 8, revenuePerLaborHour: 125, completionRate: 0.9, revenueShare: 66.7 },
@@ -322,9 +322,10 @@ describe('Revenue — secondary KPI row', () => {
     await waitFor(() => expect(screen.getByText('Revenue per Labor Hour')).toBeInTheDocument());
   });
 
-  it('renders Repeat Revenue', async () => {
+  it('does NOT render Repeat Revenue in Overview (moved to Customers)', async () => {
     renderRevenue();
-    await waitFor(() => expect(screen.getByText('Repeat Revenue')).toBeInTheDocument());
+    await waitFor(() => screen.getAllByText('Collected Revenue').length > 0);
+    expect(screen.queryByText('Repeat Revenue')).not.toBeInTheDocument();
   });
 
   it('does NOT render Completion Rate in Overview', async () => {

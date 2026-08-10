@@ -897,12 +897,12 @@ async function getOverview(accountId, { start, end, comparison }) {
     revenueAtRisk:     rar,
   };
 
-  // Approved secondary KPI set: 3 metrics
+  // Approved secondary KPI set: 2 metrics.
+  // Repeat Revenue belongs to Customers workspace; engine kept via _repeatRevenue export.
   // Completion Rate and Technician Utilization belong to Operations workspace.
   const secondaryKpis = {
     averageTicket:       at,
     revenuePerLaborHour: rplh,
-    repeatRevenue:       rr,
   };
 
   // compRate is used internally for insights only — not exposed in KPI sets
