@@ -756,6 +756,107 @@ describe('Revenue — trend chart date parsing', () => {
   });
 });
 
+// ── Trend chart body anchoring ─────────────────────────────────────────────────
+
+describe('Revenue — trend chart body anchoring', () => {
+  it('renders rov-trend-body wrapper inside the trend card', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    expect(document.querySelector('.rov-trend-body')).toBeInTheDocument();
+  });
+
+  it('chart is a child of rov-trend-body', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    const body = document.querySelector('.rov-trend-body');
+    const chart = document.querySelector('.rov-trend-chart');
+    expect(body).toBeInTheDocument();
+    expect(chart).toBeInTheDocument();
+    expect(body.contains(chart)).toBe(true);
+  });
+
+  it('legend appears after bars in DOM order (anchored to bottom)', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    const chart = document.querySelector('.rov-trend-chart');
+    const bars   = chart.querySelector('.rov-trend-bars');
+    const legend = chart.querySelector('.rov-trend-legend');
+    const kids   = Array.from(chart.children);
+    expect(kids.indexOf(legend)).toBeGreaterThan(kids.indexOf(bars));
+  });
+
+  it('legend is not nested inside rov-trend-bars', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    const bars   = document.querySelector('.rov-trend-bars');
+    const legend = document.querySelector('.rov-trend-legend');
+    expect(bars.contains(legend)).toBe(false);
+  });
+
+  it('bars have inline percentage height styles derived from data', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    const bars = document.querySelectorAll('.rov-trend-bar');
+    expect(bars.length).toBeGreaterThan(0);
+    bars.forEach(bar => {
+      expect(bar.style.height).toMatch(/%$/);
+    });
+  });
+
+  it('zero-value rows still render bars at minimum height (not invisible)', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/trend')) return Promise.resolve({
+        data: {
+          current: [
+            { periodStart: '2026-08-01', earned: 0, collected: 0, jobs: 0 },
+            { periodStart: '2026-08-02', earned: 0, collected: 0, jobs: 0 },
+          ],
+          comparison: null,
+          interval: 'daily',
+        },
+      });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue();
+    await waitFor(() => screen.getByRole('img', { name: /revenue trend chart/i }));
+    const bars = document.querySelectorAll('.rov-trend-bar');
+    expect(bars.length).toBeGreaterThan(0);
+    bars.forEach(bar => {
+      const h = parseFloat(bar.style.height);
+      expect(h).toBeGreaterThan(0);
+    });
+  });
+
+  it('loading skeleton renders inside rov-trend-body', async () => {
+    let resolve;
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/trend')) return new Promise(r => { resolve = r; });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue();
+    await waitFor(() => {
+      expect(document.querySelector('.rov-trend-skeleton')).toBeInTheDocument();
+    });
+    const body = document.querySelector('.rov-trend-body');
+    expect(body).toBeInTheDocument();
+    expect(body.querySelector('.rov-trend-loading')).toBeInTheDocument();
+    // prevent act() warning — resolve the hanging promise
+    resolve({ data: MOCK_TREND });
+  });
+});
+
 // ── Customers workspace ────────────────────────────────────────────────────────
 
 describe('Revenue — Customers workspace', () => {

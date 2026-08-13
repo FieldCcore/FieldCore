@@ -1413,13 +1413,15 @@ export default function Revenue() {
                   />
                 </div>
               </div>
-              <RevenueTrendChart
-                data={trendRaw}
-                loading={trendLoading}
-                error={trendError}
-                activeMetrics={activeMetrics}
-                interval={interval}
-              />
+              <div className="rov-trend-body">
+                <RevenueTrendChart
+                  data={trendRaw}
+                  loading={trendLoading}
+                  error={trendError}
+                  activeMetrics={activeMetrics}
+                  interval={interval}
+                />
+              </div>
             </div>
             <div className="analytics-side-column">
               <RevenueInsightPanel insights={insights} loading={overviewLoading} />
