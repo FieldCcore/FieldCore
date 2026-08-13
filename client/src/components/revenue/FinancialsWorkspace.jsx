@@ -122,55 +122,99 @@ function FinKpiRow({ kpis, loading, calculatedAt }) {
   );
 }
 
-// ── Data Quality Chip ─────────────────────────────────────────────────────────
+// ── Financial Coverage Chip ───────────────────────────────────────────────────
 
-function DataQualityChip({ dataQuality, loading }) {
+function FinancialCoverageChip({ coverage, loading }) {
   const [open, setOpen] = useState(false);
-  if (loading || !dataQuality) return null;
+  if (loading || !coverage) return null;
 
-  const { state, limitationCount, limitations } = dataQuality;
-  const color = state === 'complete'
-    ? 'var(--green)'
-    : state === 'partial' ? 'var(--yellow-dk, #B45309)'
-    : 'var(--red)';
-  const label = state === 'complete'
-    ? 'Complete'
-    : `${limitationCount} Limitation${limitationCount !== 1 ? 's' : ''}`;
+  const { coverageState, availableMetrics, partialMetrics, unavailableMetrics, optionalSources } = coverage;
+
+  const colorMap = {
+    complete: 'var(--green)',
+    strong:   'var(--green)',
+    partial:  'var(--yellow-dk, #B45309)',
+    limited:  'var(--red)',
+  };
+  const color = colorMap[coverageState] || 'var(--yellow-dk, #B45309)';
+  const stateLabel = coverageState
+    ? coverageState.charAt(0).toUpperCase() + coverageState.slice(1)
+    : 'Unknown';
 
   return (
-    <div className="fin-dq-wrap" style={{ position: 'relative' }}>
+    <div className="fin-coverage-wrap" style={{ position: 'relative' }}>
       <button
         type="button"
         className="rov-dq-btn"
         onClick={() => setOpen(v => !v)}
         aria-expanded={open}
-        aria-label={`Data quality: ${label}`}
+        aria-label={`Financial coverage: ${stateLabel}`}
       >
         <span className="rov-dq-dot" style={{ background: color }} aria-hidden="true" />
-        <span className="rov-dq-label">Data Quality: {label}</span>
+        <span className="rov-dq-label">Financial Coverage: {stateLabel}</span>
       </button>
-      {open && limitations?.length > 0 && (
+      {open && (
         <div
-          className="rov-dq-panel"
+          className="rov-dq-panel fin-coverage-panel"
           role="dialog"
-          aria-label="Data quality limitations"
+          aria-label="Financial coverage details"
           style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, marginTop: 6 }}
         >
-          <div className="rov-dq-panel-title">Data Limitations</div>
-          <ul className="rov-dq-panel-list">
-            {limitations.map((lim, i) => (
-              <li key={lim.code || i} className="rov-dq-panel-item">
-                <span className="rov-dq-panel-text">
-                  <strong>{lim.title}.</strong> {lim.description}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="rov-dq-panel-title">Financial Coverage</div>
+
+          {availableMetrics?.length > 0 && (
+            <>
+              <div className="fin-coverage-section">Available</div>
+              <ul className="rov-dq-panel-list">
+                {availableMetrics.map(m => (
+                  <li key={m.key} className="rov-dq-panel-item">
+                    <span className="fin-cov-dot fin-cov-dot--avail" aria-hidden="true" />
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {partialMetrics?.length > 0 && (
+            <>
+              <div className="fin-coverage-section">Partial</div>
+              <ul className="rov-dq-panel-list">
+                {partialMetrics.map(m => (
+                  <li key={m.key} className="rov-dq-panel-item">
+                    <span className="fin-cov-dot fin-cov-dot--partial" aria-hidden="true" />
+                    <span>{m.label}{m.note ? ` — ${m.note}` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {unavailableMetrics?.length > 0 && (
+            <>
+              <div className="fin-coverage-section">Unavailable</div>
+              <ul className="rov-dq-panel-list">
+                {unavailableMetrics.map(m => (
+                  <li key={m.key} className="rov-dq-panel-item fin-cov-item--unavail">
+                    <span className="fin-cov-dot fin-cov-dot--unavail" aria-hidden="true" />
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {optionalSources?.length > 0 && (
+            <div className="fin-coverage-hint">
+              Connect {optionalSources.map(s => s.providerLabel).join(' or ')} to unlock more metrics.
+            </div>
+          )}
+
           <button
             type="button"
             className="rov-dq-close"
             onClick={() => setOpen(false)}
-            aria-label="Close data quality panel"
+            aria-label="Close coverage details"
           >
             Done
           </button>
@@ -435,7 +479,7 @@ function QuarterlySection({ quarterly, loading }) {
               {QUARTER_KEYS.map(k => <td key={k}><GrowthSpan val={q[k]?.yoyGrowth} /></td>)}
             </tr>
             <tr className="rov-q-section-row">
-              <td colSpan={6}>Profitability — Requires accounting integration</td>
+              <td colSpan={6}>Profitability — Requires direct cost data</td>
             </tr>
             {[['Gross Profit','grossProfit'],['Gross Margin','grossMargin'],
               ['Operating Expenses','operatingExpenses'],['Net Profit','netProfit'],['Net Margin','netMargin']].map(([label]) => (
@@ -510,7 +554,7 @@ function QuarterlyComparisonChart({ quarterly, loading }) {
           <div className="fin-chart-unavail-msg">
             {METRIC_OPTS.find(m => m.value === metric)?.label} requires an accounting integration.
           </div>
-          <div className="fin-chart-unavail-hint">Connect QuickBooks or Xero to unlock this chart.</div>
+          <div className="fin-chart-unavail-hint">Connect an accounting integration to unlock this chart.</div>
         </div>
       ) : (
         <div className="fin-q-chart" role="img" aria-label="Quarterly comparison chart">
@@ -587,7 +631,7 @@ function ProfitTrendChart({ loading }) {
             {PROFIT_TREND_METRICS.find(m => m.value === metric)?.label} requires an accounting integration.
           </div>
           <div className="fin-chart-unavail-hint">
-            Connect QuickBooks or Xero to track profit trends over time.
+            Connect an accounting integration to track profit trends over time.
           </div>
         </div>
       )}
@@ -684,47 +728,57 @@ function ProfitWaterfall({ kpis, loading }) {
   );
 }
 
-// ── Integration CTAs ──────────────────────────────────────────────────────────
+// ── Financial Data Sources ────────────────────────────────────────────────────
 
-function IntegrationCTACard({ providers }) {
-  if (!providers || providers.length === 0) return null;
+function FinancialDataSources({ coverage }) {
+  if (!coverage) return null;
+  const { activeSources, optionalSources } = coverage;
 
-  const PROVIDER_INFO = {
-    quickbooks: { desc: 'Import COGS, expenses, and full P&L data.' },
-    xero:       { desc: 'Import COGS, expenses, and full P&L data.' },
-    banking:    { desc: 'Track cash flows and reconcile deposits.'   },
-    stripe:     { desc: 'Import transactions, merchant fees, and refunds.' },
-  };
-
-  const highlighted = providers.filter(p => ['quickbooks', 'banking', 'stripe'].includes(p.key));
+  // Show FieldCore Payments as the featured active source (skip fieldcore_core — it's the base system)
+  const featuredActive = (activeSources || []).filter(s => s.sourceKey !== 'fieldcore_core');
 
   return (
-    <div className="fin-integrations-card rov-ws-section">
+    <div className="fin-sources-card rov-ws-section">
       <div className="fin-section-header rov-ws-section-header">
-        <h3 className="fin-section-title rov-ws-section-title">Connect to Unlock Full Financials</h3>
-        <span className="rov-ws-section-sub">No integrations active</span>
+        <h3 className="fin-section-title rov-ws-section-title">Financial Data Sources</h3>
+        <span className="rov-ws-section-sub">
+          {(activeSources || []).length} active · {(optionalSources || []).length} optional
+        </span>
       </div>
-      <div className="fin-integrations-grid">
-        {highlighted.map(p => {
-          const info = PROVIDER_INFO[p.key] || {};
-          return (
-            <div key={p.key} className="fin-int-card">
-              <div className="fin-int-header">
-                <span className="fin-int-name">{p.label}</span>
-                <span className="fin-int-status-badge">Not connected</span>
-              </div>
-              <div className="fin-int-desc">{info.desc}</div>
-              <div className="fin-int-capabilities">
-                {p.capabilities.map(c => (
-                  <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
-                ))}
-              </div>
-              <button className="fin-int-connect-btn btn-secondary" disabled aria-label={`Connect ${p.label} (coming soon)`}>
-                Coming soon
-              </button>
+      <div className="fin-sources-grid">
+        {featuredActive.map(src => (
+          <div key={src.sourceKey} className="fin-src-card fin-src-card--active">
+            <div className="fin-src-header">
+              <span className="fin-src-name">{src.providerLabel}</span>
+              <span className="fin-src-badge fin-src-badge--active">Active</span>
             </div>
-          );
-        })}
+            <div className="fin-src-capabilities">
+              {src.capabilities.slice(0, 4).map(c => (
+                <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+        {(optionalSources || []).map(src => (
+          <div key={src.sourceKey} className="fin-src-card fin-src-card--optional">
+            <div className="fin-src-header">
+              <span className="fin-src-name">{src.providerLabel}</span>
+              <span className="fin-src-badge fin-src-badge--optional">Optional</span>
+            </div>
+            <div className="fin-src-capabilities">
+              {src.capabilities.slice(0, 4).map(c => (
+                <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
+              ))}
+            </div>
+            <button
+              className="fin-int-connect-btn btn-secondary"
+              disabled
+              aria-label={`Connect ${src.providerLabel} (coming soon)`}
+            >
+              Coming soon
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -747,22 +801,21 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
     </div>
   );
 
-  const kpis        = data?.kpis;
-  const arAging     = data?.arAging;
-  const cashFlow    = data?.cashFlow;
-  const pnl         = data?.pnl;
-  const quarterly   = data?.quarterly;
-  const providers   = data?.providers;
-  const dq          = data?.dataQuality;
-  const calcAt      = data?.calculatedAt;
+  const kpis      = data?.kpis;
+  const arAging   = data?.arAging;
+  const cashFlow  = data?.cashFlow;
+  const pnl       = data?.pnl;
+  const quarterly = data?.quarterly;
+  const coverage  = data?.coverage;
+  const calcAt    = data?.calculatedAt;
 
   return (
     <div className="rov-ws-body">
 
-      {/* Data Quality chip — compact, not a full banner */}
-      {dq && !loading && (
+      {/* Financial Coverage chip */}
+      {coverage && !loading && (
         <div className="fin-dq-bar">
-          <DataQualityChip dataQuality={dq} loading={loading} />
+          <FinancialCoverageChip coverage={coverage} loading={loading} />
         </div>
       )}
 
@@ -793,8 +846,8 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
       {/* Revenue → Profit Waterfall */}
       <ProfitWaterfall kpis={kpis} loading={loading} />
 
-      {/* Integration CTAs */}
-      <IntegrationCTACard providers={providers} />
+      {/* Financial Data Sources */}
+      <FinancialDataSources coverage={coverage} />
 
     </div>
   );

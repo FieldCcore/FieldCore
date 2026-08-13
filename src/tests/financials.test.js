@@ -157,6 +157,7 @@ describe('GET /api/revenue/financials — response shape', () => {
     expect(res.body).toHaveProperty('arAging');
     expect(res.body).toHaveProperty('cashFlow');
     expect(res.body).toHaveProperty('quarterly');
+    expect(res.body).toHaveProperty('coverage');
     expect(res.body).toHaveProperty('providers');
     expect(res.body).toHaveProperty('dataQuality');
     expect(res.body).toHaveProperty('calculatedAt');
@@ -174,25 +175,57 @@ describe('GET /api/revenue/financials — response shape', () => {
     expect(keys).toContain('netMargin');
   });
 
-  it('providers array lists expected integrations', async () => {
+  it('providers array reflects the source model (no Stripe, includes FieldCore Payments)', async () => {
     const res = await request(app)
       .get('/api/revenue/financials')
       .set('Authorization', `Bearer ${token}`);
-    const providerKeys = res.body.providers.map(p => p.key);
-    expect(providerKeys).toContain('quickbooks');
+    const providerKeys = res.body.providers.map(p => p.sourceKey);
+    expect(providerKeys).toContain('fieldcore_payments');
+    expect(providerKeys).toContain('accounting');
     expect(providerKeys).toContain('banking');
-    expect(providerKeys).toContain('stripe');
-    res.body.providers.forEach(p => {
-      expect(p.status).toBe('not_connected');
-    });
+    expect(providerKeys).not.toContain('stripe');
   });
 
-  it('data quality state is "partial" and includes limitations', async () => {
+  it('coverage has coverageState and metric lists', async () => {
     const res = await request(app)
       .get('/api/revenue/financials')
       .set('Authorization', `Bearer ${token}`);
-    expect(res.body.dataQuality.state).toBe('partial');
-    expect(res.body.dataQuality.limitations.length).toBeGreaterThan(0);
+    const { coverage } = res.body;
+    expect(coverage).toHaveProperty('coverageState');
+    expect(coverage).toHaveProperty('activeSources');
+    expect(coverage).toHaveProperty('optionalSources');
+    expect(coverage).toHaveProperty('availableMetrics');
+    expect(coverage).toHaveProperty('unavailableMetrics');
+    expect(['complete', 'strong', 'partial', 'limited']).toContain(coverage.coverageState);
+  });
+
+  it('FieldCore Payments is active in coverage (native data source)', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const active = res.body.coverage.activeSources.map(s => s.sourceKey);
+    expect(active).toContain('fieldcore_payments');
+    expect(active).toContain('fieldcore_core');
+  });
+
+  it('accounting and banking are optional sources (not failures)', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const optional = res.body.coverage.optionalSources.map(s => s.sourceKey);
+    expect(optional).toContain('accounting');
+    expect(optional).toContain('banking');
+  });
+
+  it('data quality contains only real quality issues (not connection warnings)', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const { dataQuality } = res.body;
+    expect(dataQuality.limitations.length).toBeGreaterThan(0);
+    // No "source not connected" warnings in data quality
+    const warningLimitations = dataQuality.limitations.filter(l => l.severity === 'warning');
+    expect(warningLimitations.length).toBe(0);
   });
 });
 

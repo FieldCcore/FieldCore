@@ -3969,6 +3969,30 @@ body {
 .fin-wf-arrow  { grid-column: 1; text-align: center; font-size: 14px; color: var(--steel); padding: 0; height: 0; display: flex; align-items: center; justify-content: center; }
 .fin-wf-note   { padding: 10px 18px 16px; font-size: 10px; color: var(--steel); font-style: italic; border-top: 1px solid var(--lightgray); }
 
+/* Financial Coverage chip panel */
+.fin-coverage-wrap { position: relative; }
+.fin-coverage-panel { width: 360px; }
+.fin-coverage-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--steel); margin-top: 4px; }
+.fin-cov-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
+.fin-cov-dot--avail   { background: var(--green); }
+.fin-cov-dot--partial { background: #B45309; }
+.fin-cov-dot--unavail { background: var(--lightgray); border: 1px solid var(--steel); }
+.rov-dq-panel-item { display: flex; align-items: flex-start; gap: 6px; }
+.fin-cov-item--unavail { opacity: .7; }
+.fin-coverage-hint { font-size: 11px; color: var(--slate); padding: 6px 0 2px; border-top: 1px solid var(--lightgray); line-height: 1.5; }
+
+/* Financial Data Sources section */
+.fin-sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 18px; }
+.fin-src-card { background: var(--offwhite); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); display: flex; flex-direction: column; gap: 10px; }
+.fin-src-card--active  { border-color: #c8e6c9; background: #f1f8f1; }
+.fin-src-card--optional { }
+.fin-src-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fin-src-name { font-size: 13px; font-weight: 600; color: var(--navy); }
+.fin-src-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.fin-src-badge--active   { background: #c8e6c9; color: #1b5e20; }
+.fin-src-badge--optional { background: var(--lightgray); color: var(--slate); }
+.fin-src-capabilities { display: flex; flex-wrap: wrap; gap: 4px; }
+
 /* ── Responsive: Revenue Overview ────────────────────────── */
 @media (max-width: 1200px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(3, 1fr); }

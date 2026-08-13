@@ -6,7 +6,7 @@ function pi(v)  { return parseInt(v, 10) || 0; }
 function rnd(v) { return Math.round(v * 100) / 100; }
 
 const MISSING_COST = ['labor costs', 'material costs', 'overhead', 'merchant fees'];
-const ACCOUNTING_NOTE = 'Connect QuickBooks or Xero to unlock this metric.';
+const ACCOUNTING_NOTE = 'Connect an accounting integration to unlock this metric.';
 
 function unavailable(missingSources, provenance) {
   return {
@@ -108,14 +108,14 @@ async function getProfitability(accountId, start, end) {
     merchantFees: unavailable(['payment processor integration'], {
       formula:    'SUM(payment processing fees in period)',
       sources:    ['None connected'],
-      note:       'Connect Stripe or another payment processor to track this metric.',
+      note:       'Fee detail requires an accounting integration. Transaction data is available from FieldCore Payments.',
     }),
     setupGuide: {
       title: 'Connect your accounting software to unlock profitability',
       steps: [
-        'Connect QuickBooks, Xero, or FreshBooks to import COGS and expense data.',
-        'Connect your payment processor (Stripe, Square) to import merchant fees automatically.',
-        'FieldCore will compute gross profit, operating profit, and net margin.',
+        'Connect an accounting integration to import COGS and expense data.',
+        'FieldCore Payments provides native transaction data; accounting data unlocks profit calculations.',
+        'FieldCore will compute gross profit, operating profit, and net margin automatically.',
       ],
     },
   };

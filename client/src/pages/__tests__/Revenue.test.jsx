@@ -146,7 +146,7 @@ const MOCK_FINANCIALS = {
     ],
     setupGuide: {
       title: 'Connect your accounting software to unlock profitability',
-      steps: ['Connect QuickBooks, Xero, or FreshBooks.', 'Connect payment processor.', 'FieldCore computes margins automatically.'],
+      steps: ['Connect an accounting integration to import COGS and expense data.', 'FieldCore Payments provides native transaction data.', 'FieldCore computes margins automatically.'],
     },
   },
   arAging: {
@@ -181,21 +181,34 @@ const MOCK_FINANCIALS = {
     priorYear: {},
     calculatedAt: '2026-08-06T10:00:00Z',
   },
+  coverage: {
+    coverageState: 'partial',
+    activeSources: [
+      { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore',          status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+      { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds'] },
+    ],
+    optionalSources: [
+      { sourceKey: 'accounting', providerLabel: 'Accounting', status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses'] },
+      { sourceKey: 'banking',    providerLabel: 'Banking',    status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'] },
+    ],
+    availableMetrics:   [{ key: 'revenue', label: 'Revenue' }, { key: 'invoices', label: 'Invoices' }, { key: 'ar', label: 'Accounts Receivable' }, { key: 'payments', label: 'Payments' }, { key: 'cash_in', label: 'Cash In' }],
+    partialMetrics:     [{ key: 'merchant_fees', label: 'Merchant Fees', note: 'Fee detail not yet available from FieldCore Payments.' }],
+    unavailableMetrics: [{ key: 'gross_profit', label: 'Gross Profit', missingCaps: ['cogs'], note: 'Direct cost data is required.' }, { key: 'net_profit', label: 'Net Profit', missingCaps: ['cogs', 'operating_expenses'], note: 'Direct costs and operating expenses are required.' }, { key: 'cash_out', label: 'Net Cash Flow', missingCaps: ['cash_out'], note: 'A banking or cash-tracking source is required.' }],
+    explanation: 'FieldCore and FieldCore Payments data is active.',
+  },
   providers: [
-    { key: 'quickbooks', label: 'QuickBooks', status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes'] },
-    { key: 'xero',       label: 'Xero',       status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes'] },
-    { key: 'banking',    label: 'Banking',    status: 'not_connected', capabilities: ['transactions', 'cash_flow', 'reconciliation'] },
-    { key: 'stripe',     label: 'Stripe',     status: 'not_connected', capabilities: ['payments', 'merchant_fees', 'refunds'] },
+    { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore',          status: 'active',        capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+    { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active',        capabilities: ['payments', 'deposits', 'cash_in', 'refunds'] },
+    { sourceKey: 'accounting',         providerLabel: 'Accounting',         status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses'] },
+    { sourceKey: 'banking',            providerLabel: 'Banking',            status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'] },
   ],
   dataQuality: {
-    state: 'partial',
-    limitationCount: 3,
+    state: 'info',
+    limitationCount: 1,
     limitations: [
-      { code: 'cogs_unavailable',        severity: 'warning', title: 'COGS Not Connected',      description: 'Connect accounting.' },
-      { code: 'cash_out_unavailable',    severity: 'warning', title: 'Cash Out Not Available',  description: 'Connect banking.' },
-      { code: 'ar_aging_proxy_due_date', severity: 'info',    title: 'AR Aging Uses Net-30 Proxy', description: 'Set explicit due dates.' },
+      { code: 'ar_aging_proxy_due_date', severity: 'info', title: 'AR Aging Uses Net-30 Proxy', description: 'Set explicit due dates.' },
     ],
-    missingSources: ['accounting_integration', 'banking_integration'],
+    missingSources: [],
   },
   calculatedAt: '2026-08-06T10:00:00Z',
 };
@@ -1197,7 +1210,7 @@ describe('Revenue — Financials workspace', () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
       expect(screen.getByText(/connect your accounting software/i)).toBeInTheDocument();
-      expect(screen.getByText(/quickbooks, xero, or freshbooks/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/connect an accounting integration/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -1210,13 +1223,14 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('Integration CTA card shows QuickBooks, Banking, and Stripe', async () => {
+  it('Financial Data Sources shows FieldCore Payments as active and optional sources', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
-      expect(screen.getByText('Connect to Unlock Full Financials')).toBeInTheDocument();
-      expect(screen.getByText('QuickBooks')).toBeInTheDocument();
+      expect(screen.getByText('Financial Data Sources')).toBeInTheDocument();
+      expect(screen.getByText('FieldCore Payments')).toBeInTheDocument();
+      expect(screen.getByText('Accounting')).toBeInTheDocument();
       expect(screen.getByText('Banking')).toBeInTheDocument();
-      expect(screen.getByText('Stripe')).toBeInTheDocument();
+      expect(screen.queryByText('Stripe')).not.toBeInTheDocument();
     });
   });
 
@@ -1229,11 +1243,11 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('data quality chip shows when sources are not connected', async () => {
+  it('financial coverage chip shows coverage state', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
-      const dqBtns = screen.getAllByRole('button', { name: /data quality/i });
-      expect(dqBtns.length).toBeGreaterThan(0);
+      const coverageBtn = screen.getByRole('button', { name: /financial coverage/i });
+      expect(coverageBtn).toBeInTheDocument();
     });
   });
 

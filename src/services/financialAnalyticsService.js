@@ -1,8 +1,9 @@
 'use strict';
 const { getComparisonRange, defaultPeriod, getQuarterly } = require('./revenueAnalyticsService');
-const { getArAging }       = require('./arAgingService');
-const { getCashFlow }      = require('./cashFlowService');
-const { getProfitability } = require('./profitabilityService');
+const { getArAging }           = require('./arAgingService');
+const { getCashFlow }          = require('./cashFlowService');
+const { getProfitability }     = require('./profitabilityService');
+const { getFinancialCoverage } = require('./financialCoverageService');
 
 function buildPnlRows(prof) {
   const gr = prof.grossRevenue;
@@ -23,29 +24,12 @@ function buildPnlRows(prof) {
   ];
 }
 
+// Data quality: only actual quality issues, not source connection state.
 function buildDataQuality() {
   return {
-    state: 'partial',
-    limitationCount: 3,
+    state: 'info',
+    limitationCount: 1,
     limitations: [
-      {
-        code:            'cogs_unavailable',
-        severity:        'warning',
-        title:           'COGS Not Connected',
-        description:     'Connect an accounting integration to calculate gross profit, gross margin, and net profit.',
-        metricKeys:      ['grossProfit', 'grossMargin', 'netProfit', 'netMargin'],
-        source:          'accounting_integration',
-        actionAvailable: false,
-      },
-      {
-        code:            'cash_out_unavailable',
-        severity:        'warning',
-        title:           'Cash Out Not Available',
-        description:     'Connect banking or expense tracking to see net cash flow.',
-        metricKeys:      ['cashOut', 'netCashFlow'],
-        source:          'banking_integration',
-        actionAvailable: false,
-      },
       {
         code:            'ar_aging_proxy_due_date',
         severity:        'info',
@@ -56,8 +40,8 @@ function buildDataQuality() {
         actionAvailable: false,
       },
     ],
-    missingSources:  ['accounting_integration', 'banking_integration'],
-    missingPolicies: [],
+    missingSources:  [],
+    missingPolicies: ['explicit_due_dates'],
   };
 }
 
@@ -68,11 +52,12 @@ async function getFinancials(accountId, { start, end, comparison } = {}) {
   const compRange = getComparisonRange(s, e, comparison);
   const year = new Date(s + 'T00:00:00Z').getUTCFullYear();
 
-  const [prof, arAging, cashFlow, quarterly] = await Promise.all([
+  const [prof, arAging, cashFlow, quarterly, coverage] = await Promise.all([
     getProfitability(accountId, s, e),
     getArAging(accountId),
     getCashFlow(accountId, s, e),
     getQuarterly(accountId, { year }),
+    getFinancialCoverage(accountId),
   ]);
 
   let compGrossRevenue = null;
@@ -84,12 +69,8 @@ async function getFinancials(accountId, { start, end, comparison } = {}) {
   const pnlRows    = buildPnlRows(prof);
   const dataQuality = buildDataQuality();
 
-  const providers = [
-    { key: 'quickbooks', label: 'QuickBooks', status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes']              },
-    { key: 'xero',       label: 'Xero',       status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes']              },
-    { key: 'banking',    label: 'Banking',    status: 'not_connected', capabilities: ['transactions', 'cash_flow', 'reconciliation']   },
-    { key: 'stripe',     label: 'Stripe',     status: 'not_connected', capabilities: ['payments', 'merchant_fees', 'refunds']         },
-  ];
+  // providers: flat list of all sources (active + optional) for backward compat
+  const providers = [...(coverage.activeSources || []), ...(coverage.optionalSources || [])];
 
   return {
     period:           { start: s, end: e },
@@ -113,6 +94,7 @@ async function getFinancials(accountId, { start, end, comparison } = {}) {
     arAging,
     cashFlow,
     quarterly,
+    coverage,
     providers,
     dataQuality,
     calculatedAt: new Date().toISOString(),
