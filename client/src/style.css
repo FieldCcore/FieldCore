@@ -3451,13 +3451,24 @@ body {
   border-radius: 8px; color: var(--red); font-size: 13px; font-weight: 600;
 }
 
-/* Trend + Executive Context section */
-.rov-trend-section {
-  display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 380px); gap: 14px;
-  align-items: stretch; margin-bottom: 22px; min-height: 380px;
+/* Analytics grid — Revenue Trend (left) + Insight/Top5 stack (right) */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 22px;
 }
-.rov-trend-main { min-width: 0; }
-.rov-exec-context { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-width: 0; }
+.revenue-trend-card { height: 100%; min-height: 420px; min-width: 0; }
+.analytics-side-column {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+  height: 100%;
+  min-height: 420px;
+  min-width: 0;
+}
+.top-services-card { min-height: 0; height: 100%; }
 
 /* Trend chart */
 .rov-trend-loading { padding: 32px; }
@@ -3613,7 +3624,7 @@ body {
 
 /* Top 5 Services */
 .rov-top5-card {
-  display: flex; flex-direction: column; height: 100%;
+  display: flex; flex-direction: column; height: 100%; min-height: 0;
   padding: 16px 18px !important;
 }
 .rov-top5-header {
@@ -3802,9 +3813,10 @@ body {
   .rov-fin-integration-cards { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
-  .rov-trend-section    { grid-template-columns: 1fr; }
-  .rov-exec-context     { grid-template-rows: auto auto; }
-  .rov-top5-card        { height: auto; }
+  .analytics-grid        { grid-template-columns: 1fr; }
+  .analytics-side-column { grid-template-rows: auto auto; height: auto; min-height: 0; }
+  .revenue-trend-card    { height: auto; min-height: 0; }
+  .rov-top5-card         { height: auto; min-height: 0; }
   .rov-fin-integration-cards { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
@@ -3812,7 +3824,6 @@ body {
   .rov-kpi-row--secondary { grid-template-columns: repeat(2, 1fr); }
   .rov-workspace-nav { overflow-x: auto; }
   .rov-filter-bar     { gap: 8px; }
-  .rov-exec-context   { flex-direction: column; }
 }
 @media (max-width: 480px) {
   .rov-kpi-row--primary   { grid-template-columns: 1fr; }

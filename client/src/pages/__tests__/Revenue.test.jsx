@@ -630,17 +630,17 @@ describe('Revenue — Top 5 Services', () => {
     });
   });
 
-  it('shows View All Services button', async () => {
+  it('shows View All button in Top 5 Services header', async () => {
     renderRevenue();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /View All Services/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /View All/i })).toBeInTheDocument();
     });
   });
 
-  it('View All Services navigates to Operations workspace', async () => {
+  it('View All button navigates to Operations workspace', async () => {
     renderRevenue();
-    await waitFor(() => screen.getByRole('button', { name: /View All Services/i }));
-    fireEvent.click(screen.getByRole('button', { name: /View All Services/i }));
+    await waitFor(() => screen.getByRole('button', { name: /View All/i }));
+    fireEvent.click(screen.getByRole('button', { name: /View All/i }));
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Operations' })).toHaveAttribute('aria-selected', 'true');
     });
@@ -661,7 +661,7 @@ describe('Revenue — Top 5 Services', () => {
     });
     renderRevenue();
     await waitFor(() => {
-      expect(screen.getByText(/No service revenue in this period/i)).toBeInTheDocument();
+      expect(screen.getByText(/No service data for this period/i)).toBeInTheDocument();
     });
     // Top 5 Services header still present
     expect(screen.getByText('Top 5 Services')).toBeInTheDocument();

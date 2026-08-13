@@ -649,9 +649,10 @@ function RiskOpportunities({ data, loading }) {
 
 function Top5Services({ services, loading, onViewAll }) {
   if (loading) return (
-    <div className="rov-top5-card dash-card">
+    <div className="rov-top5-card top-services-card dash-card">
       <div className="rov-top5-header">
         <span className="rov-top5-title">Top 5 Services</span>
+        <button type="button" className="rov-ws-cta" onClick={onViewAll}>View All →</button>
       </div>
       <div className="rov-top5-skeleton" aria-label="Loading top services" />
     </div>
@@ -660,13 +661,14 @@ function Top5Services({ services, loading, onViewAll }) {
   const rows = [...(services || [])].sort((a, b) => b.earnedRevenue - a.earnedRevenue).slice(0, 5);
 
   return (
-    <div className="rov-top5-card dash-card">
+    <div className="rov-top5-card top-services-card dash-card">
       <div className="rov-top5-header">
         <span className="rov-top5-title">Top 5 Services</span>
+        <button type="button" className="rov-ws-cta" onClick={onViewAll}>View All →</button>
       </div>
       <div className="rov-top5-body">
         {rows.length === 0 ? (
-          <div className="rov-top5-empty">No service revenue in this period.</div>
+          <div className="rov-top5-empty">No service data for this period.</div>
         ) : (
           <table className="rov-top5-table" aria-label="Top 5 services by earned revenue">
             <thead>
@@ -687,11 +689,6 @@ function Top5Services({ services, loading, onViewAll }) {
             </tbody>
           </table>
         )}
-      </div>
-      <div className="rov-top5-footer">
-        <button type="button" className="rov-ws-cta" onClick={onViewAll}>
-          View All Services →
-        </button>
       </div>
     </div>
   );
@@ -1388,8 +1385,8 @@ export default function Revenue() {
           )}
 
           {/* Trend + Executive Context (Revenue Insight + Top 5 Services) */}
-          <div className="rov-trend-section">
-            <div className="rov-trend-main dash-card">
+          <div className="analytics-grid">
+            <div className="revenue-trend-card dash-card">
               <div className="dash-ch">
                 <span className="dash-cht">Revenue Trend</span>
                 <div className="rov-trend-controls" role="group" aria-label="Chart controls">
@@ -1424,7 +1421,7 @@ export default function Revenue() {
                 interval={interval}
               />
             </div>
-            <div className="rov-exec-context">
+            <div className="analytics-side-column">
               <RevenueInsightPanel insights={insights} loading={overviewLoading} />
               <Top5Services
                 services={services}
