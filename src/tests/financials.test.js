@@ -199,13 +199,23 @@ describe('GET /api/revenue/financials — response shape', () => {
     expect(['complete', 'strong', 'partial', 'limited']).toContain(coverage.coverageState);
   });
 
-  it('FieldCore Payments is active in coverage (native data source)', async () => {
+  it('FieldCore Payments always appears in coverage (active or not_enabled based on account)', async () => {
     const res = await request(app)
       .get('/api/revenue/financials')
       .set('Authorization', `Bearer ${token}`);
-    const active = res.body.coverage.activeSources.map(s => s.sourceKey);
-    expect(active).toContain('fieldcore_payments');
-    expect(active).toContain('fieldcore_core');
+    const { coverage } = res.body;
+    const allSources = [
+      ...coverage.activeSources,
+      ...(coverage.notEnabledSources || []),
+      ...(coverage.optionalSources || []),
+    ];
+    const fcPayments = allSources.find(s => s.sourceKey === 'fieldcore_payments');
+    expect(fcPayments).toBeDefined();
+    expect(['active', 'not_enabled', 'degraded']).toContain(fcPayments.status);
+    // FieldCore Core always active regardless
+    const fcCore = coverage.activeSources.find(s => s.sourceKey === 'fieldcore_core');
+    expect(fcCore).toBeDefined();
+    expect(fcCore.status).toBe('active');
   });
 
   it('accounting and banking are optional sources (not failures)', async () => {
@@ -539,5 +549,115 @@ describe('Financials — unavailable metrics include provenance', () => {
       .get('/api/revenue/financials')
       .set('Authorization', `Bearer ${token}`);
     expect(res.body.kpis.operatingExpenses).toHaveProperty('provenance');
+  });
+});
+
+// ── FieldCore Payments real status ────────────────────────────────────────────
+
+describe('Financials — FieldCore Payments status from database', () => {
+  it('coverage reflects NOT_ENABLED when account has no Stripe Connect', async () => {
+    // Test account has no stripe_connect_account_id → NOT_ENABLED
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const { coverage } = res.body;
+    // fieldcore_payments should be NOT_ENABLED or active depending on DB state
+    const allSources = [...coverage.activeSources, ...(coverage.notEnabledSources || [])];
+    const fcPayments = allSources.find(s => s.sourceKey === 'fieldcore_payments');
+    expect(fcPayments).toBeDefined();
+    expect(['active', 'not_enabled', 'degraded']).toContain(fcPayments.status);
+  });
+
+  it('coverage shows ACTIVE when stripe_connect_status is active', async () => {
+    await pool.query(
+      `UPDATE accounts SET stripe_connect_account_id = $1, stripe_connect_status = 'active' WHERE id = $2`,
+      ['acct_test_fc_payments', accountId]
+    );
+    try {
+      const res = await request(app)
+        .get('/api/revenue/financials')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      // fieldcore_payments moves into activeSources when status=active
+      const allSources = [
+        ...res.body.coverage.activeSources,
+        ...(res.body.coverage.notEnabledSources || []),
+      ];
+      const fcPayments = allSources.find(s => s.sourceKey === 'fieldcore_payments');
+      expect(fcPayments).toBeDefined();
+      expect(fcPayments.status).toBe('active');
+    } finally {
+      await pool.query(
+        `UPDATE accounts SET stripe_connect_account_id = NULL, stripe_connect_status = 'not_connected' WHERE id = $1`,
+        [accountId]
+      );
+    }
+  });
+
+  it('coverage shows not_enabled when stripe_connect_status is not_connected', async () => {
+    // Ensure account is not_connected (restore from any prior test)
+    await pool.query(
+      `UPDATE accounts SET stripe_connect_account_id = NULL, stripe_connect_status = 'not_connected' WHERE id = $1`,
+      [accountId]
+    );
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const { coverage } = res.body;
+    const notEnabled = (coverage.notEnabledSources || []).find(s => s.sourceKey === 'fieldcore_payments');
+    expect(notEnabled).toBeDefined();
+    expect(notEnabled.status).toBe('not_enabled');
+  });
+
+  it('GET /api/revenue/financials/sources returns sources and coverage', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials/sources')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('sources');
+    expect(res.body).toHaveProperty('coverage');
+    expect(res.body.sources).toHaveProperty('fieldcore_core');
+    expect(res.body.sources).toHaveProperty('fieldcore_payments');
+    expect(res.body.sources).toHaveProperty('accounting');
+    expect(res.body.sources).toHaveProperty('banking');
+  });
+
+  it('FieldCore Core always appears as active in coverage', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const coreSource = res.body.coverage.activeSources.find(s => s.sourceKey === 'fieldcore_core');
+    expect(coreSource).toBeDefined();
+    expect(coreSource.status).toBe('active');
+  });
+
+  it('coverage is NOT based on disconnected provider count — FieldCore Core provides native coverage', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    // Even with no optional sources, coverage should NOT be limited if FC Core is active
+    const { coverage } = res.body;
+    expect(coverage.availableMetrics.length).toBeGreaterThan(0);
+    expect(['complete', 'strong', 'partial', 'limited']).toContain(coverage.coverageState);
+  });
+
+  it('Stripe is not exposed as a customer-facing Financials source key', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const allSourceKeys = [
+      ...res.body.coverage.activeSources,
+      ...(res.body.coverage.notEnabledSources || []),
+      ...(res.body.coverage.optionalSources || []),
+    ].map(s => s.sourceKey);
+    expect(allSourceKeys).not.toContain('stripe');
+    const allLabels = [
+      ...res.body.coverage.activeSources,
+      ...(res.body.coverage.notEnabledSources || []),
+      ...(res.body.coverage.optionalSources || []),
+    ].map(s => s.providerLabel);
+    expect(allLabels).not.toContain('Stripe');
   });
 });

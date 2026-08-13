@@ -69,8 +69,12 @@ async function getFinancials(accountId, { start, end, comparison } = {}) {
   const pnlRows    = buildPnlRows(prof);
   const dataQuality = buildDataQuality();
 
-  // providers: flat list of all sources (active + optional) for backward compat
-  const providers = [...(coverage.activeSources || []), ...(coverage.optionalSources || [])];
+  // providers: flat list of all sources for backward compat
+  const providers = [
+    ...(coverage.activeSources    || []),
+    ...(coverage.notEnabledSources || []),
+    ...(coverage.optionalSources  || []),
+  ];
 
   return {
     period:           { start: s, end: e },

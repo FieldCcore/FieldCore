@@ -157,7 +157,26 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
 // Complete financial analytics: P&L structure, AR aging, cash flow, quarterly
 // Query params: start, end, comparison
 
-const finSvc = require('../services/financialAnalyticsService');
+const finSvc      = require('../services/financialAnalyticsService');
+const coverageSvc = require('../services/financialCoverageService');
+
+// GET /api/revenue/financials/sources — source status + coverage (lightweight)
+// Must be declared BEFORE /financials to avoid route shadowing.
+router.get('/financials/sources', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const coverage = await coverageSvc.getFinancialCoverage(req.accountId);
+    const { activeSources, optionalSources, notEnabledSources } = coverage;
+    const allSources = [...activeSources, ...notEnabledSources, ...optionalSources];
+    const sources = {};
+    for (const src of allSources) {
+      sources[src.sourceKey] = src;
+    }
+    res.json({ sources, coverage });
+  } catch (err) {
+    console.error('[revenue] financials/sources error', err.message);
+    res.status(500).json({ error: 'Financial source status could not be loaded.' });
+  }
+});
 
 router.get('/financials', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { start, end, comparison = 'none' } = req.query;

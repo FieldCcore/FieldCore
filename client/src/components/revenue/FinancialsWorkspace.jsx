@@ -730,55 +730,83 @@ function ProfitWaterfall({ kpis, loading }) {
 
 // ── Financial Data Sources ────────────────────────────────────────────────────
 
+const STATUS_BADGE = {
+  active:        { label: 'Active',       className: 'fin-src-badge--active'      },
+  degraded:      { label: 'Degraded',     className: 'fin-src-badge--degraded'    },
+  not_enabled:   { label: 'Not Enabled',  className: 'fin-src-badge--not-enabled' },
+  not_connected: { label: 'Optional',     className: 'fin-src-badge--optional'    },
+};
+
+function SrcCard({ src, showConnect }) {
+  const badge = STATUS_BADGE[src.status] || STATUS_BADGE.not_connected;
+  return (
+    <div className={`fin-src-card fin-src-card--${src.status}`}>
+      <div className="fin-src-header">
+        <span className="fin-src-name">{src.providerLabel}</span>
+        <span className={`fin-src-badge ${badge.className}`}>{badge.label}</span>
+      </div>
+      <div className="fin-src-capabilities">
+        {src.capabilities.slice(0, 4).map(c => (
+          <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
+        ))}
+      </div>
+      {src.status === 'not_enabled' && src.paymentsStatus?.limitations?.[0] && (
+        <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
+      )}
+      {showConnect && (
+        <button
+          className="fin-int-connect-btn btn-secondary"
+          disabled
+          aria-label={`Connect ${src.providerLabel} (coming soon)`}
+        >
+          Coming soon
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FinancialDataSources({ coverage }) {
   if (!coverage) return null;
-  const { activeSources, optionalSources } = coverage;
+  const { activeSources, notEnabledSources, optionalSources } = coverage;
 
-  // Show FieldCore Payments as the featured active source (skip fieldcore_core — it's the base system)
-  const featuredActive = (activeSources || []).filter(s => s.sourceKey !== 'fieldcore_core');
+  // Featured active: FieldCore Payments (skip fieldcore_core — it's the background base)
+  const featuredActive   = (activeSources || []).filter(s => s.sourceKey !== 'fieldcore_core');
+  const coreSource       = (activeSources || []).find(s => s.sourceKey === 'fieldcore_core');
+  const activeCount      = (activeSources || []).length;
+  const optionalCount    = (optionalSources || []).length;
 
   return (
     <div className="fin-sources-card rov-ws-section">
       <div className="fin-section-header rov-ws-section-header">
         <h3 className="fin-section-title rov-ws-section-title">Financial Data Sources</h3>
         <span className="rov-ws-section-sub">
-          {(activeSources || []).length} active · {(optionalSources || []).length} optional
+          {activeCount} active · {optionalCount} optional
         </span>
       </div>
+
+      {coreSource && (
+        <div className="fin-core-chip" title={`Capabilities: ${coreSource.capabilities.join(', ')}`}>
+          <span className="fin-cov-dot fin-cov-dot--avail" aria-hidden="true" />
+          FieldCore Core Data — Active
+        </div>
+      )}
+
       <div className="fin-sources-grid">
         {featuredActive.map(src => (
-          <div key={src.sourceKey} className="fin-src-card fin-src-card--active">
-            <div className="fin-src-header">
-              <span className="fin-src-name">{src.providerLabel}</span>
-              <span className="fin-src-badge fin-src-badge--active">Active</span>
-            </div>
-            <div className="fin-src-capabilities">
-              {src.capabilities.slice(0, 4).map(c => (
-                <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
-              ))}
-            </div>
-          </div>
+          <SrcCard key={src.sourceKey} src={src} showConnect={false} />
+        ))}
+        {(notEnabledSources || []).map(src => (
+          <SrcCard key={src.sourceKey} src={src} showConnect={false} />
         ))}
         {(optionalSources || []).map(src => (
-          <div key={src.sourceKey} className="fin-src-card fin-src-card--optional">
-            <div className="fin-src-header">
-              <span className="fin-src-name">{src.providerLabel}</span>
-              <span className="fin-src-badge fin-src-badge--optional">Optional</span>
-            </div>
-            <div className="fin-src-capabilities">
-              {src.capabilities.slice(0, 4).map(c => (
-                <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
-              ))}
-            </div>
-            <button
-              className="fin-int-connect-btn btn-secondary"
-              disabled
-              aria-label={`Connect ${src.providerLabel} (coming soon)`}
-            >
-              Coming soon
-            </button>
-          </div>
+          <SrcCard key={src.sourceKey} src={src} showConnect={true} />
         ))}
+      </div>
+
+      <div className="fin-sources-footer">
+        FieldCore uses the financial data already available in your account. Additional connections
+        can enrich profit, expense, cash-flow, and reconciliation analytics.
       </div>
     </div>
   );

@@ -184,9 +184,10 @@ const MOCK_FINANCIALS = {
   coverage: {
     coverageState: 'partial',
     activeSources: [
-      { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore',          status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
-      { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds'] },
+      { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore Core',     status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+      { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds'], paymentsStatus: { product: 'FIELDCORE_PAYMENTS', status: 'ACTIVE', paymentsAvailable: true, limitations: [] } },
     ],
+    notEnabledSources: [],
     optionalSources: [
       { sourceKey: 'accounting', providerLabel: 'Accounting', status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses'] },
       { sourceKey: 'banking',    providerLabel: 'Banking',    status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'] },
@@ -194,10 +195,10 @@ const MOCK_FINANCIALS = {
     availableMetrics:   [{ key: 'revenue', label: 'Revenue' }, { key: 'invoices', label: 'Invoices' }, { key: 'ar', label: 'Accounts Receivable' }, { key: 'payments', label: 'Payments' }, { key: 'cash_in', label: 'Cash In' }],
     partialMetrics:     [{ key: 'merchant_fees', label: 'Merchant Fees', note: 'Fee detail not yet available from FieldCore Payments.' }],
     unavailableMetrics: [{ key: 'gross_profit', label: 'Gross Profit', missingCaps: ['cogs'], note: 'Direct cost data is required.' }, { key: 'net_profit', label: 'Net Profit', missingCaps: ['cogs', 'operating_expenses'], note: 'Direct costs and operating expenses are required.' }, { key: 'cash_out', label: 'Net Cash Flow', missingCaps: ['cash_out'], note: 'A banking or cash-tracking source is required.' }],
-    explanation: 'FieldCore and FieldCore Payments data is active.',
+    explanation: 'FieldCore Core and FieldCore Payments data is active.',
   },
   providers: [
-    { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore',          status: 'active',        capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+    { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore Core',     status: 'active',        capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
     { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active',        capabilities: ['payments', 'deposits', 'cash_in', 'refunds'] },
     { sourceKey: 'accounting',         providerLabel: 'Accounting',         status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses'] },
     { sourceKey: 'banking',            providerLabel: 'Banking',            status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'] },
@@ -1231,6 +1232,82 @@ describe('Revenue — Financials workspace', () => {
       expect(screen.getByText('Accounting')).toBeInTheDocument();
       expect(screen.getByText('Banking')).toBeInTheDocument();
       expect(screen.queryByText('Stripe')).not.toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Core appears as always-active in Financial Data Sources', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/FieldCore Core Data — Active/i)).toBeInTheDocument();
+    });
+  });
+
+  it('legacy "Connect to Unlock Full Financials" does not render', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.queryByText('Connect to Unlock Full Financials')).not.toBeInTheDocument();
+    });
+  });
+
+  it('legacy "No integrations active" subtitle does not render', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.queryByText('No integrations active')).not.toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Payments shows Active badge when payments are enabled', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      // Active badge appears in the FieldCore Payments card
+      const activeBadges = screen.getAllByText('Active');
+      expect(activeBadges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('QuickBooks is NOT shown as customer-facing Financials source', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.queryByText('QuickBooks')).not.toBeInTheDocument();
+    });
+  });
+
+  it('Accounting and Banking show as Optional with Coming soon buttons', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      const btns = screen.getAllByRole('button', { name: /coming soon/i });
+      expect(btns.length).toBeGreaterThanOrEqual(2);
+      btns.forEach(btn => expect(btn).toBeDisabled());
+    });
+  });
+
+  it('Financial Data Sources shows NOT_ENABLED state when FieldCore Payments not active', async () => {
+    const notEnabledMock = {
+      ...MOCK_FINANCIALS,
+      coverage: {
+        ...MOCK_FINANCIALS.coverage,
+        activeSources: [
+          { sourceKey: 'fieldcore_core', providerLabel: 'FieldCore Core', status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+        ],
+        notEnabledSources: [
+          { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'not_enabled', capabilities: ['payments', 'deposits', 'cash_in', 'refunds'], paymentsStatus: { product: 'FIELDCORE_PAYMENTS', status: 'NOT_ENABLED', paymentsAvailable: false, limitations: ['Enable FieldCore Payments to include payment data.'] } },
+        ],
+      },
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: notEnabledMock });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Not Enabled')).toBeInTheDocument();
     });
   });
 

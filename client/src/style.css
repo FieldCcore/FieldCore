@@ -3982,16 +3982,23 @@ body {
 .fin-coverage-hint { font-size: 11px; color: var(--slate); padding: 6px 0 2px; border-top: 1px solid var(--lightgray); line-height: 1.5; }
 
 /* Financial Data Sources section */
-.fin-sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 18px; }
+.fin-core-chip { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--slate); padding: 6px 18px 0; }
+.fin-sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px 18px; }
 .fin-src-card { background: var(--offwhite); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); display: flex; flex-direction: column; gap: 10px; }
-.fin-src-card--active  { border-color: #c8e6c9; background: #f1f8f1; }
-.fin-src-card--optional { }
+.fin-src-card--active      { border-color: #c8e6c9; background: #f1f8f1; }
+.fin-src-card--not_enabled { border-color: #fde68a; background: #fffbeb; }
+.fin-src-card--degraded    { border-color: #fed7aa; background: #fff7ed; }
+.fin-src-card--not_connected { }
 .fin-src-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fin-src-name { font-size: 13px; font-weight: 600; color: var(--navy); }
 .fin-src-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-.fin-src-badge--active   { background: #c8e6c9; color: #1b5e20; }
-.fin-src-badge--optional { background: var(--lightgray); color: var(--slate); }
+.fin-src-badge--active      { background: #c8e6c9; color: #1b5e20; }
+.fin-src-badge--not-enabled { background: #fde68a; color: #92400e; }
+.fin-src-badge--degraded    { background: #fed7aa; color: #9a3412; }
+.fin-src-badge--optional    { background: var(--lightgray); color: var(--slate); }
 .fin-src-capabilities { display: flex; flex-wrap: wrap; gap: 4px; }
+.fin-src-note { font-size: 11px; color: var(--slate); line-height: 1.5; }
+.fin-sources-footer { font-size: 11px; color: var(--steel); padding: 8px 18px 14px; line-height: 1.5; border-top: 1px solid var(--lightgray); margin-top: 4px; }
 
 /* ── Responsive: Revenue Overview ────────────────────────── */
 @media (max-width: 1200px) {
