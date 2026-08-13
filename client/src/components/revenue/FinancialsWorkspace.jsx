@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../api';
+import RevenueKpiCard from '../RevenueKpiCard';
+import SelectDropdown from '../SelectDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtMoney(v, compact = false) {
   if (v == null) return '—';
   const n = parseFloat(v) || 0;
-  if (compact && Math.abs(n) >= 1000) {
-    return '$' + (n / 1000).toFixed(1) + 'k';
+  if (compact) {
+    if (Math.abs(n) >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1000)    return '$' + (n / 1000).toFixed(1) + 'k';
+    return '$' + n.toFixed(0);
   }
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -15,6 +19,11 @@ function fmtMoney(v, compact = false) {
 function fmtPct(v) {
   if (v == null) return '—';
   return (parseFloat(v) || 0).toFixed(1) + '%';
+}
+
+function fmtDays(v) {
+  if (v == null) return '—';
+  return Math.round(parseFloat(v)) + ' days';
 }
 
 function useFinData(params) {
@@ -48,44 +57,136 @@ function useFinData(params) {
   return { data, loading, error };
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── KPI Row ───────────────────────────────────────────────────────────────────
 
-function FinKpiCard({ label, value, status, breakdown, missingSource, compact = true }) {
-  const isUnavail = status === 'unavailable';
+function FinKpiRow({ kpis, loading, calculatedAt }) {
+  if (!kpis && !loading) return null;
+
+  function fmtKpi(metric) {
+    if (!metric) return null;
+    if (metric.status === 'ok' && metric.value != null) return fmtMoney(metric.value, true);
+    return null;
+  }
+
+  const gr = kpis?.grossRevenue;
+
   return (
-    <div className="fin-kpi-card dash-card">
-      <div className="fin-kpi-label">{label}</div>
-      {isUnavail ? (
-        <div className="fin-kpi-unavail">
-          <span className="fin-kpi-unavail-badge">Not connected</span>
-          {missingSource && (
-            <div className="fin-kpi-unavail-hint">{missingSource}</div>
-          )}
-        </div>
-      ) : (
-        <div className="fin-kpi-value">{fmtMoney(value, compact)}</div>
-      )}
-      {!isUnavail && breakdown && (
-        <div className="fin-kpi-breakdown">
-          {Object.entries(breakdown)
-            .filter(([k]) => k !== 'jobCount' && k !== 'invoiceCount' && k !== 'depositCount')
-            .map(([k, v]) => (
-              <div key={k} className="fin-kpi-breakdown-row">
-                <span>{k.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
-                <span>{fmtMoney(v, false)}</span>
-              </div>
+    <div className="fin-kpi-row" role="region" aria-label="Financial KPIs">
+      <RevenueKpiCard
+        label="Gross Revenue"
+        value={fmtKpi(gr)}
+        status={loading ? 'loading' : (gr?.status || 'ok')}
+        calculatedAt={calculatedAt}
+        provenance={gr?.provenance}
+        isLoading={loading}
+        size="primary"
+        note={gr?.breakdown?.jobCount > 0 ? `${gr.breakdown.jobCount} completed job(s)` : undefined}
+      />
+      <RevenueKpiCard
+        label="Gross Profit"
+        value={null}
+        status={loading ? 'loading' : 'unavailable'}
+        calculatedAt={calculatedAt}
+        provenance={kpis?.grossProfit?.provenance}
+        isLoading={loading}
+        size="primary"
+      />
+      <RevenueKpiCard
+        label="Net Profit"
+        value={null}
+        status={loading ? 'loading' : 'unavailable'}
+        calculatedAt={calculatedAt}
+        provenance={kpis?.netProfit?.provenance}
+        isLoading={loading}
+        size="primary"
+      />
+      <RevenueKpiCard
+        label="Net Margin"
+        value={null}
+        status={loading ? 'loading' : 'unavailable'}
+        calculatedAt={calculatedAt}
+        provenance={kpis?.netMargin?.provenance}
+        isLoading={loading}
+        size="primary"
+      />
+      <RevenueKpiCard
+        label="Operating Expenses"
+        value={null}
+        status={loading ? 'loading' : 'unavailable'}
+        calculatedAt={calculatedAt}
+        provenance={kpis?.operatingExpenses?.provenance}
+        isLoading={loading}
+        size="primary"
+      />
+    </div>
+  );
+}
+
+// ── Data Quality Chip ─────────────────────────────────────────────────────────
+
+function DataQualityChip({ dataQuality, loading }) {
+  const [open, setOpen] = useState(false);
+  if (loading || !dataQuality) return null;
+
+  const { state, limitationCount, limitations } = dataQuality;
+  const color = state === 'complete'
+    ? 'var(--green)'
+    : state === 'partial' ? 'var(--yellow-dk, #B45309)'
+    : 'var(--red)';
+  const label = state === 'complete'
+    ? 'Complete'
+    : `${limitationCount} Limitation${limitationCount !== 1 ? 's' : ''}`;
+
+  return (
+    <div className="fin-dq-wrap" style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="rov-dq-btn"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        aria-label={`Data quality: ${label}`}
+      >
+        <span className="rov-dq-dot" style={{ background: color }} aria-hidden="true" />
+        <span className="rov-dq-label">Data Quality: {label}</span>
+      </button>
+      {open && limitations?.length > 0 && (
+        <div
+          className="rov-dq-panel"
+          role="dialog"
+          aria-label="Data quality limitations"
+          style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, marginTop: 6 }}
+        >
+          <div className="rov-dq-panel-title">Data Limitations</div>
+          <ul className="rov-dq-panel-list">
+            {limitations.map((lim, i) => (
+              <li key={lim.code || i} className="rov-dq-panel-item">
+                <span className="rov-dq-panel-text">
+                  <strong>{lim.title}.</strong> {lim.description}
+                </span>
+              </li>
             ))}
+          </ul>
+          <button
+            type="button"
+            className="rov-dq-close"
+            onClick={() => setOpen(false)}
+            aria-label="Close data quality panel"
+          >
+            Done
+          </button>
         </div>
       )}
     </div>
   );
 }
 
+// ── AR Aging Card ─────────────────────────────────────────────────────────────
+
 function ARAgingCard({ arAging, loading }) {
   if (loading) return (
     <div className="fin-ar-card dash-card">
       <div className="fin-section-header">
-        <h3 className="fin-section-title">AR Aging</h3>
+        <h3 className="fin-section-title">Accounts Receivable</h3>
       </div>
       <div className="fin-loading-row" aria-label="Loading AR aging data">Loading…</div>
     </div>
@@ -97,10 +198,22 @@ function ARAgingCard({ arAging, loading }) {
   return (
     <div className="fin-ar-card dash-card">
       <div className="fin-section-header">
-        <h3 className="fin-section-title">AR Aging</h3>
+        <h3 className="fin-section-title">Accounts Receivable</h3>
         <span className="fin-section-sub">
           {arAging.invoiceCount} pending invoice{arAging.invoiceCount !== 1 ? 's' : ''} · {fmtMoney(arAging.total, false)} total
         </span>
+      </div>
+      <div className="fin-ar-stats-row">
+        {arAging.overdueTotal > 0 && (
+          <span className="fin-ar-stat fin-ar-stat--overdue">
+            {fmtMoney(arAging.overdueTotal, false)} overdue
+          </span>
+        )}
+        {arAging.avgDaysToPay != null && (
+          <span className="fin-ar-stat">
+            Avg. {fmtDays(arAging.avgDaysToPay)} to pay
+          </span>
+        )}
       </div>
       <div className="fin-ar-body">
         {arAging.buckets.map(b => {
@@ -124,19 +237,14 @@ function ARAgingCard({ arAging, loading }) {
           );
         })}
       </div>
-      {arAging.overdueCount > 0 && (
-        <div className="fin-ar-overdue-summary">
-          <span className="fin-ar-overdue-tag">
-            {fmtMoney(arAging.overdueTotal, false)} overdue across {arAging.overdueCount} invoice{arAging.overdueCount !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
       <div className="fin-ar-note">
         Due date proxy: net-30 from sent date. Set explicit due dates for accuracy.
       </div>
     </div>
   );
 }
+
+// ── Cash Flow Card ────────────────────────────────────────────────────────────
 
 function CashFlowCard({ cashFlow, loading }) {
   if (loading) return (
@@ -189,6 +297,8 @@ function CashFlowCard({ cashFlow, loading }) {
   );
 }
 
+// ── P&L Summary ───────────────────────────────────────────────────────────────
+
 function PnlSummary({ pnl, loading }) {
   const [expanded, setExpanded] = useState(true);
 
@@ -232,7 +342,7 @@ function PnlSummary({ pnl, loading }) {
                     <td className="fin-pnl-row-value">
                       {row.status === 'unavailable'
                         ? <span className="fin-unavail-badge">Unavailable</span>
-                        : row.key.includes('Margin') || row.key === 'netMargin' || row.key === 'grossMargin'
+                        : row.key === 'grossMargin' || row.key === 'netMargin'
                           ? fmtPct(row.value)
                           : fmtMoney(row.value, false)}
                     </td>
@@ -255,6 +365,8 @@ function PnlSummary({ pnl, loading }) {
     </div>
   );
 }
+
+// ── Quarterly Review ──────────────────────────────────────────────────────────
 
 function QuarterlySection({ quarterly, loading }) {
   const QUARTER_KEYS   = ['Q1', 'Q2', 'Q3', 'Q4', 'year'];
@@ -314,9 +426,7 @@ function QuarterlySection({ quarterly, loading }) {
               <td>QoQ Growth</td>
               {QUARTER_KEYS.map(k => (
                 <td key={k}>
-                  {k === 'year'
-                    ? <span className="rov-q-growth-none">—</span>
-                    : <GrowthSpan val={q[k]?.qoqGrowth} />}
+                  {k === 'year' ? <span className="rov-q-growth-none">—</span> : <GrowthSpan val={q[k]?.qoqGrowth} />}
                 </td>
               ))}
             </tr>
@@ -327,10 +437,8 @@ function QuarterlySection({ quarterly, loading }) {
             <tr className="rov-q-section-row">
               <td colSpan={6}>Profitability — Requires accounting integration</td>
             </tr>
-            {[['COGS','cogs'],['Gross Profit','grossProfit'],['Gross Margin','grossMargin'],
-              ['Operating Expenses','operatingExpenses'],['Operating Profit','operatingProfit'],
-              ['Net Profit','netProfit'],['Net Margin','netMargin'],
-              ['Refunds & Credits','refunds'],['Merchant Fees','merchantFees']].map(([label]) => (
+            {[['Gross Profit','grossProfit'],['Gross Margin','grossMargin'],
+              ['Operating Expenses','operatingExpenses'],['Net Profit','netProfit'],['Net Margin','netMargin']].map(([label]) => (
               <tr key={label}>
                 <td>{label}</td>
                 {QUARTER_KEYS.map(k => (
@@ -345,14 +453,247 @@ function QuarterlySection({ quarterly, loading }) {
   );
 }
 
+// ── Quarterly Comparison Chart ────────────────────────────────────────────────
+
+const Q_CHART_METRICS = [
+  { value: 'earnedRevenue', label: 'Revenue' },
+];
+
+function QuarterlyComparisonChart({ quarterly, loading }) {
+  const [metric, setMetric] = useState('earnedRevenue');
+
+  const METRIC_OPTS = [
+    { value: 'earnedRevenue', label: 'Revenue' },
+    { value: 'grossProfit',   label: 'Gross Profit'   },
+    { value: 'netProfit',     label: 'Net Profit'     },
+    { value: 'opex',          label: 'Operating Exp.' },
+  ];
+
+  if (loading) return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Quarterly Comparison</h3>
+      </div>
+      <div className="fin-loading-row">Loading…</div>
+    </div>
+  );
+  if (!quarterly) return null;
+
+  const PROFIT_METRICS = ['grossProfit', 'netProfit', 'opex'];
+  const isProfitMetric = PROFIT_METRICS.includes(metric);
+  const quarters       = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const q              = quarterly.quarters || {};
+
+  const values = isProfitMetric
+    ? quarters.map(() => null)
+    : quarters.map(k => parseFloat(q[k]?.[metric]) || 0);
+
+  const maxVal = Math.max(...values.filter(v => v != null), 1);
+
+  const BAR_COLOR = '#1C2333';
+
+  return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Quarterly Comparison</h3>
+        <SelectDropdown
+          value={metric}
+          onChange={setMetric}
+          options={METRIC_OPTS}
+          minWidth={170}
+        />
+      </div>
+
+      {isProfitMetric ? (
+        <div className="fin-chart-unavail-state">
+          <div className="fin-chart-unavail-icon" aria-hidden="true">—</div>
+          <div className="fin-chart-unavail-msg">
+            {METRIC_OPTS.find(m => m.value === metric)?.label} requires an accounting integration.
+          </div>
+          <div className="fin-chart-unavail-hint">Connect QuickBooks or Xero to unlock this chart.</div>
+        </div>
+      ) : (
+        <div className="fin-q-chart" role="img" aria-label="Quarterly comparison chart">
+          <div className="fin-q-chart-bars">
+            {quarters.map((qk, i) => {
+              const val = values[i] || 0;
+              const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
+              return (
+                <div key={qk} className="fin-q-chart-col">
+                  <div className="fin-q-chart-bar-wrap">
+                    <div
+                      className="fin-q-chart-bar"
+                      style={{ height: `${Math.max(pct, val > 0 ? 4 : 0)}%`, background: BAR_COLOR }}
+                      aria-label={`${qk}: ${fmtMoney(val, false)}`}
+                    />
+                  </div>
+                  <div className="fin-q-chart-val">{val > 0 ? fmtMoney(val, true) : '—'}</div>
+                  <div className="fin-q-chart-lbl">{qk}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Profit Trend ──────────────────────────────────────────────────────────────
+
+const PROFIT_TREND_METRICS = [
+  { value: 'grossProfit', label: 'Gross Profit'  },
+  { value: 'netProfit',   label: 'Net Profit'    },
+  { value: 'grossMargin', label: 'Gross Margin'  },
+  { value: 'netMargin',   label: 'Net Margin'    },
+];
+
+const PROFIT_TREND_INTERVALS = [
+  { value: 'daily',     label: 'Daily'     },
+  { value: 'weekly',    label: 'Weekly'    },
+  { value: 'monthly',   label: 'Monthly'   },
+  { value: 'quarterly', label: 'Quarterly' },
+];
+
+function ProfitTrendChart({ loading }) {
+  const [metric,   setMetric]   = useState('grossProfit');
+  const [interval, setInterval] = useState('monthly');
+
+  return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Profit Trend</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <SelectDropdown
+            value={metric}
+            onChange={setMetric}
+            options={PROFIT_TREND_METRICS}
+            minWidth={150}
+          />
+          <SelectDropdown
+            value={interval}
+            onChange={setInterval}
+            options={PROFIT_TREND_INTERVALS}
+            minWidth={120}
+          />
+        </div>
+      </div>
+      {loading ? (
+        <div className="fin-loading-row">Loading…</div>
+      ) : (
+        <div className="fin-chart-unavail-state">
+          <div className="fin-chart-unavail-icon" aria-hidden="true">—</div>
+          <div className="fin-chart-unavail-msg">
+            {PROFIT_TREND_METRICS.find(m => m.value === metric)?.label} requires an accounting integration.
+          </div>
+          <div className="fin-chart-unavail-hint">
+            Connect QuickBooks or Xero to track profit trends over time.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Expense Breakdown ─────────────────────────────────────────────────────────
+
+function ExpenseBreakdown({ loading }) {
+  return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Expense Breakdown</h3>
+      </div>
+      {loading ? (
+        <div className="fin-loading-row">Loading…</div>
+      ) : (
+        <div className="fin-chart-unavail-state">
+          <div className="fin-chart-unavail-icon" aria-hidden="true">—</div>
+          <div className="fin-chart-unavail-msg">No expense source connected.</div>
+          <div className="fin-chart-unavail-hint">
+            Connect an accounting or expense integration to see a breakdown of COGS,
+            operating expenses, and other costs.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Revenue → Profit Waterfall ────────────────────────────────────────────────
+
+function ProfitWaterfall({ kpis, loading }) {
+  if (loading) return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Revenue → Profit Waterfall</h3>
+      </div>
+      <div className="fin-loading-row">Loading…</div>
+    </div>
+  );
+
+  const grossRev = kpis?.grossRevenue?.status === 'ok' ? (parseFloat(kpis.grossRevenue.value) || 0) : 0;
+  const hasRevenue = grossRev > 0;
+
+  const steps = [
+    { label: 'Gross Revenue',       value: grossRev,  available: true  },
+    { label: 'COGS',                value: null,       available: false },
+    { label: 'Gross Profit',        value: null,       available: false },
+    { label: 'Operating Expenses',  value: null,       available: false },
+    { label: 'Net Profit',          value: null,       available: false },
+  ];
+
+  return (
+    <div className="rov-ws-section">
+      <div className="rov-ws-section-header">
+        <h3 className="rov-ws-section-title">Revenue → Profit Waterfall</h3>
+      </div>
+      <div className="fin-waterfall" role="img" aria-label="Revenue to profit waterfall">
+        {steps.map((step, i) => {
+          const pct = hasRevenue && step.available && step.value
+            ? Math.max(6, (step.value / grossRev) * 100)
+            : 0;
+          const isLast = i === steps.length - 1;
+          return (
+            <div key={step.label} className="fin-wf-step">
+              <div className="fin-wf-label">{step.label}</div>
+              <div className="fin-wf-bar-row">
+                {step.available ? (
+                  <div
+                    className="fin-wf-bar fin-wf-bar--filled"
+                    style={{ width: `${Math.max(pct, hasRevenue ? 100 : 0)}%` }}
+                    aria-label={`${step.label}: ${fmtMoney(step.value, false)}`}
+                  />
+                ) : (
+                  <div className="fin-wf-bar fin-wf-bar--unavail" aria-label={`${step.label}: Unavailable`} />
+                )}
+              </div>
+              <div className="fin-wf-value">
+                {step.available
+                  ? fmtMoney(step.value, false)
+                  : <span className="fin-unavail-badge">Unavailable</span>}
+              </div>
+              {!isLast && <div className="fin-wf-arrow" aria-hidden="true">↓</div>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="fin-wf-note">
+        COGS, Gross Profit, Operating Expenses, and Net Profit require an accounting integration.
+      </div>
+    </div>
+  );
+}
+
+// ── Integration CTAs ──────────────────────────────────────────────────────────
+
 function IntegrationCTACard({ providers }) {
   if (!providers || providers.length === 0) return null;
 
   const PROVIDER_INFO = {
-    quickbooks: { icon: '📊', desc: 'Import COGS, expenses, and full P&L data.' },
-    xero:       { icon: '📊', desc: 'Import COGS, expenses, and full P&L data.' },
-    banking:    { icon: '🏦', desc: 'Track cash flows and reconcile deposits.' },
-    stripe:     { icon: '💳', desc: 'Import transactions, merchant fees, and refunds.' },
+    quickbooks: { desc: 'Import COGS, expenses, and full P&L data.' },
+    xero:       { desc: 'Import COGS, expenses, and full P&L data.' },
+    banking:    { desc: 'Track cash flows and reconcile deposits.'   },
+    stripe:     { desc: 'Import transactions, merchant fees, and refunds.' },
   };
 
   const highlighted = providers.filter(p => ['quickbooks', 'banking', 'stripe'].includes(p.key));
@@ -389,23 +730,6 @@ function IntegrationCTACard({ providers }) {
   );
 }
 
-function DataQualityBanner({ dataQuality }) {
-  if (!dataQuality || dataQuality.state !== 'partial') return null;
-
-  const warnings = dataQuality.limitations.filter(l => l.severity === 'warning');
-  if (warnings.length === 0) return null;
-
-  return (
-    <div className="fin-dq-banner" role="note" aria-label="Data quality notice">
-      <span className="fin-dq-icon">⚠</span>
-      <span className="fin-dq-text">
-        {warnings.length} data source{warnings.length !== 1 ? 's' : ''} not connected —
-        some financial metrics are unavailable.
-      </span>
-    </div>
-  );
-}
-
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
@@ -423,55 +747,29 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
     </div>
   );
 
-  const kpis      = data?.kpis;
-  const arAging   = data?.arAging;
-  const cashFlow  = data?.cashFlow;
-  const pnl       = data?.pnl;
-  const quarterly = data?.quarterly;
-  const providers = data?.providers;
-  const dq        = data?.dataQuality;
+  const kpis        = data?.kpis;
+  const arAging     = data?.arAging;
+  const cashFlow    = data?.cashFlow;
+  const pnl         = data?.pnl;
+  const quarterly   = data?.quarterly;
+  const providers   = data?.providers;
+  const dq          = data?.dataQuality;
+  const calcAt      = data?.calculatedAt;
 
   return (
     <div className="rov-ws-body">
 
-      {/* Data quality banner */}
-      <DataQualityBanner dataQuality={dq} />
+      {/* Data Quality chip — compact, not a full banner */}
+      {dq && !loading && (
+        <div className="fin-dq-bar">
+          <DataQualityChip dataQuality={dq} loading={loading} />
+        </div>
+      )}
 
       {/* KPI row */}
-      <div className="fin-kpi-row" role="region" aria-label="Financial KPIs">
-        <FinKpiCard
-          label="Gross Revenue"
-          value={kpis?.grossRevenue?.value}
-          status={loading ? 'loading' : (kpis?.grossRevenue?.status || 'ok')}
-          breakdown={kpis?.grossRevenue?.breakdown}
-        />
-        <FinKpiCard
-          label="Cash In"
-          value={kpis?.cashIn?.value}
-          status={loading ? 'loading' : (kpis?.cashIn?.status || 'ok')}
-          breakdown={kpis?.cashIn?.breakdown}
-        />
-        <FinKpiCard
-          label="Gross Profit"
-          value={null}
-          status="unavailable"
-          missingSource="Connect accounting software"
-        />
-        <FinKpiCard
-          label="Net Profit"
-          value={null}
-          status="unavailable"
-          missingSource="Connect accounting software"
-        />
-        <FinKpiCard
-          label="Net Margin"
-          value={null}
-          status="unavailable"
-          missingSource="Connect accounting software"
-        />
-      </div>
+      <FinKpiRow kpis={kpis} loading={loading} calculatedAt={calcAt} />
 
-      {/* AR Aging + Cash Flow side by side */}
+      {/* AR + Cash Flow side by side */}
       <div className="fin-lower-grid">
         <ARAgingCard arAging={arAging} loading={loading} />
         <CashFlowCard cashFlow={cashFlow} loading={loading} />
@@ -480,8 +778,20 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
       {/* P&L Summary */}
       <PnlSummary pnl={pnl} loading={loading} />
 
-      {/* Quarterly Review */}
+      {/* Quarterly Review table */}
       <QuarterlySection quarterly={quarterly} loading={loading} />
+
+      {/* Quarterly Comparison Chart */}
+      <QuarterlyComparisonChart quarterly={quarterly} loading={loading} />
+
+      {/* Profit Trend Chart */}
+      <ProfitTrendChart loading={loading} />
+
+      {/* Expense Breakdown */}
+      <ExpenseBreakdown loading={loading} />
+
+      {/* Revenue → Profit Waterfall */}
+      <ProfitWaterfall kpis={kpis} loading={loading} />
 
       {/* Integration CTAs */}
       <IntegrationCTACard providers={providers} />

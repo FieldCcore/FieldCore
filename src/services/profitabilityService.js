@@ -6,9 +6,19 @@ function pi(v)  { return parseInt(v, 10) || 0; }
 function rnd(v) { return Math.round(v * 100) / 100; }
 
 const MISSING_COST = ['labor costs', 'material costs', 'overhead', 'merchant fees'];
+const ACCOUNTING_NOTE = 'Connect QuickBooks or Xero to unlock this metric.';
 
-function unavailable(missingSources) {
-  return { value: null, status: 'unavailable', missingSources: missingSources || MISSING_COST };
+function unavailable(missingSources, provenance) {
+  return {
+    value: null,
+    status: 'unavailable',
+    missingSources: missingSources || MISSING_COST,
+    provenance: provenance || {
+      formula:    'Requires accounting integration',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    },
+  };
 }
 
 async function getGrossRevenue(accountId, start, end) {
@@ -55,15 +65,51 @@ async function getProfitability(accountId, start, end) {
 
   return {
     grossRevenue,
-    cogs:              unavailable(MISSING_COST),
-    grossProfit:       unavailable(MISSING_COST),
-    grossMargin:       unavailable(MISSING_COST),
-    operatingExpenses: unavailable(['operating expense tracking']),
-    operatingProfit:   unavailable(MISSING_COST),
-    taxes:             unavailable(['tax integration']),
-    netProfit:         unavailable(MISSING_COST),
-    netMargin:         unavailable(MISSING_COST),
-    merchantFees:      unavailable(['payment processor integration']),
+    cogs: unavailable(MISSING_COST, {
+      formula:    'Direct Labor + Materials + Subcontractors + Other Direct Costs',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    grossProfit: unavailable(MISSING_COST, {
+      formula:    'Gross Revenue − COGS',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    grossMargin: unavailable(MISSING_COST, {
+      formula:    'Gross Profit ÷ Gross Revenue × 100',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    operatingExpenses: unavailable(['operating expense tracking'], {
+      formula:    'SUM(categorized operating expenses in period)',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    operatingProfit: unavailable(MISSING_COST, {
+      formula:    'Gross Profit − Operating Expenses',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    taxes: unavailable(['tax integration'], {
+      formula:    'Tax liability for the period',
+      sources:    ['None connected'],
+      note:       'Connect a tax integration to track this metric.',
+    }),
+    netProfit: unavailable(MISSING_COST, {
+      formula:    'Gross Revenue − COGS − Operating Expenses − Other Expenses',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    netMargin: unavailable(MISSING_COST, {
+      formula:    'Net Profit ÷ Gross Revenue × 100',
+      sources:    ['None connected'],
+      note:       ACCOUNTING_NOTE,
+    }),
+    merchantFees: unavailable(['payment processor integration'], {
+      formula:    'SUM(payment processing fees in period)',
+      sources:    ['None connected'],
+      note:       'Connect Stripe or another payment processor to track this metric.',
+    }),
     setupGuide: {
       title: 'Connect your accounting software to unlock profitability',
       steps: [

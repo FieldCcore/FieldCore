@@ -38,6 +38,12 @@ function getComparisonRange(start, end, comparison) {
     return { start: toDateStr(cs), end: toDateStr(ce) };
   }
 
+  if (comparison === 'previous_quarter') {
+    const cs = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() - 3, s.getUTCDate()));
+    const ce = new Date(Date.UTC(e.getUTCFullYear(), e.getUTCMonth() - 3, e.getUTCDate()));
+    return { start: toDateStr(cs), end: toDateStr(ce) };
+  }
+
   return null;
 }
 

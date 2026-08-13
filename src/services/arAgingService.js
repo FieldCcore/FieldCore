@@ -4,17 +4,31 @@ const pool = require('../db/pool');
 function pf(v) { return Math.round((parseFloat(v) || 0) * 100) / 10000; }
 
 async function getArAging(accountId) {
-  const { rows } = await pool.query(
-    `SELECT
-       i.amount,
-       EXTRACT(EPOCH FROM (
-         NOW() - COALESCE(i.due_date, COALESCE(i.sent_at, i.created_at) + INTERVAL '30 days')
-       )) / 86400.0 AS days_past_due
-     FROM invoices i
-     WHERE i.account_id = $1
-       AND i.status = 'pending'`,
-    [accountId]
-  );
+  const [pendingRes, paidRes] = await Promise.all([
+    pool.query(
+      `SELECT
+         i.amount,
+         EXTRACT(EPOCH FROM (
+           NOW() - COALESCE(i.due_date, COALESCE(i.sent_at, i.created_at) + INTERVAL '30 days')
+         )) / 86400.0 AS days_past_due
+       FROM invoices i
+       WHERE i.account_id = $1
+         AND i.status = 'pending'`,
+      [accountId]
+    ),
+    pool.query(
+      `SELECT ROUND(
+         AVG(EXTRACT(EPOCH FROM (paid_at - created_at)) / 86400.0)::numeric, 1
+       ) AS avg_days
+       FROM invoices
+       WHERE account_id = $1
+         AND status = 'paid'
+         AND paid_at IS NOT NULL
+         AND created_at IS NOT NULL`,
+      [accountId]
+    ),
+  ]);
+  const rows = pendingRes.rows;
 
   const buckets = [
     { label: 'Current',    days: 'current',  amount: 0, count: 0 },
@@ -44,12 +58,17 @@ async function getArAging(accountId) {
     b.count++;
   }
 
+  const avgDaysToPay = paidRes.rows[0].avg_days != null
+    ? parseFloat(paidRes.rows[0].avg_days)
+    : null;
+
   return {
     total:        Math.round(total * 100) / 100,
     buckets,
     invoiceCount: rows.length,
     overdueTotal: Math.round(overdueTotal * 100) / 100,
     overdueCount,
+    avgDaysToPay,
     provenance: {
       formula:    'Pending invoices bucketed by days past COALESCE(due_date, sent_at + 30 days, created_at + 30 days)',
       sources:    ['invoices'],

@@ -1229,11 +1229,11 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('data quality banner shows when sources are not connected', async () => {
+  it('data quality chip shows when sources are not connected', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
-      expect(screen.getByRole('note', { name: /data quality notice/i })).toBeInTheDocument();
-      expect(screen.getByText(/2 data sources not connected/i)).toBeInTheDocument();
+      const dqBtns = screen.getAllByRole('button', { name: /data quality/i });
+      expect(dqBtns.length).toBeGreaterThan(0);
     });
   });
 

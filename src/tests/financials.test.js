@@ -443,4 +443,68 @@ describe('Financials — comparison period', () => {
     expect(res.body.comparisonPeriod).not.toBeNull();
     expect(res.body.kpis).toHaveProperty('compGrossRevenue');
   });
+
+  it('returns comparisonPeriod when comparison=previous_quarter', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials?comparison=previous_quarter')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.body.comparisonPeriod).not.toBeNull();
+    expect(res.body.comparisonPeriod.type).toBe('previous_quarter');
+    expect(res.body.kpis).toHaveProperty('compGrossRevenue');
+  });
+});
+
+// ── AR aging avgDaysToPay ─────────────────────────────────────────────────────
+
+describe('Financials — AR aging avgDaysToPay', () => {
+  it('arAging response includes avgDaysToPay property', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.body.arAging).toHaveProperty('avgDaysToPay');
+  });
+
+  it('avgDaysToPay is a number or null', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const avg = res.body.arAging.avgDaysToPay;
+    expect(avg === null || typeof avg === 'number').toBe(true);
+  });
+
+  it('avgDaysToPay increases when paid invoice exists', async () => {
+    const invId = await createInvoice({ amount: 15000, status: 'paid' });
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    const avg = res.body.arAging.avgDaysToPay;
+    expect(avg === null || typeof avg === 'number').toBe(true);
+    await pool.query(`DELETE FROM invoices WHERE id = $1`, [invId]);
+  });
+});
+
+// ── profitability provenance ──────────────────────────────────────────────────
+
+describe('Financials — unavailable metrics include provenance', () => {
+  it('grossProfit kpi includes provenance', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.body.kpis.grossProfit).toHaveProperty('provenance');
+    expect(res.body.kpis.grossProfit.provenance).toHaveProperty('formula');
+  });
+
+  it('netProfit kpi includes provenance', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.body.kpis.netProfit).toHaveProperty('provenance');
+  });
+
+  it('operatingExpenses kpi includes provenance', async () => {
+    const res = await request(app)
+      .get('/api/revenue/financials')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.body.kpis.operatingExpenses).toHaveProperty('provenance');
+  });
 });

@@ -25,10 +25,11 @@ const WORKSPACES = [
 const VALID_VIEWS = WORKSPACES.map(w => w.key);
 
 const COMPARISON_OPTIONS = [
-  { value: 'none',            label: 'No comparison'   },
-  { value: 'previous_period', label: 'Previous period' },
-  { value: 'previous_month',  label: 'Previous month'  },
-  { value: 'previous_year',   label: 'Previous year'   },
+  { value: 'none',             label: 'No comparison'    },
+  { value: 'previous_period',  label: 'Previous period'  },
+  { value: 'previous_month',   label: 'Previous month'   },
+  { value: 'previous_quarter', label: 'Previous quarter' },
+  { value: 'previous_year',    label: 'Previous year'    },
 ];
 
 const INTERVAL_OPTIONS = [

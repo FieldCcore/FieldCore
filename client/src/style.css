@@ -3919,6 +3919,56 @@ body {
 }
 .rov-ws-placeholder-note { font-size: 11px; color: var(--steel); margin-top: 12px; font-style: italic; line-height: 1.5; }
 
+/* Data Quality chip in Financials */
+.fin-dq-bar { display: flex; justify-content: flex-end; }
+.fin-dq-wrap { position: relative; }
+.rov-dq-panel {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.10); width: 340px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.rov-dq-panel-title { font-size: 11px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .05em; }
+.rov-dq-panel-list  { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.rov-dq-panel-item  { font-size: 11px; color: var(--slate); line-height: 1.5; }
+.rov-dq-close       { margin-top: 4px; font-size: 11px; color: var(--slate); background: var(--offwhite); border: 1px solid var(--lightgray); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.rov-dq-close:hover { background: var(--lightgray); }
+
+/* AR aging stats row */
+.fin-ar-stats-row { display: flex; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--lightgray); flex-wrap: wrap; }
+.fin-ar-stat { font-size: 11px; color: var(--slate); background: var(--offwhite); border-radius: 4px; padding: 3px 8px; }
+.fin-ar-stat--overdue { color: #b91c1c; background: #fef2f2; }
+
+/* Chart unavailable placeholder */
+.fin-chart-unavail-state {
+  padding: 36px 24px; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; text-align: center;
+}
+.fin-chart-unavail-icon { font-size: 28px; color: var(--lightgray); }
+.fin-chart-unavail-msg  { font-size: 13px; font-weight: 600; color: var(--slate); }
+.fin-chart-unavail-hint { font-size: 11px; color: var(--steel); max-width: 340px; line-height: 1.5; }
+
+/* Quarterly comparison bar chart */
+.fin-q-chart { padding: 20px 18px; }
+.fin-q-chart-bars { display: flex; gap: 16px; align-items: flex-end; height: 160px; }
+.fin-q-chart-col  { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.fin-q-chart-bar-wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.fin-q-chart-bar  { width: 100%; max-width: 56px; border-radius: 4px 4px 0 0; transition: height .3s ease; }
+.fin-q-chart-val  { font-size: 11px; font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; }
+.fin-q-chart-lbl  { font-size: 11px; color: var(--steel); font-weight: 600; }
+
+/* Revenue → Profit Waterfall */
+.fin-waterfall { padding: 18px; display: flex; flex-direction: column; gap: 0; }
+.fin-wf-step   { display: grid; grid-template-columns: 160px 1fr 130px; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--lightgray); }
+.fin-wf-step:last-child { border-bottom: none; }
+.fin-wf-label  { font-size: 12px; font-weight: 500; color: var(--slate); }
+.fin-wf-bar-row { height: 20px; background: var(--offwhite); border-radius: 3px; overflow: hidden; }
+.fin-wf-bar    { height: 100%; transition: width .3s ease; }
+.fin-wf-bar--filled  { background: var(--navy); }
+.fin-wf-bar--unavail { width: 100%; background: repeating-linear-gradient(45deg, var(--lightgray) 0, var(--lightgray) 4px, transparent 4px, transparent 8px); }
+.fin-wf-value  { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--navy); }
+.fin-wf-arrow  { grid-column: 1; text-align: center; font-size: 14px; color: var(--steel); padding: 0; height: 0; display: flex; align-items: center; justify-content: center; }
+.fin-wf-note   { padding: 10px 18px 16px; font-size: 10px; color: var(--steel); font-style: italic; border-top: 1px solid var(--lightgray); }
+
 /* ── Responsive: Revenue Overview ────────────────────────── */
 @media (max-width: 1200px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(3, 1fr); }
