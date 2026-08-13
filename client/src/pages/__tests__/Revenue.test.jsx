@@ -115,6 +115,91 @@ const MOCK_QUARTERLY = {
   calculatedAt: '2026-08-06T10:00:00Z',
 };
 
+const MOCK_FINANCIALS = {
+  period:           { start: '2026-08-01', end: '2026-08-06' },
+  comparisonPeriod: null,
+  kpis: {
+    grossRevenue:    { value: 1580, status: 'ok', breakdown: { jobs: 1500, tips: 50, travelFees: 80, jobCount: 5 } },
+    grossProfit:     { value: null, status: 'unavailable', missingSources: ['labor costs', 'material costs'] },
+    netProfit:       { value: null, status: 'unavailable', missingSources: ['labor costs'] },
+    grossMargin:     { value: null, status: 'unavailable' },
+    netMargin:       { value: null, status: 'unavailable' },
+    cashIn:          { value: 1200, status: 'ok', breakdown: { invoices: 1000, invoiceCount: 3, deposits: 200, depositCount: 1 } },
+    cashOut:         { value: null, status: 'unavailable', missingSource: 'expense_tracking' },
+    netCashFlow:     { value: null, status: 'unavailable' },
+    compGrossRevenue: null,
+  },
+  pnl: {
+    rows: [
+      { key: 'grossRevenue',      label: 'Gross Revenue',       value: 1580, status: 'ok' },
+      { key: 'refunds',           label: 'Refunds & Credits',   value: null, status: 'unavailable' },
+      { key: 'netRevenue',        label: 'Net Revenue',         value: 1580, status: 'ok' },
+      { key: 'cogs',              label: 'COGS',                value: null, status: 'unavailable' },
+      { key: 'grossProfit',       label: 'Gross Profit',        value: null, status: 'unavailable' },
+      { key: 'grossMargin',       label: 'Gross Margin %',      value: null, status: 'unavailable' },
+      { key: 'operatingExpenses', label: 'Operating Expenses',  value: null, status: 'unavailable' },
+      { key: 'operatingProfit',   label: 'Operating Profit',    value: null, status: 'unavailable' },
+      { key: 'merchantFees',      label: 'Merchant Fees',       value: null, status: 'unavailable' },
+      { key: 'taxes',             label: 'Taxes',               value: null, status: 'unavailable' },
+      { key: 'netProfit',         label: 'Net Profit',          value: null, status: 'unavailable' },
+      { key: 'netMargin',         label: 'Net Margin %',        value: null, status: 'unavailable' },
+    ],
+    setupGuide: {
+      title: 'Connect your accounting software to unlock profitability',
+      steps: ['Connect QuickBooks, Xero, or FreshBooks.', 'Connect payment processor.', 'FieldCore computes margins automatically.'],
+    },
+  },
+  arAging: {
+    total: 450,
+    buckets: [
+      { label: 'Current',    days: 'current', amount: 200, count: 1 },
+      { label: '1–30 days',  days: '1_30',    amount: 150, count: 1 },
+      { label: '31–60 days', days: '31_60',   amount: 100, count: 1 },
+      { label: '61–90 days', days: '61_90',   amount: 0,   count: 0 },
+      { label: '90+ days',   days: '90_plus', amount: 0,   count: 0 },
+    ],
+    invoiceCount: 3,
+    overdueTotal: 250,
+    overdueCount: 2,
+    provenance: { formula: 'Pending invoices bucketed by days past due' },
+  },
+  cashFlow: {
+    cashIn:      { value: 1200, status: 'ok', breakdown: { invoices: 1000, invoiceCount: 3, deposits: 200, depositCount: 1 } },
+    cashOut:     { value: null, status: 'unavailable' },
+    netCashFlow: { value: null, status: 'unavailable' },
+    provenance:  { formula: 'Cash In = paid invoices + collected deposits' },
+  },
+  quarterly: {
+    year: 2026,
+    quarters: {
+      Q1: { earnedRevenue: 1200, collectedRevenue: 1000, avgTicket: 300, qoqGrowth: null, yoyGrowth: 5.2 },
+      Q2: { earnedRevenue: 1500, collectedRevenue: 1300, avgTicket: 320, qoqGrowth: 25.0, yoyGrowth: 8.1 },
+      Q3: { earnedRevenue: null, collectedRevenue: null,  avgTicket: null, qoqGrowth: null, yoyGrowth: null },
+      Q4: { earnedRevenue: null, collectedRevenue: null,  avgTicket: null, qoqGrowth: null, yoyGrowth: null },
+      year: { earnedRevenue: 2700, collectedRevenue: 2300, avgTicket: 310, qoqGrowth: null, yoyGrowth: 6.5 },
+    },
+    priorYear: {},
+    calculatedAt: '2026-08-06T10:00:00Z',
+  },
+  providers: [
+    { key: 'quickbooks', label: 'QuickBooks', status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes'] },
+    { key: 'xero',       label: 'Xero',       status: 'not_connected', capabilities: ['cogs', 'expenses', 'pl', 'taxes'] },
+    { key: 'banking',    label: 'Banking',    status: 'not_connected', capabilities: ['transactions', 'cash_flow', 'reconciliation'] },
+    { key: 'stripe',     label: 'Stripe',     status: 'not_connected', capabilities: ['payments', 'merchant_fees', 'refunds'] },
+  ],
+  dataQuality: {
+    state: 'partial',
+    limitationCount: 3,
+    limitations: [
+      { code: 'cogs_unavailable',        severity: 'warning', title: 'COGS Not Connected',      description: 'Connect accounting.' },
+      { code: 'cash_out_unavailable',    severity: 'warning', title: 'Cash Out Not Available',  description: 'Connect banking.' },
+      { code: 'ar_aging_proxy_due_date', severity: 'info',    title: 'AR Aging Uses Net-30 Proxy', description: 'Set explicit due dates.' },
+    ],
+    missingSources: ['accounting_integration', 'banking_integration'],
+  },
+  calculatedAt: '2026-08-06T10:00:00Z',
+};
+
 function renderRevenue(search = '') {
   return render(
     <MemoryRouter initialEntries={[`/revenue${search}`]}>
@@ -156,6 +241,7 @@ beforeEach(() => {
     if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
     if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
     if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+    if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
     if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
     if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
     if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
@@ -467,6 +553,7 @@ describe('Revenue — error state does not show zero', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
       return Promise.reject(new Error('Unknown'));
@@ -655,6 +742,7 @@ describe('Revenue — Top 5 Services', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
       return Promise.reject(new Error('Unknown'));
@@ -732,6 +820,7 @@ describe('Revenue — trend chart date parsing', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/trend'))     return Promise.resolve({
         data: {
@@ -818,6 +907,7 @@ describe('Revenue — trend chart body anchoring', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
@@ -840,6 +930,7 @@ describe('Revenue — trend chart body anchoring', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/services'))  return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/revenue/quarterly')) return Promise.resolve({ data: MOCK_QUARTERLY });
@@ -967,6 +1058,7 @@ describe('Revenue — trend chart empty state', () => {
       if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
       if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
       if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
       if (url.includes('/revenue/overview'))  return Promise.resolve({ data: MOCK_OVERVIEW });
       if (url.includes('/revenue/trend'))     return Promise.resolve({
         data: { current: [], comparison: null, interval: 'daily' },
@@ -978,6 +1070,188 @@ describe('Revenue — trend chart empty state', () => {
     renderRevenue();
     await waitFor(() => {
       expect(screen.getByText(/no revenue activity for this period/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Financials workspace ───────────────────────────────────────────────────────
+
+describe('Revenue — Financials workspace', () => {
+  it('navigating to Financials tab renders the workspace', async () => {
+    renderRevenue();
+    await waitFor(() => screen.getByRole('tab', { name: 'Financials' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Financials' }));
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: /financial kpis/i })).toBeInTheDocument();
+    });
+  });
+
+  it('Financials URL param renders workspace directly', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: /financial kpis/i })).toBeInTheDocument();
+    });
+  });
+
+  it('renders Gross Revenue KPI card with a compact dollar value', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      // Gross Revenue appears in KPI card and P&L table — both should be present
+      const labels = screen.getAllByText('Gross Revenue');
+      expect(labels.length).toBeGreaterThanOrEqual(1);
+      // KPI card uses compact format: 1580 → $1.6k
+      expect(screen.getByText('$1.6k')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Cash In KPI card with a compact dollar value', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      // Cash In appears in KPI card and Cash Flow card
+      const labels = screen.getAllByText('Cash In');
+      expect(labels.length).toBeGreaterThanOrEqual(1);
+      // KPI card uses compact format: 1200 → $1.2k
+      expect(screen.getByText('$1.2k')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Gross Profit as Not connected', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      // Gross Profit appears in KPI card
+      const labels = screen.getAllByText('Gross Profit');
+      expect(labels.length).toBeGreaterThanOrEqual(1);
+    });
+    const cards = screen.getAllByText('Not connected');
+    expect(cards.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('AR Aging section shows 3 pending invoices and $450.00 total', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/3 pending invoice/i)).toBeInTheDocument();
+      expect(screen.getByText(/\$450\.00 total/i)).toBeInTheDocument();
+    });
+  });
+
+  it('AR Aging shows bucket labels', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Current')).toBeInTheDocument();
+      expect(screen.getByText('1–30 days')).toBeInTheDocument();
+      expect(screen.getByText('31–60 days')).toBeInTheDocument();
+    });
+  });
+
+  it('AR Aging shows overdue summary when overdueCount > 0', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/\$250\.00 overdue/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Cash Flow card shows Cash In row and not-connected guidance for Cash Out', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Cash Flow')).toBeInTheDocument();
+      // Cash In appears in both KPI row and CF card
+      expect(screen.getAllByText('Cash In').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Cash Out')).toBeInTheDocument();
+      expect(screen.getByText(/connect banking/i)).toBeInTheDocument();
+    });
+  });
+
+  it('P&L Summary is expandable/collapsible', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/P&L Summary/i)).toBeInTheDocument();
+    });
+    const toggle = screen.getByRole('button', { name: /P&L Summary/i });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
+  it('P&L rows include Net Revenue and COGS', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('table', { name: /profit and loss/i })).toBeInTheDocument();
+      expect(screen.getByText('Net Revenue')).toBeInTheDocument();
+      // COGS appears in P&L table and quarterly table — both present
+      expect(screen.getAllByText('COGS').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('unavailable P&L rows display "Unavailable" badge', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      const badges = screen.getAllByText('Unavailable');
+      expect(badges.length).toBeGreaterThan(3);
+    });
+  });
+
+  it('P&L setup guide is visible with steps', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/connect your accounting software/i)).toBeInTheDocument();
+      expect(screen.getByText(/quickbooks, xero, or freshbooks/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Quarterly Review table is rendered with quarter labels', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('table', { name: /quarterly financial review/i })).toBeInTheDocument();
+      expect(screen.getAllByText('Q1').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Q2').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('Integration CTA card shows QuickBooks, Banking, and Stripe', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Connect to Unlock Full Financials')).toBeInTheDocument();
+      expect(screen.getByText('QuickBooks')).toBeInTheDocument();
+      expect(screen.getByText('Banking')).toBeInTheDocument();
+      expect(screen.getByText('Stripe')).toBeInTheDocument();
+    });
+  });
+
+  it('integration connect buttons are disabled (coming soon)', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      const btns = screen.getAllByRole('button', { name: /coming soon/i });
+      expect(btns.length).toBeGreaterThan(0);
+      btns.forEach(btn => expect(btn).toBeDisabled());
+    });
+  });
+
+  it('data quality banner shows when sources are not connected', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('note', { name: /data quality notice/i })).toBeInTheDocument();
+      expect(screen.getByText(/2 data sources not connected/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows error state when /revenue/financials fails', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/financials'))         return Promise.reject({ response: { data: { error: 'Financial analytics could not be loaded.' } } });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/financial analytics could not be loaded/i)).toBeInTheDocument();
     });
   });
 });

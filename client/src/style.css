@@ -3737,6 +3737,115 @@ body {
 }
 .rov-opps-action:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; border-radius: 2px; }
 
+/* ── Financials Workspace ─────────────────────────────────────────────────── */
+
+/* Data quality banner */
+.fin-dq-banner {
+  display: flex; align-items: center; gap: 8px;
+  background: #fffbf0; border: 1px solid #e8c96a; border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: #7a5c00;
+}
+.fin-dq-icon  { font-size: 14px; flex-shrink: 0; }
+.fin-dq-text  { line-height: 1.4; }
+
+/* KPI row */
+.fin-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+.fin-kpi-card {
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.fin-kpi-label  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--steel); }
+.fin-kpi-value  { font-size: 22px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+.fin-kpi-unavail { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.fin-kpi-unavail-badge { font-size: 11px; font-weight: 600; color: var(--steel); background: var(--offwhite); border-radius: 4px; padding: 2px 6px; display: inline-block; width: fit-content; }
+.fin-kpi-unavail-hint  { font-size: 10px; color: var(--steel); font-style: italic; }
+.fin-kpi-breakdown { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; border-top: 1px solid var(--lightgray); padding-top: 6px; }
+.fin-kpi-breakdown-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--slate); }
+
+/* Shared section header */
+.fin-section-header { padding: 13px 16px; border-bottom: 1px solid var(--lightgray); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.fin-section-title  { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0; }
+.fin-section-sub    { font-size: 11px; color: var(--steel); flex-shrink: 0; }
+.fin-loading-row    { padding: 20px 16px; font-size: 13px; color: var(--steel); }
+
+/* Shared unavailable badge */
+.fin-unavail-badge { font-size: 11px; color: var(--steel); font-style: italic; }
+
+/* Lower grid: AR aging + Cash flow */
+.fin-lower-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+/* AR aging card */
+.fin-ar-card { padding: 0; overflow: hidden; }
+.fin-ar-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.fin-ar-row  { display: grid; grid-template-columns: 90px 1fr 130px; gap: 10px; align-items: center; }
+.fin-ar-label { font-size: 11px; font-weight: 600; color: var(--slate); white-space: nowrap; }
+.fin-ar-bar-wrap { height: 8px; background: var(--offwhite); border-radius: 4px; overflow: hidden; }
+.fin-ar-bar       { height: 100%; background: var(--sand); border-radius: 4px; transition: width .3s ease; }
+.fin-ar-bar--overdue { background: #d9534f; }
+.fin-ar-amount { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--navy); text-align: right; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.fin-ar-zero   { color: var(--steel); }
+.fin-ar-count  { font-size: 10px; color: var(--steel); }
+.fin-ar-overdue-summary { padding: 8px 16px; border-top: 1px solid var(--lightgray); }
+.fin-ar-overdue-tag { font-size: 11px; font-weight: 600; color: #d9534f; background: #fdf2f2; border-radius: 4px; padding: 3px 8px; }
+.fin-ar-note { padding: 8px 16px 12px; font-size: 10px; color: var(--steel); font-style: italic; }
+
+/* Cash flow card */
+.fin-cf-card { padding: 0; overflow: hidden; }
+.fin-cf-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.fin-cf-row  { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+.fin-cf-row--in  .fin-cf-row-label { color: var(--navy); font-weight: 600; font-size: 13px; }
+.fin-cf-row--out .fin-cf-row-label { color: var(--slate); font-size: 12px; }
+.fin-cf-row--net .fin-cf-row-label { color: var(--navy); font-weight: 700; font-size: 13px; border-top: 2px solid var(--lightgray); padding-top: 6px; width: 100%; }
+.fin-cf-row--net { border-top: none; padding-top: 0; }
+.fin-cf-row-value { font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--navy); }
+.fin-cf-divider { height: 1px; background: var(--lightgray); margin: 4px 0; }
+.fin-cf-breakdown { display: flex; gap: 12px; font-size: 10px; color: var(--steel); padding: 0 0 4px 2px; }
+.fin-cf-cta { padding: 10px 16px 12px; font-size: 11px; color: var(--steel); background: var(--offwhite); border-top: 1px solid var(--lightgray); line-height: 1.5; }
+
+/* P&L summary */
+.fin-pnl-card { overflow: hidden; }
+.fin-pnl-toggle { font-size: 10px; color: var(--steel); user-select: none; }
+.fin-pnl-body {}
+.fin-pnl-table { width: 100%; border-collapse: collapse; }
+.fin-pnl-row td { padding: 8px 16px; border-bottom: 1px solid var(--lightgray); }
+.fin-pnl-row:last-child td { border-bottom: none; }
+.fin-pnl-row-label { font-size: 12px; font-weight: 500; color: var(--slate); }
+.fin-pnl-row-value { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--navy); }
+.fin-pnl-row--subtotal .fin-pnl-row-label { font-weight: 700; color: var(--navy); }
+.fin-pnl-row--subtotal .fin-pnl-row-value { font-weight: 700; }
+.fin-pnl-row--unavail .fin-pnl-row-label { color: var(--steel); }
+.fin-pnl-sep-row td { height: 4px; padding: 0; background: var(--offwhite); border-top: 1px solid var(--lightgray); border-bottom: 1px solid var(--lightgray); }
+.fin-pnl-setup { margin: 0; padding: 14px 16px; background: var(--offwhite); border-top: 1px solid var(--lightgray); }
+.fin-pnl-setup-title { font-size: 11px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+.fin-pnl-setup-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.fin-pnl-setup-steps li { font-size: 11px; color: var(--slate); line-height: 1.5; }
+
+/* Integration CTAs */
+.fin-integrations-card { overflow: hidden; }
+.fin-integrations-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+}
+.fin-int-card {
+  padding: 14px 16px; border-right: 1px solid var(--lightgray);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.fin-int-card:last-child { border-right: none; }
+.fin-int-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.fin-int-name   { font-size: 13px; font-weight: 700; color: var(--navy); }
+.fin-int-status-badge { font-size: 10px; color: var(--steel); background: var(--offwhite); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--lightgray); white-space: nowrap; }
+.fin-int-desc   { font-size: 11px; color: var(--slate); line-height: 1.5; }
+.fin-int-capabilities { display: flex; gap: 4px; flex-wrap: wrap; }
+.fin-int-cap    { font-size: 10px; background: var(--offwhite); color: var(--steel); border-radius: 3px; padding: 2px 5px; border: 1px solid var(--lightgray); }
+.fin-int-connect-btn { margin-top: 4px; font-size: 11px; padding: 5px 10px; opacity: 0.6; cursor: not-allowed; }
+
 /* Financials workspace */
 .rov-fin-year-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .rov-fin-year-label { font-size: 11px; font-weight: 700; color: var(--steel); }
@@ -3814,9 +3923,13 @@ body {
 @media (max-width: 1200px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(3, 1fr); }
   .rov-kpi-row--secondary { grid-template-columns: repeat(2, 1fr); }
+  .fin-kpi-row            { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 1100px) {
   .rov-fin-integration-cards { grid-template-columns: repeat(2, 1fr); }
+  .fin-integrations-grid     { grid-template-columns: 1fr; }
+  .fin-int-card              { border-right: none; border-bottom: 1px solid var(--lightgray); }
+  .fin-int-card:last-child   { border-bottom: none; }
 }
 @media (max-width: 900px) {
   .analytics-grid        { grid-template-columns: 1fr; }
@@ -3824,16 +3937,19 @@ body {
   .revenue-trend-card    { height: auto; min-height: 0; }
   .rov-top5-card         { height: auto; min-height: 0; }
   .rov-fin-integration-cards { grid-template-columns: 1fr; }
+  .fin-lower-grid        { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(2, 1fr); }
   .rov-kpi-row--secondary { grid-template-columns: repeat(2, 1fr); }
+  .fin-kpi-row            { grid-template-columns: repeat(2, 1fr); }
   .rov-workspace-nav { overflow-x: auto; }
   .rov-filter-bar     { gap: 8px; }
 }
 @media (max-width: 480px) {
   .rov-kpi-row--primary   { grid-template-columns: 1fr; }
   .rov-kpi-row--secondary { grid-template-columns: 1fr; }
+  .fin-kpi-row            { grid-template-columns: 1fr; }
   .rov-filter-presets { display: none; }
 }
 

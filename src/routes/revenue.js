@@ -153,6 +153,23 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
   }
 });
 
+// ── GET /api/revenue/financials ───────────────────────────────────────────────
+// Complete financial analytics: P&L structure, AR aging, cash flow, quarterly
+// Query params: start, end, comparison
+
+const finSvc = require('../services/financialAnalyticsService');
+
+router.get('/financials', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end, comparison = 'none' } = req.query;
+  try {
+    const result = await finSvc.getFinancials(req.accountId, { start, end, comparison });
+    res.json(result);
+  } catch (err) {
+    console.error('[revenue] financials error', err.message);
+    res.status(500).json({ error: 'Financial analytics could not be loaded.' });
+  }
+});
+
 // ── Revenue Policies ──────────────────────────────────────────────────────────
 const policiesSvc = require('../services/revenuePoliciesService');
 

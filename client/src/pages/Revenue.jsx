@@ -9,6 +9,7 @@ import {
   ForecastingWorkspace,
   ReportsWorkspace,
 } from '../components/revenue/RevenueWorkspaceShells';
+import { FinancialsWorkspace } from '../components/revenue/FinancialsWorkspace';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -736,197 +737,6 @@ function DataLimitationsPanel({ dataQuality, loading }) {
   );
 }
 
-// ── FinancialsWorkspace ───────────────────────────────────────────────────────
-
-const QUARTER_KEYS   = ['Q1', 'Q2', 'Q3', 'Q4', 'year'];
-const QUARTER_LABELS = { Q1: 'Q1', Q2: 'Q2', Q3: 'Q3', Q4: 'Q4', year: 'Full Year' };
-
-const INTEGRATION_CARDS = [
-  {
-    name:     'Accounting',
-    examples: 'QuickBooks, Xero, FreshBooks',
-    desc:     'Connect to pull COGS, expenses, and profit/loss data for gross and net margin calculations.',
-  },
-  {
-    name:     'Banking',
-    examples: 'Bank feeds, direct import',
-    desc:     'Connect to reconcile deposits and track cash flow against earned revenue.',
-  },
-  {
-    name:     'Payment Processor',
-    examples: 'Stripe, Square, PayPal',
-    desc:     'Connect to import transactions and merchant fees automatically.',
-  },
-];
-
-const PROFITABILITY_ROWS = [
-  ['COGS',                'cogs'             ],
-  ['Gross Profit',        'grossProfit'      ],
-  ['Gross Margin',        'grossMargin'      ],
-  ['Operating Expenses',  'operatingExpenses'],
-  ['Operating Profit',    'operatingProfit'  ],
-  ['Net Profit',          'netProfit'        ],
-  ['Net Margin',          'netMargin'        ],
-  ['Refunds & Credits',   'refunds'          ],
-  ['Merchant Fees',       'merchantFees'     ],
-];
-
-function FinancialsWorkspace() {
-  const currentYear = new Date().getUTCFullYear();
-  const [finYear, setFinYear] = useState(currentYear);
-  const yearOptions = [currentYear, currentYear - 1, currentYear - 2];
-
-  const { data: quarterly, loading: qLoading } =
-    useRevData('/revenue/quarterly', { year: finYear }, [finYear]);
-
-  const q   = quarterly?.quarters    || {};
-  const lim = quarterly?.limitations || [];
-
-  function GrowthCell({ qKey, type }) {
-    const d = q[qKey];
-    if (!d) return <td>—</td>;
-    const raw = type === 'qoq' ? d.qoqGrowth : d.yoyGrowth;
-    if (raw == null) return <td><span className="rov-q-growth-none">—</span></td>;
-    const cls = raw >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
-    return <td><span className={cls}>{fmtGrowth(raw)}</span></td>;
-  }
-
-  return (
-    <div className="rov-ws-body">
-
-      {/* Year selector */}
-      <div className="rov-fin-year-bar">
-        <span className="rov-fin-year-label">Fiscal Year</span>
-        <select
-          className="rov-fin-year-select"
-          value={finYear}
-          onChange={e => setFinYear(parseInt(e.target.value))}
-          aria-label="Select fiscal year"
-        >
-          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {qLoading && (
-          <span style={{ fontSize: 11, color: 'var(--steel)' }}>Loading…</span>
-        )}
-      </div>
-
-      {/* Integration status cards */}
-      <div className="rov-fin-integration-cards">
-        {INTEGRATION_CARDS.map(ic => (
-          <div key={ic.name} className="rov-fin-int-card">
-            <div className="rov-fin-int-name">{ic.name}</div>
-            <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 2 }}>{ic.examples}</div>
-            <div className="rov-fin-int-status">Not connected</div>
-            <div className="rov-fin-int-desc">{ic.desc}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Quarterly comparison table */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <h2 className="rov-ws-section-title">Quarterly Financial Review — {finYear}</h2>
-          {quarterly?.calculatedAt && (
-            <span className="rov-ws-section-sub">
-              Calculated {new Date(quarterly.calculatedAt).toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-        <div className="rov-quarterly-table-wrap">
-          <table className="rov-q-table" aria-label={`Quarterly financial comparison ${finYear}`}>
-            <thead>
-              <tr>
-                <th>Metric</th>
-                {QUARTER_KEYS.map(k => <th key={k}>{QUARTER_LABELS[k]}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-
-              {/* ── Revenue ── */}
-              <tr className="rov-q-section-row">
-                <td colSpan={6}>Revenue</td>
-              </tr>
-
-              <tr>
-                <td>Earned Revenue</td>
-                {QUARTER_KEYS.map(k => {
-                  const d = q[k];
-                  return <td key={k}>{d?.earnedRevenue != null ? fmtMoney(d.earnedRevenue, false) : '—'}</td>;
-                })}
-              </tr>
-
-              <tr>
-                <td>Collected Revenue</td>
-                {QUARTER_KEYS.map(k => {
-                  const d = q[k];
-                  return <td key={k}>{d?.collectedRevenue != null ? fmtMoney(d.collectedRevenue, false) : '—'}</td>;
-                })}
-              </tr>
-
-              <tr>
-                <td>Avg Ticket</td>
-                {QUARTER_KEYS.map(k => {
-                  const d = q[k];
-                  return <td key={k}>{d?.avgTicket != null ? fmtMoney(d.avgTicket, false) : '—'}</td>;
-                })}
-              </tr>
-
-              <tr>
-                <td>QoQ Growth</td>
-                {QUARTER_KEYS.map(k => {
-                  if (k === 'year') return <td key={k}><span className="rov-q-growth-none">—</span></td>;
-                  const d = q[k];
-                  if (!d || d.qoqGrowth == null) return <td key={k}><span className="rov-q-growth-none">—</span></td>;
-                  const cls = d.qoqGrowth >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
-                  return <td key={k}><span className={cls}>{fmtGrowth(d.qoqGrowth)}</span></td>;
-                })}
-              </tr>
-
-              <tr>
-                <td>YoY Growth</td>
-                {QUARTER_KEYS.map(k => {
-                  const d = q[k];
-                  if (!d || d.yoyGrowth == null) return <td key={k}><span className="rov-q-growth-none">—</span></td>;
-                  const cls = d.yoyGrowth >= 0 ? 'rov-q-growth-pos' : 'rov-q-growth-neg';
-                  return <td key={k}><span className={cls}>{fmtGrowth(d.yoyGrowth)}</span></td>;
-                })}
-              </tr>
-
-              {/* ── Profitability ── */}
-              <tr className="rov-q-section-row">
-                <td colSpan={6}>Profitability — Requires accounting integration</td>
-              </tr>
-
-              {PROFITABILITY_ROWS.map(([label]) => (
-                <tr key={label}>
-                  <td>{label}</td>
-                  {QUARTER_KEYS.map(k => (
-                    <td key={k}><span className="rov-q-unavailable">Unavailable</span></td>
-                  ))}
-                </tr>
-              ))}
-
-            </tbody>
-          </table>
-        </div>
-
-        {lim.length > 0 && (
-          <div
-            className="rov-limitations"
-            style={{ margin: 0, borderRadius: 0, borderTop: '1px solid var(--lightgray)' }}
-            role="note"
-          >
-            <div className="rov-limitations-header">Data limitations</div>
-            <ul className="rov-limitations-list">
-              {lim.map((l, i) => <li key={i}>{l}</li>)}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── OperationsWorkspace ───────────────────────────────────────────────────────
 
 function OperationsWorkspace({ filterStart, filterEnd }) {
@@ -1448,7 +1258,7 @@ export default function Revenue() {
       {/* ── FINANCIALS ────────────────────────────────────────────────────── */}
       {view === 'financials' && (
         <div id="rov-panel-financials" role="tabpanel" aria-label="Financials">
-          <FinancialsWorkspace />
+          <FinancialsWorkspace filterStart={filterStart} filterEnd={filterEnd} comparison={comparison} />
         </div>
       )}
 
