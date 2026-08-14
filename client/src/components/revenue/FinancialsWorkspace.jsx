@@ -290,6 +290,23 @@ function ARAgingCard({ arAging, loading }) {
 
 // ── Cash Flow Card ────────────────────────────────────────────────────────────
 
+function CashFlowMetricRow({ label, value, status, supportingText, emphasis }) {
+  const isAvailable = status === 'ok' && value != null;
+  return (
+    <div className={`fin-cf-metric-row${emphasis ? ' fin-cf-metric-row--emphasis' : ''}`}>
+      <div className="fin-cf-metric-left">
+        <span className="fin-cf-metric-label">{label}</span>
+        {supportingText && (
+          <span className="fin-cf-metric-support">{supportingText}</span>
+        )}
+      </div>
+      <span className={isAvailable ? 'fin-cf-metric-amount' : 'fin-cf-metric-unavail'}>
+        {isAvailable ? fmtMoney(value, false) : 'Unavailable'}
+      </span>
+    </div>
+  );
+}
+
 function CashFlowCard({ cashFlow, loading }) {
   if (loading) return (
     <div className="fin-cf-card dash-card">
@@ -303,44 +320,39 @@ function CashFlowCard({ cashFlow, loading }) {
 
   const { cashIn, cashOut, netCashFlow } = cashFlow;
 
+  let cashInSupport = null;
+  if (cashIn.status === 'ok' && cashIn.breakdown) {
+    const parts = [`Invoices: ${fmtMoney(cashIn.breakdown.invoices, false)}`];
+    if (cashIn.breakdown.deposits > 0) {
+      parts.push(`Deposits: ${fmtMoney(cashIn.breakdown.deposits, false)}`);
+    }
+    cashInSupport = parts.join(' · ');
+  }
+
   return (
     <div className="fin-cf-card dash-card">
       <div className="fin-section-header">
         <h3 className="fin-section-title">Cash Flow</h3>
         <span className="fin-section-sub">Period summary</span>
       </div>
-      <div className="fin-cf-body">
-        <div className="fin-cf-row fin-cf-row--in">
-          <span className="fin-cf-row-label">Cash In</span>
-          <span className="fin-cf-row-value">
-            {cashIn.status === 'ok' ? fmtMoney(cashIn.value, false) : <span className="fin-unavail-badge">—</span>}
-          </span>
-        </div>
-        {cashIn.status === 'ok' && cashIn.breakdown && (
-          <div className="fin-cf-breakdown">
-            <span>Invoices: {fmtMoney(cashIn.breakdown.invoices, false)}</span>
-            {cashIn.breakdown.deposits > 0 && (
-              <span>Deposits: {fmtMoney(cashIn.breakdown.deposits, false)}</span>
-            )}
-          </div>
-        )}
-        <div className="fin-cf-divider" />
-        <div className="fin-cf-row fin-cf-row--out">
-          <span className="fin-cf-row-label">Cash Out</span>
-          <span className="fin-cf-row-value">
-            {cashOut?.status === 'ok'
-              ? fmtMoney(cashOut.value, false)
-              : <span className="fin-cf-unavail">Unavailable</span>}
-          </span>
-        </div>
-        <div className="fin-cf-row fin-cf-row--net">
-          <span className="fin-cf-row-label">Net Cash Flow</span>
-          <span className="fin-cf-row-value">
-            {netCashFlow?.status === 'ok'
-              ? fmtMoney(netCashFlow.value, false)
-              : <span className="fin-cf-unavail">Unavailable</span>}
-          </span>
-        </div>
+      <div className="fin-cf-rows">
+        <CashFlowMetricRow
+          label="Cash In"
+          value={cashIn.value}
+          status={cashIn.status}
+          supportingText={cashInSupport}
+        />
+        <CashFlowMetricRow
+          label="Cash Out"
+          value={cashOut?.value}
+          status={cashOut?.status}
+        />
+        <CashFlowMetricRow
+          label="Net Cash Flow"
+          value={netCashFlow?.value}
+          status={netCashFlow?.status}
+          emphasis
+        />
       </div>
       {(cashOut?.status !== 'ok' || netCashFlow?.status !== 'ok') && (
         <div className="fin-cf-footer">

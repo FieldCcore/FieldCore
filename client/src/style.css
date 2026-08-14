@@ -3799,18 +3799,17 @@ body {
 
 /* Cash flow card */
 .fin-cf-card { padding: 0; overflow: hidden; }
-.fin-cf-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
-.fin-cf-row  { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
-.fin-cf-row--in  .fin-cf-row-label { color: var(--navy); font-weight: 600; font-size: 13px; }
-.fin-cf-row--out .fin-cf-row-label { color: var(--slate); font-size: 12px; }
-.fin-cf-row--net .fin-cf-row-label { color: var(--navy); font-weight: 700; font-size: 13px; border-top: 2px solid var(--lightgray); padding-top: 6px; width: 100%; }
-.fin-cf-row--net { border-top: none; padding-top: 0; }
-.fin-cf-row-value { font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--navy); }
-.fin-cf-divider { height: 1px; background: var(--lightgray); margin: 4px 0; }
-.fin-cf-breakdown { display: flex; gap: 12px; font-size: 10px; color: var(--steel); padding: 0 0 4px 2px; }
+.fin-cf-rows { display: flex; flex-direction: column; }
+.fin-cf-metric-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; min-height: 72px; padding: 0 16px; }
+.fin-cf-metric-row + .fin-cf-metric-row { border-top: 1px solid var(--lightgray); }
+.fin-cf-metric-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fin-cf-metric-label { font-size: 13px; font-weight: 600; color: var(--navy); line-height: 1.3; }
+.fin-cf-metric-row--emphasis .fin-cf-metric-label { font-weight: 700; }
+.fin-cf-metric-support { font-size: 10px; color: var(--steel); line-height: 1.3; }
+.fin-cf-metric-amount { font-size: 13px; font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.fin-cf-metric-unavail { font-size: 13px; font-weight: 500; color: var(--steel); white-space: nowrap; text-align: right; }
 .fin-cf-cta { padding: 10px 16px 12px; font-size: 11px; color: var(--steel); background: var(--offwhite); border-top: 1px solid var(--lightgray); line-height: 1.5; }
 .fin-cf-footer { padding: 10px 16px 12px; font-size: 11px; color: var(--steel); background: var(--offwhite); border-top: 1px solid var(--lightgray); line-height: 1.5; }
-.fin-cf-unavail { color: var(--steel); font-style: normal; font-weight: 400; font-size: 12px; }
 
 /* P&L summary */
 .fin-pnl-card { overflow: hidden; }
