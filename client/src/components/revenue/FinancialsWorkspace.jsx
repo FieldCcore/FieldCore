@@ -327,16 +327,26 @@ function CashFlowCard({ cashFlow, loading }) {
         <div className="fin-cf-divider" />
         <div className="fin-cf-row fin-cf-row--out">
           <span className="fin-cf-row-label">Cash Out</span>
-          <span className="fin-cf-row-value fin-unavail-badge">Not connected</span>
+          <span className="fin-cf-row-value">
+            {cashOut?.status === 'ok'
+              ? fmtMoney(cashOut.value, false)
+              : <span className="fin-cf-unavail">Unavailable</span>}
+          </span>
         </div>
         <div className="fin-cf-row fin-cf-row--net">
           <span className="fin-cf-row-label">Net Cash Flow</span>
-          <span className="fin-cf-row-value fin-unavail-badge">Not connected</span>
+          <span className="fin-cf-row-value">
+            {netCashFlow?.status === 'ok'
+              ? fmtMoney(netCashFlow.value, false)
+              : <span className="fin-cf-unavail">Unavailable</span>}
+          </span>
         </div>
       </div>
-      <div className="fin-cf-cta">
-        Connect banking or expense tracking to see Cash Out and Net Cash Flow.
-      </div>
+      {(cashOut?.status !== 'ok' || netCashFlow?.status !== 'ok') && (
+        <div className="fin-cf-footer">
+          Cash In is available from FieldCore Payments. Connect accounting or banking to track outgoing cash.
+        </div>
+      )}
     </div>
   );
 }

@@ -3809,6 +3809,8 @@ body {
 .fin-cf-divider { height: 1px; background: var(--lightgray); margin: 4px 0; }
 .fin-cf-breakdown { display: flex; gap: 12px; font-size: 10px; color: var(--steel); padding: 0 0 4px 2px; }
 .fin-cf-cta { padding: 10px 16px 12px; font-size: 11px; color: var(--steel); background: var(--offwhite); border-top: 1px solid var(--lightgray); line-height: 1.5; }
+.fin-cf-footer { padding: 10px 16px 12px; font-size: 11px; color: var(--steel); background: var(--offwhite); border-top: 1px solid var(--lightgray); line-height: 1.5; }
+.fin-cf-unavail { color: var(--steel); font-style: normal; font-weight: 400; font-size: 12px; }
 
 /* P&L summary */
 .fin-pnl-card { overflow: hidden; }

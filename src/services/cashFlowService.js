@@ -42,21 +42,20 @@ async function getCashFlow(accountId, start, end) {
       },
     },
     cashOut: {
-      value:         null,
-      status:        'unavailable',
-      missingSource: 'expense_tracking',
-      note:          'Connect an accounting or expense integration to track cash outflows.',
+      value:       null,
+      status:      'unavailable',
+      limitations: ['Outgoing cash data source not configured. Connect accounting, banking, or another cash-movement source.'],
     },
     netCashFlow: {
-      value:  null,
-      status: 'unavailable',
-      reason: 'Cash Out unavailable — cannot compute Net Cash Flow.',
+      value:       null,
+      status:      'unavailable',
+      limitations: ['Net Cash Flow requires both Cash In and Cash Out. Cash Out data source not configured.'],
     },
     provenance: {
-      formula:       'Cash In = paid invoices (paid_at) + collected deposits (collected_at)',
-      sources:       ['invoices', 'deposits'],
-      cashOutSources: ['None connected'],
-      note:          'Cash Out and Net Cash Flow require an expense or banking integration.',
+      formula:        'Cash In = paid invoices (paid_at) + collected deposits (collected_at)',
+      sources:        ['invoices', 'deposits'],
+      cashOutSources: ['None configured'],
+      note:           'Cash Out and Net Cash Flow require an accounting or banking integration.',
     },
   };
 }

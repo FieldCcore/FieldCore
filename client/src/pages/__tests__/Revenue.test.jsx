@@ -1129,15 +1129,16 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('renders Gross Profit as Not connected', async () => {
+  it('renders Gross Profit KPI card as Unavailable', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
       // Gross Profit appears in KPI card
       const labels = screen.getAllByText('Gross Profit');
       expect(labels.length).toBeGreaterThanOrEqual(1);
+      // KPI card shows Unavailable (not a connector-state label)
+      const badges = screen.getAllByText('Unavailable');
+      expect(badges.length).toBeGreaterThanOrEqual(1);
     });
-    const cards = screen.getAllByText('Not connected');
-    expect(cards.length).toBeGreaterThanOrEqual(1);
   });
 
   it('AR Aging section shows 3 pending invoices and $450.00 total', async () => {
@@ -1164,14 +1165,39 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('Cash Flow card shows Cash In row and not-connected guidance for Cash Out', async () => {
+  it('Cash Flow card shows Cash In value and Unavailable for Cash Out and Net Cash Flow', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
       expect(screen.getByText('Cash Flow')).toBeInTheDocument();
-      // Cash In appears in both KPI row and CF card
       expect(screen.getAllByText('Cash In').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Cash Out')).toBeInTheDocument();
-      expect(screen.getByText(/connect banking/i)).toBeInTheDocument();
+      expect(screen.getByText('Net Cash Flow')).toBeInTheDocument();
+      expect(screen.getByText(/connect accounting or banking/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Cash Flow card does not render "Not connected" labels', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Cash Flow')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Not connected')).not.toBeInTheDocument();
+  });
+
+  it('Cash Flow card shows Unavailable for Cash Out when no cash-out source', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Cash Out')).toBeInTheDocument();
+      const unavailLabels = screen.getAllByText('Unavailable');
+      expect(unavailLabels.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('Cash Flow card renders a single footer when cash out is unavailable', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      const footers = screen.getAllByText(/cash in is available from fieldcore payments/i);
+      expect(footers.length).toBe(1);
     });
   });
 
