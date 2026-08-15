@@ -3999,6 +3999,17 @@ body {
 .fin-src-badge--optional    { background: var(--lightgray); color: var(--slate); }
 .fin-src-capabilities { display: flex; flex-wrap: wrap; gap: 4px; }
 .fin-src-note { font-size: 11px; color: var(--slate); line-height: 1.5; }
+.fin-src-company { font-size: 12px; font-weight: 600; color: var(--navy); margin-top: 4px; }
+.fin-src-sync-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--steel); margin: 4px 0; }
+.fin-src-sync-label { }
+.fin-src-sync-value { font-weight: 500; }
+.fin-src-warn { font-size: 11px; color: #b45309; background: #fef3c7; padding: 4px 8px; border-radius: 4px; margin: 4px 0; }
+.fin-src-error { font-size: 11px; color: var(--red); line-height: 1.4; margin: 4px 0; }
+.fin-src-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.fin-src-action-btn { font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--lightgray); background: var(--white); color: var(--navy); cursor: pointer; transition: background 0.15s; }
+.fin-src-action-btn:hover { background: var(--offwhite); }
+.fin-src-action-btn--danger { color: var(--red); border-color: var(--red); }
+.fin-src-action-btn--danger:hover { background: #fff0f0; }
 .fin-sources-footer { font-size: 11px; color: var(--steel); padding: 8px 18px 14px; line-height: 1.5; border-top: 1px solid var(--lightgray); margin-top: 4px; }
 
 /* ── Responsive: Revenue Overview ────────────────────────── */

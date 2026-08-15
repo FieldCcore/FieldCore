@@ -624,7 +624,36 @@ function startGoogleReviewSyncJob() {
   console.log('[Scheduler] Google review sync scheduled (every 30 min)');
 }
 
-// ── 11. Expired token cleanup — runs daily at 03:00 ─────────────────────────
+// ── 11. Accounting sync — runs every hour at :45 ─────────────────────────────
+function startAccountingSyncJob() {
+  const syncSvc = require('./accountingSyncService');
+
+  cron.schedule('45 * * * *', async () => {
+    try {
+      const { rows: connections } = await pool.query(`
+        SELECT account_id, provider
+        FROM accounting_connections
+        WHERE status IN ('connected', 'sync_error')
+          AND (last_sync_attempt_at IS NULL OR last_sync_attempt_at < NOW() - INTERVAL '50 minutes')
+      `);
+
+      for (const row of connections) {
+        syncSvc.runSync(row.account_id, row.provider, { incremental: true }).catch(err => {
+          console.error(`[Scheduler] Accounting sync failed for account ${row.account_id}:`, err.message);
+        });
+      }
+
+      if (connections.length > 0) {
+        console.log(`[Scheduler] Accounting sync triggered for ${connections.length} connection(s)`);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Accounting sync job error:', err.message);
+    }
+  });
+  console.log('[Scheduler] Accounting sync scheduled (hourly at :45)');
+}
+
+// ── 12. Expired token cleanup — runs daily at 03:00 ─────────────────────────
 function startExpiredTokenCleanup() {
   cron.schedule('0 3 * * *', async () => {
     try {
@@ -658,6 +687,7 @@ function startReminderJobs() {
   startBillingRenewalReminders();
   startReviewRequestJob();
   startGoogleReviewSyncJob();
+  startAccountingSyncJob();
   startExpiredTokenCleanup();
 }
 

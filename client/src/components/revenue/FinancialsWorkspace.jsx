@@ -5,6 +5,40 @@ import SelectDropdown from '../SelectDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Presentation formatter for financial capability keys.
+const CAPABILITY_LABELS = {
+  revenue:              'Revenue',
+  invoices:             'Invoices',
+  ar:                   'AR',
+  jobs:                 'Jobs',
+  customers:            'Customers',
+  service_revenue:      'Service Revenue',
+  payments:             'Payments',
+  deposits:             'Deposits',
+  cash_in:              'Cash In',
+  refunds:              'Refunds',
+  processing_fees:      'Processing Fees',
+  disputes:             'Disputes',
+  payouts:              'Payouts',
+  cogs:                 'COGS',
+  operating_expenses:   'Operating Expenses',
+  taxes:                'Taxes',
+  vendor_expenses:      'Vendor Expenses',
+  account_mapping:      'Account Mapping',
+  reconciliation:       'Reconciliation',
+  bank_balances:        'Bank Balances',
+  cash_transactions:    'Cash Transactions',
+  cash_out:             'Cash Out',
+  external_deposits:    'External Deposits',
+  merchant_fees:        'Merchant Fees',
+};
+
+function formatCapabilityLabel(key) {
+  if (CAPABILITY_LABELS[key]) return CAPABILITY_LABELS[key];
+  // Fallback: capitalize each word
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function fmtMoney(v, compact = false) {
   if (v == null) return '—';
   const n = parseFloat(v) || 0;
@@ -54,7 +88,7 @@ function useFinData(params) {
   }, [params.start, params.end, params.comparison]);
 
   useEffect(() => { fetch(); return () => { abortRef.current?.abort(); }; }, [fetch]);
-  return { data, loading, error };
+  return { data, loading, error, refetch: fetch };
 }
 
 // ── KPI Row ───────────────────────────────────────────────────────────────────
@@ -753,29 +787,129 @@ function ProfitWaterfall({ kpis, loading }) {
 // ── Financial Data Sources ────────────────────────────────────────────────────
 
 const STATUS_BADGE = {
-  active:        { label: 'Active',       className: 'fin-src-badge--active'      },
-  degraded:      { label: 'Degraded',     className: 'fin-src-badge--degraded'    },
-  not_enabled:   { label: 'Not Enabled',  className: 'fin-src-badge--not-enabled' },
-  not_connected: { label: 'Optional',     className: 'fin-src-badge--optional'    },
+  active:           { label: 'Active',                    className: 'fin-src-badge--active'      },
+  degraded:         { label: 'Degraded',                  className: 'fin-src-badge--degraded'    },
+  not_enabled:      { label: 'Not Enabled',               className: 'fin-src-badge--not-enabled' },
+  not_connected:    { label: 'Optional',                  className: 'fin-src-badge--optional'    },
+  connected:        { label: 'Connected',                 className: 'fin-src-badge--active'      },
+  syncing:          { label: 'Syncing',                   className: 'fin-src-badge--active'      },
+  sync_error:       { label: 'Sync Error',                className: 'fin-src-badge--degraded'    },
+  reauth_required:  { label: 'Reauthorization Required',  className: 'fin-src-badge--degraded'    },
 };
 
-function SrcCard({ src, showConnect }) {
+// Initiates QuickBooks OAuth flow by fetching the authorization URL from the backend.
+async function initiateQBConnect(e) {
+  e.currentTarget.disabled = true;
+  try {
+    const res  = await import('../../api').then(m => m.default.get('/integrations/accounting/quickbooks/connect'));
+    window.location.href = res.data.url;
+  } catch (err) {
+    const msg = err?.response?.data?.error || 'Failed to start QuickBooks connection.';
+    alert(msg);
+    e.currentTarget.disabled = false;
+  }
+}
+
+function fmtSyncTime(iso) {
+  if (!iso) return 'Never';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMin = Math.round((now - d) / 60000);
+  if (diffMin < 2)   return 'Just now';
+  if (diffMin < 60)  return `${diffMin}m ago`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24)    return `${diffH}h ago`;
+  return d.toLocaleDateString();
+}
+
+function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
   const badge = STATUS_BADGE[src.status] || STATUS_BADGE.not_connected;
+  const info  = src.connectionInfo;
+  const isAccountingConnected = src.sourceKey === 'accounting' && info;
+
   return (
     <div className={`fin-src-card fin-src-card--${src.status}`}>
       <div className="fin-src-header">
         <span className="fin-src-name">{src.providerLabel}</span>
         <span className={`fin-src-badge ${badge.className}`}>{badge.label}</span>
       </div>
+
+      {isAccountingConnected && info.companyName && (
+        <div className="fin-src-company">{info.companyName}</div>
+      )}
+
+      {isAccountingConnected && (
+        <div className="fin-src-sync-row">
+          <span className="fin-src-sync-label">Last sync</span>
+          <span className="fin-src-sync-value">{fmtSyncTime(info.lastSuccessfulSyncAt)}</span>
+        </div>
+      )}
+
+      {isAccountingConnected && info.unmappedAccountCount > 0 && (
+        <div className="fin-src-warn">
+          {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need mapping
+        </div>
+      )}
+
+      {isAccountingConnected && info.lastErrorCode && (
+        <div className="fin-src-error">{info.lastErrorMessageSafe}</div>
+      )}
+
       <div className="fin-src-capabilities">
-        {src.capabilities.slice(0, 4).map(c => (
-          <span key={c} className="fin-int-cap">{c.replace(/_/g, ' ')}</span>
+        {src.capabilities.slice(0, 7).map(c => (
+          <span key={c} className="fin-int-cap">{formatCapabilityLabel(c)}</span>
         ))}
       </div>
+
       {src.status === 'not_enabled' && src.paymentsStatus?.limitations?.[0] && (
         <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
       )}
-      {showConnect && (
+
+      {isAccountingConnected && (
+        <div className="fin-src-actions">
+          {onSyncNow && (
+            <button
+              className="fin-src-action-btn"
+              onClick={onSyncNow}
+              aria-label="Sync QuickBooks now"
+            >
+              Sync Now
+            </button>
+          )}
+          {onDisconnect && (
+            <button
+              className="fin-src-action-btn fin-src-action-btn--danger"
+              onClick={onDisconnect}
+              aria-label="Disconnect QuickBooks"
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+      )}
+
+      {showConnect && src.sourceKey === 'accounting' && (
+        src.canConnect
+          ? (
+            <button
+              className="fin-int-connect-btn btn-secondary"
+              onClick={initiateQBConnect}
+              aria-label="Connect QuickBooks Online"
+            >
+              Connect QuickBooks
+            </button>
+          ) : (
+            <button
+              className="fin-int-connect-btn btn-secondary"
+              disabled
+              aria-label={`Connect ${src.providerLabel} (coming soon)`}
+            >
+              Coming soon
+            </button>
+          )
+      )}
+
+      {showConnect && src.sourceKey !== 'accounting' && (
         <button
           className="fin-int-connect-btn btn-secondary"
           disabled
@@ -788,15 +922,38 @@ function SrcCard({ src, showConnect }) {
   );
 }
 
-function FinancialDataSources({ coverage }) {
+function FinancialDataSources({ coverage, onCoverageRefresh }) {
   if (!coverage) return null;
   const { activeSources, notEnabledSources, optionalSources } = coverage;
 
-  // Featured active: FieldCore Payments (skip fieldcore_core — it's the background base)
-  const featuredActive   = (activeSources || []).filter(s => s.sourceKey !== 'fieldcore_core');
-  const coreSource       = (activeSources || []).find(s => s.sourceKey === 'fieldcore_core');
-  const activeCount      = (activeSources || []).length;
-  const optionalCount    = (optionalSources || []).length;
+  const featuredActive = (activeSources || []).filter(s => s.sourceKey !== 'fieldcore_core');
+  const coreSource     = (activeSources || []).find(s => s.sourceKey === 'fieldcore_core');
+  const activeCount    = (activeSources || []).length;
+  const optionalCount  = (optionalSources || []).length;
+
+  async function handleQBSync() {
+    try {
+      await import('../../api').then(m => m.default.post('/integrations/accounting/quickbooks/sync'));
+      setTimeout(() => onCoverageRefresh?.(), 3000);
+    } catch (err) {
+      alert(err?.response?.data?.error || 'Sync failed.');
+    }
+  }
+
+  async function handleQBDisconnect() {
+    if (!window.confirm('Disconnect QuickBooks Online? Your imported data will be retained.')) return;
+    try {
+      await import('../../api').then(m => m.default.post('/integrations/accounting/quickbooks/disconnect'));
+      onCoverageRefresh?.();
+    } catch (err) {
+      alert(err?.response?.data?.error || 'Disconnect failed.');
+    }
+  }
+
+  function getAccountingHandlers(src) {
+    if (src.sourceKey !== 'accounting' || !src.connectionInfo) return {};
+    return { onSyncNow: handleQBSync, onDisconnect: handleQBDisconnect };
+  }
 
   return (
     <div className="fin-sources-card rov-ws-section">
@@ -816,13 +973,13 @@ function FinancialDataSources({ coverage }) {
 
       <div className="fin-sources-grid">
         {featuredActive.map(src => (
-          <SrcCard key={src.sourceKey} src={src} showConnect={false} />
+          <SrcCard key={src.sourceKey} src={src} showConnect={false} {...getAccountingHandlers(src)} />
         ))}
         {(notEnabledSources || []).map(src => (
           <SrcCard key={src.sourceKey} src={src} showConnect={false} />
         ))}
         {(optionalSources || []).map(src => (
-          <SrcCard key={src.sourceKey} src={src} showConnect={true} />
+          <SrcCard key={src.sourceKey} src={src} showConnect={true} {...getAccountingHandlers(src)} />
         ))}
       </div>
 
@@ -837,7 +994,7 @@ function FinancialDataSources({ coverage }) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
-  const { data, loading, error } = useFinData({
+  const { data, loading, error, refetch } = useFinData({
     start:      filterStart,
     end:        filterEnd,
     comparison: comparison || 'none',
@@ -897,7 +1054,7 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
       <ProfitWaterfall kpis={kpis} loading={loading} />
 
       {/* Financial Data Sources */}
-      <FinancialDataSources coverage={coverage} />
+      <FinancialDataSources coverage={coverage} onCoverageRefresh={refetch} />
 
     </div>
   );

@@ -42,6 +42,7 @@ const mapsRouter           = require('./routes/maps');
 const requestsRouter       = require('./routes/requests');
 const bannersRouter        = require('./routes/banners');
 const googleReviewsRouter  = require('./routes/google-reviews');
+const integrationsRouter   = require('./routes/integrations');
 const reviewSettingsRouter = require('./routes/review-settings');
 const projectsRouter       = require('./routes/projects');
 const availabilityRouter       = require('./routes/availability');
@@ -215,6 +216,7 @@ app.use('/api/workforce',           generalLimiter, workforceRouter);
 app.use('/api/workforce-roles',     generalLimiter, workforceRolesRouter);
 app.use('/api/system',              generalLimiter, systemRouter);
 app.use('/api/revenue',             generalLimiter, revenueRouter);
+app.use('/api/integrations',        generalLimiter, integrationsRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', async (req, res) => {

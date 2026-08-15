@@ -185,12 +185,12 @@ const MOCK_FINANCIALS = {
     coverageState: 'partial',
     activeSources: [
       { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore Core',     status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
-      { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds'], paymentsStatus: { product: 'FIELDCORE_PAYMENTS', status: 'ACTIVE', paymentsAvailable: true, limitations: [] } },
+      { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds', 'processing_fees', 'disputes', 'payouts'], paymentsStatus: { product: 'FIELDCORE_PAYMENTS', status: 'ACTIVE', paymentsAvailable: true, limitations: [] } },
     ],
     notEnabledSources: [],
     optionalSources: [
-      { sourceKey: 'accounting', providerLabel: 'Accounting', status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses'] },
-      { sourceKey: 'banking',    providerLabel: 'Banking',    status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'] },
+      { sourceKey: 'accounting', providerLabel: 'Accounting', status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses', 'account_mapping', 'reconciliation'], canConnect: false, connectionInfo: null },
+      { sourceKey: 'banking',    providerLabel: 'Banking',    status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'external_deposits', 'reconciliation'] },
     ],
     availableMetrics:   [{ key: 'revenue', label: 'Revenue' }, { key: 'invoices', label: 'Invoices' }, { key: 'ar', label: 'Accounts Receivable' }, { key: 'payments', label: 'Payments' }, { key: 'cash_in', label: 'Cash In' }],
     partialMetrics:     [{ key: 'merchant_fees', label: 'Merchant Fees', note: 'Fee detail not yet available from FieldCore Payments.' }],
@@ -1170,7 +1170,8 @@ describe('Revenue — Financials workspace', () => {
     await waitFor(() => {
       expect(screen.getByText('Cash Flow')).toBeInTheDocument();
       expect(screen.getAllByText('Cash In').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Cash Out')).toBeInTheDocument();
+      // "Cash Out" appears in both CF card row label and Banking capability pill
+      expect(screen.getAllByText('Cash Out').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Net Cash Flow')).toBeInTheDocument();
       expect(screen.getByText(/connect accounting or banking/i)).toBeInTheDocument();
     });
@@ -1187,7 +1188,8 @@ describe('Revenue — Financials workspace', () => {
   it('Cash Flow card shows Unavailable for Cash Out when no cash-out source', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
-      expect(screen.getByText('Cash Out')).toBeInTheDocument();
+      // "Cash Out" appears in CF card row label + Banking capability pill
+      expect(screen.getAllByText('Cash Out').length).toBeGreaterThanOrEqual(1);
       const unavailLabels = screen.getAllByText('Unavailable');
       expect(unavailLabels.length).toBeGreaterThanOrEqual(2);
     });
@@ -1370,5 +1372,178 @@ describe('Revenue — Financials workspace', () => {
     await waitFor(() => {
       expect(screen.getByText(/financial analytics could not be loaded/i)).toBeInTheDocument();
     });
+  });
+
+  // ── Payouts + capitalization ───────────────────────────────────────────────
+
+  it('FieldCore Payments card shows Payouts capability', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Payouts')).toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Payments shows Processing Fees capability', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Processing Fees')).toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Payments shows Disputes capability', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Disputes')).toBeInTheDocument();
+    });
+  });
+
+  it('capability labels are capitalized (no lowercase-only pills)', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Financial Data Sources')).toBeInTheDocument();
+    });
+    const pills = document.querySelectorAll('.fin-int-cap');
+    pills.forEach(pill => {
+      const text = pill.textContent;
+      if (text.length > 0) {
+        expect(text[0]).toBe(text[0].toUpperCase());
+      }
+    });
+  });
+
+  it('Accounting card shows Account Mapping capability', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Account Mapping')).toBeInTheDocument();
+    });
+  });
+
+  it('Banking card shows External Deposits capability', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('External Deposits')).toBeInTheDocument();
+    });
+  });
+
+  it('Accounting card shows Coming Soon when canConnect is false', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      const btns = screen.getAllByRole('button', { name: /coming soon/i });
+      // At least one Coming Soon button (accounting or banking)
+      expect(btns.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('Accounting card shows Connect QuickBooks when canConnect is true', async () => {
+    const qbReadyMock = {
+      ...MOCK_FINANCIALS,
+      coverage: {
+        ...MOCK_FINANCIALS.coverage,
+        optionalSources: [
+          { sourceKey: 'accounting', providerLabel: 'Accounting', status: 'not_connected', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses', 'account_mapping', 'reconciliation'], canConnect: true, connectionInfo: null },
+          { sourceKey: 'banking',    providerLabel: 'Banking',    status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'external_deposits', 'reconciliation'] },
+        ],
+      },
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: qbReadyMock });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /connect quickbooks/i })).toBeInTheDocument();
+    });
+  });
+
+  it('Accounting shows Connected state when QB is connected', async () => {
+    const qbConnectedMock = {
+      ...MOCK_FINANCIALS,
+      coverage: {
+        ...MOCK_FINANCIALS.coverage,
+        activeSources: [
+          { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore Core',     status: 'active', capabilities: ['revenue', 'invoices', 'ar', 'jobs'] },
+          { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments', 'deposits', 'cash_in', 'refunds', 'processing_fees', 'disputes', 'payouts'], paymentsStatus: { status: 'ACTIVE', limitations: [] } },
+          { sourceKey: 'accounting', providerLabel: 'QuickBooks Online', status: 'active', capabilities: ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses', 'account_mapping', 'reconciliation'], connectionInfo: { companyName: 'Acme HVAC LLC', statusLabel: 'Connected', lastSyncAt: new Date().toISOString(), lastSuccessfulSyncAt: new Date().toISOString(), lastErrorCode: null, unmappedAccountCount: 0 } },
+        ],
+        optionalSources: [
+          { sourceKey: 'banking', providerLabel: 'Banking', status: 'not_connected', capabilities: ['bank_balances', 'cash_transactions', 'cash_out', 'external_deposits', 'reconciliation'] },
+        ],
+      },
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: qbConnectedMock });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('QuickBooks Online')).toBeInTheDocument();
+      expect(screen.getByText('Acme HVAC LLC')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sync quickbooks now/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /disconnect quickbooks/i })).toBeInTheDocument();
+    });
+  });
+
+  it('Accounting shows unmapped account warning when count > 0', async () => {
+    const unmappedMock = {
+      ...MOCK_FINANCIALS,
+      coverage: {
+        ...MOCK_FINANCIALS.coverage,
+        activeSources: [
+          ...MOCK_FINANCIALS.coverage.activeSources,
+          { sourceKey: 'accounting', providerLabel: 'QuickBooks Online', status: 'active', capabilities: ['cogs', 'operating_expenses'], connectionInfo: { companyName: 'Test Co', statusLabel: 'Connected', lastSyncAt: null, lastSuccessfulSyncAt: null, lastErrorCode: null, unmappedAccountCount: 4 } },
+        ],
+        optionalSources: [
+          { sourceKey: 'banking', providerLabel: 'Banking', status: 'not_connected', capabilities: ['bank_balances'] },
+        ],
+      },
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: unmappedMock });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown'));
+    });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText(/4 accounts need mapping/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Banking remains optional (Coming Soon) after QB connect', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Banking')).toBeInTheDocument();
+    });
+    // Banking should not show Connect QuickBooks or any active state
+    expect(screen.queryByText(/connect quickbooks/i)).not.toBeInTheDocument();
+  });
+
+  it('no raw enum labels are shown (REAUTH_REQUIRED etc.)', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Financial Data Sources')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('REAUTH_REQUIRED')).not.toBeInTheDocument();
+    expect(screen.queryByText('SYNC_ERROR')).not.toBeInTheDocument();
+    expect(screen.queryByText('NOT_CONNECTED')).not.toBeInTheDocument();
   });
 });

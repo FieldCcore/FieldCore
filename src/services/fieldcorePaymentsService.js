@@ -26,7 +26,7 @@ async function getFieldCorePaymentsStatus(accountId) {
     status             = 'ACTIVE';
     paymentsAvailable  = true;
     refundsAvailable   = true;
-    feesAvailable      = false;
+    feesAvailable      = true;   // processing fee detail available when active
     disputesAvailable  = true;
     payoutsAvailable   = true;
   } else if (connectStatus === 'pending') {

@@ -1365,6 +1365,78 @@ const MIGRATIONS = [
   `UPDATE invoices SET paid_at = created_at WHERE status = 'paid' AND paid_at IS NULL`,
   // Back-fill: any deposit already marked collected gets collected_at = created_at
   `UPDATE deposits SET collected_at = created_at WHERE status = 'collected' AND collected_at IS NULL`,
+
+  // ── Accounting integration tables ──────────────────────────────────────────
+
+  `CREATE TABLE IF NOT EXISTS accounting_connections (
+     id                        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id                UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider                  TEXT NOT NULL DEFAULT 'quickbooks_online',
+     realm_id                  TEXT,
+     company_name              TEXT,
+     status                    TEXT NOT NULL DEFAULT 'not_connected'
+                                 CHECK (status IN ('not_connected','connecting','connected','syncing','sync_error','reauth_required','disconnected')),
+     access_token_enc          TEXT,
+     refresh_token_enc         TEXT,
+     token_expires_at          TIMESTAMPTZ,
+     refresh_token_expires_at  TIMESTAMPTZ,
+     scopes                    TEXT,
+     last_sync_at              TIMESTAMPTZ,
+     last_successful_sync_at   TIMESTAMPTZ,
+     last_sync_attempt_at      TIMESTAMPTZ,
+     last_error_code           TEXT,
+     last_error_message_safe   TEXT,
+     connected_by_user_id      UUID REFERENCES users(id) ON DELETE SET NULL,
+     connected_at              TIMESTAMPTZ,
+     disconnected_at           TIMESTAMPTZ,
+     created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, provider)
+   )`,
+
+  `CREATE TABLE IF NOT EXISTS accounting_account_mappings (
+     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id               UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider                 TEXT NOT NULL DEFAULT 'quickbooks_online',
+     provider_account_id      TEXT NOT NULL,
+     provider_account_name    TEXT,
+     provider_account_type    TEXT,
+     provider_account_subtype TEXT,
+     fieldcore_category       TEXT,
+     fieldcore_subcategory    TEXT,
+     is_direct_cost           BOOLEAN NOT NULL DEFAULT FALSE,
+     is_operating_expense     BOOLEAN NOT NULL DEFAULT FALSE,
+     is_tax                   BOOLEAN NOT NULL DEFAULT FALSE,
+     is_cash_account          BOOLEAN NOT NULL DEFAULT FALSE,
+     is_ignored               BOOLEAN NOT NULL DEFAULT FALSE,
+     is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, provider, provider_account_id)
+   )`,
+
+  `CREATE TABLE IF NOT EXISTS accounting_synced_records (
+     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id          UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider            TEXT NOT NULL DEFAULT 'quickbooks_online',
+     record_type         TEXT NOT NULL,
+     provider_record_id  TEXT NOT NULL,
+     provider_updated_at TIMESTAMPTZ,
+     amount_cents        BIGINT,
+     currency            TEXT DEFAULT 'USD',
+     accounting_date     DATE,
+     vendor_name         TEXT,
+     memo                TEXT,
+     fieldcore_category  TEXT,
+     provider_account_id TEXT,
+     raw_summary_safe    JSONB,
+     sync_version        INT NOT NULL DEFAULT 1,
+     synced_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, provider, record_type, provider_record_id)
+   )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_accounting_synced_records_account_date
+     ON accounting_synced_records (account_id, provider, accounting_date)`,
 ];
 
 async function runMigrations() {

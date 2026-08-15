@@ -1,5 +1,6 @@
 'use strict';
 const { getFieldCorePaymentsStatus } = require('./fieldcorePaymentsService');
+const { getConnectionStatus }        = require('./accountingConnectionService');
 
 // ── Source definitions ────────────────────────────────────────────────────────
 // Capabilities each source provides when active.
@@ -15,21 +16,21 @@ const SOURCE_DEFS = {
   fieldcore_payments: {
     sourceKey:     'fieldcore_payments',
     providerLabel: 'FieldCore Payments',
-    capabilities:  ['payments', 'deposits', 'cash_in', 'refunds'],
+    capabilities:  ['payments', 'deposits', 'cash_in', 'refunds', 'processing_fees', 'disputes', 'payouts'],
     required:      false,
     optional:      false,
   },
   accounting: {
     sourceKey:     'accounting',
     providerLabel: 'Accounting',
-    capabilities:  ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses', 'reconciliation'],
+    capabilities:  ['cogs', 'operating_expenses', 'taxes', 'vendor_expenses', 'account_mapping', 'reconciliation'],
     required:      false,
     optional:      true,
   },
   banking: {
     sourceKey:     'banking',
     providerLabel: 'Banking',
-    capabilities:  ['bank_balances', 'cash_transactions', 'cash_out', 'reconciliation'],
+    capabilities:  ['bank_balances', 'cash_transactions', 'cash_out', 'external_deposits', 'reconciliation'],
     required:      false,
     optional:      true,
   },
@@ -61,15 +62,31 @@ const METRIC_REQUIREMENTS = [
 // FieldCore Payments status comes from accounts.stripe_connect_status.
 // Accounting and Banking are NOT_CONNECTED until OAuth is established.
 
+// Maps accounting_connections.status → coverage source status string
+function mapAccountingStatus(dbStatus) {
+  switch (dbStatus) {
+    case 'connected':        return 'active';
+    case 'syncing':          return 'active';
+    case 'sync_error':       return 'degraded';
+    case 'reauth_required':  return 'degraded';
+    default:                 return 'not_connected';
+  }
+}
+
 async function resolveSourceStatuses(accountId) {
   const now = new Date().toISOString();
-  const paymentsStatus = await getFieldCorePaymentsStatus(accountId);
+  const [paymentsStatus, accountingConn] = await Promise.all([
+    getFieldCorePaymentsStatus(accountId),
+    getConnectionStatus(accountId, 'quickbooks_online'),
+  ]);
 
   // Map FieldCore Payments internal status → source status string
   const fcPaymentsSourceStatus =
     paymentsStatus.status === 'ACTIVE'   ? 'active'      :
     paymentsStatus.status === 'DEGRADED' ? 'degraded'    :
     /* NOT_ENABLED / ERROR */              'not_enabled';
+
+  const accountingSourceStatus = mapAccountingStatus(accountingConn.status);
 
   return {
     fieldcore_core: {
@@ -85,8 +102,22 @@ async function resolveSourceStatuses(accountId) {
     },
     accounting: {
       ...SOURCE_DEFS.accounting,
-      status:        'not_connected',
-      lastSyncAt:    null,
+      providerLabel:  accountingConn.status !== 'not_connected'
+        ? 'QuickBooks Online'
+        : 'Accounting',
+      status:         accountingSourceStatus,
+      lastSyncAt:     accountingConn.lastSyncAt || null,
+      canConnect:     accountingConn.canConnect || false,
+      connectionInfo: accountingConn.status !== 'not_connected' ? {
+        provider:              accountingConn.provider,
+        companyName:           accountingConn.companyName,
+        statusLabel:           accountingConn.statusLabel,
+        lastSyncAt:            accountingConn.lastSyncAt,
+        lastSuccessfulSyncAt:  accountingConn.lastSuccessfulSyncAt,
+        lastErrorCode:         accountingConn.lastErrorCode,
+        lastErrorMessageSafe:  accountingConn.lastErrorMessageSafe,
+        unmappedAccountCount:  accountingConn.unmappedAccountCount,
+      } : null,
     },
     banking: {
       ...SOURCE_DEFS.banking,
@@ -111,6 +142,8 @@ function evaluateCoverage(sourceStatuses) {
       status:         src.status,
       capabilities:   src.capabilities,
       paymentsStatus: src.paymentsStatus || null,
+      connectionInfo: src.connectionInfo || null,
+      canConnect:     src.canConnect     || false,
     };
 
     if (src.status === 'active') {
