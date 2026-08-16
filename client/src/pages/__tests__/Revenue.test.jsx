@@ -1537,6 +1537,16 @@ describe('Revenue — Financials workspace', () => {
     expect(screen.queryByText(/connect quickbooks/i)).not.toBeInTheDocument();
   });
 
+  it('shows QuickBooks connected banner when qb_connected=1 in URL', async () => {
+    window.history.pushState(null, '', '/revenue?view=financials&tab=sources&qb_connected=1');
+    renderRevenue('?view=financials&tab=sources&qb_connected=1');
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/quickbooks connected successfully/i);
+    });
+    // Param should be cleared from the URL
+    expect(window.location.search).not.toContain('qb_connected');
+  });
+
   it('no raw enum labels are shown (REAUTH_REQUIRED etc.)', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {

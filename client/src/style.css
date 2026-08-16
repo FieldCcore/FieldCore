@@ -5875,3 +5875,14 @@ body {
   border-bottom: 1px solid var(--menu-divider-color);
   pointer-events: none;
 }
+
+/* ── Post-OAuth success banner ─────────────────────────── */
+.fin-connect-banner {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}

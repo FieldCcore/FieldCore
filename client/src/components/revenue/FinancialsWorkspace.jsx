@@ -994,11 +994,30 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
+  const [qbBanner, setQbBanner] = useState(null);
+
   const { data, loading, error, refetch } = useFinData({
     start:      filterStart,
     end:        filterEnd,
     comparison: comparison || 'none',
   });
+
+  // After QB OAuth callback, the URL contains ?qb_connected=1.
+  // Detect it once on mount: show a success banner, force a coverage refetch,
+  // and scrub the param so a page reload doesn't re-trigger it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('qb_connected') !== '1') return;
+    setQbBanner('QuickBooks connected successfully.');
+    refetch();
+    params.delete('qb_connected');
+    const qs  = params.toString();
+    const url = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+    window.history.replaceState(null, '', url);
+    const t = setTimeout(() => setQbBanner(null), 6000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (error) return (
     <div className="rov-ws-body">
@@ -1018,6 +1037,12 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
 
   return (
     <div className="rov-ws-body">
+
+      {qbBanner && (
+        <div className="fin-connect-banner" role="status" aria-live="polite">
+          {qbBanner}
+        </div>
+      )}
 
       {/* Financial Coverage chip */}
       {coverage && !loading && (
