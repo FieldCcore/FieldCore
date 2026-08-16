@@ -141,6 +141,7 @@ async function resolveSourceStatuses(accountId) {
       connectionInfo: accountingConn.status !== 'not_connected' ? {
         provider:              accountingConn.provider,
         companyName:           accountingConn.companyName,
+        status:                accountingConn.status,
         statusLabel:           accountingConn.statusLabel,
         lastSyncAt:            accountingConn.lastSyncAt,
         lastSuccessfulSyncAt:  accountingConn.lastSuccessfulSyncAt,

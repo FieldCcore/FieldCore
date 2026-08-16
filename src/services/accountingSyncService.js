@@ -7,6 +7,56 @@ const connSvc = require('./accountingConnectionService');
 // Suggests a fieldcore_category based on QB account type/subtype.
 // The user can override via the mapping UI.
 
+const FIELDCORE_CATEGORIES = [
+  {
+    category: 'cogs',
+    label: 'Direct Cost / COGS',
+    subcategories: [
+      { value: 'direct_labor',       label: 'Direct Labor'        },
+      { value: 'materials',          label: 'Materials'           },
+      { value: 'fuel',               label: 'Fuel'                },
+      { value: 'travel',             label: 'Travel'              },
+      { value: 'merchant_fees',      label: 'Merchant Fees'       },
+      { value: 'subcontractors',     label: 'Subcontractors'      },
+      { value: 'premium_pay',        label: 'Premium Pay'         },
+      { value: 'equipment_rental',   label: 'Equipment / Rental'  },
+      { value: 'other_direct_cost',  label: 'Other Direct Cost'   },
+    ],
+  },
+  {
+    category: 'operating_expenses',
+    label: 'Operating Expense',
+    subcategories: [
+      { value: 'admin_payroll',          label: 'Admin Payroll'          },
+      { value: 'marketing',              label: 'Marketing'              },
+      { value: 'software',               label: 'Software'               },
+      { value: 'insurance',              label: 'Insurance'              },
+      { value: 'rent',                   label: 'Rent'                   },
+      { value: 'utilities',              label: 'Utilities'              },
+      { value: 'vehicle_overhead',       label: 'Vehicle Overhead'       },
+      { value: 'professional_services',  label: 'Professional Services'  },
+      { value: 'office_expense',         label: 'Office Expense'         },
+      { value: 'other_operating',        label: 'Other Operating'        },
+    ],
+  },
+  {
+    category: 'taxes',
+    label: 'Tax',
+    subcategories: [
+      { value: 'tax', label: 'Tax' },
+    ],
+  },
+  {
+    category: 'cash_accounts',
+    label: 'Cash / Bank',
+    subcategories: [
+      { value: 'cash_bank',      label: 'Cash / Bank'   },
+      { value: 'other_income',   label: 'Other Income'  },
+      { value: 'other_expense',  label: 'Other Expense' },
+    ],
+  },
+];
+
 const CATEGORY_SUGGESTIONS = [
   { types: ['Cost of Goods Sold'],                              category: 'cogs'               },
   { types: ['Expense'], subtypes: ['Advertising'],              category: 'operating_expenses'  },
@@ -32,9 +82,52 @@ function suggestCategory(accountType, accountSubType) {
   return null;
 }
 
+function categoryToFlags(category) {
+  return {
+    isDirectCost:       category === 'cogs',
+    isOperatingExpense: category === 'operating_expenses',
+    isTax:              category === 'taxes',
+    isCashAccount:      category === 'cash_accounts',
+  };
+}
+
 // Converts a dollar amount to integer cents.
 function toCents(amount) {
   return Math.round((parseFloat(amount) || 0) * 100);
+}
+
+// ── Stale sync recovery ───────────────────────────────────────────────────────
+// A sync is "stale" if it has been in 'syncing' state for more than 30 minutes
+// without completing. This covers server crashes or unhandled exceptions.
+
+const STALE_SYNC_MINUTES = 30;
+
+async function isActivelySyncing(accountId, provider) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM accounting_connections
+     WHERE account_id = $1 AND provider = $2
+       AND status = 'syncing'
+       AND last_sync_attempt_at > NOW() - INTERVAL '${STALE_SYNC_MINUTES} minutes'`,
+    [accountId, provider]
+  );
+  return rows.length > 0;
+}
+
+async function recoverStaleSyncs(provider = 'quickbooks_online') {
+  const { rowCount } = await pool.query(
+    `UPDATE accounting_connections
+     SET status                  = 'sync_error',
+         last_error_code         = 'STALE_SYNC',
+         last_error_message_safe = 'Sync did not complete. Please retry.',
+         updated_at              = NOW()
+     WHERE provider = $1
+       AND status = 'syncing'
+       AND last_sync_attempt_at < NOW() - INTERVAL '${STALE_SYNC_MINUTES} minutes'`,
+    [provider]
+  );
+  if (rowCount > 0) {
+    console.log(`[AccountingSync] Recovered ${rowCount} stale sync(s) for provider=${provider}`);
+  }
 }
 
 // ── Chart of accounts sync ────────────────────────────────────────────────────
@@ -313,20 +406,71 @@ async function getMappings(accountId, provider) {
 }
 
 async function updateMapping(accountId, provider, providerAccountId, {
-  fieldcoreCategory, isIgnored,
+  fieldcoreCategory, fieldcoreSubcategory, isIgnored,
 }) {
+  const category = fieldcoreCategory || null;
+  const flags    = categoryToFlags(category);
   await pool.query(
     `UPDATE accounting_account_mappings
-     SET fieldcore_category   = $1,
-         is_ignored           = $2,
-         is_direct_cost       = (COALESCE($1,'') = 'cogs'),
-         is_operating_expense = (COALESCE($1,'') = 'operating_expenses'),
-         is_tax               = (COALESCE($1,'') = 'taxes'),
-         is_cash_account      = (COALESCE($1,'') = 'cash_accounts'),
-         updated_at           = NOW()
-     WHERE account_id = $3 AND provider = $4 AND provider_account_id = $5`,
-    [fieldcoreCategory || null, isIgnored || false, accountId, provider, providerAccountId]
+     SET fieldcore_category     = $1,
+         fieldcore_subcategory  = $2,
+         is_ignored             = $3,
+         is_direct_cost         = $4,
+         is_operating_expense   = $5,
+         is_tax                 = $6,
+         is_cash_account        = $7,
+         updated_at             = NOW()
+     WHERE account_id = $8 AND provider = $9 AND provider_account_id = $10`,
+    [
+      category,
+      fieldcoreSubcategory || null,
+      !!isIgnored,
+      flags.isDirectCost,
+      flags.isOperatingExpense,
+      flags.isTax,
+      flags.isCashAccount,
+      accountId, provider, providerAccountId,
+    ]
   );
+}
+
+async function bulkUpdateMappings(accountId, provider, mappings) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const m of mappings) {
+      const category = m.fieldcoreCategory || null;
+      const flags    = categoryToFlags(category);
+      await client.query(
+        `UPDATE accounting_account_mappings
+         SET fieldcore_category     = $1,
+             fieldcore_subcategory  = $2,
+             is_ignored             = $3,
+             is_direct_cost         = $4,
+             is_operating_expense   = $5,
+             is_tax                 = $6,
+             is_cash_account        = $7,
+             updated_at             = NOW()
+         WHERE account_id = $8 AND provider = $9 AND provider_account_id = $10`,
+        [
+          category,
+          m.fieldcoreSubcategory || null,
+          !!m.isIgnored,
+          flags.isDirectCost,
+          flags.isOperatingExpense,
+          flags.isTax,
+          flags.isCashAccount,
+          accountId, provider, m.providerAccountId,
+        ]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ── COGS / operating expense totals for P&L ───────────────────────────────────
@@ -362,14 +506,19 @@ async function getAccountingTotals(accountId, provider, start, end) {
 }
 
 module.exports = {
+  FIELDCORE_CATEGORIES,
+  categoryToFlags,
   syncChartOfAccounts,
   syncVendors,
   syncExpenses,
   syncBills,
   syncCreditMemos,
+  isActivelySyncing,
+  recoverStaleSyncs,
   runSync,
   getMappings,
   updateMapping,
+  bulkUpdateMappings,
   getAccountingTotals,
   suggestCategory,
 };

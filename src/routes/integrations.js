@@ -188,6 +188,15 @@ router.post(
   requireRole('owner', 'manager'),
   async (req, res) => {
     try {
+      // Recover stale syncs (> 30 min in syncing state) before checking active state.
+      await syncSvc.recoverStaleSyncs(PROVIDER);
+
+      // If a recent sync is genuinely in progress, return 200 (not 409).
+      const activelySyncing = await syncSvc.isActivelySyncing(req.accountId, PROVIDER);
+      if (activelySyncing) {
+        return res.json({ syncing: true, message: 'A QuickBooks sync is already in progress.' });
+      }
+
       const status = await connSvc.getConnectionStatus(req.accountId, PROVIDER);
       if (!['connected', 'sync_error'].includes(status.status)) {
         return res.status(409).json({
@@ -232,6 +241,16 @@ router.post(
 
 // ── Account mappings ──────────────────────────────────────────────────────────
 
+// GET /api/integrations/accounting/quickbooks/mappings/categories
+router.get(
+  '/accounting/quickbooks/mappings/categories',
+  requireAuth,
+  requireRole('owner', 'manager'),
+  (req, res) => {
+    res.json({ categories: syncSvc.FIELDCORE_CATEGORIES });
+  }
+);
+
 // GET /api/integrations/accounting/quickbooks/mappings
 router.get(
   '/accounting/quickbooks/mappings',
@@ -248,6 +267,37 @@ router.get(
   }
 );
 
+// POST /api/integrations/accounting/quickbooks/mappings/bulk
+router.post(
+  '/accounting/quickbooks/mappings/bulk',
+  requireAuth,
+  requireRole('owner', 'manager'),
+  async (req, res) => {
+    const { mappings } = req.body;
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      return res.status(400).json({ error: 'mappings array is required.' });
+    }
+
+    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', null];
+    for (const m of mappings) {
+      if (!m.providerAccountId) {
+        return res.status(400).json({ error: 'Each mapping requires providerAccountId.' });
+      }
+      if (!VALID_CATEGORIES.includes(m.fieldcoreCategory ?? null)) {
+        return res.status(400).json({ error: `Invalid fieldcoreCategory: ${m.fieldcoreCategory}` });
+      }
+    }
+
+    try {
+      await syncSvc.bulkUpdateMappings(req.accountId, PROVIDER, mappings);
+      res.json({ updated: mappings.length });
+    } catch (err) {
+      console.error('[Integrations] QB bulk mapping error:', err.message);
+      res.status(500).json({ error: 'Failed to update mappings.' });
+    }
+  }
+);
+
 // PATCH /api/integrations/accounting/quickbooks/mappings/:providerAccountId
 router.patch(
   '/accounting/quickbooks/mappings/:providerAccountId',
@@ -255,19 +305,18 @@ router.patch(
   requireRole('owner', 'manager'),
   async (req, res) => {
     const { providerAccountId } = req.params;
-    const { fieldcoreCategory, isIgnored } = req.body;
+    const { fieldcoreCategory, fieldcoreSubcategory, isIgnored } = req.body;
 
-    const VALID_CATEGORIES = [
-      'cogs', 'operating_expenses', 'taxes', 'cash_accounts', null
-    ];
+    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', null];
     if (!VALID_CATEGORIES.includes(fieldcoreCategory ?? null)) {
       return res.status(400).json({ error: 'Invalid fieldcoreCategory value.' });
     }
 
     try {
       await syncSvc.updateMapping(req.accountId, PROVIDER, providerAccountId, {
-        fieldcoreCategory: fieldcoreCategory || null,
-        isIgnored:         !!isIgnored,
+        fieldcoreCategory:    fieldcoreCategory    || null,
+        fieldcoreSubcategory: fieldcoreSubcategory || null,
+        isIgnored:            !!isIgnored,
       });
       res.json({ updated: true });
     } catch (err) {

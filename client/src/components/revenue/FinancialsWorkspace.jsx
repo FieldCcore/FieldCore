@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../api';
 import RevenueKpiCard from '../RevenueKpiCard';
 import SelectDropdown from '../SelectDropdown';
+import QBMappingModal from './QBMappingModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -792,23 +793,10 @@ const STATUS_BADGE = {
   not_enabled:      { label: 'Not Enabled',               className: 'fin-src-badge--not-enabled' },
   not_connected:    { label: 'Optional',                  className: 'fin-src-badge--optional'    },
   connected:        { label: 'Connected',                 className: 'fin-src-badge--active'      },
-  syncing:          { label: 'Syncing',                   className: 'fin-src-badge--active'      },
+  syncing:          { label: 'Syncing…',                  className: 'fin-src-badge--syncing'     },
   sync_error:       { label: 'Sync Error',                className: 'fin-src-badge--degraded'    },
   reauth_required:  { label: 'Reauthorization Required',  className: 'fin-src-badge--degraded'    },
 };
-
-// Initiates QuickBooks OAuth flow by fetching the authorization URL from the backend.
-async function initiateQBConnect(e) {
-  e.currentTarget.disabled = true;
-  try {
-    const res  = await import('../../api').then(m => m.default.get('/integrations/accounting/quickbooks/connect'));
-    window.location.href = res.data.url;
-  } catch (err) {
-    const msg = err?.response?.data?.error || 'Failed to start QuickBooks connection.';
-    alert(msg);
-    e.currentTarget.disabled = false;
-  }
-}
 
 function fmtSyncTime(iso) {
   if (!iso) return 'Never';
@@ -822,10 +810,39 @@ function fmtSyncTime(iso) {
   return d.toLocaleDateString();
 }
 
-function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
-  const badge = STATUS_BADGE[src.status] || STATUS_BADGE.not_connected;
-  const info  = src.connectionInfo;
+function SrcCard({
+  src, showConnect,
+  onSyncNow, onDisconnect, onManage, onConnect,
+  syncNotif, onSyncNotifDismiss,
+  connectError, onConnectErrorDismiss,
+}) {
+  const [disconnectStep, setDisconnectStep] = useState(false);
+  const [connectBusy, setConnectBusy] = useState(false);
+
+  const info               = src.connectionInfo;
   const isAccountingConnected = src.sourceKey === 'accounting' && info;
+  const connStatus         = info?.status;
+  const isSyncing          = connStatus === 'syncing';
+  const isError            = connStatus === 'sync_error';
+
+  // Derive badge from connectionInfo.status when connected (more precise than src.status)
+  let badge;
+  if (isAccountingConnected && connStatus === 'syncing') {
+    badge = STATUS_BADGE.syncing;
+  } else if (isAccountingConnected && connStatus === 'sync_error') {
+    badge = STATUS_BADGE.sync_error;
+  } else {
+    badge = STATUS_BADGE[src.status] || STATUS_BADGE.not_connected;
+  }
+
+  const syncBtnLabel = isSyncing ? 'Syncing…' : isError ? 'Retry Sync' : 'Sync Now';
+
+  async function handleConnect(e) {
+    setConnectBusy(true);
+    onConnectErrorDismiss?.();
+    await onConnect?.(e);
+    setConnectBusy(false);
+  }
 
   return (
     <div className={`fin-src-card fin-src-card--${src.status}`}>
@@ -846,13 +863,31 @@ function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
       )}
 
       {isAccountingConnected && info.unmappedAccountCount > 0 && (
-        <div className="fin-src-warn">
-          {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need mapping
+        <button
+          className="fin-src-warn fin-src-warn--btn"
+          onClick={onManage}
+          aria-label="Manage account mappings"
+        >
+          {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need mapping →
+        </button>
+      )}
+
+      {isAccountingConnected && isError && info.lastErrorMessageSafe && (
+        <div className="fin-src-error">{info.lastErrorMessageSafe}</div>
+      )}
+
+      {syncNotif && (
+        <div className={`fin-src-notif fin-src-notif--${syncNotif.type}`} role="status">
+          {syncNotif.msg}
+          <button className="fin-src-notif-dismiss" onClick={onSyncNotifDismiss} aria-label="Dismiss">×</button>
         </div>
       )}
 
-      {isAccountingConnected && info.lastErrorCode && (
-        <div className="fin-src-error">{info.lastErrorMessageSafe}</div>
+      {connectError && (
+        <div className="fin-src-notif fin-src-notif--error" role="alert">
+          {connectError}
+          <button className="fin-src-notif-dismiss" onClick={onConnectErrorDismiss} aria-label="Dismiss">×</button>
+        </div>
       )}
 
       <div className="fin-src-capabilities">
@@ -869,21 +904,51 @@ function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
         <div className="fin-src-actions">
           {onSyncNow && (
             <button
-              className="fin-src-action-btn"
+              className={`fin-src-action-btn${isSyncing ? ' fin-src-action-btn--busy' : ''}`}
               onClick={onSyncNow}
-              aria-label="Sync QuickBooks now"
+              disabled={isSyncing}
+              aria-label={`${syncBtnLabel} QuickBooks`}
             >
-              Sync Now
+              {syncBtnLabel}
             </button>
           )}
-          {onDisconnect && (
+          {onManage && (
             <button
-              className="fin-src-action-btn fin-src-action-btn--danger"
-              onClick={onDisconnect}
-              aria-label="Disconnect QuickBooks"
+              className="fin-src-action-btn"
+              onClick={onManage}
+              aria-label="Manage account mappings"
             >
-              Disconnect
+              Manage
             </button>
+          )}
+          {disconnectStep ? (
+            <div className="fin-src-disconnect-confirm">
+              <span className="fin-src-disconnect-q">Disconnect QuickBooks?</span>
+              <button
+                className="fin-src-action-btn fin-src-action-btn--danger"
+                onClick={() => { setDisconnectStep(false); onDisconnect?.(); }}
+                aria-label="Confirm disconnect"
+              >
+                Yes, Disconnect
+              </button>
+              <button
+                className="fin-src-action-btn"
+                onClick={() => setDisconnectStep(false)}
+                aria-label="Cancel disconnect"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            onDisconnect && (
+              <button
+                className="fin-src-action-btn fin-src-action-btn--danger"
+                onClick={() => setDisconnectStep(true)}
+                aria-label="Disconnect QuickBooks"
+              >
+                Disconnect
+              </button>
+            )
           )}
         </div>
       )}
@@ -893,10 +958,11 @@ function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
           ? (
             <button
               className="fin-int-connect-btn btn-secondary"
-              onClick={initiateQBConnect}
+              onClick={handleConnect}
+              disabled={connectBusy}
               aria-label="Connect QuickBooks Online"
             >
-              Connect QuickBooks
+              {connectBusy ? 'Connecting…' : 'Connect QuickBooks'}
             </button>
           ) : (
             <button
@@ -923,6 +989,10 @@ function SrcCard({ src, showConnect, onSyncNow, onDisconnect }) {
 }
 
 function FinancialDataSources({ coverage, onCoverageRefresh }) {
+  const [syncNotif,      setSyncNotif]      = useState(null); // { type: 'info'|'success'|'error', msg: string }
+  const [connectError,   setConnectError]   = useState(null);
+  const [showMapping,    setShowMapping]    = useState(false);
+
   if (!coverage) return null;
   const { activeSources, notEnabledSources, optionalSources } = coverage;
 
@@ -931,28 +1001,47 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
   const activeCount    = (activeSources || []).length;
   const optionalCount  = (optionalSources || []).length;
 
-  async function handleQBSync() {
+  async function initiateQBConnect() {
+    setConnectError(null);
     try {
-      await import('../../api').then(m => m.default.post('/integrations/accounting/quickbooks/sync'));
-      setTimeout(() => onCoverageRefresh?.(), 3000);
+      const res = await api.get('/integrations/accounting/quickbooks/connect');
+      window.location.href = res.data.url;
     } catch (err) {
-      alert(err?.response?.data?.error || 'Sync failed.');
+      setConnectError(err?.response?.data?.error || 'Failed to start QuickBooks connection.');
+    }
+  }
+
+  async function handleQBSync() {
+    setSyncNotif(null);
+    try {
+      const res = await api.post('/integrations/accounting/quickbooks/sync');
+      if (res.data.syncing) {
+        setSyncNotif({ type: 'info', msg: 'A sync is already in progress.' });
+      } else {
+        setSyncNotif({ type: 'success', msg: 'Sync started. Data will refresh in a moment.' });
+        setTimeout(() => { setSyncNotif(null); onCoverageRefresh?.(); }, 4000);
+      }
+    } catch (err) {
+      setSyncNotif({ type: 'error', msg: err?.response?.data?.error || 'Sync failed.' });
     }
   }
 
   async function handleQBDisconnect() {
-    if (!window.confirm('Disconnect QuickBooks Online? Your imported data will be retained.')) return;
     try {
-      await import('../../api').then(m => m.default.post('/integrations/accounting/quickbooks/disconnect'));
+      await api.post('/integrations/accounting/quickbooks/disconnect');
       onCoverageRefresh?.();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Disconnect failed.');
+      setSyncNotif({ type: 'error', msg: err?.response?.data?.error || 'Disconnect failed.' });
     }
   }
 
   function getAccountingHandlers(src) {
     if (src.sourceKey !== 'accounting' || !src.connectionInfo) return {};
-    return { onSyncNow: handleQBSync, onDisconnect: handleQBDisconnect };
+    return {
+      onSyncNow:    handleQBSync,
+      onDisconnect: handleQBDisconnect,
+      onManage:     () => setShowMapping(true),
+    };
   }
 
   return (
@@ -973,13 +1062,30 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
 
       <div className="fin-sources-grid">
         {featuredActive.map(src => (
-          <SrcCard key={src.sourceKey} src={src} showConnect={false} {...getAccountingHandlers(src)} />
+          <SrcCard
+            key={src.sourceKey}
+            src={src}
+            showConnect={false}
+            syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
+            onSyncNotifDismiss={() => setSyncNotif(null)}
+            {...getAccountingHandlers(src)}
+          />
         ))}
         {(notEnabledSources || []).map(src => (
           <SrcCard key={src.sourceKey} src={src} showConnect={false} />
         ))}
         {(optionalSources || []).map(src => (
-          <SrcCard key={src.sourceKey} src={src} showConnect={true} {...getAccountingHandlers(src)} />
+          <SrcCard
+            key={src.sourceKey}
+            src={src}
+            showConnect={true}
+            onConnect={src.sourceKey === 'accounting' ? initiateQBConnect : undefined}
+            connectError={src.sourceKey === 'accounting' ? connectError : null}
+            onConnectErrorDismiss={() => setConnectError(null)}
+            syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
+            onSyncNotifDismiss={() => setSyncNotif(null)}
+            {...getAccountingHandlers(src)}
+          />
         ))}
       </div>
 
@@ -987,6 +1093,13 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
         FieldCore uses the financial data already available in your account. Additional connections
         can enrich profit, expense, cash-flow, and reconciliation analytics.
       </div>
+
+      {showMapping && (
+        <QBMappingModal
+          onClose={() => setShowMapping(false)}
+          onSaved={() => { setShowMapping(false); onCoverageRefresh?.(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1019,6 +1132,21 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-poll every 7 seconds while QuickBooks is syncing.
+  // Stops automatically when status transitions to connected or error.
+  const coverage = data?.coverage;
+  const accountingSrc = [
+    ...(coverage?.activeSources   || []),
+    ...(coverage?.optionalSources || []),
+  ].find(s => s.sourceKey === 'accounting');
+  const isQBSyncing = accountingSrc?.connectionInfo?.status === 'syncing';
+
+  useEffect(() => {
+    if (!isQBSyncing) return;
+    const id = setInterval(() => refetch(), 7000);
+    return () => clearInterval(id);
+  }, [isQBSyncing, refetch]);
+
   if (error) return (
     <div className="rov-ws-body">
       <div className="dash-card" style={{ padding: '1.5rem', color: 'var(--red)', fontSize: 14 }}>
@@ -1032,7 +1160,6 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
   const cashFlow  = data?.cashFlow;
   const pnl       = data?.pnl;
   const quarterly = data?.quarterly;
-  const coverage  = data?.coverage;
   const calcAt    = data?.calculatedAt;
 
   return (
