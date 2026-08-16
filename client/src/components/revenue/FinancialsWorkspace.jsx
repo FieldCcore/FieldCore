@@ -409,8 +409,54 @@ function CashFlowCard({ cashFlow, loading }) {
 
 // ── P&L Summary ───────────────────────────────────────────────────────────────
 
-function PnlSummary({ pnl, loading }) {
-  const [expanded, setExpanded] = useState(true);
+function OpExDrilldown({ period }) {
+  const [records,  setRecords]  = useState(null);
+  const [fetching, setFetching] = useState(false);
+  const [err,      setErr]      = useState(null);
+
+  useEffect(() => {
+    if (!period?.start || !period?.end) return;
+    setFetching(true);
+    api.get(`/integrations/accounting/quickbooks/financials/details?start=${period.start}&end=${period.end}`)
+      .then(r => { setRecords(r.data.opex || []); setFetching(false); })
+      .catch(e => { setErr(e?.response?.data?.error || 'Failed to load details.'); setFetching(false); });
+  }, [period?.start, period?.end]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (fetching) return <tr><td colSpan={2} style={{ padding: '8px 16px', fontSize: 12, color: '#8A90A2' }}>Loading expense records…</td></tr>;
+  if (err)      return <tr><td colSpan={2} style={{ padding: '8px 16px', fontSize: 12, color: '#dc2626' }}>{err}</td></tr>;
+  if (!records) return null;
+  if (records.length === 0) return (
+    <tr>
+      <td colSpan={2} style={{ padding: '8px 16px', fontSize: 12, color: '#8A90A2', fontStyle: 'italic' }}>
+        No operating expense transactions in this period.
+      </td>
+    </tr>
+  );
+
+  return (
+    <>
+      {records.map((r, i) => (
+        <tr key={`${r.providerRecordId}-${i}`} style={{ background: '#FAFAFA' }}>
+          <td style={{ padding: '5px 16px 5px 28px', fontSize: 12, color: '#5F667A' }}>
+            <span style={{ fontWeight: 500, color: '#1C2333' }}>{r.accountName}</span>
+            {r.vendor && <span style={{ color: '#8A90A2' }}> · {r.vendor}</span>}
+            <span style={{ marginLeft: 8, fontSize: 11, background: '#E6E6E6', borderRadius: 3, padding: '1px 5px' }}>{r.recordType}</span>
+            <span style={{ marginLeft: 6, color: '#8A90A2', fontSize: 11 }}>
+              {r.accountingDate ? new Date(r.accountingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+            </span>
+          </td>
+          <td className="fin-pnl-row-value" style={{ fontSize: 12 }}>
+            {fmtMoney(r.amountDollars, false)}
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function PnlSummary({ pnl, loading, period }) {
+  const [expanded,     setExpanded]     = useState(true);
+  const [opexExpanded, setOpexExpanded] = useState(false);
 
   if (loading) return (
     <div className="fin-pnl-card rov-ws-section">
@@ -447,8 +493,18 @@ function PnlSummary({ pnl, loading }) {
               {pnl.rows.map(row => (
                 <React.Fragment key={row.key}>
                   {separator.includes(row.key) && <tr className="fin-pnl-sep-row" aria-hidden="true"><td colSpan={2} /></tr>}
-                  <tr className={`fin-pnl-row${row.status === 'unavailable' ? ' fin-pnl-row--unavail' : ''}${['netRevenue', 'grossProfit', 'operatingProfit', 'netProfit'].includes(row.key) ? ' fin-pnl-row--subtotal' : ''}`}>
-                    <td className="fin-pnl-row-label">{row.label}</td>
+                  <tr
+                    className={`fin-pnl-row${row.status === 'unavailable' ? ' fin-pnl-row--unavail' : ''}${['netRevenue', 'grossProfit', 'operatingProfit', 'netProfit'].includes(row.key) ? ' fin-pnl-row--subtotal' : ''}${row.key === 'operatingExpenses' && row.status === 'ok' ? ' fin-pnl-row--drillable' : ''}`}
+                    onClick={row.key === 'operatingExpenses' && row.status === 'ok' ? () => setOpexExpanded(v => !v) : undefined}
+                    style={row.key === 'operatingExpenses' && row.status === 'ok' ? { cursor: 'pointer' } : undefined}
+                    title={row.key === 'operatingExpenses' && row.status === 'ok' ? 'Click to see source transactions' : undefined}
+                  >
+                    <td className="fin-pnl-row-label">
+                      {row.label}
+                      {row.key === 'operatingExpenses' && row.status === 'ok' && (
+                        <span style={{ marginLeft: 6, fontSize: 11, color: '#8A90A2' }}>{opexExpanded ? '▲' : '▼'}</span>
+                      )}
+                    </td>
                     <td className="fin-pnl-row-value">
                       {row.status === 'unavailable'
                         ? <span className="fin-unavail-badge">Unavailable</span>
@@ -457,6 +513,9 @@ function PnlSummary({ pnl, loading }) {
                           : fmtMoney(row.value, false)}
                     </td>
                   </tr>
+                  {row.key === 'operatingExpenses' && opexExpanded && (
+                    <OpExDrilldown period={period} />
+                  )}
                 </React.Fragment>
               ))}
             </tbody>
@@ -1213,7 +1272,7 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
       </div>
 
       {/* P&L Summary */}
-      <PnlSummary pnl={pnl} loading={loading} />
+      <PnlSummary pnl={pnl} loading={loading} period={data?.period} />
 
       {/* Quarterly Review table */}
       <QuarterlySection quarterly={quarterly} loading={loading} />

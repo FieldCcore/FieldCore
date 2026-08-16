@@ -788,6 +788,57 @@ async function getAccountingTotals(accountId, provider, start, end) {
   };
 }
 
+// ── Drill-down: source records by category for the selected period ─────────────
+
+async function getAccountingDetails(accountId, provider, start, end) {
+  const { rows } = await pool.query(
+    `SELECT
+       r.provider_record_id,
+       r.record_type,
+       r.accounting_date,
+       r.amount_cents,
+       r.vendor_name,
+       r.memo,
+       r.fieldcore_category,
+       m.provider_account_id,
+       m.provider_account_name,
+       m.provider_account_type,
+       m.is_direct_cost,
+       m.is_operating_expense,
+       m.is_tax
+     FROM accounting_synced_records r
+     JOIN accounting_account_mappings m
+       ON m.account_id           = r.account_id
+      AND m.provider             = r.provider
+      AND m.provider_account_id  = r.provider_account_id
+      AND m.is_ignored           = FALSE
+      AND m.is_active            = TRUE
+     WHERE r.account_id          = $1
+       AND r.provider            = $2
+       AND r.record_type         IN ('expense', 'bill')
+       AND r.accounting_date    >= $3::date
+       AND r.accounting_date    <= $4::date
+     ORDER BY r.accounting_date DESC, r.amount_cents DESC`,
+    [accountId, provider, start, end]
+  );
+  return rows.map(r => ({
+    providerRecordId:   r.provider_record_id,
+    recordType:         r.record_type,
+    accountingDate:     r.accounting_date,
+    amountCents:        parseInt(r.amount_cents  || 0),
+    amountDollars:      Math.round(parseInt(r.amount_cents || 0)) / 100,
+    vendor:             r.vendor_name  || null,
+    memo:               r.memo         || null,
+    fieldcoreCategory:  r.fieldcore_category,
+    accountId:          r.provider_account_id,
+    accountName:        r.provider_account_name,
+    accountType:        r.provider_account_type,
+    isDirectCost:       !!r.is_direct_cost,
+    isOperatingExpense: !!r.is_operating_expense,
+    isTax:              !!r.is_tax,
+  }));
+}
+
 module.exports = {
   FIELDCORE_CATEGORIES,
   classify,
@@ -805,5 +856,6 @@ module.exports = {
   bulkUpdateMappings,
   getMappingStats,
   getAccountingTotals,
+  getAccountingDetails,
   suggestCategory,
 };

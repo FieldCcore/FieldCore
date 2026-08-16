@@ -1492,7 +1492,7 @@ describe('Revenue — Financials workspace', () => {
     await waitFor(() => {
       expect(screen.getByText('QuickBooks Online')).toBeInTheDocument();
       expect(screen.getByText('Acme HVAC LLC')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /sync quickbooks now/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sync now quickbooks/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /disconnect quickbooks/i })).toBeInTheDocument();
     });
   });

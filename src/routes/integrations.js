@@ -155,6 +155,32 @@ router.get(
         conn.status === 'sync_error'                ? 'ERROR'            :
         'UNKNOWN';
 
+      // Build connector health structure (best-effort — non-fatal if mapping stats fail)
+      let health = {
+        connection:       conn.connected ? 'CONNECTED' : 'DISCONNECTED',
+        accountsSync:     'UNKNOWN',
+        transactionsSync: 'UNKNOWN',
+        mappings:         'UNKNOWN',
+        financials:       'UNKNOWN',
+      };
+      if (conn.connected) {
+        const stats = await syncSvc.getMappingStats(req.accountId, PROVIDER).catch(() => null);
+        health = {
+          connection:       'CONNECTED',
+          accountsSync:     stats && stats.total > 0 ? 'COMPLETE' : 'PENDING',
+          transactionsSync: conn.status === 'connected'  ? 'SYNCED'
+                          : conn.status === 'syncing'    ? 'SYNCING'
+                          : conn.status === 'sync_error' ? 'FAILED'
+                          : 'UNKNOWN',
+          mappings:         stats
+                          ? (stats.needsReview === 0
+                              ? 'COMPLETE'
+                              : `PARTIAL (${stats.needsReview} need review)`)
+                          : 'UNKNOWN',
+          financials:       stats && stats.needsReview === 0 ? 'READY' : 'PARTIAL',
+        };
+      }
+
       const body = {
         provider:     PROVIDER,
         configured:   conn.configured,
@@ -164,6 +190,7 @@ router.get(
         environment:  conn.environment,
         companyName:  conn.companyName || null,
         lastSyncAt:   conn.lastSyncAt  || null,
+        health,
       };
 
       console.log(
@@ -322,6 +349,41 @@ router.patch(
     } catch (err) {
       console.error('[Integrations] QB mapping update error:', err.message);
       res.status(500).json({ error: 'Failed to update mapping.' });
+    }
+  }
+);
+
+// ── Financial details / drill-down ───────────────────────────────────────────
+
+// GET /api/integrations/accounting/quickbooks/financials/details?start=YYYY-MM-DD&end=YYYY-MM-DD
+// Returns per-record provenance for COGS, OpEx, and Tax for the selected period.
+// Only includes transactions with accounting_date inside [start, end] — never account balances.
+router.get(
+  '/accounting/quickbooks/financials/details',
+  requireAuth,
+  requireRole('owner', 'manager'),
+  async (req, res) => {
+    const { start, end } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end query parameters are required.' });
+    }
+    // Basic date format guard
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ error: 'start and end must be YYYY-MM-DD.' });
+    }
+    try {
+      const records = await syncSvc.getAccountingDetails(req.accountId, PROVIDER, start, end);
+      res.json({
+        period:   { start, end },
+        provider: PROVIDER,
+        cogs:     records.filter(r => r.isDirectCost),
+        opex:     records.filter(r => r.isOperatingExpense),
+        taxes:    records.filter(r => r.isTax),
+        total:    records.length,
+      });
+    } catch (err) {
+      console.error('[Integrations] QB financial details error:', err.message);
+      res.status(500).json({ error: 'Failed to load financial details.' });
     }
   }
 );

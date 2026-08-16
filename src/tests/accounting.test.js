@@ -492,6 +492,178 @@ describe('POST /api/integrations/accounting/quickbooks/webhook', () => {
   });
 });
 
+// ── 13a. getAccountingDetails — period filtering and provenance ───────────────
+
+describe('getAccountingDetails — period filtering', () => {
+  const PROVIDER = 'quickbooks_online';
+  const IN_PERIOD_DATE  = '2026-08-10';
+  const OUT_PERIOD_DATE = '2026-07-01';
+  const PERIOD_START    = '2026-08-01';
+  const PERIOD_END      = '2026-08-31';
+
+  let opexAccountId;
+
+  beforeAll(async () => {
+    // Ensure connected
+    await connSvc.upsertConnection({
+      accountId:    testAccountId,
+      realmId:      'realm-details-test',
+      companyName:  'Details Test LLC',
+      accessToken:  'at-det',
+      refreshToken: 'rt-det',
+      tokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    });
+
+    // Insert an operating-expense account mapping
+    opexAccountId = 'acct-opex-det-001';
+    await pool.query(
+      `INSERT INTO accounting_account_mappings
+         (account_id, provider, provider_account_id, provider_account_name,
+          provider_account_type, fieldcore_category, is_operating_expense,
+          mapping_confidence, is_active)
+       VALUES ($1,$2,$3,'Advertising','Expense','operating_expenses',TRUE,'high_confidence',TRUE)
+       ON CONFLICT (account_id, provider, provider_account_id) DO UPDATE
+         SET is_operating_expense = TRUE, fieldcore_category = 'operating_expenses'`,
+      [testAccountId, PROVIDER, opexAccountId]
+    );
+
+    // Insert in-period expense record: $54.00 → 5400 cents
+    await pool.query(
+      `INSERT INTO accounting_synced_records
+         (account_id, provider, record_type, provider_record_id, amount_cents,
+          currency, accounting_date, provider_account_id, fieldcore_category, synced_at)
+       VALUES ($1,$2,'expense','exp-in-period-001',5400,'USD',$3,$4,'operating_expenses',NOW())
+       ON CONFLICT (account_id, provider, record_type, provider_record_id) DO UPDATE
+         SET amount_cents = 5400, accounting_date = $3`,
+      [testAccountId, PROVIDER, IN_PERIOD_DATE, opexAccountId]
+    );
+
+    // Insert out-of-period expense record: $999.00 — must be excluded
+    await pool.query(
+      `INSERT INTO accounting_synced_records
+         (account_id, provider, record_type, provider_record_id, amount_cents,
+          currency, accounting_date, provider_account_id, fieldcore_category, synced_at)
+       VALUES ($1,$2,'expense','exp-out-period-001',99900,'USD',$3,$4,'operating_expenses',NOW())
+       ON CONFLICT (account_id, provider, record_type, provider_record_id) DO UPDATE
+         SET amount_cents = 99900, accounting_date = $3`,
+      [testAccountId, PROVIDER, OUT_PERIOD_DATE, opexAccountId]
+    );
+  });
+
+  afterAll(async () => {
+    await pool.query(
+      `DELETE FROM accounting_synced_records
+       WHERE account_id = $1 AND provider_record_id IN ('exp-in-period-001','exp-out-period-001')`,
+      [testAccountId]
+    );
+    await pool.query(
+      `DELETE FROM accounting_account_mappings
+       WHERE account_id = $1 AND provider_account_id = $2`,
+      [testAccountId, opexAccountId]
+    );
+  });
+
+  it('getAccountingTotals sums only in-period records', async () => {
+    const totals = await syncSvc.getAccountingTotals(
+      testAccountId, PROVIDER, PERIOD_START, PERIOD_END
+    );
+    // Only the in-period $54.00 (5400 cents) should be counted
+    expect(totals.opexCents).toBe(5400);
+    expect(totals.hasOpExAccounts).toBe(true);
+  });
+
+  it('getAccountingTotals excludes out-of-period records', async () => {
+    const totals = await syncSvc.getAccountingTotals(
+      testAccountId, PROVIDER, PERIOD_START, PERIOD_END
+    );
+    // Out-of-period record is $999 — if it were included, opexCents would be 105300
+    expect(totals.opexCents).toBeLessThan(99900);
+  });
+
+  it('getAccountingTotals returns 0 when period has no records', async () => {
+    const totals = await syncSvc.getAccountingTotals(
+      testAccountId, PROVIDER, '2025-01-01', '2025-01-31'
+    );
+    expect(totals.opexCents).toBe(0);
+  });
+
+  it('getAccountingDetails returns source records with provenance', async () => {
+    const records = await syncSvc.getAccountingDetails(
+      testAccountId, PROVIDER, PERIOD_START, PERIOD_END
+    );
+    expect(records.length).toBeGreaterThanOrEqual(1);
+    const target = records.find(r => r.providerRecordId === 'exp-in-period-001');
+    expect(target).toBeDefined();
+    expect(target.amountCents).toBe(5400);
+    expect(target.amountDollars).toBe(54);
+    expect(target.isOperatingExpense).toBe(true);
+    expect(target.accountName).toBe('Advertising');
+    expect(target.recordType).toBe('expense');
+  });
+
+  it('getAccountingDetails excludes out-of-period records', async () => {
+    const records = await syncSvc.getAccountingDetails(
+      testAccountId, PROVIDER, PERIOD_START, PERIOD_END
+    );
+    const outPeriod = records.find(r => r.providerRecordId === 'exp-out-period-001');
+    expect(outPeriod).toBeUndefined();
+  });
+
+  it('account balance alone does not contribute — no synced record means zero opex', async () => {
+    // Remove synced records but keep the account mapping
+    await pool.query(
+      `DELETE FROM accounting_synced_records
+       WHERE account_id = $1 AND provider_record_id = 'exp-in-period-001'`,
+      [testAccountId]
+    );
+    const totals = await syncSvc.getAccountingTotals(
+      testAccountId, PROVIDER, PERIOD_START, PERIOD_END
+    );
+    // hasOpExAccounts is still true (account exists) but opexCents must be 0
+    expect(totals.hasOpExAccounts).toBe(true);
+    expect(totals.opexCents).toBe(0);
+
+    // Re-insert for subsequent tests
+    await pool.query(
+      `INSERT INTO accounting_synced_records
+         (account_id, provider, record_type, provider_record_id, amount_cents,
+          currency, accounting_date, provider_account_id, fieldcore_category, synced_at)
+       VALUES ($1,$2,'expense','exp-in-period-001',5400,'USD',$3,$4,'operating_expenses',NOW())
+       ON CONFLICT (account_id, provider, record_type, provider_record_id) DO UPDATE
+         SET amount_cents = 5400, accounting_date = $3`,
+      [testAccountId, PROVIDER, IN_PERIOD_DATE, opexAccountId]
+    );
+  });
+
+  it('GET /financials/details returns 400 without date params', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/financials/details')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /financials/details returns opex source records for authenticated owner', async () => {
+    const res = await request(app)
+      .get(`/api/integrations/accounting/quickbooks/financials/details?start=${PERIOD_START}&end=${PERIOD_END}`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('opex');
+    expect(res.body).toHaveProperty('cogs');
+    expect(res.body).toHaveProperty('taxes');
+    expect(res.body).toHaveProperty('period');
+    expect(Array.isArray(res.body.opex)).toBe(true);
+    const target = res.body.opex.find(r => r.providerRecordId === 'exp-in-period-001');
+    expect(target).toBeDefined();
+    expect(target.amountCents).toBe(5400);
+  });
+
+  it('GET /financials/details returns 401 without auth', async () => {
+    const res = await request(app)
+      .get(`/api/integrations/accounting/quickbooks/financials/details?start=${PERIOD_START}&end=${PERIOD_END}`);
+    expect(res.status).toBe(401);
+  });
+});
+
 // ── 13. Financial coverage with QB connected ─────────────────────────────────
 
 describe('Financial coverage — QB accounting source', () => {

@@ -127,7 +127,7 @@ export default function QBMappingModal({ onClose, onSaved }) {
   const [saving,        setSaving]        = useState(false);
   const [saveError,     setSaveError]     = useState(null);
   const [search,        setSearch]        = useState('');
-  const [filterStatus,  setFilterStatus]  = useState('needs_review');
+  const [filterStatus,  setFilterStatus]  = useState('all');
   const [dirty,         setDirty]         = useState(false);
 
   useEffect(() => {
@@ -282,7 +282,7 @@ export default function QBMappingModal({ onClose, onSaved }) {
       aria-modal="true"
       aria-label="QuickBooks Account Mapping"
     >
-      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 960, boxShadow: '0 24px 64px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 960, maxHeight: 'calc(100vh - 5rem)', boxShadow: '0 24px 64px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid #E6E6E6' }}>
@@ -341,7 +341,7 @@ export default function QBMappingModal({ onClose, onSaved }) {
         )}
 
         {/* Table body */}
-        <div style={{ overflowY: 'auto', maxHeight: '52vh', flex: 1 }}>
+        <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
           {loading && (
             <div style={{ padding: '2.5rem', textAlign: 'center', color: '#8A90A2', fontSize: 14 }}>Loading accounts…</div>
           )}
@@ -352,13 +352,13 @@ export default function QBMappingModal({ onClose, onSaved }) {
             <div style={{ padding: '2rem', color: '#8A90A2', fontSize: 14, textAlign: 'center' }}>No accounts match your filter.</div>
           )}
           {!loading && rows && filtered.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead style={{ position: 'sticky', top: 0 }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13 }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr style={{ background: '#EDEBE7' }}>
-                  <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 600, color: '#1C2333', borderBottom: '1px solid #D1D5DB', whiteSpace: 'nowrap' }}>Account Name</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#1C2333', borderBottom: '1px solid #D1D5DB', whiteSpace: 'nowrap' }}>QB Type</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#1C2333', borderBottom: '1px solid #D1D5DB' }}>FieldCore Category</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 600, color: '#1C2333', borderBottom: '1px solid #D1D5DB', whiteSpace: 'nowrap' }}>Status</th>
+                  <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 600, color: '#1C2333', boxShadow: 'inset 0 -1px 0 #D1D5DB', whiteSpace: 'nowrap', background: '#EDEBE7' }}>Account Name</th>
+                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#1C2333', boxShadow: 'inset 0 -1px 0 #D1D5DB', whiteSpace: 'nowrap', background: '#EDEBE7' }}>QB Type</th>
+                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#1C2333', boxShadow: 'inset 0 -1px 0 #D1D5DB', background: '#EDEBE7' }}>FieldCore Category</th>
+                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 600, color: '#1C2333', boxShadow: 'inset 0 -1px 0 #D1D5DB', whiteSpace: 'nowrap', background: '#EDEBE7' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
