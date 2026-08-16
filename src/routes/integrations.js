@@ -278,7 +278,7 @@ router.post(
       return res.status(400).json({ error: 'mappings array is required.' });
     }
 
-    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', null];
+    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', 'revenue', 'balance_sheet', null];
     for (const m of mappings) {
       if (!m.providerAccountId) {
         return res.status(400).json({ error: 'Each mapping requires providerAccountId.' });
@@ -307,7 +307,7 @@ router.patch(
     const { providerAccountId } = req.params;
     const { fieldcoreCategory, fieldcoreSubcategory, isIgnored } = req.body;
 
-    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', null];
+    const VALID_CATEGORIES = ['cogs', 'operating_expenses', 'taxes', 'cash_accounts', 'revenue', 'balance_sheet', null];
     if (!VALID_CATEGORIES.includes(fieldcoreCategory ?? null)) {
       return res.status(400).json({ error: 'Invalid fieldcoreCategory value.' });
     }

@@ -97,13 +97,22 @@ function useFinData(params) {
 function FinKpiRow({ kpis, loading, calculatedAt }) {
   if (!kpis && !loading) return null;
 
+  const gr  = kpis?.grossRevenue;
+  const gp  = kpis?.grossProfit;
+  const np  = kpis?.netProfit;
+  const nm  = kpis?.netMargin;
+  const opx = kpis?.operatingExpenses;
+
   function fmtKpi(metric) {
     if (!metric) return null;
     if (metric.status === 'ok' && metric.value != null) return fmtMoney(metric.value, true);
     return null;
   }
-
-  const gr = kpis?.grossRevenue;
+  function fmtPctKpi(metric) {
+    if (!metric) return null;
+    if (metric.status === 'ok' && metric.value != null) return fmtPct(metric.value);
+    return null;
+  }
 
   return (
     <div className="fin-kpi-row" role="region" aria-label="Financial KPIs">
@@ -119,37 +128,37 @@ function FinKpiRow({ kpis, loading, calculatedAt }) {
       />
       <RevenueKpiCard
         label="Gross Profit"
-        value={null}
-        status={loading ? 'loading' : 'unavailable'}
+        value={fmtKpi(gp)}
+        status={loading ? 'loading' : (gp?.status || 'unavailable')}
         calculatedAt={calculatedAt}
-        provenance={kpis?.grossProfit?.provenance}
+        provenance={gp?.provenance}
         isLoading={loading}
         size="primary"
       />
       <RevenueKpiCard
         label="Net Profit"
-        value={null}
-        status={loading ? 'loading' : 'unavailable'}
+        value={fmtKpi(np)}
+        status={loading ? 'loading' : (np?.status || 'unavailable')}
         calculatedAt={calculatedAt}
-        provenance={kpis?.netProfit?.provenance}
+        provenance={np?.provenance}
         isLoading={loading}
         size="primary"
       />
       <RevenueKpiCard
         label="Net Margin"
-        value={null}
-        status={loading ? 'loading' : 'unavailable'}
+        value={fmtPctKpi(nm)}
+        status={loading ? 'loading' : (nm?.status || 'unavailable')}
         calculatedAt={calculatedAt}
-        provenance={kpis?.netMargin?.provenance}
+        provenance={nm?.provenance}
         isLoading={loading}
         size="primary"
       />
       <RevenueKpiCard
         label="Operating Expenses"
-        value={null}
-        status={loading ? 'loading' : 'unavailable'}
+        value={fmtKpi(opx)}
+        status={loading ? 'loading' : (opx?.status || 'unavailable')}
         calculatedAt={calculatedAt}
-        provenance={kpis?.operatingExpenses?.provenance}
+        provenance={opx?.provenance}
         isLoading={loading}
         size="primary"
       />
@@ -1134,6 +1143,7 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
 
   // Auto-poll every 7 seconds while QuickBooks is syncing.
   // Stops automatically when status transitions to connected or error.
+  // Detects the syncing → connected transition to show a "sync complete" banner.
   const coverage = data?.coverage;
   const accountingSrc = [
     ...(coverage?.activeSources   || []),
@@ -1141,11 +1151,26 @@ export function FinancialsWorkspace({ filterStart, filterEnd, comparison }) {
   ].find(s => s.sourceKey === 'accounting');
   const isQBSyncing = accountingSrc?.connectionInfo?.status === 'syncing';
 
+  const prevQBSyncingRef = useRef(false);
+
   useEffect(() => {
-    if (!isQBSyncing) return;
+    if (!isQBSyncing) {
+      if (prevQBSyncingRef.current) {
+        // Just finished syncing
+        const src = accountingSrc;
+        if (src?.connectionInfo?.status === 'connected') {
+          setQbBanner('QuickBooks sync complete. Data refreshed.');
+          const t = setTimeout(() => setQbBanner(null), 5000);
+          return () => clearTimeout(t);
+        }
+      }
+      prevQBSyncingRef.current = false;
+      return;
+    }
+    prevQBSyncingRef.current = true;
     const id = setInterval(() => refetch(), 7000);
     return () => clearInterval(id);
-  }, [isQBSyncing, refetch]);
+  }, [isQBSyncing, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return (
     <div className="rov-ws-body">

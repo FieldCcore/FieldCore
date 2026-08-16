@@ -3,14 +3,23 @@ const pool   = require('../db/pool');
 const qb     = require('./quickbooksAdapter');
 const connSvc = require('./accountingConnectionService');
 
-// ── Category auto-suggestion rules ───────────────────────────────────────────
-// Suggests a fieldcore_category based on QB account type/subtype.
-// The user can override via the mapping UI.
+// ── Category definitions ──────────────────────────────────────────────────────
 
 const FIELDCORE_CATEGORIES = [
   {
+    category: 'revenue',
+    label: 'Revenue',
+    pnlRelevant: true,
+    subcategories: [
+      { value: 'service_revenue', label: 'Service Revenue' },
+      { value: 'product_revenue', label: 'Product Revenue' },
+      { value: 'other_revenue',   label: 'Other Revenue'   },
+    ],
+  },
+  {
     category: 'cogs',
     label: 'Direct Cost / COGS',
+    pnlRelevant: true,
     subcategories: [
       { value: 'direct_labor',       label: 'Direct Labor'        },
       { value: 'materials',          label: 'Materials'           },
@@ -26,6 +35,7 @@ const FIELDCORE_CATEGORIES = [
   {
     category: 'operating_expenses',
     label: 'Operating Expense',
+    pnlRelevant: true,
     subcategories: [
       { value: 'admin_payroll',          label: 'Admin Payroll'          },
       { value: 'marketing',              label: 'Marketing'              },
@@ -36,27 +46,231 @@ const FIELDCORE_CATEGORIES = [
       { value: 'vehicle_overhead',       label: 'Vehicle Overhead'       },
       { value: 'professional_services',  label: 'Professional Services'  },
       { value: 'office_expense',         label: 'Office Expense'         },
+      { value: 'travel',                 label: 'Travel'                 },
       { value: 'other_operating',        label: 'Other Operating'        },
     ],
   },
   {
     category: 'taxes',
     label: 'Tax',
+    pnlRelevant: true,
     subcategories: [
-      { value: 'tax', label: 'Tax' },
+      { value: 'tax',           label: 'Tax'           },
+      { value: 'interest',      label: 'Interest'      },
+      { value: 'other_income',  label: 'Other Income'  },
+      { value: 'other_expense', label: 'Other Expense' },
     ],
   },
   {
-    category: 'cash_accounts',
-    label: 'Cash / Bank',
+    category: 'balance_sheet',
+    label: 'Balance Sheet',
+    pnlRelevant: false,
     subcategories: [
-      { value: 'cash_bank',      label: 'Cash / Bank'   },
-      { value: 'other_income',   label: 'Other Income'  },
-      { value: 'other_expense',  label: 'Other Expense' },
+      { value: 'cash_bank',            label: 'Cash / Bank'              },
+      { value: 'accounts_receivable',  label: 'Accounts Receivable'      },
+      { value: 'accounts_payable',     label: 'Accounts Payable'         },
+      { value: 'credit_card',          label: 'Credit Card / Liability'  },
+      { value: 'other_asset',          label: 'Other Asset'              },
+      { value: 'other_liability',      label: 'Other Liability'          },
+      { value: 'equity',               label: 'Equity'                   },
     ],
   },
 ];
 
+// ── Classification rules ──────────────────────────────────────────────────────
+// Processed in order; first match wins.
+
+const CLASSIFICATION_RULES = [
+  // DETERMINISTIC — balance sheet types
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'cash_bank',
+    isBalanceSheet: true,
+    test: (t) => t === 'Bank' || t === 'Cash and Cash Equivalent',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'accounts_receivable',
+    isBalanceSheet: true,
+    test: (t) => t === 'Accounts Receivable',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'accounts_payable',
+    isBalanceSheet: true,
+    test: (t) => t === 'Accounts Payable',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'credit_card',
+    isBalanceSheet: true,
+    test: (t) => t === 'Credit Card',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'equity',
+    isBalanceSheet: true,
+    test: (t) => t === 'Equity',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'other_asset',
+    isBalanceSheet: true,
+    test: (t) => t === 'Fixed Asset' || t === 'Other Current Asset' || t === 'Other Asset',
+  },
+  {
+    confidence: 'deterministic',
+    category:   'balance_sheet',
+    subcategory: 'other_liability',
+    isBalanceSheet: true,
+    test: (t) => t === 'Long Term Liability' || t === 'Other Current Liability',
+  },
+  // DETERMINISTIC — revenue
+  {
+    confidence: 'deterministic',
+    category:   'revenue',
+    subcategoryFn: (t) => t === 'Other Income' ? 'other_revenue' : 'service_revenue',
+    isRevenue: true,
+    test: (t) => t === 'Income' || t === 'Other Income',
+  },
+  // DETERMINISTIC — COGS
+  {
+    confidence: 'deterministic',
+    category:   'cogs',
+    subcategory: 'other_direct_cost',
+    isDirectCost: true,
+    test: (t) => t === 'Cost of Goods Sold',
+  },
+  // HIGH_CONFIDENCE — tax
+  {
+    confidence: 'high_confidence',
+    category:   'taxes',
+    subcategory: 'tax',
+    isTax: true,
+    test: (t, st) => t === 'Other Expense' && st === 'IncomeTaxExpense',
+  },
+  // HIGH_CONFIDENCE — expense with known subtype
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'insurance',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'Insurance',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'rent',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'Rent',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'utilities',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'Utilities',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'marketing',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'Advertising',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'vehicle_overhead',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'Vehicle',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'professional_services',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'LegalAndProfessionalFees',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'office_expense',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'OfficeGeneralAdminExpenses',
+  },
+  {
+    confidence: 'high_confidence',
+    category:   'operating_expenses',
+    subcategory: 'travel',
+    isOperatingExpense: true,
+    test: (t, st) => t === 'Expense' && st === 'TravelExpenses',
+  },
+  // REVIEW_REQUIRED — generic expense
+  {
+    confidence: 'review_required',
+    category:   'operating_expenses',
+    subcategory: null,
+    isOperatingExpense: true,
+    test: (t) => t === 'Expense',
+  },
+  // REVIEW_REQUIRED — Other Expense (catch-all)
+  {
+    confidence: 'review_required',
+    category:   'operating_expenses',
+    subcategory: null,
+    isOperatingExpense: true,
+    test: (t) => t === 'Other Expense',
+  },
+];
+
+/**
+ * Returns a classification result for a given QB account type + subtype.
+ * Result shape:
+ *   { category, subcategory, confidence, isRevenue, isBalanceSheet,
+ *     isDirectCost, isOperatingExpense, isTax, isCashAccount }
+ */
+function classify(accountType, accountSubType) {
+  const t  = accountType    || '';
+  const st = accountSubType || '';
+
+  for (const rule of CLASSIFICATION_RULES) {
+    if (!rule.test(t, st)) continue;
+    const subcategory = rule.subcategoryFn ? rule.subcategoryFn(t, st) : (rule.subcategory ?? null);
+    return {
+      category:           rule.category || null,
+      subcategory,
+      confidence:         rule.confidence || 'review_required',
+      isRevenue:          !!rule.isRevenue,
+      isBalanceSheet:     !!rule.isBalanceSheet,
+      isDirectCost:       !!rule.isDirectCost,
+      isOperatingExpense: !!rule.isOperatingExpense,
+      isTax:              !!rule.isTax,
+      isCashAccount:      false, // deprecated; always false
+    };
+  }
+
+  // No rule matched
+  return {
+    category:           null,
+    subcategory:        null,
+    confidence:         'review_required',
+    isRevenue:          false,
+    isBalanceSheet:     false,
+    isDirectCost:       false,
+    isOperatingExpense: false,
+    isTax:              false,
+    isCashAccount:      false,
+  };
+}
+
+// Legacy suggest function kept for backward compat (tests call syncSvc.suggestCategory)
 const CATEGORY_SUGGESTIONS = [
   { types: ['Cost of Goods Sold'],                              category: 'cogs'               },
   { types: ['Expense'], subtypes: ['Advertising'],              category: 'operating_expenses'  },
@@ -87,7 +301,9 @@ function categoryToFlags(category) {
     isDirectCost:       category === 'cogs',
     isOperatingExpense: category === 'operating_expenses',
     isTax:              category === 'taxes',
-    isCashAccount:      category === 'cash_accounts',
+    isCashAccount:      false, // deprecated
+    isRevenue:          category === 'revenue',
+    isBalanceSheet:     category === 'balance_sheet',
   };
 }
 
@@ -97,8 +313,6 @@ function toCents(amount) {
 }
 
 // ── Stale sync recovery ───────────────────────────────────────────────────────
-// A sync is "stale" if it has been in 'syncing' state for more than 30 minutes
-// without completing. This covers server crashes or unhandled exceptions.
 
 const STALE_SYNC_MINUTES = 30;
 
@@ -137,13 +351,16 @@ async function syncChartOfAccounts(conn, opts = {}) {
   let upserted = 0;
 
   for (const acct of accounts) {
-    const suggested = suggestCategory(acct.accountType, acct.accountSubType);
+    const cls = classify(acct.accountType, acct.accountSubType);
+
     await pool.query(
       `INSERT INTO accounting_account_mappings
          (account_id, provider, provider_account_id, provider_account_name,
           provider_account_type, provider_account_subtype, fieldcore_category,
-          is_direct_cost, is_operating_expense, is_tax, is_cash_account, is_active, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+          fieldcore_subcategory, is_direct_cost, is_operating_expense, is_tax,
+          is_cash_account, is_revenue, is_balance_sheet, mapping_confidence,
+          is_active, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
        ON CONFLICT (account_id, provider, provider_account_id) DO UPDATE
          SET provider_account_name    = EXCLUDED.provider_account_name,
              provider_account_type    = EXCLUDED.provider_account_type,
@@ -152,20 +369,35 @@ async function syncChartOfAccounts(conn, opts = {}) {
                accounting_account_mappings.fieldcore_category,
                EXCLUDED.fieldcore_category
              ),
+             fieldcore_subcategory    = COALESCE(
+               accounting_account_mappings.fieldcore_subcategory,
+               EXCLUDED.fieldcore_subcategory
+             ),
              is_direct_cost           = EXCLUDED.is_direct_cost,
              is_operating_expense     = EXCLUDED.is_operating_expense,
              is_tax                   = EXCLUDED.is_tax,
              is_cash_account          = EXCLUDED.is_cash_account,
+             is_revenue               = EXCLUDED.is_revenue,
+             is_balance_sheet         = EXCLUDED.is_balance_sheet,
+             mapping_confidence       = COALESCE(
+               CASE WHEN accounting_account_mappings.mapping_confidence = 'review_required'
+                    THEN NULL ELSE accounting_account_mappings.mapping_confidence END,
+               EXCLUDED.mapping_confidence
+             ),
              is_active                = EXCLUDED.is_active,
              updated_at               = NOW()`,
       [
         conn.accountId, conn.provider || 'quickbooks_online',
         acct.id, acct.name, acct.accountType, acct.accountSubType,
-        suggested,
-        suggested === 'cogs',
-        suggested === 'operating_expenses',
-        suggested === 'taxes',
-        suggested === 'cash_accounts',
+        cls.category,
+        cls.subcategory,
+        cls.isDirectCost,
+        cls.isOperatingExpense,
+        cls.isTax,
+        cls.isCashAccount,
+        cls.isRevenue,
+        cls.isBalanceSheet,
+        cls.confidence,
         acct.active !== false,
       ]
     );
@@ -412,15 +644,18 @@ async function updateMapping(accountId, provider, providerAccountId, {
   const flags    = categoryToFlags(category);
   await pool.query(
     `UPDATE accounting_account_mappings
-     SET fieldcore_category     = $1,
-         fieldcore_subcategory  = $2,
+     SET fieldcore_category     = $1::text,
+         fieldcore_subcategory  = $2::text,
          is_ignored             = $3,
          is_direct_cost         = $4,
          is_operating_expense   = $5,
          is_tax                 = $6,
          is_cash_account        = $7,
+         is_revenue             = $8,
+         is_balance_sheet       = $9,
+         mapping_confidence     = CASE WHEN $1::text IS NOT NULL THEN 'high_confidence' ELSE 'review_required' END,
          updated_at             = NOW()
-     WHERE account_id = $8 AND provider = $9 AND provider_account_id = $10`,
+     WHERE account_id = $10 AND provider = $11 AND provider_account_id = $12`,
     [
       category,
       fieldcoreSubcategory || null,
@@ -429,6 +664,8 @@ async function updateMapping(accountId, provider, providerAccountId, {
       flags.isOperatingExpense,
       flags.isTax,
       flags.isCashAccount,
+      flags.isRevenue,
+      flags.isBalanceSheet,
       accountId, provider, providerAccountId,
     ]
   );
@@ -443,15 +680,18 @@ async function bulkUpdateMappings(accountId, provider, mappings) {
       const flags    = categoryToFlags(category);
       await client.query(
         `UPDATE accounting_account_mappings
-         SET fieldcore_category     = $1,
-             fieldcore_subcategory  = $2,
+         SET fieldcore_category     = $1::text,
+             fieldcore_subcategory  = $2::text,
              is_ignored             = $3,
              is_direct_cost         = $4,
              is_operating_expense   = $5,
              is_tax                 = $6,
              is_cash_account        = $7,
+             is_revenue             = $8,
+             is_balance_sheet       = $9,
+             mapping_confidence     = CASE WHEN $1::text IS NOT NULL THEN 'high_confidence' ELSE 'review_required' END,
              updated_at             = NOW()
-         WHERE account_id = $8 AND provider = $9 AND provider_account_id = $10`,
+         WHERE account_id = $10 AND provider = $11 AND provider_account_id = $12`,
         [
           category,
           m.fieldcoreSubcategory || null,
@@ -460,6 +700,8 @@ async function bulkUpdateMappings(accountId, provider, mappings) {
           flags.isOperatingExpense,
           flags.isTax,
           flags.isCashAccount,
+          flags.isRevenue,
+          flags.isBalanceSheet,
           accountId, provider, m.providerAccountId,
         ]
       );
@@ -473,10 +715,48 @@ async function bulkUpdateMappings(accountId, provider, mappings) {
   }
 }
 
+// ── Mapping stats ─────────────────────────────────────────────────────────────
+
+async function getMappingStats(accountId, provider) {
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(*)                                                              AS total,
+       SUM(CASE WHEN is_balance_sheet = TRUE  THEN 1 ELSE 0 END)           AS balance_sheet,
+       SUM(CASE WHEN is_balance_sheet = FALSE AND is_ignored = FALSE
+                 AND mapping_confidence = 'review_required' THEN 1 ELSE 0 END) AS needs_review,
+       SUM(CASE WHEN mapping_confidence = 'deterministic'   THEN 1 ELSE 0 END) AS deterministic,
+       SUM(CASE WHEN mapping_confidence = 'high_confidence' THEN 1 ELSE 0 END) AS high_confidence
+     FROM accounting_account_mappings
+     WHERE account_id = $1 AND provider = $2 AND is_active = TRUE`,
+    [accountId, provider]
+  );
+  const r = rows[0] || {};
+  return {
+    total:          parseInt(r.total          || 0),
+    balanceSheet:   parseInt(r.balance_sheet  || 0),
+    needsReview:    parseInt(r.needs_review   || 0),
+    deterministic:  parseInt(r.deterministic  || 0),
+    highConfidence: parseInt(r.high_confidence || 0),
+  };
+}
+
 // ── COGS / operating expense totals for P&L ───────────────────────────────────
-// Returns dollar totals (not cents) from synced + mapped accounting records.
 
 async function getAccountingTotals(accountId, provider, start, end) {
+  // First check if there are any mapped COGS/opex/tax accounts
+  const { rows: flagRows } = await pool.query(
+    `SELECT
+       bool_or(is_direct_cost)       AS has_cogs,
+       bool_or(is_operating_expense) AS has_opex,
+       bool_or(is_tax)               AS has_tax
+     FROM accounting_account_mappings
+     WHERE account_id = $1 AND provider = $2
+       AND is_ignored = FALSE AND is_active = TRUE`,
+    [accountId, provider]
+  );
+
+  const flags = flagRows[0] || {};
+
   const { rows } = await pool.query(
     `SELECT
        SUM(CASE WHEN m.is_direct_cost       = TRUE THEN r.amount_cents ELSE 0 END) AS cogs_cents,
@@ -499,14 +779,18 @@ async function getAccountingTotals(accountId, provider, start, end) {
 
   const row = rows[0] || {};
   return {
-    cogsCents:     parseInt(row.cogs_cents || 0),
-    opexCents:     parseInt(row.opex_cents || 0),
-    taxCents:      parseInt(row.tax_cents  || 0),
+    cogsCents:          parseInt(row.cogs_cents || 0),
+    opexCents:          parseInt(row.opex_cents || 0),
+    taxCents:           parseInt(row.tax_cents  || 0),
+    hasCOGSAccounts:    !!flags.has_cogs,
+    hasOpExAccounts:    !!flags.has_opex,
+    hasTaxAccounts:     !!flags.has_tax,
   };
 }
 
 module.exports = {
   FIELDCORE_CATEGORIES,
+  classify,
   categoryToFlags,
   syncChartOfAccounts,
   syncVendors,
@@ -519,6 +803,7 @@ module.exports = {
   getMappings,
   updateMapping,
   bulkUpdateMappings,
+  getMappingStats,
   getAccountingTotals,
   suggestCategory,
 };

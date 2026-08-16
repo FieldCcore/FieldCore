@@ -180,7 +180,10 @@ async function getUnmappedAccountCount(accountId, provider = PROVIDER) {
     `SELECT COUNT(*) AS cnt
      FROM accounting_account_mappings
      WHERE account_id = $1 AND provider = $2
-       AND fieldcore_category IS NULL AND is_ignored = FALSE AND is_active = TRUE`,
+       AND mapping_confidence = 'review_required'
+       AND is_balance_sheet = FALSE
+       AND is_ignored = FALSE
+       AND is_active = TRUE`,
     [accountId, provider]
   );
   return parseInt(rows[0]?.cnt || 0);

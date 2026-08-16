@@ -7,20 +7,19 @@ const { getFinancialCoverage } = require('./financialCoverageService');
 
 function buildPnlRows(prof) {
   const gr = prof.grossRevenue;
-
   return [
-    { key: 'grossRevenue',      label: 'Gross Revenue',       value: gr.value,   status: gr.status },
-    { key: 'refunds',           label: 'Refunds & Credits',   value: null,       status: 'unavailable', note: 'Requires refunded_at column on deposits table.' },
-    { key: 'netRevenue',        label: 'Net Revenue',         value: gr.value,   status: gr.status != null ? gr.status : 'unavailable' },
-    { key: 'cogs',              label: 'COGS',                value: null,       status: 'unavailable', missingSources: prof.cogs.missingSources },
-    { key: 'grossProfit',       label: 'Gross Profit',        value: null,       status: 'unavailable' },
-    { key: 'grossMargin',       label: 'Gross Margin %',      value: null,       status: 'unavailable' },
-    { key: 'operatingExpenses', label: 'Operating Expenses',  value: null,       status: 'unavailable' },
-    { key: 'operatingProfit',   label: 'Operating Profit',    value: null,       status: 'unavailable' },
-    { key: 'merchantFees',      label: 'Merchant Fees',       value: null,       status: 'unavailable' },
-    { key: 'taxes',             label: 'Taxes',               value: null,       status: 'unavailable' },
-    { key: 'netProfit',         label: 'Net Profit',          value: null,       status: 'unavailable' },
-    { key: 'netMargin',         label: 'Net Margin %',        value: null,       status: 'unavailable' },
+    { key: 'grossRevenue',      label: 'Gross Revenue',       value: gr.value,                      status: gr.status },
+    { key: 'refunds',           label: 'Refunds & Credits',   value: null,                          status: 'unavailable' },
+    { key: 'netRevenue',        label: 'Net Revenue',         value: gr.value,                      status: gr.status != null ? gr.status : 'unavailable' },
+    { key: 'cogs',              label: 'COGS',                value: prof.cogs.value,               status: prof.cogs.status,              missingSources: prof.cogs.missingSources },
+    { key: 'grossProfit',       label: 'Gross Profit',        value: prof.grossProfit.value,        status: prof.grossProfit.status },
+    { key: 'grossMargin',       label: 'Gross Margin %',      value: prof.grossMargin.value,        status: prof.grossMargin.status },
+    { key: 'operatingExpenses', label: 'Operating Expenses',  value: prof.operatingExpenses.value,  status: prof.operatingExpenses.status },
+    { key: 'operatingProfit',   label: 'Operating Profit',    value: prof.operatingProfit.value,    status: prof.operatingProfit.status },
+    { key: 'merchantFees',      label: 'Merchant Fees',       value: prof.merchantFees?.value,      status: prof.merchantFees?.status     || 'unavailable' },
+    { key: 'taxes',             label: 'Taxes',               value: prof.taxes.value,              status: prof.taxes.status },
+    { key: 'netProfit',         label: 'Net Profit',          value: prof.netProfit.value,          status: prof.netProfit.status },
+    { key: 'netMargin',         label: 'Net Margin %',        value: prof.netMargin.value,          status: prof.netMargin.status },
   ];
 }
 

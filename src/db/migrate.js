@@ -1437,6 +1437,119 @@ const MIGRATIONS = [
 
   `CREATE INDEX IF NOT EXISTS idx_accounting_synced_records_account_date
      ON accounting_synced_records (account_id, provider, accounting_date)`,
+
+  // ── Smart classification columns ──────────────────────────────────────────────
+  `ALTER TABLE accounting_account_mappings
+    ADD COLUMN IF NOT EXISTS mapping_confidence TEXT NOT NULL DEFAULT 'review_required',
+    ADD COLUMN IF NOT EXISTS is_revenue       BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS is_balance_sheet BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  // Migrate cash_accounts → balance_sheet (bank accounts are balance sheet)
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = COALESCE(fieldcore_subcategory, 'cash_bank'),
+        is_cash_account       = FALSE,
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE fieldcore_category = 'cash_accounts'`,
+
+  // Deterministic: Income/Other Income → revenue
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'revenue',
+        fieldcore_subcategory = CASE WHEN provider_account_type = 'Other Income' THEN 'other_revenue' ELSE 'service_revenue' END,
+        is_revenue            = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type IN ('Income','Other Income')
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet','revenue','cogs','operating_expenses','taxes'))`,
+
+  // Deterministic: Accounts Receivable → balance_sheet
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = 'accounts_receivable',
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type = 'Accounts Receivable'
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet'))`,
+
+  // Deterministic: Accounts Payable → balance_sheet
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = 'accounts_payable',
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type = 'Accounts Payable'
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet'))`,
+
+  // Deterministic: Equity → balance_sheet
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = 'equity',
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type IN ('Equity')
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet'))`,
+
+  // Deterministic: Fixed/Other assets → balance_sheet
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = 'other_asset',
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type IN ('Fixed Asset','Other Current Asset','Other Asset')
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet'))`,
+
+  // Deterministic: Liabilities + Credit Card → balance_sheet
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'balance_sheet',
+        fieldcore_subcategory = CASE WHEN provider_account_type = 'Credit Card' THEN 'credit_card' ELSE 'other_liability' END,
+        is_balance_sheet      = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type IN ('Long Term Liability','Other Current Liability','Credit Card')
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet'))`,
+
+  // Deterministic: Cost of Goods Sold type → cogs
+  `UPDATE accounting_account_mappings
+    SET fieldcore_category    = 'cogs',
+        fieldcore_subcategory = COALESCE(fieldcore_subcategory, 'other_direct_cost'),
+        is_direct_cost        = TRUE,
+        mapping_confidence    = 'deterministic'
+    WHERE provider_account_type = 'Cost of Goods Sold'
+      AND (fieldcore_category IS NULL OR fieldcore_category NOT IN ('balance_sheet','revenue'))`,
+
+  // High-confidence: specific Expense subtypes with subcategory
+  `UPDATE accounting_account_mappings
+    SET fieldcore_subcategory = CASE
+          WHEN provider_account_subtype = 'Insurance'                   THEN 'insurance'
+          WHEN provider_account_subtype = 'Rent'                        THEN 'rent'
+          WHEN provider_account_subtype = 'Utilities'                   THEN 'utilities'
+          WHEN provider_account_subtype = 'Advertising'                 THEN 'marketing'
+          WHEN provider_account_subtype = 'Vehicle'                     THEN 'vehicle_overhead'
+          WHEN provider_account_subtype = 'LegalAndProfessionalFees'    THEN 'professional_services'
+          WHEN provider_account_subtype = 'OfficeGeneralAdminExpenses'  THEN 'office_expense'
+          WHEN provider_account_subtype = 'TravelExpenses'              THEN 'travel'
+          ELSE 'other_operating'
+        END,
+        mapping_confidence = CASE
+          WHEN provider_account_subtype IN ('Insurance','Rent','Utilities','Advertising','Vehicle',
+               'LegalAndProfessionalFees','OfficeGeneralAdminExpenses','TravelExpenses') THEN 'high_confidence'
+          ELSE 'review_required'
+        END
+    WHERE fieldcore_category = 'operating_expenses'
+      AND fieldcore_subcategory IS NULL`,
+
+  // High-confidence: taxes with subcategory
+  `UPDATE accounting_account_mappings
+    SET fieldcore_subcategory = 'tax',
+        mapping_confidence    = 'high_confidence'
+    WHERE fieldcore_category = 'taxes'
+      AND fieldcore_subcategory IS NULL`,
+
+  // High-confidence: cogs without subcategory
+  `UPDATE accounting_account_mappings
+    SET fieldcore_subcategory = 'other_direct_cost',
+        mapping_confidence    = 'high_confidence'
+    WHERE fieldcore_category = 'cogs'
+      AND fieldcore_subcategory IS NULL`,
 ];
 
 async function runMigrations() {
