@@ -155,7 +155,7 @@ router.get(
         conn.status === 'sync_error'                ? 'ERROR'            :
         'UNKNOWN';
 
-      // Build connector health structure (best-effort — non-fatal if mapping stats fail)
+      // Build connector health using getMappingSummary — single authoritative source.
       let health = {
         connection:       conn.connected ? 'CONNECTED' : 'DISCONNECTED',
         accountsSync:     'UNKNOWN',
@@ -163,34 +163,36 @@ router.get(
         mappings:         'UNKNOWN',
         financials:       'UNKNOWN',
       };
+      let mappingSummary = null;
       if (conn.connected) {
-        const stats = await syncSvc.getMappingStats(req.accountId, PROVIDER).catch(() => null);
+        mappingSummary = await syncSvc.getMappingSummary(req.accountId, PROVIDER).catch(() => null);
         health = {
           connection:       'CONNECTED',
-          accountsSync:     stats && stats.total > 0 ? 'COMPLETE' : 'PENDING',
+          accountsSync:     mappingSummary && mappingSummary.totalAccounts > 0 ? 'COMPLETE' : 'PENDING',
           transactionsSync: conn.status === 'connected'  ? 'SYNCED'
                           : conn.status === 'syncing'    ? 'SYNCING'
                           : conn.status === 'sync_error' ? 'FAILED'
                           : 'UNKNOWN',
-          mappings:         stats
-                          ? (stats.needsReview === 0
+          mappings:         mappingSummary
+                          ? (mappingSummary.needsReviewAccounts === 0
                               ? 'COMPLETE'
-                              : `PARTIAL (${stats.needsReview} need review)`)
+                              : `PARTIAL (${mappingSummary.needsReviewAccounts} need review)`)
                           : 'UNKNOWN',
-          financials:       stats && stats.needsReview === 0 ? 'READY' : 'PARTIAL',
+          financials:       mappingSummary && mappingSummary.needsReviewAccounts === 0 ? 'READY' : 'PARTIAL',
         };
       }
 
       const body = {
-        provider:     PROVIDER,
-        configured:   conn.configured,
-        connected:    conn.connected,
-        canConnect:   conn.canConnect,
-        status:       publicStatus,
-        environment:  conn.environment,
-        companyName:  conn.companyName || null,
-        lastSyncAt:   conn.lastSyncAt  || null,
+        provider:       PROVIDER,
+        configured:     conn.configured,
+        connected:      conn.connected,
+        canConnect:     conn.canConnect,
+        status:         publicStatus,
+        environment:    conn.environment,
+        companyName:    conn.companyName || null,
+        lastSyncAt:     conn.lastSyncAt  || null,
         health,
+        mappingSummary: mappingSummary || null,
       };
 
       console.log(
@@ -267,6 +269,23 @@ router.post(
 );
 
 // ── Account mappings ──────────────────────────────────────────────────────────
+
+// GET /api/integrations/accounting/quickbooks/mappings/summary
+// Single authoritative mapping count — use this everywhere; do NOT derive counts on the client.
+router.get(
+  '/accounting/quickbooks/mappings/summary',
+  requireAuth,
+  requireRole('owner', 'manager'),
+  async (req, res) => {
+    try {
+      const summary = await syncSvc.getMappingSummary(req.accountId, PROVIDER);
+      res.json(summary);
+    } catch (err) {
+      console.error('[Integrations] QB mappings summary error:', err.message);
+      res.status(500).json({ error: 'Failed to load mapping summary.' });
+    }
+  }
+);
 
 // GET /api/integrations/accounting/quickbooks/mappings/categories
 router.get(

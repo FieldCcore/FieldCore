@@ -175,15 +175,21 @@ async function getConnectionStatus(accountId, provider = PROVIDER) {
   };
 }
 
+// Counts P&L-relevant accounts that lack a complete mapping (category + subcategory).
+// This MUST match the modal's client-side needsReview logic exactly:
+//   status ∈ {needs_review, suggested} ↔ fieldcore_category IS NULL OR fieldcore_subcategory IS NULL
+// Note: mapping_confidence alone is NOT used here — an account mapped by the user
+// retains 'review_required' confidence until re-synced, but the modal considers it
+// mapped once it has both category and subcategory.
 async function getUnmappedAccountCount(accountId, provider = PROVIDER) {
   const { rows } = await pool.query(
     `SELECT COUNT(*) AS cnt
      FROM accounting_account_mappings
      WHERE account_id = $1 AND provider = $2
-       AND mapping_confidence = 'review_required'
        AND is_balance_sheet = FALSE
        AND is_ignored = FALSE
-       AND is_active = TRUE`,
+       AND is_active = TRUE
+       AND (fieldcore_category IS NULL OR fieldcore_subcategory IS NULL)`,
     [accountId, provider]
   );
   return parseInt(rows[0]?.cnt || 0);

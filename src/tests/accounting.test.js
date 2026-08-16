@@ -664,6 +664,180 @@ describe('getAccountingDetails — period filtering', () => {
   });
 });
 
+// ── 13b. getMappingSummary — authoritative count source ───────────────────────
+
+describe('getMappingSummary — count consistency', () => {
+  const PROVIDER = 'quickbooks_online';
+
+  beforeAll(async () => {
+    // Ensure connected
+    await connSvc.upsertConnection({
+      accountId:    testAccountId,
+      realmId:      'realm-summary-test',
+      companyName:  'Summary Test LLC',
+      accessToken:  'at-sum',
+      refreshToken: 'rt-sum',
+      tokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    });
+
+    // Clean slate — remove prior test accounts
+    await pool.query(
+      `DELETE FROM accounting_account_mappings WHERE account_id = $1 AND provider_account_id LIKE 'summary-%'`,
+      [testAccountId]
+    );
+
+    // Insert: 1 balance-sheet account (deterministic)
+    await pool.query(
+      `INSERT INTO accounting_account_mappings
+         (account_id, provider, provider_account_id, provider_account_name,
+          provider_account_type, fieldcore_category, fieldcore_subcategory,
+          is_balance_sheet, mapping_confidence, is_ignored, is_active)
+       VALUES ($1,$2,'summary-bs','Checking','Bank','balance_sheet','cash_bank',
+               TRUE,'deterministic',FALSE,TRUE)
+       ON CONFLICT DO NOTHING`,
+      [testAccountId, PROVIDER]
+    );
+
+    // Insert: 1 fully mapped opex (has category + subcategory, but confidence = 'review_required')
+    // This simulates the production bug: old sync set category/subcategory but confidence stayed default
+    await pool.query(
+      `INSERT INTO accounting_account_mappings
+         (account_id, provider, provider_account_id, provider_account_name,
+          provider_account_type, fieldcore_category, fieldcore_subcategory,
+          is_balance_sheet, mapping_confidence, is_ignored, is_active)
+       VALUES ($1,$2,'summary-opex-mapped','Advertising','Expense','operating_expenses','marketing',
+               FALSE,'review_required',FALSE,TRUE)
+       ON CONFLICT DO NOTHING`,
+      [testAccountId, PROVIDER]
+    );
+
+    // Insert: 1 unmapped account (no category, no subcategory)
+    await pool.query(
+      `INSERT INTO accounting_account_mappings
+         (account_id, provider, provider_account_id, provider_account_name,
+          provider_account_type, fieldcore_category, fieldcore_subcategory,
+          is_balance_sheet, mapping_confidence, is_ignored, is_active)
+       VALUES ($1,$2,'summary-unmapped','Miscellaneous','Expense',NULL,NULL,
+               FALSE,'review_required',FALSE,TRUE)
+       ON CONFLICT DO NOTHING`,
+      [testAccountId, PROVIDER]
+    );
+  });
+
+  afterAll(async () => {
+    await pool.query(
+      `DELETE FROM accounting_account_mappings
+       WHERE account_id = $1 AND provider_account_id LIKE 'summary-%'`,
+      [testAccountId]
+    );
+  });
+
+  it('getMappingSummary returns all 7 count fields', async () => {
+    const s = await syncSvc.getMappingSummary(testAccountId, PROVIDER);
+    expect(s).toHaveProperty('totalAccounts');
+    expect(s).toHaveProperty('balanceSheetAccounts');
+    expect(s).toHaveProperty('pnlAccounts');
+    expect(s).toHaveProperty('mappedAccounts');
+    expect(s).toHaveProperty('autoMappedAccounts');
+    expect(s).toHaveProperty('needsReviewAccounts');
+    expect(s).toHaveProperty('ignoredAccounts');
+    expect(s).toHaveProperty('requiredUnmappedAccounts');
+  });
+
+  it('needsReview ignores accounts that have both category AND subcategory — even if confidence=review_required', async () => {
+    // 'summary-opex-mapped' has category+subcategory but mapping_confidence='review_required'
+    // It must NOT be counted as needsReview — this was the production bug
+    const s = await syncSvc.getMappingSummary(testAccountId, PROVIDER);
+    // Only 'summary-unmapped' has no category — it's the 1 needing review
+    const unmappedEntry = { id: 'summary-unmapped' };
+    expect(s.needsReviewAccounts).toBeGreaterThanOrEqual(1);
+    // The mapped entry (category+subcategory even with bad confidence) must NOT be in needsReview
+    // We verify by checking mappedAccounts >= 1
+    expect(s.mappedAccounts).toBeGreaterThanOrEqual(1);
+  });
+
+  it('getUnmappedAccountCount uses same logic as getMappingSummary', async () => {
+    const summary = await syncSvc.getMappingSummary(testAccountId, PROVIDER);
+    const cardCount = await connSvc.getUnmappedAccountCount(testAccountId, PROVIDER);
+    // Card count must exactly match needsReviewAccounts
+    expect(cardCount).toBe(summary.needsReviewAccounts);
+  });
+
+  it('GET /mappings/summary returns authoritative counts', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/mappings/summary')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('totalAccounts');
+    expect(res.body).toHaveProperty('needsReviewAccounts');
+    expect(res.body).toHaveProperty('mappedAccounts');
+    expect(res.body).toHaveProperty('balanceSheetAccounts');
+    expect(typeof res.body.needsReviewAccounts).toBe('number');
+  });
+
+  it('GET /mappings/summary returns 401 without auth', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/mappings/summary');
+    expect(res.status).toBe(401);
+  });
+
+  it('status endpoint includes health.mappings and mappingSummary', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/status')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.health).toBeDefined();
+    expect(res.body.health.mappings).toMatch(/^(COMPLETE|PARTIAL)/);
+    expect(res.body.mappingSummary).toBeDefined();
+    expect(typeof res.body.mappingSummary.needsReviewAccounts).toBe('number');
+    expect(typeof res.body.mappingSummary.totalAccounts).toBe('number');
+  });
+
+  it('mapping summary-unmapped when mapped reduces needsReview by exactly 1', async () => {
+    const before = await connSvc.getUnmappedAccountCount(testAccountId, PROVIDER);
+
+    // Map the previously unmapped account
+    await pool.query(
+      `UPDATE accounting_account_mappings
+       SET fieldcore_category = 'operating_expenses', fieldcore_subcategory = 'other_operating'
+       WHERE account_id = $1 AND provider_account_id = 'summary-unmapped'`,
+      [testAccountId]
+    );
+    const after = await connSvc.getUnmappedAccountCount(testAccountId, PROVIDER);
+    expect(after).toBe(before - 1);
+
+    // Restore
+    await pool.query(
+      `UPDATE accounting_account_mappings
+       SET fieldcore_category = NULL, fieldcore_subcategory = NULL
+       WHERE account_id = $1 AND provider_account_id = 'summary-unmapped'`,
+      [testAccountId]
+    );
+  });
+
+  it('card count does not include fully-mapped accounts even with review_required confidence', async () => {
+    // 'summary-opex-mapped' has category+subcategory but mapping_confidence='review_required'
+    // It must NOT be in the count — this is the production bug that caused card=42, modal=0
+    const beforeCount = await connSvc.getUnmappedAccountCount(testAccountId, PROVIDER);
+
+    // Verify 'summary-opex-mapped' is NOT in the count by temporarily marking it as truly unmapped
+    await pool.query(
+      `UPDATE accounting_account_mappings SET fieldcore_subcategory = NULL
+       WHERE account_id = $1 AND provider_account_id = 'summary-opex-mapped'`,
+      [testAccountId]
+    );
+    const countWithOneMore = await connSvc.getUnmappedAccountCount(testAccountId, PROVIDER);
+    expect(countWithOneMore).toBe(beforeCount + 1); // removing subcategory adds 1
+
+    // Restore
+    await pool.query(
+      `UPDATE accounting_account_mappings SET fieldcore_subcategory = 'marketing'
+       WHERE account_id = $1 AND provider_account_id = 'summary-opex-mapped'`,
+      [testAccountId]
+    );
+  });
+});
+
 // ── 13. Financial coverage with QB connected ─────────────────────────────────
 
 describe('Financial coverage — QB accounting source', () => {

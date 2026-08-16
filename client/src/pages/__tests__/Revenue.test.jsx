@@ -1524,7 +1524,7 @@ describe('Revenue — Financials workspace', () => {
     });
     renderRevenue('?view=financials');
     await waitFor(() => {
-      expect(screen.getByText(/4 accounts need mapping/i)).toBeInTheDocument();
+      expect(screen.getByText(/4 accounts need review/i)).toBeInTheDocument();
     });
   });
 

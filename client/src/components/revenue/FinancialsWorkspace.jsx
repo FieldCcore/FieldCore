@@ -930,14 +930,20 @@ function SrcCard({
         </div>
       )}
 
-      {isAccountingConnected && info.unmappedAccountCount > 0 && (
-        <button
-          className="fin-src-warn fin-src-warn--btn"
-          onClick={onManage}
-          aria-label="Manage account mappings"
-        >
-          {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need mapping →
-        </button>
+      {isAccountingConnected && (
+        info.unmappedAccountCount > 0 ? (
+          <button
+            className="fin-src-warn fin-src-warn--btn"
+            onClick={onManage}
+            aria-label="Open account mapping"
+          >
+            {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need review →
+          </button>
+        ) : (
+          <div className="fin-src-mapping-complete" aria-label="Account mapping complete">
+            Account Mapping Complete ✓
+          </div>
+        )
       )}
 
       {isAccountingConnected && isError && info.lastErrorMessageSafe && (

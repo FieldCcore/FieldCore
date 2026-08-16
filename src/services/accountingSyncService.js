@@ -717,26 +717,50 @@ async function bulkUpdateMappings(accountId, provider, mappings) {
 
 // ── Mapping stats ─────────────────────────────────────────────────────────────
 
-async function getMappingStats(accountId, provider) {
+// getMappingSummary is the ONE authoritative source for all mapping counts.
+// needsReview uses (category IS NULL OR subcategory IS NULL) — matching the modal exactly.
+async function getMappingSummary(accountId, provider) {
   const { rows } = await pool.query(
     `SELECT
-       COUNT(*)                                                              AS total,
-       SUM(CASE WHEN is_balance_sheet = TRUE  THEN 1 ELSE 0 END)           AS balance_sheet,
+       COUNT(*)                                                                                      AS total,
+       SUM(CASE WHEN is_balance_sheet = TRUE  THEN 1 ELSE 0 END)                                   AS balance_sheet,
+       SUM(CASE WHEN is_balance_sheet = FALSE AND is_ignored = FALSE THEN 1 ELSE 0 END)             AS pnl_accounts,
        SUM(CASE WHEN is_balance_sheet = FALSE AND is_ignored = FALSE
-                 AND mapping_confidence = 'review_required' THEN 1 ELSE 0 END) AS needs_review,
-       SUM(CASE WHEN mapping_confidence = 'deterministic'   THEN 1 ELSE 0 END) AS deterministic,
-       SUM(CASE WHEN mapping_confidence = 'high_confidence' THEN 1 ELSE 0 END) AS high_confidence
+                 AND fieldcore_category   IS NOT NULL
+                 AND fieldcore_subcategory IS NOT NULL THEN 1 ELSE 0 END)                            AS mapped,
+       SUM(CASE WHEN is_balance_sheet = FALSE AND is_ignored = FALSE
+                 AND mapping_confidence IN ('deterministic','high_confidence')
+                 AND fieldcore_category   IS NOT NULL
+                 AND fieldcore_subcategory IS NOT NULL THEN 1 ELSE 0 END)                            AS auto_mapped,
+       SUM(CASE WHEN is_balance_sheet = FALSE AND is_ignored = FALSE
+                 AND (fieldcore_category IS NULL OR fieldcore_subcategory IS NULL) THEN 1 ELSE 0 END) AS needs_review,
+       SUM(CASE WHEN is_ignored = TRUE THEN 1 ELSE 0 END)                                           AS ignored
      FROM accounting_account_mappings
      WHERE account_id = $1 AND provider = $2 AND is_active = TRUE`,
     [accountId, provider]
   );
   const r = rows[0] || {};
   return {
-    total:          parseInt(r.total          || 0),
-    balanceSheet:   parseInt(r.balance_sheet  || 0),
-    needsReview:    parseInt(r.needs_review   || 0),
-    deterministic:  parseInt(r.deterministic  || 0),
-    highConfidence: parseInt(r.high_confidence || 0),
+    totalAccounts:            parseInt(r.total        || 0),
+    balanceSheetAccounts:     parseInt(r.balance_sheet || 0),
+    pnlAccounts:              parseInt(r.pnl_accounts || 0),
+    mappedAccounts:           parseInt(r.mapped       || 0),
+    autoMappedAccounts:       parseInt(r.auto_mapped  || 0),
+    needsReviewAccounts:      parseInt(r.needs_review || 0),
+    ignoredAccounts:          parseInt(r.ignored      || 0),
+    requiredUnmappedAccounts: parseInt(r.needs_review || 0),
+  };
+}
+
+// getMappingStats kept for backward compat — delegates to getMappingSummary.
+async function getMappingStats(accountId, provider) {
+  const s = await getMappingSummary(accountId, provider);
+  return {
+    total:          s.totalAccounts,
+    balanceSheet:   s.balanceSheetAccounts,
+    needsReview:    s.needsReviewAccounts,
+    deterministic:  s.autoMappedAccounts,
+    highConfidence: s.mappedAccounts - s.autoMappedAccounts,
   };
 }
 
@@ -854,6 +878,7 @@ module.exports = {
   getMappings,
   updateMapping,
   bulkUpdateMappings,
+  getMappingSummary,
   getMappingStats,
   getAccountingTotals,
   getAccountingDetails,
