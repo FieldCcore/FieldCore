@@ -75,10 +75,31 @@ function mapAccountingStatus(dbStatus) {
 
 async function resolveSourceStatuses(accountId) {
   const now = new Date().toISOString();
-  const [paymentsStatus, accountingConn] = await Promise.all([
+
+  // Use allSettled so an accounting DB error (e.g. table missing during startup)
+  // doesn't kill the whole coverage response — we fall back to a safe default
+  // that still reads canConnect from the process environment.
+  const [paymentsResult, accountingResult] = await Promise.allSettled([
     getFieldCorePaymentsStatus(accountId),
     getConnectionStatus(accountId, 'quickbooks_online'),
   ]);
+
+  const paymentsStatus = paymentsResult.status === 'fulfilled'
+    ? paymentsResult.value
+    : { status: 'NOT_ENABLED', limitations: [] };
+
+  const accountingConn = accountingResult.status === 'fulfilled'
+    ? accountingResult.value
+    : {
+        provider:    'quickbooks_online',
+        status:      'not_connected',
+        statusLabel: 'Not Connected',
+        canConnect:  !!(process.env.QUICKBOOKS_CLIENT_ID && process.env.QUICKBOOKS_CLIENT_SECRET),
+      };
+
+  if (accountingResult.status === 'rejected') {
+    console.error('[coverage] accounting status error (falling back):', accountingResult.reason?.message);
+  }
 
   // Map FieldCore Payments internal status → source status string
   const fcPaymentsSourceStatus =

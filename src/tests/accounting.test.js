@@ -276,6 +276,32 @@ describe('GET /api/integrations/accounting/quickbooks/status', () => {
   });
 });
 
+// ── 6b. Configured diagnostic endpoint ───────────────────────────────────────
+
+describe('GET /api/integrations/accounting/quickbooks/configured', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/configured');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns boolean config flags — never exposes secret values', async () => {
+    const res = await request(app)
+      .get('/api/integrations/accounting/quickbooks/configured')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('provider', 'quickbooks_online');
+    expect(typeof res.body.configured).toBe('boolean');
+    expect(typeof res.body.hasClientId).toBe('boolean');
+    expect(typeof res.body.hasClientSecret).toBe('boolean');
+    expect(typeof res.body.hasRedirectUri).toBe('boolean');
+    // Must never return actual secret values
+    expect(res.body).not.toHaveProperty('clientId');
+    expect(res.body).not.toHaveProperty('clientSecret');
+    expect(res.body).not.toHaveProperty('redirectUri');
+  });
+});
+
 // ── 7. Disconnect API ────────────────────────────────────────────────────────
 
 describe('POST /api/integrations/accounting/quickbooks/disconnect', () => {

@@ -14,6 +14,24 @@ const { geocodeAddress } = require('./src/services/geocode');
 
 const PORT = process.env.PORT || 3000;
 
+// Validate QuickBooks env vars at startup — booleans only, never logs secret values.
+function validateQuickBooksConfig() {
+  const hasId     = !!(process.env.QUICKBOOKS_CLIENT_ID     || '').trim();
+  const hasSecret = !!(process.env.QUICKBOOKS_CLIENT_SECRET || '').trim();
+  const hasUri    = !!(process.env.QUICKBOOKS_REDIRECT_URI  || '').trim();
+  const qbEnv     = (process.env.QUICKBOOKS_ENVIRONMENT || '').trim() || null;
+
+  if (hasId && hasSecret) {
+    console.log(`[startup] QuickBooks configured: clientId=yes secret=yes redirectUri=${hasUri} environment=${qbEnv || 'not set'}`);
+  } else {
+    console.error(
+      `[startup] QuickBooks NOT fully configured: clientId=${hasId} secret=${hasSecret} redirectUri=${hasUri} environment=${qbEnv || 'not set'}. ` +
+      'Accounting integration will show "Coming Soon". ' +
+      'Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET on the Railway BACKEND service (not Postgres).'
+    );
+  }
+}
+
 // Validate Maps key presence at startup — logs actionable messages, never crashes.
 function validateMapsConfig() {
   const sk = (process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
@@ -69,6 +87,7 @@ async function probeGeocoding() {
 // Start server immediately so health checks pass during deployment
 const server = app.listen(PORT, () => {
   console.log(`FieldCore API running on port ${PORT}`);
+  validateQuickBooksConfig();
   validateMapsConfig();
   scheduler.startReminderJob();
   // Non-blocking post-startup tasks

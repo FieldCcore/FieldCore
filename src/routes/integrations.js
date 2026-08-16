@@ -11,6 +11,31 @@ const PROVIDER     = connSvc.PROVIDER;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://getfieldcore.com';
 const REDIRECT_TARGET = `${FRONTEND_URL}/revenue?view=financials&tab=sources`;
 
+// ── QuickBooks server-side configuration check ───────────────────────────────
+// Returns boolean flags only — no secret values ever exposed.
+
+// GET /api/integrations/accounting/quickbooks/configured
+router.get(
+  '/accounting/quickbooks/configured',
+  requireAuth,
+  requireRole('owner', 'manager'),
+  (req, res) => {
+    const hasClientId     = !!(process.env.QUICKBOOKS_CLIENT_ID     || '').trim();
+    const hasClientSecret = !!(process.env.QUICKBOOKS_CLIENT_SECRET || '').trim();
+    const hasRedirectUri  = !!(process.env.QUICKBOOKS_REDIRECT_URI  || '').trim();
+    const environment     = (process.env.QUICKBOOKS_ENVIRONMENT || '').trim() || null;
+
+    res.json({
+      provider:         'quickbooks_online',
+      configured:       hasClientId && hasClientSecret,
+      hasClientId,
+      hasClientSecret,
+      hasRedirectUri,
+      environment,
+    });
+  }
+);
+
 // ── QuickBooks OAuth connect ─────────────────────────────────────────────────
 
 // GET /api/integrations/accounting/quickbooks/connect
