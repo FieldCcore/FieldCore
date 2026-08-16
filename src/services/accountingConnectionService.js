@@ -1,6 +1,7 @@
 'use strict';
 const pool            = require('../db/pool');
 const { encrypt, decrypt } = require('./crypto');
+const { getQBConfig } = require('./qbConfig');
 
 const PROVIDER = 'quickbooks_online';
 
@@ -127,13 +128,28 @@ async function disconnect(accountId, provider = PROVIDER) {
 
 // Returns the safe status object exposed to the frontend.
 async function getConnectionStatus(accountId, provider = PROVIDER) {
+  const cfg  = getQBConfig();
   const conn = await getConnection(accountId, provider);
-  if (!conn || conn.status === 'not_connected' || conn.status === 'disconnected') {
+
+  const dbStatus = conn?.status || 'no-row';
+  const isNotConnected = !conn || conn.status === 'not_connected' || conn.status === 'disconnected';
+
+  // Log on every call so Railway logs show the exact runtime state.
+  console.log(
+    `[qb-status] account=${accountId} dbStatus=${dbStatus} ` +
+    `configured=${cfg.configured} clientId=${cfg.hasClientId} secret=${cfg.hasClientSecret} ` +
+    `redirectUri=${cfg.hasRedirectUri} env=${cfg.environment} canConnect=${isNotConnected ? cfg.configured : false}`
+  );
+
+  if (isNotConnected) {
     return {
       provider,
       status:       'not_connected',
       statusLabel:  STATUS_LABELS.not_connected,
-      canConnect:   !!(process.env.QUICKBOOKS_CLIENT_ID && process.env.QUICKBOOKS_CLIENT_SECRET),
+      configured:   cfg.configured,
+      connected:    false,
+      canConnect:   cfg.configured,
+      environment:  cfg.environment,
     };
   }
 
@@ -143,6 +159,10 @@ async function getConnectionStatus(accountId, provider = PROVIDER) {
     provider,
     status:                 conn.status,
     statusLabel:            STATUS_LABELS[conn.status] || conn.status,
+    configured:             cfg.configured,
+    connected:              true,
+    canConnect:             false,
+    environment:            cfg.environment,
     companyName:            conn.company_name || null,
     realmId:                conn.realm_id || null,
     lastSyncAt:             conn.last_sync_at || null,
@@ -152,7 +172,6 @@ async function getConnectionStatus(accountId, provider = PROVIDER) {
     lastErrorMessageSafe:   conn.last_error_message_safe || null,
     connectedAt:            conn.connected_at || null,
     unmappedAccountCount:   unmappedCount,
-    canConnect:             false,
   };
 }
 

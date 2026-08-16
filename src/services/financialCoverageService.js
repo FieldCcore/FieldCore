@@ -1,6 +1,7 @@
 'use strict';
 const { getFieldCorePaymentsStatus } = require('./fieldcorePaymentsService');
 const { getConnectionStatus }        = require('./accountingConnectionService');
+const { getQBConfig }                = require('./qbConfig');
 
 // ── Source definitions ────────────────────────────────────────────────────────
 // Capabilities each source provides when active.
@@ -94,12 +95,20 @@ async function resolveSourceStatuses(accountId) {
         provider:    'quickbooks_online',
         status:      'not_connected',
         statusLabel: 'Not Connected',
-        canConnect:  !!(process.env.QUICKBOOKS_CLIENT_ID && process.env.QUICKBOOKS_CLIENT_SECRET),
+        configured:  getQBConfig().configured,
+        connected:   false,
+        canConnect:  getQBConfig().configured,
+        environment: getQBConfig().environment,
       };
 
   if (accountingResult.status === 'rejected') {
     console.error('[coverage] accounting status error (falling back):', accountingResult.reason?.message);
   }
+
+  console.log(
+    `[coverage] account=${accountId} accountingStatus=${accountingConn.status} ` +
+    `configured=${accountingConn.configured} canConnect=${accountingConn.canConnect}`
+  );
 
   // Map FieldCore Payments internal status → source status string
   const fcPaymentsSourceStatus =

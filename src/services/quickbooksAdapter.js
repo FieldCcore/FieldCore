@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const axios  = require('axios');
 const { updateTokens, updateStatus } = require('./accountingConnectionService');
+const { getQBConfig } = require('./qbConfig');
 
 const QB_AUTH_URL   = 'https://appcenter.intuit.com/connect/oauth2';
 const QB_TOKEN_URL  = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
@@ -9,13 +10,14 @@ const QB_REVOKE_URL = 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke'
 const QB_SCOPES     = 'com.intuit.quickbooks.accounting';
 
 function getApiBase() {
-  return (process.env.QUICKBOOKS_ENVIRONMENT || 'sandbox') === 'production'
+  const cfg = getQBConfig();
+  return cfg.environment === 'production'
     ? 'https://quickbooks.api.intuit.com/v3/company'
     : 'https://sandbox-quickbooks.api.intuit.com/v3/company';
 }
 
 function isConfigured() {
-  return !!(process.env.QUICKBOOKS_CLIENT_ID && process.env.QUICKBOOKS_CLIENT_SECRET);
+  return getQBConfig().configured;
 }
 
 // ── OAuth state (CSRF) ────────────────────────────────────────────────────────
@@ -47,12 +49,13 @@ function parseState(state) {
 // ── Authorization URL ─────────────────────────────────────────────────────────
 
 function getAuthorizationUrl(accountId, userId) {
-  if (!isConfigured()) throw new Error('QuickBooks credentials not configured');
-  const state       = createState(accountId, userId);
-  const params      = new URLSearchParams({
-    client_id:     process.env.QUICKBOOKS_CLIENT_ID,
+  const cfg = getQBConfig();
+  if (!cfg.configured) throw new Error('QuickBooks credentials not configured');
+  const state  = createState(accountId, userId);
+  const params = new URLSearchParams({
+    client_id:     cfg.clientId,
     scope:         QB_SCOPES,
-    redirect_uri:  process.env.QUICKBOOKS_REDIRECT_URI,
+    redirect_uri:  cfg.redirectUri,
     response_type: 'code',
     state,
   });
@@ -62,16 +65,15 @@ function getAuthorizationUrl(accountId, userId) {
 // ── Token exchange ────────────────────────────────────────────────────────────
 
 async function exchangeCode(code) {
-  const credentials = Buffer.from(
-    `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`
-  ).toString('base64');
+  const cfg = getQBConfig();
+  const credentials = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
 
   const { data } = await axios.post(
     QB_TOKEN_URL,
     new URLSearchParams({
       grant_type:   'authorization_code',
       code,
-      redirect_uri: process.env.QUICKBOOKS_REDIRECT_URI,
+      redirect_uri: cfg.redirectUri,
     }).toString(),
     {
       headers: {
@@ -96,9 +98,8 @@ async function exchangeCode(code) {
 // ── Token refresh ─────────────────────────────────────────────────────────────
 
 async function refreshAccessToken(refreshToken) {
-  const credentials = Buffer.from(
-    `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`
-  ).toString('base64');
+  const cfg = getQBConfig();
+  const credentials = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
 
   const { data } = await axios.post(
     QB_TOKEN_URL,
@@ -149,9 +150,8 @@ async function ensureFreshTokens(conn) {
 // ── Token revocation ──────────────────────────────────────────────────────────
 
 async function revokeToken(token) {
-  const credentials = Buffer.from(
-    `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`
-  ).toString('base64');
+  const cfg = getQBConfig();
+  const credentials = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
   try {
     await axios.post(
       QB_REVOKE_URL,

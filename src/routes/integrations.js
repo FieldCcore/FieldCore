@@ -6,6 +6,7 @@ const qbAdapter   = require('../services/quickbooksAdapter');
 const connSvc     = require('../services/accountingConnectionService');
 const syncSvc     = require('../services/accountingSyncService');
 const { decrypt } = require('../services/crypto');
+const { getQBConfig } = require('../services/qbConfig');
 
 const PROVIDER     = connSvc.PROVIDER;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://getfieldcore.com';
@@ -20,18 +21,19 @@ router.get(
   requireAuth,
   requireRole('owner', 'manager'),
   (req, res) => {
-    const hasClientId     = !!(process.env.QUICKBOOKS_CLIENT_ID     || '').trim();
-    const hasClientSecret = !!(process.env.QUICKBOOKS_CLIENT_SECRET || '').trim();
-    const hasRedirectUri  = !!(process.env.QUICKBOOKS_REDIRECT_URI  || '').trim();
-    const environment     = (process.env.QUICKBOOKS_ENVIRONMENT || '').trim() || null;
-
+    const cfg = getQBConfig();
+    console.log(
+      `[qb-configured] user=${req.userId} account=${req.accountId} ` +
+      `configured=${cfg.configured} clientId=${cfg.hasClientId} ` +
+      `secret=${cfg.hasClientSecret} redirectUri=${cfg.hasRedirectUri} env=${cfg.environment}`
+    );
     res.json({
-      provider:         'quickbooks_online',
-      configured:       hasClientId && hasClientSecret,
-      hasClientId,
-      hasClientSecret,
-      hasRedirectUri,
-      environment,
+      provider:       'quickbooks_online',
+      configured:     cfg.configured,
+      hasClientId:    cfg.hasClientId,
+      hasClientSecret: cfg.hasClientSecret,
+      hasRedirectUri: cfg.hasRedirectUri,
+      environment:    cfg.environment,
     });
   }
 );
@@ -134,14 +136,42 @@ router.get('/accounting/quickbooks/callback', async (req, res) => {
 // ── QuickBooks status ─────────────────────────────────────────────────────────
 
 // GET /api/integrations/accounting/quickbooks/status
+// Returns the full safe status object. Never includes client secret, access token, or refresh token.
 router.get(
   '/accounting/quickbooks/status',
   requireAuth,
   requireRole('owner', 'manager'),
   async (req, res) => {
     try {
-      const status = await connSvc.getConnectionStatus(req.accountId, PROVIDER);
-      res.json(status);
+      const conn = await connSvc.getConnectionStatus(req.accountId, PROVIDER);
+
+      // Shape the response to the canonical spec.
+      // 'status' field maps DB status → 'AVAILABLE' / 'CONNECTED' / 'SYNCING' / 'REAUTH_REQUIRED' / 'ERROR'
+      const publicStatus =
+        !conn.connected                             ? 'AVAILABLE'        :
+        conn.status === 'connected'                 ? 'CONNECTED'        :
+        conn.status === 'syncing'                   ? 'SYNCING'          :
+        conn.status === 'reauth_required'           ? 'REAUTH_REQUIRED'  :
+        conn.status === 'sync_error'                ? 'ERROR'            :
+        'UNKNOWN';
+
+      const body = {
+        provider:     PROVIDER,
+        configured:   conn.configured,
+        connected:    conn.connected,
+        canConnect:   conn.canConnect,
+        status:       publicStatus,
+        environment:  conn.environment,
+        companyName:  conn.companyName || null,
+        lastSyncAt:   conn.lastSyncAt  || null,
+      };
+
+      console.log(
+        `[qb-status-api] account=${req.accountId} configured=${body.configured} ` +
+        `connected=${body.connected} canConnect=${body.canConnect} status=${body.status}`
+      );
+
+      res.json(body);
     } catch (err) {
       console.error('[Integrations] QB status error:', err.message);
       res.status(500).json({ error: 'Failed to fetch QuickBooks status.' });
