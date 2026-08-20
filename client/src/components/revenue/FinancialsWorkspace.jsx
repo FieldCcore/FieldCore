@@ -975,90 +975,92 @@ function SrcCard({
         <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
       )}
 
-      {isAccountingConnected && (
-        <div className="fin-src-actions">
-          {onSyncNow && (
-            <button
-              className={`fin-src-action-btn${isSyncing ? ' fin-src-action-btn--busy' : ''}`}
-              onClick={onSyncNow}
-              disabled={isSyncing}
-              aria-label={`${syncBtnLabel} QuickBooks`}
-            >
-              {syncBtnLabel}
-            </button>
-          )}
-          {onManage && (
-            <button
-              className="fin-src-action-btn"
-              onClick={onManage}
-              aria-label="Manage account mappings"
-            >
-              Manage
-            </button>
-          )}
-          {disconnectStep ? (
-            <div className="fin-src-disconnect-confirm">
-              <span className="fin-src-disconnect-q">Disconnect QuickBooks?</span>
+      <div className="fin-src-footer">
+        {isAccountingConnected && (
+          <div className="fin-src-actions">
+            {onSyncNow && (
               <button
-                className="fin-src-action-btn fin-src-action-btn--danger"
-                onClick={() => { setDisconnectStep(false); onDisconnect?.(); }}
-                aria-label="Confirm disconnect"
+                className={`fin-src-action-btn${isSyncing ? ' fin-src-action-btn--busy' : ''}`}
+                onClick={onSyncNow}
+                disabled={isSyncing}
+                aria-label={`${syncBtnLabel} QuickBooks`}
               >
-                Yes, Disconnect
+                {syncBtnLabel}
               </button>
+            )}
+            {onManage && (
               <button
                 className="fin-src-action-btn"
-                onClick={() => setDisconnectStep(false)}
-                aria-label="Cancel disconnect"
+                onClick={onManage}
+                aria-label="Manage account mappings"
               >
-                Cancel
+                Manage
               </button>
-            </div>
-          ) : (
-            onDisconnect && (
+            )}
+            {disconnectStep ? (
+              <div className="fin-src-disconnect-confirm">
+                <span className="fin-src-disconnect-q">Disconnect QuickBooks?</span>
+                <button
+                  className="fin-src-action-btn fin-src-action-btn--danger"
+                  onClick={() => { setDisconnectStep(false); onDisconnect?.(); }}
+                  aria-label="Confirm disconnect"
+                >
+                  Yes, Disconnect
+                </button>
+                <button
+                  className="fin-src-action-btn"
+                  onClick={() => setDisconnectStep(false)}
+                  aria-label="Cancel disconnect"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              onDisconnect && (
+                <button
+                  className="fin-src-action-btn fin-src-action-btn--danger"
+                  onClick={() => setDisconnectStep(true)}
+                  aria-label="Disconnect QuickBooks"
+                >
+                  Disconnect
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {showConnect && src.sourceKey === 'accounting' && (
+          src.canConnect
+            ? (
               <button
-                className="fin-src-action-btn fin-src-action-btn--danger"
-                onClick={() => setDisconnectStep(true)}
-                aria-label="Disconnect QuickBooks"
+                className="fin-int-connect-btn btn-secondary"
+                onClick={handleConnect}
+                disabled={connectBusy}
+                aria-label="Connect QuickBooks Online"
               >
-                Disconnect
+                {connectBusy ? 'Connecting…' : 'Connect QuickBooks'}
+              </button>
+            ) : (
+              <button
+                className="fin-int-connect-btn btn-secondary"
+                disabled
+                aria-label={`Connect ${src.providerLabel} (coming soon)`}
+              >
+                Coming soon
               </button>
             )
-          )}
-        </div>
-      )}
+        )}
 
-      {showConnect && src.sourceKey === 'accounting' && (
-        src.canConnect
-          ? (
-            <button
-              className="fin-int-connect-btn btn-secondary"
-              onClick={handleConnect}
-              disabled={connectBusy}
-              aria-label="Connect QuickBooks Online"
-            >
-              {connectBusy ? 'Connecting…' : 'Connect QuickBooks'}
-            </button>
-          ) : (
-            <button
-              className="fin-int-connect-btn btn-secondary"
-              disabled
-              aria-label={`Connect ${src.providerLabel} (coming soon)`}
-            >
-              Coming soon
-            </button>
-          )
-      )}
-
-      {showConnect && src.sourceKey !== 'accounting' && src.sourceKey !== 'banking' && (
-        <button
-          className="fin-int-connect-btn btn-secondary"
-          disabled
-          aria-label={`Connect ${src.providerLabel} (coming soon)`}
-        >
-          Coming soon
-        </button>
-      )}
+        {showConnect && src.sourceKey !== 'accounting' && src.sourceKey !== 'banking' && (
+          <button
+            className="fin-int-connect-btn btn-secondary"
+            disabled
+            aria-label={`Connect ${src.providerLabel} (coming soon)`}
+          >
+            Coming soon
+          </button>
+        )}
+      </div>
     </div>
   );
 }

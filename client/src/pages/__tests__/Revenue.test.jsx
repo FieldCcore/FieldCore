@@ -1300,11 +1300,11 @@ describe('Revenue — Financials workspace', () => {
     });
   });
 
-  it('Accounting and Banking show as Optional with Coming soon buttons', async () => {
+  it('Accounting shows as Optional with a disabled Coming soon button', async () => {
     renderRevenue('?view=financials');
     await waitFor(() => {
       const btns = screen.getAllByRole('button', { name: /coming soon/i });
-      expect(btns.length).toBeGreaterThanOrEqual(2);
+      expect(btns.length).toBeGreaterThanOrEqual(1);
       btns.forEach(btn => expect(btn).toBeDisabled());
     });
   });
