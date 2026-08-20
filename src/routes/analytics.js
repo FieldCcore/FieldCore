@@ -43,11 +43,30 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         [accountId]
       ),
 
-      // Active jobs right now (include multi-day in-flight statuses)
+      // Active jobs right now — single-day in_progress/partially_completed today,
+      // or multi-day job with a checked_in/in_progress session today.
+      // Excludes stale jobs from prior dates.
       pool.query(
-        `SELECT count(*) FROM jobs
-         WHERE account_id = $1
-           AND status IN ('in_progress','partially_completed','paused','awaiting_client','awaiting_parts','ready_for_inspection')`,
+        `SELECT COUNT(DISTINCT j.id) AS count
+         FROM jobs j
+         WHERE j.account_id = $1
+           AND (
+             (
+               (j.is_multi_day IS NULL OR j.is_multi_day = FALSE)
+               AND j.status IN ('in_progress','partially_completed')
+               AND j.scheduled_at::date = CURRENT_DATE
+             )
+             OR (
+               j.is_multi_day = TRUE
+               AND EXISTS (
+                 SELECT 1 FROM job_sessions s
+                 WHERE s.job_id     = j.id
+                   AND s.account_id = $1
+                   AND s.scheduled_date = CURRENT_DATE
+                   AND s.status IN ('checked_in','in_progress')
+               )
+             )
+           )`,
         [accountId]
       ),
 

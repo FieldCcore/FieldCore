@@ -993,6 +993,119 @@ describe('GET /api/analytics/scheduled — upcoming revenue endpoint', () => {
   });
 });
 
+// ── Active Jobs KPI — date filtering and stale-job exclusion ─────────────────
+
+describe('GET /api/analytics/dashboard — activeJobs KPI', () => {
+  let acct;
+
+  beforeAll(async () => {
+    acct = await makeAccount('ActiveJobsKPI');
+    createdAccountIds.push(acct.accountId);
+  });
+
+  async function getActive() {
+    const res = await request(app)
+      .get('/api/analytics/dashboard')
+      .set('Authorization', `Bearer ${acct.token}`);
+    expect(res.status).toBe(200);
+    return res.body.activeJobs;
+  }
+
+  it('empty state returns 0', async () => {
+    expect(await getActive()).toBe(0);
+  });
+
+  it('5 old in_progress jobs from yesterday return 0 today', async () => {
+    const { rows } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       SELECT $1, $2, 'Stale', 'in_progress', NOW() - INTERVAL '1 day', 1000
+       FROM generate_series(1,5)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(0);
+    await pool.query(`DELETE FROM jobs WHERE id = ANY($1)`, [rows.map(r => r.id)]);
+  });
+
+  it('2 scheduled jobs today return 0 active', async () => {
+    const { rows } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Sched', 'scheduled', CURRENT_DATE + TIME '10:00', 1000),
+              ($1, $2, 'Sched', 'scheduled', CURRENT_DATE + TIME '14:00', 1000)
+       RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(0);
+    await pool.query(`DELETE FROM jobs WHERE id = ANY($1)`, [rows.map(r => r.id)]);
+  });
+
+  it('1 in_progress job today returns 1', async () => {
+    const { rows: [j] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Active', 'in_progress', NOW(), 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(1);
+    await pool.query(`DELETE FROM jobs WHERE id = $1`, [j.id]);
+  });
+
+  it('completed job today excluded', async () => {
+    const { rows: [j] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Done', 'complete', NOW(), 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(0);
+    await pool.query(`DELETE FROM jobs WHERE id = $1`, [j.id]);
+  });
+
+  it('cancelled job today excluded', async () => {
+    const { rows: [j] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Cancelled', 'cancelled', NOW(), 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(0);
+    await pool.query(`DELETE FROM jobs WHERE id = $1`, [j.id]);
+  });
+
+  it('in_progress job from another tenant excluded', async () => {
+    const other = await makeAccount('ActiveJobsOther');
+    createdAccountIds.push(other.accountId);
+    await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'OtherActive', 'in_progress', NOW(), 1000)`,
+      [other.accountId, other.clientId]
+    );
+    expect(await getActive()).toBe(0);
+  });
+
+  it('in_progress job today for current tenant included', async () => {
+    const { rows: [j] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'Mine', 'in_progress', NOW(), 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(1);
+    await pool.query(`DELETE FROM jobs WHERE id = $1`, [j.id]);
+  });
+
+  it('stale in_progress job from prior date does not inflate count', async () => {
+    const { rows: [stale] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'StaleOne', 'in_progress', NOW() - INTERVAL '3 days', 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    const { rows: [today] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, scheduled_at, amount)
+       VALUES ($1, $2, 'TodayOne', 'in_progress', NOW(), 1000) RETURNING id`,
+      [acct.accountId, acct.clientId]
+    );
+    expect(await getActive()).toBe(1);
+    await pool.query(`DELETE FROM jobs WHERE id = ANY($1)`, [[stale.id, today.id]]);
+  });
+});
+
 // ── Review notifications — idempotency ────────────────────────────────────────
 
 describe('New review notifications — not duplicated on re-sync', () => {

@@ -252,10 +252,10 @@ export default function Dashboard() {
               icon={Briefcase}
               title="Active Jobs"
               value={activeJobs}
-              subtitle={activeJobs > 0 ? 'In progress now' : 'None in progress'}
+              subtitle={activeJobs > 0 ? 'In progress now' : 'No active jobs'}
               tone={activeJobs > 0 ? 'success' : 'neutral'}
               badge={activeJobs > 0 ? { label: 'Live', tone: 'success' } : { label: 'Clear', tone: 'success' }}
-              action={{ label: 'View active jobs →', onClick: () => nav('/jobs?view=day') }}
+              action={{ label: 'View active jobs →', onClick: () => nav('/jobs?view=day&filter=in_progress') }}
             />
             <KpiCard
               icon={FileText}
