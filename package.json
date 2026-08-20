@@ -12,7 +12,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/src/tests/**/*.test.js"],
+    "testMatch": [
+      "**/src/tests/**/*.test.js"
+    ],
     "testTimeout": 30000
   },
   "dependencies": {
@@ -39,6 +41,7 @@
     "nodemailer": "^6.9.15",
     "pdfkit": "^0.15.1",
     "pg": "^8.13.0",
+    "plaid": "^46.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.53.0",

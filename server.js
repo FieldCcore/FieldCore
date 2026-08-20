@@ -84,11 +84,28 @@ async function probeGeocoding() {
   }
 }
 
+function validatePlaidConfig() {
+  const clientId = (process.env.PLAID_CLIENT_ID || '').trim();
+  const secret   = (process.env.PLAID_SECRET    || '').trim();
+  const env      = (process.env.PLAID_ENV        || '').trim();
+
+  if (clientId && secret && env) {
+    console.log(`[startup] Plaid configured: env=${env}`);
+  } else {
+    console.warn(
+      `[startup] Plaid NOT fully configured: clientId=${!!clientId} secret=${!!secret} env=${env || 'not set'}. ` +
+      'Banking integration will show Connect Bank only when configured. ' +
+      'Set PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV on Railway backend.'
+    );
+  }
+}
+
 // Start server immediately so health checks pass during deployment
 const server = app.listen(PORT, () => {
   console.log(`FieldCore API running on port ${PORT}`);
   validateQuickBooksConfig();
   validateMapsConfig();
+  validatePlaidConfig();
   scheduler.startReminderJob();
   // Non-blocking post-startup tasks
   runMigrations().catch(err => console.error('[DB] runMigrations error:', err.message));

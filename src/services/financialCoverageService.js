@@ -1,7 +1,9 @@
 'use strict';
-const { getFieldCorePaymentsStatus } = require('./fieldcorePaymentsService');
-const { getConnectionStatus }        = require('./accountingConnectionService');
-const { getQBConfig }                = require('./qbConfig');
+const { getFieldCorePaymentsStatus }    = require('./fieldcorePaymentsService');
+const { getConnectionStatus }           = require('./accountingConnectionService');
+const { getQBConfig }                   = require('./qbConfig');
+const { getConnectionStatus: getBankingStatus } = require('./bankingSyncService');
+const { getPlaidConfig }                = require('./plaidConfig');
 
 // ── Source definitions ────────────────────────────────────────────────────────
 // Capabilities each source provides when active.
@@ -80,9 +82,10 @@ async function resolveSourceStatuses(accountId) {
   // Use allSettled so an accounting DB error (e.g. table missing during startup)
   // doesn't kill the whole coverage response — we fall back to a safe default
   // that still reads canConnect from the process environment.
-  const [paymentsResult, accountingResult] = await Promise.allSettled([
+  const [paymentsResult, accountingResult, bankingResult] = await Promise.allSettled([
     getFieldCorePaymentsStatus(accountId),
     getConnectionStatus(accountId, 'quickbooks_online'),
+    getBankingStatus(accountId),
   ]);
 
   const paymentsStatus = paymentsResult.status === 'fulfilled'
@@ -118,6 +121,28 @@ async function resolveSourceStatuses(accountId) {
 
   const accountingSourceStatus = mapAccountingStatus(accountingConn.status);
 
+  // Banking status
+  const plaidCfg    = getPlaidConfig();
+  const bankingConn = bankingResult.status === 'fulfilled' ? bankingResult.value : { connected: false };
+  if (bankingResult.status === 'rejected') {
+    console.error('[coverage] banking status error (falling back):', bankingResult.reason?.message);
+  }
+
+  function mapBankingStatus(conn) {
+    if (!plaidCfg.configured) return 'not_configured';
+    if (!conn?.connected) return 'not_connected';
+    switch (conn.status) {
+      case 'CONNECTED': return 'active';
+      case 'SYNCING':   return 'active';
+      case 'DEGRADED':
+      case 'SYNC_ERROR':
+      case 'REAUTH_REQUIRED': return 'degraded';
+      default: return 'not_connected';
+    }
+  }
+
+  const bankingSourceStatus = mapBankingStatus(bankingConn);
+
   return {
     fieldcore_core: {
       ...SOURCE_DEFS.fieldcore_core,
@@ -152,8 +177,20 @@ async function resolveSourceStatuses(accountId) {
     },
     banking: {
       ...SOURCE_DEFS.banking,
-      status:        'not_connected',
-      lastSyncAt:    null,
+      status:         bankingSourceStatus,
+      lastSyncAt:     bankingConn.lastSyncAt || null,
+      canConnect:     plaidCfg.configured,
+      configured:     plaidCfg.configured,
+      connectionInfo: bankingConn.connected ? {
+        status:              bankingConn.status,
+        institutionName:     bankingConn.institutionName,
+        accountCount:        bankingConn.accountCount,
+        totalCashPosition:   bankingConn.totalCashPosition,
+        lastSyncAt:          bankingConn.lastSyncAt,
+        lastSuccessfulSyncAt: bankingConn.lastSuccessfulSyncAt,
+        lastErrorCode:       bankingConn.lastErrorCode,
+        lastErrorMessageSafe: bankingConn.lastErrorMessageSafe,
+      } : null,
     },
   };
 }
@@ -175,12 +212,14 @@ function evaluateCoverage(sourceStatuses) {
       paymentsStatus: src.paymentsStatus || null,
       connectionInfo: src.connectionInfo || null,
       canConnect:     src.canConnect     || false,
+      configured:     src.configured     || false,
     };
 
     if (src.status === 'active') {
       src.capabilities.forEach(c => activeCaps.add(c));
       activeSources.push(baseEntry);
-    } else if (src.optional) {
+    } else if (src.optional || src.status === 'not_configured') {
+      // not_configured banking = Plaid env vars not set; treat as optional (not a data-quality issue)
       optionalSources.push(baseEntry);
     } else {
       // Non-optional but not active — e.g., FieldCore Payments NOT_ENABLED/DEGRADED

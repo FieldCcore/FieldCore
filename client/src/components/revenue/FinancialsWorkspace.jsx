@@ -3,6 +3,7 @@ import api from '../../api';
 import RevenueKpiCard from '../RevenueKpiCard';
 import SelectDropdown from '../SelectDropdown';
 import QBMappingModal from './QBMappingModal';
+import { BankingCard } from './BankingCard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1049,7 +1050,7 @@ function SrcCard({
           )
       )}
 
-      {showConnect && src.sourceKey !== 'accounting' && (
+      {showConnect && src.sourceKey !== 'accounting' && src.sourceKey !== 'banking' && (
         <button
           className="fin-int-connect-btn btn-secondary"
           disabled
@@ -1135,32 +1136,45 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
       )}
 
       <div className="fin-sources-grid">
-        {featuredActive.map(src => (
-          <SrcCard
-            key={src.sourceKey}
-            src={src}
-            showConnect={false}
-            syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
-            onSyncNotifDismiss={() => setSyncNotif(null)}
-            {...getAccountingHandlers(src)}
-          />
-        ))}
-        {(notEnabledSources || []).map(src => (
-          <SrcCard key={src.sourceKey} src={src} showConnect={false} />
-        ))}
-        {(optionalSources || []).map(src => (
-          <SrcCard
-            key={src.sourceKey}
-            src={src}
-            showConnect={true}
-            onConnect={src.sourceKey === 'accounting' ? initiateQBConnect : undefined}
-            connectError={src.sourceKey === 'accounting' ? connectError : null}
-            onConnectErrorDismiss={() => setConnectError(null)}
-            syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
-            onSyncNotifDismiss={() => setSyncNotif(null)}
-            {...getAccountingHandlers(src)}
-          />
-        ))}
+        {featuredActive.map(src => {
+          if (src.sourceKey === 'banking') {
+            return <BankingCard key="banking" src={src} onCoverageRefresh={onCoverageRefresh} />;
+          }
+          return (
+            <SrcCard
+              key={src.sourceKey}
+              src={src}
+              showConnect={false}
+              syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
+              onSyncNotifDismiss={() => setSyncNotif(null)}
+              {...getAccountingHandlers(src)}
+            />
+          );
+        })}
+        {(notEnabledSources || []).map(src => {
+          if (src.sourceKey === 'banking') {
+            return <BankingCard key="banking" src={src} onCoverageRefresh={onCoverageRefresh} />;
+          }
+          return <SrcCard key={src.sourceKey} src={src} showConnect={false} />;
+        })}
+        {(optionalSources || []).map(src => {
+          if (src.sourceKey === 'banking') {
+            return <BankingCard key="banking" src={src} onCoverageRefresh={onCoverageRefresh} />;
+          }
+          return (
+            <SrcCard
+              key={src.sourceKey}
+              src={src}
+              showConnect={true}
+              onConnect={src.sourceKey === 'accounting' ? initiateQBConnect : undefined}
+              connectError={src.sourceKey === 'accounting' ? connectError : null}
+              onConnectErrorDismiss={() => setConnectError(null)}
+              syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
+              onSyncNotifDismiss={() => setSyncNotif(null)}
+              {...getAccountingHandlers(src)}
+            />
+          );
+        })}
       </div>
 
       <div className="fin-sources-footer">

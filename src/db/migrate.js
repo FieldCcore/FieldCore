@@ -1550,6 +1550,156 @@ const MIGRATIONS = [
         mapping_confidence    = 'high_confidence'
     WHERE fieldcore_category = 'cogs'
       AND fieldcore_subcategory IS NULL`,
+
+  // ── BANKING V1 — Plaid Sandbox ────────────────────────────────────────────
+
+  `CREATE TABLE IF NOT EXISTS bank_connections (
+     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id              UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider                TEXT NOT NULL DEFAULT 'plaid',
+     provider_item_id        TEXT NOT NULL,
+     institution_id          TEXT,
+     institution_name        TEXT,
+     status                  TEXT NOT NULL DEFAULT 'CONNECTED'
+                               CHECK (status IN (
+                                 'CONNECTED','SYNCING','DEGRADED',
+                                 'REAUTH_REQUIRED','SYNC_ERROR','DISCONNECTED'
+                               )),
+     access_token_encrypted  TEXT,
+     consent_expiration_time TIMESTAMPTZ,
+     last_sync_at            TIMESTAMPTZ,
+     last_successful_sync_at TIMESTAMPTZ,
+     last_error_code         TEXT,
+     last_error_message_safe TEXT,
+     disconnected_at         TIMESTAMPTZ,
+     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_connections_account ON bank_connections(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_connections_item    ON bank_connections(provider_item_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_connections_status  ON bank_connections(account_id, status)`,
+
+  `CREATE TABLE IF NOT EXISTS bank_accounts (
+     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     bank_connection_id       UUID NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
+     account_id               UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     provider_account_id      TEXT NOT NULL,
+     name                     TEXT NOT NULL,
+     official_name            TEXT,
+     mask                     TEXT,
+     type                     TEXT,
+     subtype                  TEXT,
+     currency                 TEXT NOT NULL DEFAULT 'USD',
+     current_balance          NUMERIC(14,2),
+     available_balance        NUMERIC(14,2),
+     limit_balance            NUMERIC(14,2),
+     include_in_cash_position BOOLEAN NOT NULL DEFAULT TRUE,
+     is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (bank_connection_id, provider_account_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_accounts_connection ON bank_accounts(bank_connection_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_accounts_account   ON bank_accounts(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_accounts_cash      ON bank_accounts(account_id, include_in_cash_position, is_active)`,
+
+  `CREATE TABLE IF NOT EXISTS bank_transactions (
+     id                                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id                          UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     bank_connection_id                  UUID NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
+     bank_account_id                     UUID NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
+     provider_transaction_id             TEXT NOT NULL,
+     provider_pending_transaction_id     TEXT,
+     authorized_date                     DATE,
+     posted_date                         DATE NOT NULL,
+     description                         TEXT NOT NULL,
+     merchant_name                       TEXT,
+     amount                              NUMERIC(14,2) NOT NULL,
+     direction                           TEXT NOT NULL CHECK (direction IN ('CASH_IN','CASH_OUT')),
+     currency                            TEXT NOT NULL DEFAULT 'USD',
+     pending                             BOOLEAN NOT NULL DEFAULT FALSE,
+     personal_finance_category_primary   TEXT,
+     personal_finance_category_detailed  TEXT,
+     payment_channel                     TEXT,
+     iso_currency_code                   TEXT,
+     unofficial_currency_code            TEXT,
+     reconciliation_status               TEXT NOT NULL DEFAULT 'UNMATCHED'
+                                           CHECK (reconciliation_status IN (
+                                             'MATCHED','SUGGESTED','UNMATCHED',
+                                             'TRANSFER','EXCLUDED','NEEDS_REVIEW'
+                                           )),
+     excluded_from_analytics             BOOLEAN NOT NULL DEFAULT FALSE,
+     raw_metadata_safe                   JSONB NOT NULL DEFAULT '{}',
+     created_at                          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at                          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, provider_transaction_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_account     ON bank_transactions(account_id, posted_date DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_connection  ON bank_transactions(bank_connection_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_acct        ON bank_transactions(bank_account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_direction   ON bank_transactions(account_id, direction, pending)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_status      ON bank_transactions(account_id, reconciliation_status)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_txn_pending     ON bank_transactions(account_id, pending) WHERE pending = TRUE`,
+
+  `CREATE TABLE IF NOT EXISTS bank_balance_snapshots (
+     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id        UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     bank_account_id   UUID NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
+     current_balance   NUMERIC(14,2),
+     available_balance NUMERIC(14,2),
+     captured_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_snapshots_account ON bank_balance_snapshots(account_id, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_snapshots_acct    ON bank_balance_snapshots(bank_account_id, captured_at DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS financial_reconciliation_matches (
+     id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id             UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     bank_transaction_id    UUID REFERENCES bank_transactions(id) ON DELETE SET NULL,
+     fieldcore_payment_id   UUID REFERENCES deposits(id) ON DELETE SET NULL,
+     fieldcore_payout_id    UUID,
+     quickbooks_record_id   TEXT,
+     match_type             TEXT NOT NULL,
+     confidence             TEXT NOT NULL DEFAULT 'medium',
+     status                 TEXT NOT NULL DEFAULT 'UNMATCHED'
+                              CHECK (status IN (
+                                'MATCHED','SUGGESTED','UNMATCHED',
+                                'TRANSFER','EXCLUDED','NEEDS_REVIEW'
+                              )),
+     matched_at             TIMESTAMPTZ,
+     matched_by             UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_frm_account ON financial_reconciliation_matches(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_frm_bank_tx ON financial_reconciliation_matches(bank_transaction_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_frm_status  ON financial_reconciliation_matches(account_id, status)`,
+
+  `CREATE TABLE IF NOT EXISTS bank_sync_cursors (
+     connection_id  UUID PRIMARY KEY REFERENCES bank_connections(id) ON DELETE CASCADE,
+     account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     cursor         TEXT NOT NULL,
+     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_bank_cursors_account ON bank_sync_cursors(account_id)`,
+
+  // revenue_saved_views table (used by revenue.js /saved-views routes)
+  `CREATE TABLE IF NOT EXISTS revenue_saved_views (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     tenant_id      UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     owner_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     workspace      TEXT NOT NULL,
+     name           TEXT NOT NULL,
+     filters        JSONB NOT NULL DEFAULT '{}',
+     columns        JSONB,
+     sort           JSONB,
+     grouping       JSONB,
+     is_shared      BOOLEAN NOT NULL DEFAULT FALSE,
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_revenue_saved_views_tenant ON revenue_saved_views(tenant_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_revenue_saved_views_owner  ON revenue_saved_views(owner_user_id)`,
 ];
 
 async function runMigrations() {
