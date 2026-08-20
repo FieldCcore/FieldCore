@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import api from '../../api';
+import { BankBalancesPanel }     from './BankBalancesPanel';
+import { BankTransactionsPanel } from './BankTransactionsPanel';
+import { ExternalDepositsPanel } from './ExternalDepositsPanel';
+import { ReconciliationPanel }   from './ReconciliationPanel';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +246,7 @@ export function BankingCard({ src, onCoverageRefresh }) {
   const [notif,       setNotif]       = useState(null);
   const [showManage,  setShowManage]  = useState(false);
   const [exchanging,  setExchanging]  = useState(false);
+  const [activePanel, setActivePanel] = useState(null); // 'balances'|'transactions'|'cash-out'|'deposits'|'reconciliation'
 
   const configured = src?.configured || src?.canConnect;
   const connInfo   = src?.connectionInfo;
@@ -392,11 +397,29 @@ export function BankingCard({ src, onCoverageRefresh }) {
         </>
       )}
 
-      {/* Capabilities */}
+      {/* Capabilities — clickable when connected */}
       <div className="fin-src-capabilities">
-        {['Bank Balances', 'Cash Transactions', 'Cash Out', 'External Deposits', 'Reconciliation'].map(c => (
-          <span key={c} className="fin-int-cap">{c}</span>
-        ))}
+        {[
+          { label: 'Bank Balances',     panel: 'balances'       },
+          { label: 'Cash Transactions', panel: 'transactions'   },
+          { label: 'Cash Out',          panel: 'cash-out'       },
+          { label: 'External Deposits', panel: 'deposits'       },
+          { label: 'Reconciliation',    panel: 'reconciliation' },
+        ].map(({ label, panel }) =>
+          isConnected
+            ? (
+              <button
+                key={panel}
+                type="button"
+                className="fin-int-cap fin-int-cap--btn"
+                onClick={() => setActivePanel(panel)}
+                aria-label={`View ${label}`}
+              >
+                {label}
+              </button>
+            )
+            : <span key={panel} className="fin-int-cap">{label}</span>
+        )}
       </div>
 
       {/* Notification banner */}
@@ -473,6 +496,13 @@ export function BankingCard({ src, onCoverageRefresh }) {
           onUpdated={handleManageUpdated}
         />
       )}
+
+      {/* Drill-down panels */}
+      {activePanel === 'balances'       && <BankBalancesPanel     onClose={() => setActivePanel(null)} />}
+      {activePanel === 'transactions'   && <BankTransactionsPanel onClose={() => setActivePanel(null)} />}
+      {activePanel === 'cash-out'       && <BankTransactionsPanel onClose={() => setActivePanel(null)} defaultDirection="CASH_OUT" />}
+      {activePanel === 'deposits'       && <ExternalDepositsPanel onClose={() => setActivePanel(null)} />}
+      {activePanel === 'reconciliation' && <ReconciliationPanel   onClose={() => setActivePanel(null)} />}
     </div>
   );
 }

@@ -9,7 +9,8 @@ const { plaidBankingAdapter } = require('../services/plaidBankingAdapter');
 const { decrypt } = require('../services/crypto');
 const bankingSync = require('../services/bankingSyncService');
 
-const WEBHOOK_BASE = process.env.BACKEND_URL || process.env.RAILWAY_STATIC_URL || '';
+const _rawBase     = process.env.BACKEND_URL || process.env.RAILWAY_STATIC_URL || '';
+const WEBHOOK_BASE = _rawBase && !_rawBase.startsWith('http') ? `https://${_rawBase}` : _rawBase;
 
 // ── GET /api/integrations/banking/plaid/status ────────────────────────────────
 // Safe status — no secrets ever included.
@@ -35,7 +36,43 @@ router.get('/plaid/status', requireAuth, requireRole('owner', 'manager'), async 
       return res.json({ ...plaidStatus, connected: false, status: null, diagnostics });
     }
     const connStatus = await bankingSync.getConnectionStatus(req.accountId);
-    return res.json({ ...plaidStatus, ...connStatus, diagnostics });
+
+    const health = { webhook: WEBHOOK_BASE ? 'configured' : 'not_configured' };
+    if (connStatus.connected) {
+      const lastSync = connStatus.lastSuccessfulSyncAt;
+      const ageMs    = lastSync ? Date.now() - new Date(lastSync).getTime() : Infinity;
+      health.syncStatus = connStatus.status === 'SYNC_ERROR'      ? 'error'
+        : connStatus.status === 'REAUTH_REQUIRED'                 ? 'reauth_required'
+        : ageMs > 172800000                                        ? 'stale'
+        : 'ok';
+      health.lastSuccessfulSync = lastSync || null;
+
+      const { rows: dqRows } = await pool.query(
+        `SELECT COUNT(*)::int AS cnt
+         FROM bank_transactions bt
+         JOIN bank_connections bc ON bc.id = bt.bank_connection_id
+         WHERE bt.account_id = $1
+           AND bt.direction = 'CASH_IN'
+           AND bt.pending = FALSE
+           AND bt.reconciliation_status = 'UNMATCHED'
+           AND bc.status != 'DISCONNECTED'`,
+        [req.accountId]
+      );
+      health.unmatchedDeposits = dqRows[0].cnt;
+
+      const issues = [];
+      if (connStatus.status === 'SYNC_ERROR')
+        issues.push({ code: 'sync_failure',        msg: connStatus.lastErrorMessageSafe || 'Sync failed' });
+      if (connStatus.status === 'REAUTH_REQUIRED')
+        issues.push({ code: 'reauth_required',      msg: 'Bank reconnection required' });
+      if (health.syncStatus === 'stale')
+        issues.push({ code: 'stale_sync',           msg: 'Bank data is more than 48 hours old' });
+      if (health.unmatchedDeposits > 0)
+        issues.push({ code: 'unmatched_deposits',   msg: `${health.unmatchedDeposits} unmatched bank deposit${health.unmatchedDeposits !== 1 ? 's' : ''}` });
+      health.issues = issues;
+    }
+
+    return res.json({ ...plaidStatus, ...connStatus, diagnostics, health });
   } catch (err) {
     console.error('[banking] status error:', err.message);
     res.status(500).json({ error: 'Could not load banking status.' });
@@ -320,6 +357,65 @@ router.get('/plaid/cash-position', requireAuth, requireRole('owner', 'manager'),
   } catch (err) {
     console.error('[banking] cash-position error:', err.message);
     res.status(500).json({ error: 'Could not load cash position.' });
+  }
+});
+
+// ── GET /api/integrations/banking/plaid/external-deposits ────────────────────
+// CASH_IN, posted, UNMATCHED — revenue not traced to FieldCore Payments or QB.
+
+router.get('/plaid/external-deposits', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { page = '1', limit = '50', start, end } = req.query;
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+  const offset   = (pageNum - 1) * limitNum;
+
+  const params  = [req.accountId];
+  const filters = [
+    `bt.account_id = $1`,
+    `bt.direction = 'CASH_IN'`,
+    `bt.pending = FALSE`,
+    `bt.reconciliation_status = 'UNMATCHED'`,
+  ];
+
+  if (start) { params.push(start); filters.push(`bt.posted_date >= $${params.length}::date`); }
+  if (end)   { params.push(end);   filters.push(`bt.posted_date <= $${params.length}::date`); }
+
+  const where = filters.join(' AND ');
+
+  try {
+    const [txRows, countRows] = await Promise.all([
+      pool.query(
+        `SELECT bt.id, bt.posted_date, bt.description, bt.merchant_name, bt.amount,
+                bt.currency, bt.personal_finance_category_primary,
+                ba.name AS account_name, ba.mask AS account_mask,
+                bc.institution_name
+         FROM bank_transactions bt
+         JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+         JOIN bank_connections bc ON bc.id = bt.bank_connection_id
+         WHERE ${where}
+         ORDER BY bt.posted_date DESC, bt.created_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limitNum, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM bank_transactions bt
+         JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+         JOIN bank_connections bc ON bc.id = bt.bank_connection_id
+         WHERE ${where}`,
+        params
+      ),
+    ]);
+
+    res.json({
+      deposits: txRows.rows,
+      total:    countRows.rows[0].total,
+      page:     pageNum,
+      limit:    limitNum,
+    });
+  } catch (err) {
+    console.error('[banking] external-deposits error:', err.message);
+    res.status(500).json({ error: 'Could not load external deposits.' });
   }
 });
 

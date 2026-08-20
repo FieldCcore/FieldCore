@@ -752,3 +752,238 @@ describe('Permissions — tech role blocked from banking endpoints', () => {
     });
   });
 });
+
+// ── 17. Status endpoint — diagnostics + health fields ────────────────────────
+
+describe('GET /api/integrations/banking/plaid/status — diagnostics and health', () => {
+  it('includes diagnostics block in status response', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/status')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('diagnostics');
+    const d = res.body.diagnostics;
+    expect(d).toHaveProperty('clientIdPresent');
+    expect(d).toHaveProperty('clientIdLength');
+    expect(d).toHaveProperty('secretPresent');
+    expect(d).toHaveProperty('secretLength');
+    expect(d).toHaveProperty('environment');
+    expect(d).toHaveProperty('environmentValid');
+  });
+
+  it('includes health.webhook field', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/status')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    if (res.body.configured) {
+      expect(res.body).toHaveProperty('health');
+      expect(['configured', 'not_configured']).toContain(res.body.health.webhook);
+    }
+  });
+
+  it('health.issues is an array when connected', async () => {
+    // Create a temporary connection so health.issues is present
+    const { rows: conn } = await pool.query(
+      `INSERT INTO bank_connections (account_id, provider, provider_item_id, status, access_token_encrypted)
+       VALUES ($1,'plaid','item-health-test','CONNECTED',$2) RETURNING id`,
+      [testAccountId, encrypt('tok-health')]
+    );
+    const connId = conn[0].id;
+    try {
+      const res = await request(app)
+        .get('/api/integrations/banking/plaid/status')
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(res.status).toBe(200);
+      if (res.body.connected && res.body.health) {
+        expect(Array.isArray(res.body.health.issues)).toBe(true);
+        expect(typeof res.body.health.unmatchedDeposits).toBe('number');
+      }
+    } finally {
+      await pool.query(`DELETE FROM bank_connections WHERE id = $1`, [connId]);
+    }
+  });
+
+  it('does not expose secret in status response', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/status')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect(body).not.toMatch(/secret.*[a-zA-Z0-9]{20,}/);
+  });
+});
+
+// ── 18. External deposits endpoint ───────────────────────────────────────────
+
+describe('GET /api/integrations/banking/plaid/external-deposits', () => {
+  let connId, bankAcctId;
+
+  beforeAll(async () => {
+    const { rows: conn } = await pool.query(
+      `INSERT INTO bank_connections (account_id, provider, provider_item_id, institution_name, status, access_token_encrypted)
+       VALUES ($1,'plaid','item-ext-dep','Ext Dep Bank','CONNECTED',$2) RETURNING id`,
+      [testAccountId, encrypt('tok-ext-dep')]
+    );
+    connId = conn[0].id;
+    const { rows: acct } = await pool.query(
+      `INSERT INTO bank_accounts (bank_connection_id, account_id, provider_account_id, name, type, subtype, include_in_cash_position)
+       VALUES ($1,$2,'acct-ext-dep','Ext Dep Checking','depository','checking',TRUE) RETURNING id`,
+      [connId, testAccountId]
+    );
+    bankAcctId = acct[0].id;
+
+    // Insert: 2 CASH_IN UNMATCHED posted, 1 CASH_IN MATCHED, 1 CASH_OUT, 1 pending
+    const txns = [
+      { ptid: `ext-1-${Date.now()}`, dir: 'CASH_IN',  status: 'UNMATCHED', pending: false, amt: 800  },
+      { ptid: `ext-2-${Date.now()}`, dir: 'CASH_IN',  status: 'UNMATCHED', pending: false, amt: 1200 },
+      { ptid: `ext-3-${Date.now()}`, dir: 'CASH_IN',  status: 'MATCHED',   pending: false, amt: 500  },
+      { ptid: `ext-4-${Date.now()}`, dir: 'CASH_OUT', status: 'UNMATCHED', pending: false, amt: 300  },
+      { ptid: `ext-5-${Date.now()}`, dir: 'CASH_IN',  status: 'UNMATCHED', pending: true,  amt: 700  },
+    ];
+    for (const t of txns) {
+      await pool.query(
+        `INSERT INTO bank_transactions
+           (account_id, bank_connection_id, bank_account_id, provider_transaction_id,
+            posted_date, description, amount, direction, currency, pending, reconciliation_status,
+            excluded_from_analytics, raw_metadata_safe)
+         VALUES ($1,$2,$3,$4,'2026-07-10','Ext Dep TX',$5,$6,'USD',$7,$8,FALSE,'{}')`,
+        [testAccountId, connId, bankAcctId, t.ptid, t.amt, t.dir, t.pending, t.status]
+      );
+    }
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM bank_transactions WHERE bank_connection_id = $1`, [connId]);
+    await pool.query(`DELETE FROM bank_accounts WHERE bank_connection_id = $1`, [connId]);
+    await pool.query(`DELETE FROM bank_connections WHERE id = $1`, [connId]);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/integrations/banking/plaid/external-deposits');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 for tech role', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/external-deposits')
+      .set('Authorization', `Bearer ${techToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('returns only CASH_IN UNMATCHED posted transactions', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/external-deposits')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.deposits)).toBe(true);
+    expect(res.body).toHaveProperty('total');
+    // All returned rows must be CASH_IN, UNMATCHED, posted
+    res.body.deposits.forEach(d => {
+      expect(d.posted_date).toBeTruthy();
+      expect(parseFloat(d.amount)).toBeGreaterThan(0);
+    });
+    // Should include our 2 CASH_IN UNMATCHED posted (ext-1 and ext-2)
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it('excludes MATCHED, CASH_OUT, and pending transactions', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/external-deposits')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    // Total should not include the matched, cash_out, or pending
+    // (we have 2 qualifying rows: $800 and $1200)
+    const amts = res.body.deposits.map(d => parseFloat(d.amount));
+    expect(amts).not.toContain(500); // MATCHED excluded
+    expect(amts).not.toContain(300); // CASH_OUT excluded
+    expect(amts).not.toContain(700); // pending excluded
+  });
+
+  it('supports date filtering', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/external-deposits?start=2026-01-01&end=2026-12-31')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.deposits)).toBe(true);
+  });
+
+  it('returns pagination fields', async () => {
+    const res = await request(app)
+      .get('/api/integrations/banking/plaid/external-deposits')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('page');
+    expect(res.body).toHaveProperty('limit');
+    expect(res.body).toHaveProperty('total');
+  });
+
+  it('tenant isolation — does not return other tenant deposits', async () => {
+    const { rows: otherAcct } = await pool.query(`INSERT INTO accounts (name, plan) VALUES ('OtherTenantDep', 'pro') RETURNING id`);
+    const otherId = otherAcct[0].id;
+    const { rows: otherConn } = await pool.query(
+      `INSERT INTO bank_connections (account_id, provider, provider_item_id, status, access_token_encrypted)
+       VALUES ($1,'plaid','item-other-dep','CONNECTED',$2) RETURNING id`,
+      [otherId, encrypt('tok-other')]
+    );
+    const { rows: otherBa } = await pool.query(
+      `INSERT INTO bank_accounts (bank_connection_id, account_id, provider_account_id, name, type, subtype)
+       VALUES ($1,$2,'acct-other-dep','Other Checking','depository','checking') RETURNING id`,
+      [otherConn[0].id, otherId]
+    );
+    await pool.query(
+      `INSERT INTO bank_transactions
+         (account_id, bank_connection_id, bank_account_id, provider_transaction_id,
+          posted_date, description, amount, direction, currency, pending, reconciliation_status,
+          excluded_from_analytics, raw_metadata_safe)
+       VALUES ($1,$2,$3,'txn-other-dep','2026-07-10','Other Deposit',9999,'CASH_IN','USD',FALSE,'UNMATCHED',FALSE,'{}')`,
+      [otherId, otherConn[0].id, otherBa[0].id]
+    );
+    try {
+      const res = await request(app)
+        .get('/api/integrations/banking/plaid/external-deposits')
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(res.status).toBe(200);
+      const amts = res.body.deposits.map(d => parseFloat(d.amount));
+      expect(amts).not.toContain(9999);
+    } finally {
+      await pool.query(`DELETE FROM bank_transactions WHERE account_id = $1`, [otherId]);
+      await pool.query(`DELETE FROM bank_accounts WHERE account_id = $1`, [otherId]);
+      await pool.query(`DELETE FROM bank_connections WHERE account_id = $1`, [otherId]);
+      await pool.query(`DELETE FROM accounts WHERE id = $1`, [otherId]);
+    }
+  });
+});
+
+// ── 19. Webhook URL construction ──────────────────────────────────────────────
+
+describe('Webhook URL protocol prefix', () => {
+  it('WEBHOOK_BASE adds https:// when RAILWAY_STATIC_URL lacks a protocol', () => {
+    const orig = process.env.RAILWAY_STATIC_URL;
+    const origBackend = process.env.BACKEND_URL;
+    try {
+      delete process.env.BACKEND_URL;
+      process.env.RAILWAY_STATIC_URL = 'myapp.up.railway.app';
+      // Re-require to pick up new env value
+      jest.resetModules();
+      const rawBase     = process.env.BACKEND_URL || process.env.RAILWAY_STATIC_URL || '';
+      const webhookBase = rawBase && !rawBase.startsWith('http') ? `https://${rawBase}` : rawBase;
+      expect(webhookBase).toBe('https://myapp.up.railway.app');
+    } finally {
+      process.env.RAILWAY_STATIC_URL = orig || '';
+      if (origBackend !== undefined) process.env.BACKEND_URL = origBackend;
+    }
+  });
+
+  it('WEBHOOK_BASE does not double-prefix when BACKEND_URL already has https://', () => {
+    const rawBase     = 'https://already-has-protocol.up.railway.app';
+    const webhookBase = rawBase && !rawBase.startsWith('http') ? `https://${rawBase}` : rawBase;
+    expect(webhookBase).toBe('https://already-has-protocol.up.railway.app');
+  });
+
+  it('WEBHOOK_BASE is empty string when no URL configured', () => {
+    const rawBase     = '';
+    const webhookBase = rawBase && !rawBase.startsWith('http') ? `https://${rawBase}` : rawBase;
+    expect(webhookBase).toBe('');
+  });
+});

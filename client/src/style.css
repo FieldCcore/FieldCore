@@ -4055,6 +4055,65 @@ body {
 .fin-modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--slate); line-height: 1; padding: 0 4px; }
 .fin-modal-close:hover { color: var(--navy); }
 
+/* ── Banking Panels ───────────────────────────────────────── */
+.fin-int-cap--btn { background: none; border: 1px solid var(--lightgray); cursor: pointer; font-size: 10px; background: var(--offwhite); color: var(--slate); border-radius: 3px; padding: 2px 5px; transition: background 0.12s; }
+.fin-int-cap--btn:hover { background: #e8e4df; color: var(--navy); }
+
+.bank-panel-body { width: 680px; max-width: 98vw; }
+.bank-panel-body--wide { width: 900px; max-width: 98vw; }
+.bank-panel-hint { font-size: 12px; color: var(--slate); margin: -8px 0 12px; line-height: 1.5; }
+.bank-panel-count { font-size: 11px; color: var(--steel); margin-bottom: 8px; }
+.bank-panel-empty { font-size: 13px; color: var(--steel); padding: 24px 0; text-align: center; }
+.bank-panel-error { font-size: 12px; color: var(--red); background: #fee2e2; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
+
+.bank-panel-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; align-items: center; }
+.bank-panel-input  { font-size: 12px; padding: 4px 8px; border: 1px solid var(--lightgray); border-radius: 5px; color: var(--navy); background: var(--white); height: 28px; }
+.bank-panel-select { font-size: 12px; padding: 4px 6px; border: 1px solid var(--lightgray); border-radius: 5px; color: var(--navy); background: var(--white); height: 28px; }
+.bank-panel-filter-btn { font-size: 12px; padding: 4px 12px; background: var(--navy); color: var(--white); border: none; border-radius: 5px; cursor: pointer; height: 28px; }
+.bank-panel-filter-btn:hover { opacity: 0.85; }
+
+.bank-panel-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bank-panel-table th { text-align: left; font-size: 10px; font-weight: 600; color: var(--steel); text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 8px 4px; border-bottom: 1px solid var(--lightgray); white-space: nowrap; }
+.bank-panel-table td { padding: 7px 8px; border-bottom: 1px solid #f0eeeb; vertical-align: top; color: var(--navy); }
+.bank-panel-table tr:last-child td { border-bottom: none; }
+.bank-panel-table tr:hover td { background: #f8f6f3; }
+.bank-row--pending { opacity: 0.7; }
+
+.bank-panel-inst      { font-size: 11px; color: var(--slate); white-space: nowrap; }
+.bank-panel-acct-name { font-weight: 600; }
+.bank-panel-mask      { color: var(--steel); font-size: 11px; }
+.bank-panel-type      { font-size: 10px; background: var(--lightgray); color: var(--slate); border-radius: 3px; padding: 1px 5px; text-transform: capitalize; }
+.bank-panel-muted     { color: var(--slate); font-size: 11px; }
+.bank-panel-right     { text-align: right; }
+.bank-panel-center    { text-align: center; }
+.bank-panel-bold      { font-weight: 700; }
+.bank-panel-desc      { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.bank-panel-subdesc   { font-size: 10px; color: var(--steel); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.bank-panel-cat       { white-space: nowrap; font-size: 10px; }
+.bank-panel-in        { color: #166534; }
+.bank-panel-out       { color: #9a3412; }
+.bank-panel-pending   { display: inline-block; font-size: 9px; background: #fef9c3; color: #854d0e; border-radius: 3px; padding: 1px 4px; margin-left: 4px; }
+
+.bank-panel-badge { font-size: 10px; font-weight: 600; border-radius: 10px; padding: 1px 7px; }
+.bank-panel-badge--yes { background: #d1fae5; color: #065f46; }
+.bank-panel-badge--no  { background: var(--lightgray); color: var(--slate); }
+
+.bank-recon { font-size: 10px; font-weight: 600; border-radius: 10px; padding: 2px 7px; white-space: nowrap; }
+.bank-recon--unmatched { background: #fef9c3; color: #854d0e; }
+.bank-recon--matched   { background: #d1fae5; color: #065f46; }
+.bank-recon--transfer  { background: #e0f2fe; color: #0c4a6e; }
+.bank-recon--excluded  { background: var(--lightgray); color: var(--slate); }
+
+.bank-panel-tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+.bank-panel-tab  { font-size: 12px; padding: 4px 12px; border: 1px solid var(--lightgray); background: var(--offwhite); color: var(--slate); border-radius: 20px; cursor: pointer; transition: all 0.12s; }
+.bank-panel-tab:hover { background: #e8e4df; color: var(--navy); }
+.bank-panel-tab--active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+.bank-panel-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 0 4px; }
+.bank-panel-pg-btn  { font-size: 12px; padding: 4px 12px; border: 1px solid var(--lightgray); background: var(--white); border-radius: 5px; cursor: pointer; color: var(--navy); }
+.bank-panel-pg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.bank-panel-pg-info { font-size: 12px; color: var(--slate); }
+
 /* ── Responsive: Revenue Overview ────────────────────────── */
 @media (max-width: 1200px) {
   .rov-kpi-row--primary   { grid-template-columns: repeat(3, 1fr); }
