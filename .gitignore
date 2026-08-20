@@ -11,3 +11,4 @@ uploads/
 .env.local
 tsconfig.tsbuildinfo
 qa_banking.js
+qa_activejobs.js
