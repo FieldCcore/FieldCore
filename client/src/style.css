@@ -3985,12 +3985,28 @@ body {
 
 /* Financial Data Sources section */
 .fin-core-chip { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--slate); padding: 6px 18px 0; }
-.fin-sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px 18px; }
-.fin-src-card { background: var(--offwhite); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); display: flex; flex-direction: column; gap: 10px; }
+.fin-sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(6, auto); column-gap: 12px; row-gap: 10px; padding: 12px 18px; }
+.fin-src-card { background: var(--offwhite); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); grid-row: span 6; display: grid; grid-template-rows: subgrid; align-items: start; }
 .fin-src-card--active      { border-color: #c8e6c9; background: #f1f8f1; }
 .fin-src-card--not_enabled { border-color: #fde68a; background: #fffbeb; }
 .fin-src-card--degraded    { border-color: #fed7aa; background: #fff7ed; }
 .fin-src-card--not_connected { }
+/* 6-slot shared internal row structure — applies to SrcCard and BankingCard via CSS-only placement */
+.fin-src-card > .fin-src-header          { grid-row: 1; }
+.fin-src-card > .fin-src-slot-summary    { grid-row: 2; }
+.fin-src-card > .fin-src-company         { grid-row: 2; }
+.fin-src-card > .fin-src-slot-secondary  { grid-row: 3; }
+.fin-src-card > .banking-summary-row     { grid-row: 3; }
+.fin-src-card > .fin-src-slot-status     { grid-row: 4; }
+.fin-src-card > .fin-src-sync-row        { grid-row: 4; }
+.fin-src-card > .fin-src-error           { grid-row: 4; }
+.fin-src-card > .fin-src-notif           { grid-row: 4; }
+.fin-src-card > .fin-src-capabilities    { grid-row: 5; }
+.fin-src-card > .fin-src-footer          { grid-row: 6; }
+.fin-src-card > .fin-src-actions         { grid-row: 6; }
+.fin-src-card > .fin-int-connect-btn     { grid-row: 6; }
+.fin-src-card > div:has(> .fin-int-connect-btn) { grid-row: 6; }
+.fin-src-slot-summary, .fin-src-slot-secondary, .fin-src-slot-status { min-height: 0; }
 .fin-src-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fin-src-name { font-size: 13px; font-weight: 700; color: var(--navy); }
 .fin-src-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
@@ -4016,8 +4032,8 @@ body {
 .fin-src-notif--info    { background: #e0f2fe; color: #0c4a6e; }
 .fin-src-notif-dismiss { background: none; border: none; cursor: pointer; font-size: 14px; line-height: 1; color: inherit; opacity: 0.7; padding: 0 2px; }
 .fin-src-notif-dismiss:hover { opacity: 1; }
-.fin-src-footer  { margin-top: auto; min-height: 34px; }
-.fin-src-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; flex-wrap: wrap; align-items: flex-start; }
+.fin-src-footer  { min-height: 0; }
+.fin-src-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; }
 .fin-src-action-btn { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--lightgray); background: var(--white); color: var(--navy); cursor: pointer; transition: background 0.15s; }
 .fin-src-action-btn:hover:not(:disabled) { background: var(--offwhite); }
 .fin-src-action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -4027,6 +4043,13 @@ body {
 .fin-src-disconnect-confirm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 6px 8px; }
 .fin-src-disconnect-q { font-size: 11px; font-weight: 600; color: #9a3412; white-space: nowrap; }
 .fin-sources-footer { font-size: 11px; color: var(--steel); padding: 8px 18px 14px; line-height: 1.5; border-top: 1px solid var(--lightgray); margin-top: 4px; }
+
+/* Mobile: revert subgrid to simple flex stack */
+@media (max-width: 768px) {
+  .fin-sources-grid { display: flex; flex-direction: column; gap: 12px; }
+  .fin-src-card { display: flex; flex-direction: column; gap: 8px; grid-row: auto; grid-template-rows: none; }
+  .fin-src-slot-summary:empty, .fin-src-slot-secondary:empty, .fin-src-slot-status:empty { display: none; }
+}
 
 /* ── Banking Card ──────────────────────────────────────────── */
 .banking-summary-row { display: flex; justify-content: space-between; align-items: baseline; margin: 4px 0; }

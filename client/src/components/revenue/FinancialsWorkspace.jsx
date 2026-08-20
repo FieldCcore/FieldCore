@@ -915,67 +915,76 @@ function SrcCard({
 
   return (
     <div className={`fin-src-card fin-src-card--${src.status}`}>
+
+      {/* Row 1 — header: name + badge */}
       <div className="fin-src-header">
         <span className="fin-src-name">{src.providerLabel}</span>
         <span className={`fin-src-badge ${badge.className}`}>{badge.label}</span>
       </div>
 
-      {isAccountingConnected && info.companyName && (
-        <div className="fin-src-company">{info.companyName}</div>
-      )}
+      {/* Row 2 — summary: company/account name */}
+      <div className="fin-src-slot-summary">
+        {isAccountingConnected && info.companyName && (
+          <div className="fin-src-company">{info.companyName}</div>
+        )}
+      </div>
 
-      {isAccountingConnected && (
-        <div className="fin-src-sync-row">
-          <span className="fin-src-sync-label">Last sync</span>
-          <span className="fin-src-sync-value">{fmtSyncTime(info.lastSuccessfulSyncAt)}</span>
-        </div>
-      )}
-
-      {isAccountingConnected && (
-        info.unmappedAccountCount > 0 ? (
-          <button
-            className="fin-src-warn fin-src-warn--btn"
-            onClick={onManage}
-            aria-label="Open account mapping"
-          >
-            {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need review →
-          </button>
-        ) : (
-          <div className="fin-src-mapping-complete" aria-label="Account mapping complete">
-            Account Mapping Complete ✓
+      {/* Row 3 — secondary metric: last sync date */}
+      <div className="fin-src-slot-secondary">
+        {isAccountingConnected && (
+          <div className="fin-src-sync-row">
+            <span className="fin-src-sync-label">Last sync</span>
+            <span className="fin-src-sync-value">{fmtSyncTime(info.lastSuccessfulSyncAt)}</span>
           </div>
-        )
-      )}
+        )}
+      </div>
 
-      {isAccountingConnected && isError && info.lastErrorMessageSafe && (
-        <div className="fin-src-error">{info.lastErrorMessageSafe}</div>
-      )}
+      {/* Row 4 — status/health: mapping status, errors, notifications */}
+      <div className="fin-src-slot-status">
+        {isAccountingConnected && (
+          info.unmappedAccountCount > 0 ? (
+            <button
+              className="fin-src-warn fin-src-warn--btn"
+              onClick={onManage}
+              aria-label="Open account mapping"
+            >
+              {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need review →
+            </button>
+          ) : (
+            <div className="fin-src-mapping-complete" aria-label="Account mapping complete">
+              Account Mapping Complete ✓
+            </div>
+          )
+        )}
+        {isAccountingConnected && isError && info.lastErrorMessageSafe && (
+          <div className="fin-src-error">{info.lastErrorMessageSafe}</div>
+        )}
+        {syncNotif && (
+          <div className={`fin-src-notif fin-src-notif--${syncNotif.type}`} role="status">
+            {syncNotif.msg}
+            <button className="fin-src-notif-dismiss" onClick={onSyncNotifDismiss} aria-label="Dismiss">×</button>
+          </div>
+        )}
+        {connectError && (
+          <div className="fin-src-notif fin-src-notif--error" role="alert">
+            {connectError}
+            <button className="fin-src-notif-dismiss" onClick={onConnectErrorDismiss} aria-label="Dismiss">×</button>
+          </div>
+        )}
+      </div>
 
-      {syncNotif && (
-        <div className={`fin-src-notif fin-src-notif--${syncNotif.type}`} role="status">
-          {syncNotif.msg}
-          <button className="fin-src-notif-dismiss" onClick={onSyncNotifDismiss} aria-label="Dismiss">×</button>
-        </div>
-      )}
-
-      {connectError && (
-        <div className="fin-src-notif fin-src-notif--error" role="alert">
-          {connectError}
-          <button className="fin-src-notif-dismiss" onClick={onConnectErrorDismiss} aria-label="Dismiss">×</button>
-        </div>
-      )}
-
+      {/* Row 5 — capability chips */}
       <div className="fin-src-capabilities">
         {src.capabilities.slice(0, 7).map(c => (
           <span key={c} className="fin-int-cap">{formatCapabilityLabel(c)}</span>
         ))}
       </div>
 
-      {src.status === 'not_enabled' && src.paymentsStatus?.limitations?.[0] && (
-        <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
-      )}
-
+      {/* Row 6 — footer: note (if any) + action buttons */}
       <div className="fin-src-footer">
+        {src.status === 'not_enabled' && src.paymentsStatus?.limitations?.[0] && (
+          <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
+        )}
         {isAccountingConnected && (
           <div className="fin-src-actions">
             {onSyncNow && (
@@ -1028,7 +1037,6 @@ function SrcCard({
             )}
           </div>
         )}
-
         {showConnect && src.sourceKey === 'accounting' && (
           src.canConnect
             ? (
@@ -1050,7 +1058,6 @@ function SrcCard({
               </button>
             )
         )}
-
         {showConnect && src.sourceKey !== 'accounting' && src.sourceKey !== 'banking' && (
           <button
             className="fin-int-connect-btn btn-secondary"
