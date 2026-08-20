@@ -949,11 +949,43 @@ function SrcCard({
   const [disconnectStep, setDisconnectStep] = useState(false);
   const [connectBusy, setConnectBusy] = useState(false);
 
+  // Mapping success flash: show only on incomplete→complete transition, auto-hide after ~5s
+  const [showMappingSuccess, setShowMappingSuccess] = useState(false);
+  const [mappingFading,      setMappingFading]      = useState(false);
+  const prevUnmappedRef = useRef(null);
+
   const info               = src.connectionInfo;
   const isAccountingConnected = src.sourceKey === 'accounting' && info;
   const connStatus         = info?.status;
   const isSyncing          = connStatus === 'syncing';
   const isError            = connStatus === 'sync_error';
+
+  const currentUnmapped = isAccountingConnected ? (info?.unmappedAccountCount ?? 0) : null;
+
+  useEffect(() => {
+    if (currentUnmapped === null) {
+      prevUnmappedRef.current = null;
+      return;
+    }
+    const prev = prevUnmappedRef.current;
+    prevUnmappedRef.current = currentUnmapped;
+    if (prev === null) return; // first render connected — no transition yet
+    if (prev > 0 && currentUnmapped === 0) {
+      setShowMappingSuccess(true);
+      setMappingFading(false);
+      const fadeTimer = setTimeout(() => setMappingFading(true), 4000);
+      const hideTimer = setTimeout(() => {
+        setShowMappingSuccess(false);
+        setMappingFading(false);
+      }, 5000);
+      return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
+    }
+    if (currentUnmapped > 0) {
+      setShowMappingSuccess(false);
+      setMappingFading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUnmapped]);
 
   // Derive badge from connectionInfo.status when connected (more precise than src.status)
   let badge;
@@ -1011,11 +1043,14 @@ function SrcCard({
             >
               {info.unmappedAccountCount} account{info.unmappedAccountCount !== 1 ? 's' : ''} need review →
             </button>
-          ) : (
-            <div className="fin-src-mapping-complete" aria-label="Account mapping complete">
+          ) : showMappingSuccess ? (
+            <div
+              className={`fin-src-mapping-complete${mappingFading ? ' fin-src-mapping-complete--fading' : ''}`}
+              aria-label="Account mapping complete"
+            >
               Account Mapping Complete ✓
             </div>
-          )
+          ) : null
         )}
         {isAccountingConnected && isError && info.lastErrorMessageSafe && (
           <div className="fin-src-error">{info.lastErrorMessageSafe}</div>

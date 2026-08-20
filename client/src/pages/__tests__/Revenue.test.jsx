@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Revenue from '../Revenue';
@@ -7,7 +7,8 @@ import { CHART, CATEGORICAL, varianceColor } from '../../theme/revenueChartToken
 // Mock the API module
 vi.mock('../../api', () => ({
   default: {
-    get: vi.fn(),
+    get:  vi.fn(),
+    post: vi.fn(),
   },
 }));
 
@@ -1626,5 +1627,131 @@ describe('Revenue — FieldCore Payments Manage button', () => {
       expect(screen.getByText('FieldCore Payments')).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: /manage fieldcore payments/i })).not.toBeInTheDocument();
+  });
+});
+
+// ── QB mapping-complete auto-hide ────────────────────────────────────────────
+
+describe('Revenue — QB mapping-complete auto-hide', () => {
+  function makeQBMock(unmappedAccountCount) {
+    return {
+      ...MOCK_FINANCIALS,
+      coverage: {
+        ...MOCK_FINANCIALS.coverage,
+        activeSources: [
+          { sourceKey: 'fieldcore_core',     providerLabel: 'FieldCore Core',     status: 'active', capabilities: ['revenue', 'invoices'] },
+          { sourceKey: 'fieldcore_payments', providerLabel: 'FieldCore Payments', status: 'active', capabilities: ['payments'], paymentsStatus: { status: 'ACTIVE', limitations: [] } },
+          {
+            sourceKey: 'accounting',
+            providerLabel: 'QuickBooks Online',
+            status: 'active',
+            capabilities: ['cogs', 'operating_expenses'],
+            connectionInfo: {
+              companyName: 'Acme HVAC LLC',
+              status: 'connected',
+              lastSyncAt: new Date().toISOString(),
+              lastSuccessfulSyncAt: new Date().toISOString(),
+              lastErrorCode: null,
+              unmappedAccountCount,
+            },
+          },
+        ],
+        optionalSources: [
+          { sourceKey: 'banking', providerLabel: 'Banking', status: 'not_connected', capabilities: ['bank_balances'] },
+        ],
+      },
+    };
+  }
+
+  function apiWith(financialsData) {
+    return (url) => {
+      if (url.includes('/revenue/financials'))         return Promise.resolve({ data: financialsData });
+      if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
+      if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+      return Promise.reject(new Error('Unknown: ' + url));
+    };
+  }
+
+  beforeEach(() => {
+    useAuth.mockReturnValue({ user: { role: 'owner' } });
+  });
+
+  it('already-complete initial load does not show mapping-complete banner', async () => {
+    api.get.mockImplementation(apiWith(makeQBMock(0)));
+    renderRevenue('?view=financials');
+    await waitFor(() => expect(screen.getByText('QuickBooks Online')).toBeInTheDocument());
+    expect(screen.queryByText(/account mapping complete/i)).not.toBeInTheDocument();
+  });
+
+  it('incomplete state shows persistent warning button', async () => {
+    api.get.mockImplementation(apiWith(makeQBMock(3)));
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /open account mapping/i })).toBeInTheDocument();
+      expect(screen.getByText(/3 accounts need review/i)).toBeInTheDocument();
+    });
+  });
+
+  it('incomplete → complete transition shows mapping-complete banner', async () => {
+    api.get.mockImplementation(apiWith(makeQBMock(3)));
+    renderRevenue('?view=financials');
+    await waitFor(() => screen.getByText(/3 accounts need review/i));
+
+    api.get.mockImplementation(apiWith(makeQBMock(0)));
+    fireEvent.click(screen.getByText('Last Month'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/account mapping complete/i)).toBeInTheDocument();
+    });
+  });
+
+  it('sets up 5-second auto-hide timer when mapping-complete banner appears', async () => {
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+    api.get.mockImplementation(apiWith(makeQBMock(3)));
+    renderRevenue('?view=financials');
+    await waitFor(() => screen.getByText(/3 accounts need review/i));
+
+    api.get.mockImplementation(apiWith(makeQBMock(0)));
+    fireEvent.click(screen.getByText('Last Month'));
+    await waitFor(() => screen.getByText(/account mapping complete/i));
+
+    const hideTimers = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 5000);
+    expect(hideTimers.length).toBeGreaterThanOrEqual(1);
+
+    setTimeoutSpy.mockRestore();
+  });
+
+  it('clears auto-hide timers on unmount (no memory leak)', async () => {
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+    api.get.mockImplementation(apiWith(makeQBMock(3)));
+    const { unmount } = renderRevenue('?view=financials');
+    await waitFor(() => screen.getByText(/3 accounts need review/i));
+
+    api.get.mockImplementation(apiWith(makeQBMock(0)));
+    fireEvent.click(screen.getByText('Last Month'));
+    await waitFor(() => screen.getByText(/account mapping complete/i));
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('polling with always-complete data does not retrigger mapping-complete banner', async () => {
+    api.get.mockImplementation(apiWith(makeQBMock(0)));
+    renderRevenue('?view=financials');
+    await waitFor(() => screen.getByText('QuickBooks Online'));
+    expect(screen.queryByText(/account mapping complete/i)).not.toBeInTheDocument();
+
+    // Simulate polling re-fetch with same complete data
+    fireEvent.click(screen.getByText('Last Month'));
+    await waitFor(() => screen.getByText('QuickBooks Online'));
+    expect(screen.queryByText(/account mapping complete/i)).not.toBeInTheDocument();
   });
 });
