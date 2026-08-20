@@ -101,6 +101,48 @@ SECURITY CONSTRAINTS THAT REMAIN IN EFFECT PERMANENTLY:
   - Access tokens encrypted at rest (AES-256-GCM)
   - All banking queries filter by account_id from req.accountId (tenant isolation)
 
+### Financials V1 — FROZEN 2026-08-20
+Files under freeze:
+  src/routes/revenue.js                    (GET /api/revenue/financials and related)
+  src/services/financialAnalyticsService.js
+  src/services/profitabilityService.js
+  src/services/arAgingService.js
+  src/services/cashFlowService.js
+  src/services/financialCoverageService.js  (non-banking sections)
+  client/src/components/revenue/FinancialsWorkspace.jsx
+
+Freeze basis: Production QA passed 2026-08-20. 940/940 frontend tests, 167/167 backend tests
+(banking 65/65, dashboard 102/102). Live on Railway + Vercel.
+  - Coverage: COMPLETE (Core + Payments + QuickBooks + Banking all active)
+  - Gross Revenue sourced from completed jobs (scheduled_at); QB provides P&L/COGS/OpEx
+  - AR from pending invoices (point-in-time); Cash In from paid invoices + collected deposits
+  - Net Profit: -$53.99 verified against production (OpEx from QB, no August revenue in test account)
+  - Account Mapping Complete banner: transition-only (prevUnmappedRef), fades 4s, removed 5s
+  - FieldCore Payments: Manage-only (no Sync Now, no Disconnect — native built-in source)
+  - Banking V1 and QuickBooks V1 frozen architecture unchanged
+
+Approved architectural decisions:
+  - Financial Coverage: COMPLETE is data-driven (available+partial/total >= 1.0), not hardcoded
+  - FieldCore Payments is a native financial source (always active, not an OAuth integration)
+  - FieldCore Payments: Manage button only — no Sync Now, no Disconnect
+  - Account Mapping Complete: transition-only, auto-hides after 5s (4s opacity fade, 5s DOM remove)
+  - KPI source precedence: jobs table (Gross Revenue) > QB sync (P&L/OpEx/COGS) > invoices+deposits (Cash In)
+  - Gross Margin and Net Margin correctly show unavailable when Gross Revenue = 0 (divide-by-zero guard)
+  - All SQL queries filter by account_id = req.accountId from JWT middleware (never client-supplied)
+
+DO NOT:
+  - Modify Financials V1 calculations, source precedence, or approved behavior during unrelated work
+  - Change FieldCore Payments to show Sync Now or Disconnect
+  - Make Account Mapping Complete banner permanent
+  - Alter KPI formulas without explicit Financials V2 approval
+  - Modify frozen backend services without unfreezing
+
+Modifications to frozen Financials code are permitted only for:
+  - Confirmed bugs
+  - Security issues
+  - Required dependency or platform changes
+  - Explicitly approved Financials V2 work
+
 ## CODING RULES
 - Money: integer cents. 4999 = $49.99. Never float.
 - All data from Express API — inline styles in React components, className for CSS modules
