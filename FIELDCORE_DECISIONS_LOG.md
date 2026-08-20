@@ -31,6 +31,50 @@
 
 ---
 
+### [DECISION-060] Banking V1 frozen — Plaid Sandbox implementation complete
+**Date:** 2026-08-20
+**Decided by:** Kevin + Claude
+**Status:** ACTIVE
+
+**Context:** Banking V1 Plaid Sandbox implementation completed and passed full live production QA on 2026-08-20. All 15 functional requirements verified against the live production environment (Railway + Vercel). 65/65 unit tests passing.
+
+**Decision:** Banking V1 is frozen. The following are complete and must not be modified without an explicit unfreeze decision:
+- Plaid Link integration (link token → public token → exchange → access token encrypted at rest)
+- Transaction sync (cursor-based, idempotent, automatic on webhook + manual trigger)
+- Internal transfer detection (same-amount opposite-direction pair within 2 days)
+- FieldCore Payments reconciliation (bank CASH_IN matched to deposits by amount + date)
+- Five capability drill-down panels: Bank Balances, Cash Transactions, Cash Out, External Deposits, Reconciliation
+- Banking status endpoint with diagnostics + health + data quality issues
+- External deposits endpoint (CASH_IN, UNMATCHED, posted, paginated)
+- Financial Coverage integration (banking = active/degraded/not_connected)
+- Stale SYNCING recovery on startup
+- Webhook URL with correct https:// prefix
+
+**Production QA results (2026-08-20):**
+- Institution: Tartan Bank (Plaid Sandbox)
+- Cash position: $44,520.00 (4 depository accounts)
+- Transactions: 48 posted, 0 pending
+- Cash In: $1,512.66 | Cash Out: $33,448.38 | Net: -$31,935.72
+- External deposits: 6 (CASH_IN, UNMATCHED, posted)
+- Webhook URL: https://fieldcore-production-ee0d.up.railway.app/api/integrations/banking/plaid/webhook (valid)
+- Sync: triggers, completes, returns CONNECTED in <3s
+- Idempotency: 48 transactions before and after repeat sync (zero duplicates)
+- Financial Coverage: COMPLETE (all 4 sources active)
+- QuickBooks: ACTIVE (not regressed)
+- FieldCore Payments: ACTIVE (not regressed)
+
+**Alternatives considered:** Continuing to Banking V2 (Plaid Production, ACH initiation) immediately — deferred until explicit business decision.
+
+**Reasoning:** Sandbox implementation proves the full integration stack. Production credentials and live bank connections are a separate business/compliance decision that requires Plaid's production approval process.
+
+**Consequences:**
+- Banking module is stable and safe to ship to customers using Plaid Sandbox
+- Any future changes to banking require an explicit unfreeze
+- Plaid Production access must be applied for separately before real bank connections can be used
+- Security constraints (no secret to frontend, encrypted access tokens, tenant isolation) remain in effect permanently regardless of freeze status
+
+---
+
 ### [DECISION-059] Embedded Stripe payments: Payment Element + Embedded Checkout replace redirect flows
 **Date:** 2026-07-06
 **Decided by:** Kevin + Claude

@@ -10,3 +10,4 @@ uploads/
 .next/
 .env.local
 tsconfig.tsbuildinfo
+qa_banking.js

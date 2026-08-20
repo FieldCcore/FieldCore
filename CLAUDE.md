@@ -1,5 +1,5 @@
 # CLAUDE.md — FIELDCORE INC.
-# Last updated: 2026-07-22
+# Last updated: 2026-08-20
 
 ## REAL STACK
 Backend:  Express.js in src/ — routes, middleware, services, PostgreSQL pool
@@ -59,6 +59,47 @@ Light Gray #E6E6E6 — borders
 Inter (400/500/700) — all UI text
 Syne 800 / Arial Black — FIELDCORE wordmark only (ALL CAPS)
 Use ™ always. Never ®.
+
+## FROZEN MODULES — DO NOT MODIFY WITHOUT EXPLICIT UNFREEZE
+
+### Banking V1 — FROZEN 2026-08-20
+Files under freeze:
+  src/routes/banking.js
+  src/services/bankingSyncService.js
+  src/services/plaidBankingAdapter.js
+  src/services/plaidConfig.js
+  src/services/financialCoverageService.js  (banking section only)
+  src/tests/banking.test.js
+  src/db/migrate.js                         (banking tables: bank_connections, bank_accounts,
+                                             bank_transactions, bank_balance_snapshots,
+                                             bank_sync_cursors, financial_reconciliation_matches)
+  client/src/components/revenue/BankingCard.jsx
+  client/src/components/revenue/BankBalancesPanel.jsx
+  client/src/components/revenue/BankTransactionsPanel.jsx
+  client/src/components/revenue/ExternalDepositsPanel.jsx
+  client/src/components/revenue/ReconciliationPanel.jsx
+
+Freeze basis: Production QA passed 2026-08-20. 65/65 tests passing. Live on Railway + Vercel.
+  - Tartan Bank (Plaid Sandbox) connected, CONNECTED status
+  - $44,520.00 cash position across 4 depository accounts
+  - 48 transactions synced (48 posted, 0 pending)
+  - All 5 capability panels functional (Bank Balances, Cash Transactions, Cash Out,
+    External Deposits, Reconciliation)
+  - Sync, idempotency, webhook URL, financial coverage all verified in production
+
+DO NOT:
+  - Add new Plaid API calls without unfreezing
+  - Modify banking DB schema without unfreezing
+  - Change reconciliation logic without unfreezing
+  - Request Plaid Production credentials (Sandbox only until explicitly unfrozen for production)
+  - Add ACH, money movement, bill pay, transfers, lending, or card issuing
+
+SECURITY CONSTRAINTS THAT REMAIN IN EFFECT PERMANENTLY:
+  - Never send PLAID_SECRET to frontend
+  - Never return access_token to frontend
+  - Never exchange public_token in browser
+  - Access tokens encrypted at rest (AES-256-GCM)
+  - All banking queries filter by account_id from req.accountId (tenant isolation)
 
 ## CODING RULES
 - Money: integer cents. 4999 = $49.99. Never float.
