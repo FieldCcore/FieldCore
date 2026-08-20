@@ -16,12 +16,26 @@ const WEBHOOK_BASE = process.env.BACKEND_URL || process.env.RAILWAY_STATIC_URL |
 
 router.get('/plaid/status', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
+    const validEnvironments = ['sandbox', 'development', 'production'];
+    const clientId    = (process.env.PLAID_CLIENT_ID || '').trim();
+    const secret      = (process.env.PLAID_SECRET    || '').trim();
+    const environment = (process.env.PLAID_ENV       || '').trim().toLowerCase();
+
+    const diagnostics = {
+      clientIdPresent:    clientId.length > 0,
+      clientIdLength:     clientId.length,
+      secretPresent:      secret.length > 0,
+      secretLength:       secret.length,
+      environment:        environment || null,
+      environmentValid:   validEnvironments.includes(environment),
+    };
+
     const plaidStatus = getPlaidStatusSafe();
     if (!plaidStatus.configured) {
-      return res.json({ ...plaidStatus, connected: false, status: null });
+      return res.json({ ...plaidStatus, connected: false, status: null, diagnostics });
     }
     const connStatus = await bankingSync.getConnectionStatus(req.accountId);
-    return res.json({ ...plaidStatus, ...connStatus });
+    return res.json({ ...plaidStatus, ...connStatus, diagnostics });
   } catch (err) {
     console.error('[banking] status error:', err.message);
     res.status(500).json({ error: 'Could not load banking status.' });

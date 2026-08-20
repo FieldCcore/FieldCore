@@ -7,17 +7,19 @@
 const ALLOWED_ENVS = ['sandbox', 'development', 'production'];
 
 function getPlaidConfig() {
-  const clientId = (process.env.PLAID_CLIENT_ID || '').trim();
-  const secret   = (process.env.PLAID_SECRET    || '').trim();
-  const rawEnv   = (process.env.PLAID_ENV        || '').trim().toLowerCase();
-  const environment = ALLOWED_ENVS.includes(rawEnv) ? rawEnv : null;
+  const clientId    = (process.env.PLAID_CLIENT_ID || '').trim();
+  const secret      = (process.env.PLAID_SECRET    || '').trim();
+  const environment = (process.env.PLAID_ENV       || '').trim().toLowerCase();
 
-  const configured = !!(clientId && secret && environment);
+  const configured =
+    clientId.length > 0 &&
+    secret.length > 0 &&
+    ALLOWED_ENVS.includes(environment);
 
   return {
     // Safe — can be included in API status responses
     configured,
-    environment,
+    environment: ALLOWED_ENVS.includes(environment) ? environment : null,
     // Internal — server-side only, NEVER send to frontend
     clientId,
     secret,

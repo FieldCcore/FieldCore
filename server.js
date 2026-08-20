@@ -85,18 +85,44 @@ async function probeGeocoding() {
 }
 
 function validatePlaidConfig() {
-  const clientId = (process.env.PLAID_CLIENT_ID || '').trim();
-  const secret   = (process.env.PLAID_SECRET    || '').trim();
-  const env      = (process.env.PLAID_ENV        || '').trim();
+  const plaidClientId = process.env.PLAID_CLIENT_ID;
+  const plaidSecret   = process.env.PLAID_SECRET;
+  const plaidEnv      = process.env.PLAID_ENV;
 
-  if (clientId && secret && env) {
-    console.log(`[startup] Plaid configured: env=${env}`);
-  } else {
-    console.warn(
-      `[startup] Plaid NOT fully configured: clientId=${!!clientId} secret=${!!secret} env=${env || 'not set'}. ` +
-      'Banking integration will show Connect Bank only when configured. ' +
-      'Set PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV on Railway backend.'
-    );
+  console.log('[PLAID ENV RUNTIME]', {
+    clientIdExists: typeof plaidClientId === 'string' && plaidClientId.trim().length > 0,
+    clientIdLength: plaidClientId?.length ?? 0,
+    secretExists:   typeof plaidSecret === 'string' && plaidSecret.trim().length > 0,
+    secretLength:   plaidSecret?.length ?? 0,
+    envExists:      typeof plaidEnv === 'string' && plaidEnv.trim().length > 0,
+    envValue:       plaidEnv || null,
+  });
+}
+
+async function probePlaidRuntime() {
+  const { getPlaidConfig } = require('./src/services/plaidConfig');
+  const cfg = getPlaidConfig();
+
+  if (!cfg.configured) {
+    console.warn('[PLAID RUNTIME TEST] NOT RUN — runtime config reports configured=false');
+    return;
+  }
+
+  try {
+    const { plaidBankingAdapter } = require('./src/services/plaidBankingAdapter');
+    await plaidBankingAdapter.createLinkToken({
+      userId:    'fieldcore-runtime-diagnostic',
+      accountId: 'fieldcore-runtime-diagnostic',
+      webhookUrl: undefined,
+    });
+    console.log('[PLAID RUNTIME TEST] SUCCESS — link token created with runtime credentials');
+  } catch (err) {
+    const body = err?.response?.data || {};
+    console.error('[PLAID RUNTIME TEST] FAILED', {
+      error_type:    body.error_type    || null,
+      error_code:    body.error_code    || null,
+      error_message: body.error_message || err.message || null,
+    });
   }
 }
 
@@ -110,6 +136,7 @@ const server = app.listen(PORT, () => {
   // Non-blocking post-startup tasks
   runMigrations().catch(err => console.error('[DB] runMigrations error:', err.message));
   probeGeocoding();
+  probePlaidRuntime().catch(err => console.error('[PLAID RUNTIME TEST] probe threw:', err.message));
 });
 
 function shutdown(signal) {
