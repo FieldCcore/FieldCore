@@ -100,7 +100,7 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
     };
     if (webhookUrl) request.webhook = webhookUrl;
 
-    const response = await client.linkTokenCreate({ linkTokenCreateRequest: request });
+    const response = await client.linkTokenCreate(request);
     return {
       linkToken:  response.data.link_token,
       expiration: response.data.expiration,
@@ -109,9 +109,7 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
 
   async exchangePublicToken(publicToken) {
     const client = buildClient();
-    const response = await client.itemPublicTokenExchange({
-      itemPublicTokenExchangeRequest: { public_token: publicToken },
-    });
+    const response = await client.itemPublicTokenExchange({ public_token: publicToken });
     return {
       accessToken: response.data.access_token,
       itemId:      response.data.item_id,
@@ -122,11 +120,9 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
     const client = buildClient();
     try {
       const response = await client.institutionsGetById({
-        institutionsGetByIdRequest: {
-          institution_id:  institutionId,
-          country_codes:   ['US'],
-          options:         { include_optional_metadata: true },
-        },
+        institution_id: institutionId,
+        country_codes:  ['US'],
+        options:        { include_optional_metadata: true },
       });
       const inst = response.data.institution;
       return {
@@ -142,9 +138,7 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
 
   async getAccounts({ accessToken }) {
     const client = buildClient();
-    const response = await client.accountsGet({
-      accountsGetRequest: { access_token: accessToken },
-    });
+    const response = await client.accountsGet({ access_token: accessToken });
     return {
       accounts:      response.data.accounts.map(normalizeAccount),
       institutionId: response.data.item?.institution_id || null,
@@ -153,9 +147,7 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
 
   async getBalances({ accessToken }) {
     const client = buildClient();
-    const response = await client.accountsBalanceGet({
-      accountsBalanceGetRequest: { access_token: accessToken },
-    });
+    const response = await client.accountsBalanceGet({ access_token: accessToken });
     const balanceMap = {};
     for (const acct of response.data.accounts) {
       balanceMap[acct.account_id] = {
@@ -179,7 +171,7 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
       const request = { access_token: accessToken };
       if (nextCursor) request.cursor = nextCursor;
 
-      const response = await client.transactionsSync({ transactionsSyncRequest: request });
+      const response = await client.transactionsSync(request);
       const data = response.data;
 
       added.push(   ...data.added.map(normalizeTransaction));
@@ -196,19 +188,19 @@ class PlaidBankingAdapter extends BankingProviderAdapter {
   async refreshItem({ accessToken }) {
     // Plaid doesn't have a direct "refresh" — calling getAccounts triggers a fresh fetch
     const client = buildClient();
-    await client.accountsGet({ accountsGetRequest: { access_token: accessToken } });
+    await client.accountsGet({ access_token: accessToken });
     return { refreshed: true };
   }
 
   async removeItem({ accessToken }) {
     const client = buildClient();
-    await client.itemRemove({ itemRemoveRequest: { access_token: accessToken } });
+    await client.itemRemove({ access_token: accessToken });
     return { removed: true };
   }
 
   async getItemStatus({ accessToken }) {
     const client = buildClient();
-    const response = await client.itemGet({ itemGetRequest: { access_token: accessToken } });
+    const response = await client.itemGet({ access_token: accessToken });
     const item  = response.data.item;
     const error = item.error;
     return {
