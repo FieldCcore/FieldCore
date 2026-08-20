@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import RevenueKpiCard from '../RevenueKpiCard';
 import SelectDropdown from '../SelectDropdown';
 import QBMappingModal from './QBMappingModal';
@@ -879,6 +881,65 @@ function fmtSyncTime(iso) {
   return d.toLocaleDateString();
 }
 
+function FieldCorePaymentsModal({ onClose }) {
+  const navigate = useNavigate();
+  return (
+    <div
+      className="fin-modal-overlay"
+      role="presentation"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="fin-modal-body"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="fc-pay-modal-title"
+        style={{ maxWidth: 480, width: '100%' }}
+      >
+        <div className="fin-modal-header">
+          <h3 id="fc-pay-modal-title" className="fin-modal-title">Manage FieldCore Payments</h3>
+          <button type="button" className="fin-modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+            Payment Processing
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, color: 'var(--navy)' }}>Status</span>
+            <span className="fin-src-badge fin-src-badge--active">Active</span>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+            Capabilities
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {['Payments', 'Deposits', 'Cash In', 'Refunds', 'Processing Fees', 'Disputes', 'Payouts'].map(c => (
+              <span key={c} className="fin-int-cap">{c}</span>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+            Quick Links
+          </div>
+          <button
+            type="button"
+            className="fin-src-action-btn"
+            onClick={() => { navigate('/deposits'); onClose(); }}
+            style={{ display: 'block' }}
+          >
+            View Payments &amp; Deposits →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SrcCard({
   src, showConnect,
   onSyncNow, onDisconnect, onManage, onConnect,
@@ -985,6 +1046,17 @@ function SrcCard({
         {src.status === 'not_enabled' && src.paymentsStatus?.limitations?.[0] && (
           <div className="fin-src-note">{src.paymentsStatus.limitations[0]}</div>
         )}
+        {src.sourceKey === 'fieldcore_payments' && src.status === 'active' && onManage && (
+          <div className="fin-src-actions">
+            <button
+              className="fin-src-action-btn"
+              onClick={onManage}
+              aria-label="Manage FieldCore Payments"
+            >
+              Manage
+            </button>
+          </div>
+        )}
         {isAccountingConnected && (
           <div className="fin-src-actions">
             {onSyncNow && (
@@ -1073,9 +1145,12 @@ function SrcCard({
 }
 
 function FinancialDataSources({ coverage, onCoverageRefresh }) {
-  const [syncNotif,      setSyncNotif]      = useState(null); // { type: 'info'|'success'|'error', msg: string }
-  const [connectError,   setConnectError]   = useState(null);
-  const [showMapping,    setShowMapping]    = useState(false);
+  const [syncNotif,         setSyncNotif]         = useState(null); // { type: 'info'|'success'|'error', msg: string }
+  const [connectError,      setConnectError]      = useState(null);
+  const [showMapping,       setShowMapping]       = useState(false);
+  const [showPaymentsManage, setShowPaymentsManage] = useState(false);
+  const { user } = useAuth() ?? {};
+  const canManage = user?.role === 'owner' || user?.role === 'manager';
 
   if (!coverage) return null;
   const { activeSources, notEnabledSources, optionalSources } = coverage;
@@ -1157,6 +1232,7 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
               syncNotif={src.sourceKey === 'accounting' ? syncNotif : null}
               onSyncNotifDismiss={() => setSyncNotif(null)}
               {...getAccountingHandlers(src)}
+              {...(src.sourceKey === 'fieldcore_payments' && canManage ? { onManage: () => setShowPaymentsManage(true) } : {})}
             />
           );
         })}
@@ -1196,6 +1272,9 @@ function FinancialDataSources({ coverage, onCoverageRefresh }) {
           onClose={() => setShowMapping(false)}
           onSaved={() => { setShowMapping(false); onCoverageRefresh?.(); }}
         />
+      )}
+      {showPaymentsManage && (
+        <FieldCorePaymentsModal onClose={() => setShowPaymentsManage(false)} />
       )}
     </div>
   );

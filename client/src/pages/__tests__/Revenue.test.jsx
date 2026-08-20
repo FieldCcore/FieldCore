@@ -11,7 +11,12 @@ vi.mock('../../api', () => ({
   },
 }));
 
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: vi.fn(() => ({ user: { role: 'owner' } })),
+}));
+
 import api from '../../api';
+import { useAuth } from '../../context/AuthContext';
 
 // ── Fixture data ───────────────────────────────────────────────────────────────
 
@@ -1555,5 +1560,71 @@ describe('Revenue — Financials workspace', () => {
     expect(screen.queryByText('REAUTH_REQUIRED')).not.toBeInTheDocument();
     expect(screen.queryByText('SYNC_ERROR')).not.toBeInTheDocument();
     expect(screen.queryByText('NOT_CONNECTED')).not.toBeInTheDocument();
+  });
+});
+
+// ── FieldCore Payments Manage button ──────────────────────────────────────────
+
+describe('Revenue — FieldCore Payments Manage button', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({ user: { role: 'owner' } });
+  });
+
+  it('renders Manage button for owner role when FieldCore Payments is active', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /manage fieldcore payments/i })).toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Payments does NOT render Sync Now', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('FieldCore Payments')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /sync now fieldcore/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /syncing.*fieldcore/i })).not.toBeInTheDocument();
+  });
+
+  it('FieldCore Payments does NOT render Disconnect', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('FieldCore Payments')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /disconnect fieldcore/i })).not.toBeInTheDocument();
+  });
+
+  it('Manage button uses fin-src-action-btn class', async () => {
+    renderRevenue('?view=financials');
+    const btn = await screen.findByRole('button', { name: /manage fieldcore payments/i });
+    expect(btn.className).toContain('fin-src-action-btn');
+  });
+
+  it('Manage button opens FieldCore Payments modal', async () => {
+    renderRevenue('?view=financials');
+    const btn = await screen.findByRole('button', { name: /manage fieldcore payments/i });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /manage fieldcore payments/i })).toBeInTheDocument();
+    });
+  });
+
+  it('FieldCore Payments modal shows Payment Processing section with Active status', async () => {
+    renderRevenue('?view=financials');
+    const btn = await screen.findByRole('button', { name: /manage fieldcore payments/i });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /manage fieldcore payments/i })).toBeInTheDocument();
+    });
+    expect(screen.getByText('Payment Processing')).toBeInTheDocument();
+  });
+
+  it('Manage button is hidden for tech role', async () => {
+    useAuth.mockReturnValue({ user: { role: 'tech' } });
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('FieldCore Payments')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /manage fieldcore payments/i })).not.toBeInTheDocument();
   });
 });
