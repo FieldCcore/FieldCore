@@ -134,7 +134,12 @@ const server = app.listen(PORT, () => {
   validatePlaidConfig();
   scheduler.startReminderJob();
   // Non-blocking post-startup tasks
-  runMigrations().catch(err => console.error('[DB] runMigrations error:', err.message));
+  runMigrations()
+    .then(() => {
+      const { recoverStaleSyncingConnections } = require('./src/services/bankingSyncService');
+      return recoverStaleSyncingConnections();
+    })
+    .catch(err => console.error('[DB] runMigrations error:', err.message));
   probeGeocoding();
   probePlaidRuntime().catch(err => console.error('[PLAID RUNTIME TEST] probe threw:', err.message));
 });

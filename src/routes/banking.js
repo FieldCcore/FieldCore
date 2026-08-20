@@ -151,14 +151,19 @@ router.post('/plaid/sync', requireAuth, requireRole('owner', 'manager'), async (
 
   try {
     const { rows } = await pool.query(
-      `SELECT id, status FROM bank_connections WHERE id = $1 AND account_id = $2 AND status != 'DISCONNECTED'`,
+      `SELECT id, status, last_sync_at FROM bank_connections WHERE id = $1 AND account_id = $2 AND status != 'DISCONNECTED'`,
       [connectionId, req.accountId]
     );
     if (!rows[0]) {
       return res.status(404).json({ error: 'Connection not found.' });
     }
     if (rows[0].status === 'SYNCING') {
-      return res.json({ syncing: true, message: 'A sync is already in progress.' });
+      const lastSync = rows[0].last_sync_at;
+      const ageMs    = lastSync ? Date.now() - new Date(lastSync).getTime() : Infinity;
+      if (ageMs < 5 * 60 * 1000) {
+        return res.json({ syncing: true, message: 'A sync is already in progress.' });
+      }
+      // Stale SYNCING (> 5 minutes) — allow re-trigger to recover from stuck state
     }
 
     bankingSync.runSync(connectionId, req.accountId).catch(err =>

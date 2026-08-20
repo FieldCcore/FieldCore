@@ -322,6 +322,12 @@ async function runSync(connectionId, accountId) {
       lastErrorMessageSafe: null,
     });
 
+    console.log(
+      `[banking-sync] complete: connectionId=${connectionId} ` +
+      `added=${syncResult.added.length} modified=${syncResult.modified.length} removed=${syncResult.removed.length} ` +
+      `cursor=${syncResult.nextCursor ? 'saved' : 'none'}`
+    );
+
     return {
       added:    syncResult.added.length,
       modified: syncResult.modified.length,
@@ -522,6 +528,31 @@ async function handleWebhookEvent(webhookEvent) {
   }
 }
 
+// Resets connections stuck in SYNCING state (e.g. after server restart mid-sync).
+// Called once at startup after migrations complete.
+async function recoverStaleSyncingConnections() {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE bank_connections
+       SET status                 = 'SYNC_ERROR',
+           last_error_code        = 'SERVER_RESTART',
+           last_error_message_safe = 'Sync was interrupted by a server restart. Click Retry Sync to resume.',
+           updated_at             = NOW()
+       WHERE status = 'SYNCING'
+         AND updated_at < NOW() - INTERVAL '10 minutes'
+       RETURNING id, institution_name`
+    );
+    if (rows.length > 0) {
+      console.warn(
+        `[banking] Recovered ${rows.length} stale SYNCING connection(s): ` +
+        rows.map(r => r.institution_name || r.id).join(', ')
+      );
+    }
+  } catch (err) {
+    console.error('[banking] recoverStaleSyncingConnections error:', err.message);
+  }
+}
+
 module.exports = {
   runSync,
   createConnection,
@@ -532,5 +563,6 @@ module.exports = {
   getCashFlowSummary,
   getTotalCashPosition,
   handleWebhookEvent,
+  recoverStaleSyncingConnections,
   CONN_STATUSES,
 };

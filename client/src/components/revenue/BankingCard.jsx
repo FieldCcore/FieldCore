@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import api from '../../api';
 
@@ -261,6 +261,39 @@ export function BankingCard({ src, onCoverageRefresh }) {
       loadConnections();
     }
   }, [connInfo, loadConnections]);
+
+  // Stable ref so the poll callback always calls the latest onCoverageRefresh
+  const onRefreshRef = useRef(onCoverageRefresh);
+  useEffect(() => { onRefreshRef.current = onCoverageRefresh; });
+
+  // Poll status while SYNCING — stops when backend resolves or after 3 minutes
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (cardStatus !== 'SYNCING') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    if (pollRef.current) return; // Already polling for this SYNCING state
+
+    let ticks = 0;
+    pollRef.current = setInterval(async () => {
+      if (++ticks > 60) { // 3-minute hard stop
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        return;
+      }
+      try {
+        const res = await api.get('/integrations/banking/plaid/status');
+        if (res.data.status !== 'SYNCING') {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          onRefreshRef.current?.(); // Refresh full coverage state
+        }
+      } catch { /* non-fatal — keep polling */ }
+    }, 3000);
+
+    return () => { clearInterval(pollRef.current); pollRef.current = null; };
+  }, [cardStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePlaidSuccess(publicToken) {
     setExchanging(true);
