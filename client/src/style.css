@@ -6041,7 +6041,7 @@ body {
 .ops-section-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Bare heading row — sits directly on page background, no card */
@@ -6062,6 +6062,14 @@ body {
 /* Bare table — adds corner radius directly to thead cells so no enclosing card is needed */
 .ops-bare-table thead tr th:first-child { border-top-left-radius: 8px; }
 .ops-bare-table thead tr th:last-child  { border-top-right-radius: 8px; }
+
+/* ops-table-card — the table IS the card; heading and notes sit outside on page background */
+.ops-table-card {
+  background: #fff;
+  border: 1px solid var(--lightgray);
+  border-radius: 10px;
+  overflow: hidden;
+}
 
 /* Operations sub-card — independent card with full FieldCore card treatment */
 .ops-sub-card {

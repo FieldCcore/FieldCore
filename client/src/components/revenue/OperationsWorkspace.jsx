@@ -165,8 +165,9 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
       <div className="ops-empty-hint">Assign technicians to jobs to see individual performance metrics here.</div>
     </div>
   ) : (
-    <div className="table-wrap">
-      <table className="table ops-team-table ops-bare-table" aria-label="Team performance">
+    <div className="ops-table-card">
+      <div className="table-wrap">
+        <table className="table ops-team-table" aria-label="Team performance">
         <thead>
           <tr>
             <th scope="col">Team Member</th>
@@ -221,7 +222,8 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 
@@ -852,10 +854,11 @@ function JobCompletionSection({ filterStart, filterEnd }) {
         </div>
       )}
 
-      {/* C: Service breakdown table — standalone, no outer card */}
+      {/* C: Service breakdown table — standalone card */}
       {!loading && !error && byService.length > 0 && (
-        <div className="table-wrap">
-          <table className="table ops-completion-table ops-bare-table" aria-label="Completion by service">
+        <div className="ops-table-card">
+          <div className="table-wrap">
+            <table className="table ops-completion-table" aria-label="Completion by service">
             <thead>
               <tr>
                 <th scope="col">Service</th>
@@ -883,6 +886,7 @@ function JobCompletionSection({ filterStart, filterEnd }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
