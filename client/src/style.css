@@ -6037,6 +6037,24 @@ body {
 /* Legacy ops-kpi-row — no longer used for the KPI section */
 .ops-kpi-row { margin-bottom: 0; }
 
+/* ops-ws-body — Operations-specific body gap override (Financials uses 18px, Operations uses 28px) */
+.ops-ws-body { gap: 28px; }
+
+/* ops-kpi-btn — transparent clickable wrapper around a KpiCard */
+.ops-kpi-btn {
+  display: block; width: 100%; background: none; border: none;
+  padding: 0; cursor: pointer; text-align: left; border-radius: 10px;
+  transition: box-shadow 0.15s;
+}
+.ops-kpi-btn:hover,
+.ops-kpi-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--sand);
+  outline: none;
+}
+
+/* ops-drawer-body--wide — wider drawer for commission / jobs tables */
+.ops-drawer-body--wide { width: 680px; max-width: 96vw; }
+
 /* Operations section group — transparent column; page bg shows as gap between sub-cards */
 .ops-section-group {
   display: flex;

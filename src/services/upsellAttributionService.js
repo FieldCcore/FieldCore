@@ -79,18 +79,36 @@ async function getUpsellSummary(accountId, { start, end }) {
       origByUser[r.user_id] = pf(r.original_sales);
     }
 
+    let commByUser = {};
+    try {
+      const { rows: commRows } = await pool.query(
+        `SELECT ce.user_id, COALESCE(SUM(ce.commission_amount), 0) AS commission_owed
+         FROM commission_entries ce
+         WHERE ce.account_id = $1
+           AND ce.status IN ('pending', 'approved', 'payable')
+           AND ce.earned_at >= $2::date
+           AND ce.earned_at <  ($3::date + INTERVAL '1 day')
+         GROUP BY ce.user_id`,
+        [accountId, s, e]
+      );
+      for (const r of commRows) {
+        commByUser[r.user_id] = pf(r.commission_owed);
+      }
+    } catch { /* commission_entries may not exist yet */ }
+
     const members = upsellRows.map(r => {
       const orig   = origByUser[r.user_id] || 0;
       const upsell = pf(r.upsell_revenue);
       return {
-        userId:        r.user_id,
-        name:          r.member_name,
-        userRole:      r.user_role,
-        originalSales: orig,
-        upsellRevenue: upsell,
-        upsellCount:   pi(r.upsell_count),
-        avgUpsell:     pf(r.avg_upsell),
-        finalJobValue: pf(orig + upsell),
+        userId:          r.user_id,
+        name:            r.member_name,
+        userRole:        r.user_role,
+        originalSales:   orig,
+        upsellRevenue:   upsell,
+        upsellCount:     pi(r.upsell_count),
+        avgUpsell:       pf(r.avg_upsell),
+        finalJobValue:   pf(orig + upsell),
+        commissionOwed:  commByUser[r.user_id] ?? null,
       };
     });
 

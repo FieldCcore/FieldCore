@@ -359,6 +359,31 @@ router.get('/operations/upsells', requireAuth, requireRole('owner', 'manager'), 
   }
 });
 
+router.get('/operations/jobs', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  const accountId = req.accountId;
+  const params = [accountId];
+  let dateFilter = '';
+  if (start) { params.push(start); dateFilter += ` AND j.scheduled_at >= $${params.length}::date`; }
+  if (end)   { params.push(end);   dateFilter += ` AND j.scheduled_at <  ($${params.length}::date + INTERVAL '1 day')`; }
+  try {
+    const { rows } = await pool.query(
+      `SELECT j.id, j.service_type, j.amount, j.status, j.scheduled_at,
+              COALESCE(u.name, 'Unassigned') AS tech_name
+       FROM jobs j
+       LEFT JOIN users u ON u.id = j.tech_id AND u.account_id = $1
+       WHERE j.account_id = $1 AND j.status = 'complete'${dateFilter}
+       ORDER BY j.scheduled_at DESC
+       LIMIT 200`,
+      params
+    );
+    res.json({ jobs: rows, count: rows.length });
+  } catch (err) {
+    console.error('[revenue] operations/jobs error', err.message);
+    res.status(500).json({ error: 'Jobs data could not be loaded.' });
+  }
+});
+
 // ── Technician Revenue ────────────────────────────────────────────────────────
 router.get('/technicians', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { start, end } = req.query;

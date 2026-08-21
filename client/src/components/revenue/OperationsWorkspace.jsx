@@ -49,65 +49,443 @@ function formatRole(r) {
   return (r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── Drawer shell ──────────────────────────────────────────────────────────────
+
+function OpsDrawer({ id, title, onClose, children, wide }) {
+  return (
+    <div className="fin-modal-overlay" role="presentation" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div
+        className={`fin-modal-body ops-drawer-body${wide ? ' ops-drawer-body--wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={id}
+      >
+        <div className="fin-modal-header">
+          <h3 id={id} className="fin-modal-title">{title}</h3>
+          <button type="button" className="fin-modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── OpsJobsDrawer (Jobs Completed / Production Value) ─────────────────────────
+
+function OpsJobsDrawer({ filterStart, filterEnd, onClose }) {
+  const { data, loading, error } = useOpsData(
+    '/revenue/operations/jobs',
+    { start: filterStart, end: filterEnd },
+    [filterStart, filterEnd]
+  );
+  const jobs = data?.jobs || [];
+  const total = jobs.reduce((t, j) => t + (parseFloat(j.amount) || 0), 0);
+
+  return (
+    <OpsDrawer id="ops-jobs-drawer-title" title="Completed Jobs" onClose={onClose} wide>
+      {loading ? (
+        <div className="ops-section-loading" style={{ margin: '24px 0' }} />
+      ) : error ? (
+        <div className="ops-section-error">{error}</div>
+      ) : (
+        <>
+          <div className="ops-drawer-summary">
+            <div className="ops-drawer-stat">
+              <div className="ops-drawer-stat-label">Jobs Completed</div>
+              <div className="ops-drawer-stat-value">{jobs.length}</div>
+            </div>
+            <div className="ops-drawer-stat">
+              <div className="ops-drawer-stat-label">Production Value</div>
+              <div className="ops-drawer-stat-value">{fmtMoney(total)}</div>
+            </div>
+          </div>
+          <div className="ops-drawer-section-title">Job Log ({jobs.length})</div>
+          {jobs.length === 0 ? (
+            <div className="ops-empty-state" style={{ padding: '16px 0' }}>No completed jobs in this period.</div>
+          ) : (
+            <div className="ops-drawer-jobs">
+              {jobs.map(j => (
+                <div key={j.id} className="ops-drawer-job-row">
+                  <div className="ops-drawer-job-info">
+                    <span className="ops-drawer-job-service">{j.service_type || 'Unspecified'}</span>
+                    <span className="ops-drawer-job-date">
+                      {j.scheduled_at ? new Date(j.scheduled_at).toLocaleDateString() : ''}
+                    </span>
+                    {j.tech_name && j.tech_name !== 'Unassigned' && (
+                      <span className="ops-drawer-job-date">· {j.tech_name}</span>
+                    )}
+                  </div>
+                  <div className="ops-drawer-job-right">
+                    <span className="ops-drawer-job-amount">{fmtMoney(j.amount)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </OpsDrawer>
+  );
+}
+
+// ── OpsCommissionDrawer (Commissions Owed) ────────────────────────────────────
+
+function OpsCommissionDrawer({ filterStart, filterEnd, onClose }) {
+  const { data, loading, error } = useOpsData(
+    '/revenue/operations/commissions',
+    { start: filterStart, end: filterEnd },
+    [filterStart, filterEnd]
+  );
+
+  const summary  = data?.summary;
+  const entries  = data?.entries || [];
+  const hasRules = data?.hasRules;
+
+  const STATUS_COLOR = {
+    pending:  '#B45309',
+    approved: 'var(--navy)',
+    payable:  '#047857',
+    paid:     'var(--green)',
+    voided:   'var(--steel)',
+  };
+
+  return (
+    <OpsDrawer id="ops-comm-drawer-title" title="Commissions Owed" onClose={onClose} wide>
+      {loading ? (
+        <div className="ops-section-loading" style={{ margin: '24px 0' }} />
+      ) : error ? (
+        <div className="ops-section-error">{error}</div>
+      ) : !hasRules ? (
+        <div className="ops-empty-state">
+          <div className="ops-empty-icon" aria-hidden="true"><DollarSign size={22} /></div>
+          <div className="ops-empty-msg">No compensation rules configured.</div>
+          <div className="ops-empty-hint">
+            Set up compensation rules in Settings to start tracking commissions automatically.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="ops-drawer-summary">
+            {[
+              { label: 'Owed',     value: fmtMoney(summary?.owed || 0)             },
+              { label: 'Pending',  value: fmtMoney(summary?.pending?.amount  || 0) },
+              { label: 'Approved', value: fmtMoney(summary?.approved?.amount || 0) },
+              { label: 'Payable',  value: fmtMoney(summary?.payable?.amount  || 0) },
+              { label: 'Paid',     value: fmtMoney(summary?.paid?.amount     || 0) },
+            ].map(s => (
+              <div key={s.label} className="ops-drawer-stat">
+                <div className="ops-drawer-stat-label">{s.label}</div>
+                <div className="ops-drawer-stat-value">{s.value}</div>
+              </div>
+            ))}
+          </div>
+          <div className="ops-drawer-section-title">Entries ({entries.length})</div>
+          {entries.length === 0 ? (
+            <div style={{ padding: '12px 0', fontSize: 12, color: 'var(--steel)' }}>
+              No commission entries for this period.
+            </div>
+          ) : (
+            <div className="ops-drawer-jobs">
+              {entries.map(e => (
+                <div key={e.id} className="ops-drawer-job-row">
+                  <div className="ops-drawer-job-info" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                    <span className="ops-drawer-job-service">{e.memberName}</span>
+                    <span className="ops-drawer-job-date">
+                      {e.serviceType || 'Unspecified'} · {e.ruleName || '—'}
+                      {e.commissionType === 'percentage' && e.ratePercent != null
+                        ? ` (${(e.ratePercent * 100).toFixed(0)}%)`
+                        : ''}
+                    </span>
+                  </div>
+                  <div className="ops-drawer-job-right" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                    <span className="ops-drawer-job-amount">{fmtMoney(e.commissionAmount)}</span>
+                    <span className="ops-status-badge" style={{ fontSize: 10, color: STATUS_COLOR[e.status] || 'var(--slate)' }}>
+                      {e.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 16, padding: '10px 0', borderTop: '1px solid var(--lightgray)', fontSize: 11, color: 'var(--steel)' }}>
+            To configure compensation rules, go to <strong>Settings → Compensation</strong>.
+          </div>
+        </>
+      )}
+    </OpsDrawer>
+  );
+}
+
+// ── OpsUpsellKpiDrawer (Upsell Revenue) ───────────────────────────────────────
+
+function OpsUpsellKpiDrawer({ filterStart, filterEnd, onClose }) {
+  const { data, loading, error } = useOpsData(
+    '/revenue/operations/upsells',
+    { start: filterStart, end: filterEnd },
+    [filterStart, filterEnd]
+  );
+  const members = data?.members || [];
+
+  return (
+    <OpsDrawer id="ops-upsell-kpi-drawer-title" title="Upsell Revenue" onClose={onClose}>
+      {loading ? (
+        <div className="ops-section-loading" style={{ margin: '24px 0' }} />
+      ) : error ? (
+        <div className="ops-section-error">{error}</div>
+      ) : members.length === 0 ? (
+        <div className="ops-empty-state">
+          <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={22} /></div>
+          <div className="ops-empty-msg">No upsells in this period.</div>
+          <div className="ops-empty-hint">Upsells appear when team members add revenue beyond the original booked scope.</div>
+        </div>
+      ) : (
+        <>
+          <div className="ops-drawer-summary">
+            <div className="ops-drawer-stat">
+              <div className="ops-drawer-stat-label">Total Upsell Revenue</div>
+              <div className="ops-drawer-stat-value">{fmtMoney(data?.total?.upsellRevenue || 0)}</div>
+            </div>
+            <div className="ops-drawer-stat">
+              <div className="ops-drawer-stat-label">Upsell Count</div>
+              <div className="ops-drawer-stat-value">{data?.total?.upsellCount || 0}</div>
+            </div>
+          </div>
+          <div className="ops-drawer-section-title">By Team Member ({members.length})</div>
+          <div className="ops-drawer-jobs">
+            {members.map(m => (
+              <div key={m.userId} className="ops-drawer-job-row">
+                <div className="ops-drawer-job-info" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                  <span className="ops-drawer-job-service">{m.name}</span>
+                  <span className="ops-drawer-job-date">
+                    {m.upsellCount} upsell{m.upsellCount !== 1 ? 's' : ''} · avg {fmtMoney(m.avgUpsell)}
+                  </span>
+                </div>
+                <div className="ops-drawer-job-right">
+                  <span className="ops-drawer-job-amount">{fmtMoney(m.upsellRevenue)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {data?.historicalNote && (
+            <div style={{ marginTop: 12, fontSize: 10, color: 'var(--steel)', fontStyle: 'italic' }}>
+              {data.historicalNote}
+            </div>
+          )}
+        </>
+      )}
+    </OpsDrawer>
+  );
+}
+
+// ── OpsLaborDrawer (Revenue per Labor Hour) ───────────────────────────────────
+
+function OpsLaborDrawer({ filterStart, filterEnd, onClose }) {
+  const { data, loading, error } = useOpsData(
+    '/revenue/operations/team',
+    { start: filterStart, end: filterEnd },
+    [filterStart, filterEnd]
+  );
+  const members = (data?.members || []).filter(m => m.laborHours > 0);
+
+  return (
+    <OpsDrawer id="ops-labor-drawer-title" title="Revenue per Labor Hour" onClose={onClose}>
+      {loading ? (
+        <div className="ops-section-loading" style={{ margin: '24px 0' }} />
+      ) : error ? (
+        <div className="ops-section-error">{error}</div>
+      ) : members.length === 0 ? (
+        <div className="ops-empty-state">
+          <div className="ops-empty-icon" aria-hidden="true"><Clock size={22} /></div>
+          <div className="ops-empty-msg">No labor data in this period.</div>
+        </div>
+      ) : (
+        <>
+          <div className="ops-drawer-section-title">By Team Member</div>
+          <div className="ops-drawer-jobs">
+            {members.map(m => (
+              <div key={m.userId} className="ops-drawer-job-row">
+                <div className="ops-drawer-job-info" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                  <span className="ops-drawer-job-service">{m.name}</span>
+                  <span className="ops-drawer-job-date">{m.laborHours}h scheduled</span>
+                </div>
+                <div className="ops-drawer-job-right">
+                  <span className="ops-drawer-job-amount">
+                    {m.revenuePerLaborHour != null ? `${fmtMoney(m.revenuePerLaborHour)} / hr` : '—'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 10, color: 'var(--steel)', fontStyle: 'italic' }}>
+            Labor hours reflect scheduled job duration, not recorded time.
+          </div>
+        </>
+      )}
+    </OpsDrawer>
+  );
+}
+
+// ── OpsCompletionRateDrawer ───────────────────────────────────────────────────
+
+function OpsCompletionRateDrawer({ filterStart, filterEnd, onClose }) {
+  const { data, loading, error } = useOpsData(
+    '/revenue/operations/completion',
+    { start: filterStart, end: filterEnd },
+    [filterStart, filterEnd]
+  );
+  const s         = data?.summary;
+  const byService = data?.byService || [];
+
+  return (
+    <OpsDrawer id="ops-completion-drawer-title" title="Completion Rate" onClose={onClose}>
+      {loading ? (
+        <div className="ops-section-loading" style={{ margin: '24px 0' }} />
+      ) : error ? (
+        <div className="ops-section-error">{error}</div>
+      ) : (
+        <>
+          <div className="ops-drawer-summary">
+            {[
+              { label: 'Completion Rate', value: fmtPct(s?.completionRate)                                   },
+              { label: 'Completed',       value: fmtNum(s?.completed)                                        },
+              { label: 'Cancelled',       value: fmtNum(s?.cancelled)                                        },
+              { label: 'No-Shows',        value: fmtNum(s?.noShows)                                          },
+              { label: 'Revenue Impact',  value: s?.revenueImpact != null ? fmtMoney(s.revenueImpact) : '—' },
+            ].map(st => (
+              <div key={st.label} className="ops-drawer-stat">
+                <div className="ops-drawer-stat-label">{st.label}</div>
+                <div className="ops-drawer-stat-value">{st.value}</div>
+              </div>
+            ))}
+          </div>
+          {byService.length > 0 && (
+            <>
+              <div className="ops-drawer-section-title">By Service</div>
+              <div className="ops-drawer-jobs">
+                {byService.map((svc, i) => (
+                  <div key={i} className="ops-drawer-job-row">
+                    <div className="ops-drawer-job-info">
+                      <span className="ops-drawer-job-service">{svc.service}</span>
+                      <span className="ops-drawer-job-date">{svc.completed}✓ {svc.cancelled}✗ {svc.noShows} no-show</span>
+                    </div>
+                    <div className="ops-drawer-job-right">
+                      <span className="ops-drawer-job-amount">
+                        {svc.completionRate != null
+                          ? <span style={{ color: svc.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
+                              {fmtPct(svc.completionRate)}
+                            </span>
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{ marginTop: 12, fontSize: 10, color: 'var(--steel)', fontStyle: 'italic' }}>
+            Rate = completed ÷ (completed + cancelled + no-shows) for jobs scheduled in period.
+          </div>
+        </>
+      )}
+    </OpsDrawer>
+  );
+}
+
+// ── UpsellMemberDrawer ────────────────────────────────────────────────────────
+
+function UpsellMemberDrawer({ member, onClose }) {
+  return (
+    <OpsDrawer id="ops-upsell-member-title" title={member.name} onClose={onClose}>
+      <div className="ops-drawer-summary">
+        {[
+          { label: 'Upsell Revenue',  value: fmtMoney(member.upsellRevenue)                                   },
+          { label: 'Upsell Count',    value: String(member.upsellCount)                                        },
+          { label: 'Avg Upsell',      value: member.avgUpsell > 0 ? fmtMoney(member.avgUpsell) : '—'          },
+          { label: 'Original Sales',  value: fmtMoney(member.originalSales)                                    },
+          { label: 'Final Job Value', value: fmtMoney(member.finalJobValue)                                    },
+          { label: 'Commission Owed', value: member.commissionOwed != null ? fmtMoney(member.commissionOwed) : '—' },
+        ].map(s => (
+          <div key={s.label} className="ops-drawer-stat">
+            <div className="ops-drawer-stat-label">{s.label}</div>
+            <div className="ops-drawer-stat-value">{s.value}</div>
+          </div>
+        ))}
+      </div>
+    </OpsDrawer>
+  );
+}
+
 // ── OpsKpiRow ─────────────────────────────────────────────────────────────────
 
-function OpsKpiRow({ data, loading }) {
-  const kpis    = data?.kpis || {};
-  const upsell  = kpis.upsellRevenue || {};
+function OpsKpiRow({ data, loading, onKpiClick }) {
+  const kpis     = data?.kpis || {};
+  const upsell   = kpis.upsellRevenue || {};
   const commOwed = kpis.commissionsOwed || {};
-  const revHr   = kpis.revenuePerLaborHour || {};
+  const revHr    = kpis.revenuePerLaborHour || {};
 
   const completionVal  = kpis.completionRate?.status === 'ok' ? parseFloat(kpis.completionRate.value) : null;
   const completionTone = completionVal == null ? 'neutral' : completionVal >= 0.75 ? 'success' : 'warning';
 
   return (
     <div className="ops-kpi-grid" aria-label="Operations KPIs">
-      <KpiCard
-        icon={Briefcase}
-        title="Jobs Completed"
-        value={kpis.jobsCompleted?.status === 'ok' ? fmtNum(kpis.jobsCompleted.value) : '—'}
-        tone={kpis.jobsCompleted?.value > 0 ? 'success' : 'neutral'}
-        loading={loading}
-      />
-      <KpiCard
-        icon={Target}
-        title="Completion Rate"
-        value={kpis.completionRate?.status === 'ok' ? fmtPct(kpis.completionRate.value) : '—'}
-        subtitle={kpis.completionRate?.status === 'unavailable' ? 'No eligible jobs in period' : undefined}
-        tone={completionTone}
-        loading={loading}
-      />
-      <KpiCard
-        icon={BarChart2}
-        title="Production Value"
-        value={kpis.productionValue?.status === 'ok' ? fmtMoney(kpis.productionValue.value) : '—'}
-        tone={kpis.productionValue?.value > 0 ? 'success' : 'neutral'}
-        loading={loading}
-      />
-      <KpiCard
-        icon={TrendingUp}
-        title="Upsell Revenue"
-        value={upsell.status === 'ok' ? fmtMoney(upsell.value) : '—'}
-        subtitle={upsell.status === 'unavailable' ? 'Not yet available' : upsell.value === 0 ? 'No upsells this period' : undefined}
-        tone={upsell.status === 'ok' && upsell.value > 0 ? 'success' : 'neutral'}
-        loading={loading}
-      />
-      <KpiCard
-        icon={DollarSign}
-        title="Commissions Owed"
-        value={commOwed.status === 'ok' ? fmtMoney(commOwed.value) : '—'}
-        subtitle={commOwed.status === 'unavailable' ? 'No commission rules' : undefined}
-        tone={commOwed.status === 'ok' && commOwed.value > 0 ? 'warning' : 'neutral'}
-        loading={loading}
-      />
-      <KpiCard
-        icon={Clock}
-        title="Rev / Labor Hour"
-        value={revHr.status === 'ok' ? fmtMoney(revHr.value) : '—'}
-        subtitle={revHr.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined}
-        tone={revHr.status === 'ok' && revHr.value > 0 ? 'success' : 'neutral'}
-        loading={loading}
-      />
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('jobsCompleted')} aria-label="Jobs Completed">
+        <KpiCard
+          icon={Briefcase}
+          title="Jobs Completed"
+          value={kpis.jobsCompleted?.status === 'ok' ? fmtNum(kpis.jobsCompleted.value) : '—'}
+          tone={kpis.jobsCompleted?.value > 0 ? 'success' : 'neutral'}
+          loading={loading}
+        />
+      </button>
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('completionRate')} aria-label="Completion Rate">
+        <KpiCard
+          icon={Target}
+          title="Completion Rate"
+          value={kpis.completionRate?.status === 'ok' ? fmtPct(kpis.completionRate.value) : '—'}
+          subtitle={kpis.completionRate?.status === 'unavailable' ? 'No eligible jobs in period' : undefined}
+          tone={completionTone}
+          loading={loading}
+        />
+      </button>
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('productionValue')} aria-label="Production Value">
+        <KpiCard
+          icon={BarChart2}
+          title="Production Value"
+          value={kpis.productionValue?.status === 'ok' ? fmtMoney(kpis.productionValue.value) : '—'}
+          tone={kpis.productionValue?.value > 0 ? 'success' : 'neutral'}
+          loading={loading}
+        />
+      </button>
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('upsellRevenue')} aria-label="Upsell Revenue">
+        <KpiCard
+          icon={TrendingUp}
+          title="Upsell Revenue"
+          value={upsell.status === 'ok' ? fmtMoney(upsell.value) : '—'}
+          subtitle={upsell.status === 'unavailable' ? 'Not yet available' : upsell.value === 0 ? 'No upsells this period' : undefined}
+          tone={upsell.status === 'ok' && upsell.value > 0 ? 'success' : 'neutral'}
+          loading={loading}
+        />
+      </button>
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('commissionsOwed')} aria-label="Commissions Owed">
+        <KpiCard
+          icon={DollarSign}
+          title="Commissions Owed"
+          value={commOwed.status === 'ok' ? fmtMoney(commOwed.value) : '—'}
+          subtitle={commOwed.status === 'unavailable' ? 'No commission rules' : undefined}
+          tone={commOwed.status === 'ok' && commOwed.value > 0 ? 'warning' : 'neutral'}
+          loading={loading}
+        />
+      </button>
+      <button type="button" className="ops-kpi-btn" onClick={() => onKpiClick('revenuePerLaborHour')} aria-label="Rev / Labor Hour">
+        <KpiCard
+          icon={Clock}
+          title="Rev / Labor Hour"
+          value={revHr.status === 'ok' ? fmtMoney(revHr.value) : '—'}
+          subtitle={revHr.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined}
+          tone={revHr.status === 'ok' && revHr.value > 0 ? 'success' : 'neutral'}
+          loading={loading}
+        />
+      </button>
     </div>
   );
 }
@@ -120,9 +498,9 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
     { start: filterStart, end: filterEnd },
     [filterStart, filterEnd]
   );
-  const [sortKey, setSortKey]     = useState('productionValue');
-  const [sortDir, setSortDir]     = useState('desc');
-  const [selected, setSelected]   = useState(null);
+  const [sortKey, setSortKey]   = useState('productionValue');
+  const [sortDir, setSortDir]   = useState('desc');
+  const [selected, setSelected] = useState(null);
 
   const members = data?.members || [];
 
@@ -172,12 +550,12 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
           <tr>
             <th scope="col">Team Member</th>
             <th scope="col">Role</th>
-            <SortTh col="jobsCompleted"   label="Jobs"       />
-            <SortTh col="productionValue" label="Prod. Value" />
-            <SortTh col="avgTicket"       label="Avg Ticket"  />
-            <SortTh col="completionRate"  label="Completion"  />
-            <SortTh col="laborHours"      label="Labor Hrs"   />
-            <SortTh col="revenuePerLaborHour" label="Rev / Hr" />
+            <SortTh col="jobsCompleted"      label="Jobs"        />
+            <SortTh col="productionValue"    label="Prod. Value" />
+            <SortTh col="avgTicket"          label="Avg Ticket"  />
+            <SortTh col="completionRate"     label="Completion"  />
+            <SortTh col="laborHours"         label="Labor Hrs"   />
+            <SortTh col="revenuePerLaborHour" label="Rev / Hr"   />
             <th scope="col">Commission</th>
             <th scope="col" />
           </tr>
@@ -341,6 +719,7 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
     { start: filterStart, end: filterEnd },
     [filterStart, filterEnd]
   );
+  const [selectedMember, setSelectedMember] = useState(null);
 
   const members        = data?.members || [];
   const hasAttribution = data?.hasAttribution;
@@ -385,6 +764,8 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
                   <th scope="col">Upsell Count</th>
                   <th scope="col">Avg Upsell</th>
                   <th scope="col">Final Job Value</th>
+                  <th scope="col">Comm. Owed</th>
+                  <th scope="col" />
                 </tr>
               </thead>
               <tbody>
@@ -399,6 +780,21 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
                     <td>{m.upsellCount}</td>
                     <td>{m.avgUpsell > 0 ? fmtMoney(m.avgUpsell) : '—'}</td>
                     <td><strong>{fmtMoney(m.finalJobValue)}</strong></td>
+                    <td>
+                      {m.commissionOwed != null
+                        ? <span className="ops-commission-chip">{fmtMoney(m.commissionOwed)}</span>
+                        : <span style={{ color: 'var(--steel)', fontSize: 11 }}>—</span>}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ops-detail-btn"
+                        onClick={() => setSelectedMember(m)}
+                        aria-label={`View upsell details for ${m.name}`}
+                      >
+                        Details →
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -412,374 +808,10 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
           <span className="ops-limitation-note">{data.historicalNote}</span>
         </div>
       )}
-    </div>
-  );
-}
 
-// ── CommissionSection ─────────────────────────────────────────────────────────
-
-function CompensationRulesModal({ onClose }) {
-  const { data, loading, error, refetch } = useOpsData(
-    '/operations/compensation-rules', {}, []
-  );
-  const [form, setForm] = useState({
-    name: '', commission_type: 'percentage', rate_percent: '',
-    flat_amount: '', basis: 'completed_revenue', trigger: 'job_completed',
-    applies_to_role: '', applies_to_service: '', active: true,
-  });
-  const [saving, setSaving]   = useState(false);
-  const [formErr, setFormErr] = useState('');
-
-  const rules = data?.rules || [];
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    setFormErr('');
-    setSaving(true);
-    try {
-      const payload = {
-        ...form,
-        rate_percent: form.commission_type === 'percentage' ? parseFloat(form.rate_percent) : undefined,
-        flat_amount:  form.commission_type === 'flat_amount' ? parseFloat(form.flat_amount) : undefined,
-        applies_to_role:    form.applies_to_role    || undefined,
-        applies_to_service: form.applies_to_service || undefined,
-      };
-      await api.post('/operations/compensation-rules', payload);
-      refetch();
-      setForm({
-        name: '', commission_type: 'percentage', rate_percent: '',
-        flat_amount: '', basis: 'completed_revenue', trigger: 'job_completed',
-        applies_to_role: '', applies_to_service: '', active: true,
-      });
-    } catch (err) {
-      setFormErr(err?.response?.data?.error || 'Failed to save rule');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeactivate(ruleId) {
-    try { await api.delete(`/operations/compensation-rules/${ruleId}`); refetch(); } catch { /* ignore */ }
-  }
-
-  const BASIS_LABELS = {
-    booked_revenue:     'Booked Revenue',
-    completed_revenue:  'Completed Revenue',
-    invoiced_revenue:   'Invoiced Revenue',
-    collected_revenue:  'Collected Revenue',
-    upsell_revenue:     'Upsell Revenue',
-    flat_per_job:       'Flat Per Job',
-  };
-  const TRIGGER_LABELS = {
-    job_booked:         'Job Booked',
-    job_completed:      'Job Completed',
-    invoice_issued:     'Invoice Issued',
-    payment_collected:  'Payment Collected',
-    upsell_completed:   'Upsell Completed',
-    manual_approval:    'Manual Approval',
-  };
-
-  return (
-    <div className="fin-modal-overlay" role="presentation" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="fin-modal-body ops-rules-modal" role="dialog" aria-modal="true" aria-labelledby="ops-rules-title">
-        <div className="fin-modal-header">
-          <h3 id="ops-rules-title" className="fin-modal-title">Compensation Rules</h3>
-          <button type="button" className="fin-modal-close" onClick={onClose} aria-label="Close">×</button>
-        </div>
-
-        {/* Existing rules */}
-        <div style={{ marginBottom: 20 }}>
-          <div className="ops-rules-list-header">Active Rules</div>
-          {loading ? (
-            <div className="ops-section-loading" />
-          ) : error ? (
-            <div className="ops-section-error">Could not load rules.</div>
-          ) : rules.filter(r => r.active).length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--steel)', padding: '8px 0' }}>
-              No active compensation rules configured.
-            </div>
-          ) : (
-            rules.filter(r => r.active).map(r => (
-              <div key={r.id} className="ops-rule-row">
-                <div className="ops-rule-info">
-                  <span className="ops-rule-name">{r.name}</span>
-                  <span className="ops-rule-detail">
-                    {r.commissionType === 'percentage'
-                      ? `${(r.ratePercent * 100).toFixed(0)}%`
-                      : `$${r.flatAmount?.toFixed(2)}`}
-                    {' · '}{BASIS_LABELS[r.basis] || r.basis}
-                    {' · '}{TRIGGER_LABELS[r.trigger] || r.trigger}
-                    {r.appliesToRole ? ` · for ${r.appliesToRole}` : ''}
-                    {r.appliesToService ? ` · ${r.appliesToService}` : ''}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="ops-rule-deactivate-btn"
-                  onClick={() => handleDeactivate(r.id)}
-                  aria-label={`Deactivate ${r.name}`}
-                >
-                  Deactivate
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Create rule form */}
-        <div className="ops-rules-list-header" style={{ marginBottom: 12 }}>Add New Rule</div>
-        <form onSubmit={handleCreate} className="ops-rule-form">
-          <div className="ops-rule-form-row">
-            <label className="ops-rule-label" htmlFor="rule-name">Rule Name</label>
-            <input
-              id="rule-name"
-              type="text"
-              className="ops-rule-input"
-              placeholder="e.g. Technician Completion Bonus"
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              required
-            />
-          </div>
-          <div className="ops-rule-form-row ops-rule-form-row--2col">
-            <div>
-              <label className="ops-rule-label" htmlFor="rule-type">Type</label>
-              <select
-                id="rule-type"
-                className="ops-rule-select"
-                value={form.commission_type}
-                onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}
-              >
-                <option value="percentage">Percentage</option>
-                <option value="flat_amount">Flat Amount</option>
-              </select>
-            </div>
-            <div>
-              {form.commission_type === 'percentage' ? (
-                <>
-                  <label className="ops-rule-label" htmlFor="rule-rate">Rate (0–1)</label>
-                  <input
-                    id="rule-rate"
-                    type="number"
-                    className="ops-rule-input"
-                    placeholder="0.40 = 40%"
-                    step="0.01" min="0" max="1"
-                    value={form.rate_percent}
-                    onChange={e => setForm(f => ({ ...f, rate_percent: e.target.value }))}
-                    required
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="ops-rule-label" htmlFor="rule-flat">Amount ($)</label>
-                  <input
-                    id="rule-flat"
-                    type="number"
-                    className="ops-rule-input"
-                    placeholder="75.00"
-                    step="0.01" min="0"
-                    value={form.flat_amount}
-                    onChange={e => setForm(f => ({ ...f, flat_amount: e.target.value }))}
-                    required
-                  />
-                </>
-              )}
-            </div>
-          </div>
-          <div className="ops-rule-form-row ops-rule-form-row--2col">
-            <div>
-              <label className="ops-rule-label" htmlFor="rule-basis">Basis</label>
-              <select
-                id="rule-basis"
-                className="ops-rule-select"
-                value={form.basis}
-                onChange={e => setForm(f => ({ ...f, basis: e.target.value }))}
-              >
-                {Object.entries(BASIS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="ops-rule-label" htmlFor="rule-trigger">Trigger</label>
-              <select
-                id="rule-trigger"
-                className="ops-rule-select"
-                value={form.trigger}
-                onChange={e => setForm(f => ({ ...f, trigger: e.target.value }))}
-              >
-                {Object.entries(TRIGGER_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="ops-rule-form-row ops-rule-form-row--2col">
-            <div>
-              <label className="ops-rule-label" htmlFor="rule-role">Applies to Role (optional)</label>
-              <input
-                id="rule-role"
-                type="text"
-                className="ops-rule-input"
-                placeholder="technician, manager, etc."
-                value={form.applies_to_role}
-                onChange={e => setForm(f => ({ ...f, applies_to_role: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="ops-rule-label" htmlFor="rule-service">Applies to Service (optional)</label>
-              <input
-                id="rule-service"
-                type="text"
-                className="ops-rule-input"
-                placeholder="HVAC, Cleaning, etc."
-                value={form.applies_to_service}
-                onChange={e => setForm(f => ({ ...f, applies_to_service: e.target.value }))}
-              />
-            </div>
-          </div>
-          {formErr && <div className="ops-section-error" style={{ margin: '8px 0' }}>{formErr}</div>}
-          <button type="submit" className="btn-primary ops-rule-submit-btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Add Rule'}
-          </button>
-        </form>
-
-        <div style={{ marginTop: 16, fontSize: 11, color: 'var(--steel)', lineHeight: 1.5 }}>
-          Commission entries are generated automatically when jobs are completed. FieldCore
-          calculates what is owed — payroll processing is handled by your payroll provider.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CommissionSection({ filterStart, filterEnd }) {
-  const { data, loading, error } = useOpsData(
-    '/revenue/operations/commissions',
-    { start: filterStart, end: filterEnd },
-    [filterStart, filterEnd]
-  );
-  const [showRules, setShowRules] = useState(false);
-
-  const summary = data?.summary;
-  const entries = data?.entries || [];
-  const hasRules = data?.hasRules;
-
-  const STATUS_COLOR = {
-    pending:  '#B45309',
-    approved: 'var(--navy)',
-    payable:  '#047857',
-    paid:     'var(--green)',
-    voided:   'var(--steel)',
-  };
-
-  return (
-    <div className="ops-section-group">
-      <div className="ops-sub-card ops-sub-card--header">
-        <h2 className="rov-ws-section-title">Commission Tracking</h2>
-        <button type="button" className="ops-manage-rules-btn" onClick={() => setShowRules(true)}>
-          Manage Compensation Rules →
-        </button>
-      </div>
-
-      <div className="ops-sub-card">
-        {loading ? (
-          <div className="ops-section-loading" style={{ margin: '16px 18px' }} />
-        ) : error ? (
-          <div className="ops-section-error">Commission data could not be loaded.</div>
-        ) : !hasRules ? (
-          <div className="ops-empty-state">
-            <div className="ops-empty-icon" aria-hidden="true"><DollarSign size={22} /></div>
-            <div className="ops-empty-msg">No compensation rules configured.</div>
-            <div className="ops-empty-hint">
-              Add a compensation rule to start tracking commissions automatically.
-            </div>
-            <button
-              type="button"
-              className="btn-primary"
-              style={{ marginTop: 12, fontSize: 12 }}
-              onClick={() => setShowRules(true)}
-            >
-              Add Compensation Rule
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Summary row */}
-            <div className="ops-commission-summary">
-              {[
-                { label: 'Owed',     value: summary?.owed,               highlight: true  },
-                { label: 'Pending',  value: summary?.pending?.amount     },
-                { label: 'Approved', value: summary?.approved?.amount    },
-                { label: 'Payable',  value: summary?.payable?.amount     },
-                { label: 'Paid',     value: summary?.paid?.amount        },
-              ].map(s => (
-                <div key={s.label} className={`ops-commission-stat${s.highlight ? ' ops-commission-stat--highlight' : ''}`}>
-                  <div className="ops-commission-stat-label">{s.label}</div>
-                  <div className="ops-commission-stat-value">{fmtMoney(s.value || 0)}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Entries table */}
-            {entries.length === 0 ? (
-              <div style={{ padding: '20px 18px', fontSize: 13, color: 'var(--steel)' }}>
-                No commission entries for this period.
-              </div>
-            ) : (
-              <div className="table-wrap">
-                <table className="table ops-commission-table" aria-label="Commission entries">
-                  <thead>
-                    <tr>
-                      <th scope="col">Team Member</th>
-                      <th scope="col">Job / Service</th>
-                      <th scope="col">Rule</th>
-                      <th scope="col">Source</th>
-                      <th scope="col">Commission</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Earned</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entries.map(e => (
-                      <tr key={e.id}>
-                        <td><strong>{e.memberName}</strong></td>
-                        <td>
-                          <div style={{ fontSize: 12 }}>{e.serviceType || 'Unspecified'}</div>
-                          <div style={{ fontSize: 11, color: 'var(--steel)' }}>
-                            {e.scheduledAt ? new Date(e.scheduledAt).toLocaleDateString() : ''}
-                          </div>
-                        </td>
-                        <td style={{ fontSize: 11, color: 'var(--slate)' }}>
-                          {e.ruleName || '—'}
-                          {e.commissionType === 'percentage' && e.ratePercent != null
-                            ? ` (${(e.ratePercent * 100).toFixed(0)}%)`
-                            : ''}
-                        </td>
-                        <td>{fmtMoney(e.sourceAmount)}</td>
-                        <td><strong>{fmtMoney(e.commissionAmount)}</strong></td>
-                        <td>
-                          <span
-                            className="ops-status-badge"
-                            style={{ color: STATUS_COLOR[e.status] || 'var(--slate)' }}
-                          >
-                            {e.status}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 11, color: 'var(--steel)' }}>
-                          {e.earnedAt ? new Date(e.earnedAt).toLocaleDateString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {showRules && <CompensationRulesModal onClose={() => setShowRules(false)} />}
+      {selectedMember && (
+        <UpsellMemberDrawer member={selectedMember} onClose={() => setSelectedMember(null)} />
+      )}
     </div>
   );
 }
@@ -793,9 +825,9 @@ function JobCompletionSection({ filterStart, filterEnd }) {
     [filterStart, filterEnd]
   );
 
-  const s = data?.summary;
-  const byService  = data?.byService  || [];
-  const reasons    = data?.cancellationReasons || [];
+  const s         = data?.summary;
+  const byService = data?.byService  || [];
+  const reasons   = data?.cancellationReasons || [];
 
   const statsConfig = [
     { label: 'Scheduled',       value: s?.scheduled,  color: 'var(--steel)' },
@@ -921,12 +953,18 @@ export function OperationsWorkspace({ filterStart, filterEnd }) {
     [filterStart, filterEnd]
   );
 
-  return (
-    <div className="rov-ws-body">
-      {/* Top KPI summary */}
-      <OpsKpiRow data={opsData} loading={opsLoading} />
+  const [activeKpi, setActiveKpi] = useState(null);
 
-      {/* Revenue by Service — reuses existing table via inline component */}
+  function handleKpiClick(kpiKey) {
+    setActiveKpi(prev => prev === kpiKey ? null : kpiKey);
+  }
+
+  return (
+    <div className="rov-ws-body ops-ws-body">
+      {/* Top KPI summary — all 6 clickable */}
+      <OpsKpiRow data={opsData} loading={opsLoading} onKpiClick={handleKpiClick} />
+
+      {/* Revenue by Service */}
       <ServiceTableSection services={svcData} loading={svcLoading} error={svcError} />
 
       {/* Team Performance */}
@@ -935,11 +973,25 @@ export function OperationsWorkspace({ filterStart, filterEnd }) {
       {/* Sales & Upsell Attribution */}
       <SalesUpsellsSection filterStart={filterStart} filterEnd={filterEnd} />
 
-      {/* Commission Tracking */}
-      <CommissionSection filterStart={filterStart} filterEnd={filterEnd} />
-
       {/* Job Completion Analysis */}
       <JobCompletionSection filterStart={filterStart} filterEnd={filterEnd} />
+
+      {/* KPI drill-down drawers */}
+      {(activeKpi === 'jobsCompleted' || activeKpi === 'productionValue') && (
+        <OpsJobsDrawer filterStart={filterStart} filterEnd={filterEnd} onClose={() => setActiveKpi(null)} />
+      )}
+      {activeKpi === 'commissionsOwed' && (
+        <OpsCommissionDrawer filterStart={filterStart} filterEnd={filterEnd} onClose={() => setActiveKpi(null)} />
+      )}
+      {activeKpi === 'upsellRevenue' && (
+        <OpsUpsellKpiDrawer filterStart={filterStart} filterEnd={filterEnd} onClose={() => setActiveKpi(null)} />
+      )}
+      {activeKpi === 'revenuePerLaborHour' && (
+        <OpsLaborDrawer filterStart={filterStart} filterEnd={filterEnd} onClose={() => setActiveKpi(null)} />
+      )}
+      {activeKpi === 'completionRate' && (
+        <OpsCompletionRateDrawer filterStart={filterStart} filterEnd={filterEnd} onClose={() => setActiveKpi(null)} />
+      )}
     </div>
   );
 }

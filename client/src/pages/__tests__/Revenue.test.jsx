@@ -317,6 +317,14 @@ const MOCK_OPS_COMPLETION = {
   provenance: { formula: 'Completion Rate = completed / eligible', sources: ['jobs'] },
 };
 
+const MOCK_OPS_JOBS = {
+  jobs: [
+    { id: 'job-1', service_type: 'HVAC', amount: 850, status: 'complete', scheduled_at: '2026-08-10T00:00:00Z', tech_name: 'Alice T.' },
+    { id: 'job-2', service_type: 'Plumbing', amount: 600, status: 'complete', scheduled_at: '2026-08-12T00:00:00Z', tech_name: 'Bob M.' },
+  ],
+  count: 2,
+};
+
 const MOCK_OPS_COMMISSIONS = {
   period: { start: '2026-08-01', end: '2026-08-20' },
   summary: { pending: { count: 2, amount: 400 }, approved: { count: 0, amount: 0 }, payable: { count: 0, amount: 0 }, paid: { count: 0, amount: 0 }, owed: 400 },
@@ -353,12 +361,12 @@ beforeEach(() => {
     if (url.includes('/revenue/operations/completion')) return Promise.resolve({ data: MOCK_OPS_COMPLETION });
     if (url.includes('/revenue/operations/commissions')) return Promise.resolve({ data: MOCK_OPS_COMMISSIONS });
     if (url.includes('/revenue/operations/upsells'))  return Promise.resolve({ data: MOCK_OPS_UPSELLS });
+    if (url.includes('/revenue/operations/jobs'))     return Promise.resolve({ data: MOCK_OPS_JOBS });
     if (url.includes('/revenue/operations'))          return Promise.resolve({ data: MOCK_OPS_KPIS });
     if (url.includes('/revenue/overview'))            return Promise.resolve({ data: MOCK_OVERVIEW });
     if (url.includes('/revenue/trend'))               return Promise.resolve({ data: MOCK_TREND });
     if (url.includes('/revenue/services'))            return Promise.resolve({ data: MOCK_SERVICES });
     if (url.includes('/revenue/quarterly'))           return Promise.resolve({ data: MOCK_QUARTERLY });
-    if (url.includes('/operations/compensation-rules')) return Promise.resolve({ data: MOCK_RULES });
     return Promise.reject(new Error('Unknown endpoint: ' + url));
   });
   api.post.mockResolvedValue({ data: { id: 'new-rule', name: 'New Rule', active: true } });
@@ -1927,25 +1935,18 @@ describe('Revenue — Operations workspace renders', () => {
     });
   });
 
-  it('shows Commission Tracking section', async () => {
+  it('Commission Tracking section is not rendered on page', async () => {
     renderRevenue('?view=operations');
-    await waitFor(() => {
-      expect(screen.getByText('Commission Tracking')).toBeInTheDocument();
-    });
+    await waitFor(() => screen.getByText('Team Performance'));
+    expect(screen.queryByText('Commission Tracking')).not.toBeInTheDocument();
   });
 
-  it('shows commission summary stats when rules configured', async () => {
+  it('clicking Commissions Owed KPI opens commission drawer', async () => {
     renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText('Commissions Owed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Commissions Owed' }));
     await waitFor(() => {
-      expect(screen.getByText('Owed')).toBeInTheDocument();
-      expect(screen.getAllByText('$400.00')[0]).toBeInTheDocument();
-    });
-  });
-
-  it('shows Manage Compensation Rules button', async () => {
-    renderRevenue('?view=operations');
-    await waitFor(() => {
-      expect(screen.getByText(/Manage Compensation Rules/i)).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
 
@@ -1989,48 +1990,6 @@ describe('Revenue — Operations Team Performance interactions', () => {
     await waitFor(() => screen.getAllByText('Alice T.'));
     const detailBtns = screen.getAllByText('Details →');
     fireEvent.click(detailBtns[0]);
-    await waitFor(() => screen.getByRole('dialog'));
-    fireEvent.click(screen.getByLabelText('Close'));
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-  });
-});
-
-describe('Revenue — Operations Compensation Rules modal', () => {
-  it('clicking Manage Compensation Rules opens modal', async () => {
-    renderRevenue('?view=operations');
-    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
-    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByText('Compensation Rules')).toBeInTheDocument();
-    });
-  });
-
-  it('modal shows existing active rule', async () => {
-    renderRevenue('?view=operations');
-    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
-    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
-    await waitFor(() => {
-      expect(screen.getByText('Tech 20%')).toBeInTheDocument();
-    });
-  });
-
-  it('modal shows Add New Rule form', async () => {
-    renderRevenue('?view=operations');
-    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
-    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
-    await waitFor(() => {
-      expect(screen.getByText('Add New Rule')).toBeInTheDocument();
-      expect(screen.getByLabelText(/Rule Name/i)).toBeInTheDocument();
-    });
-  });
-
-  it('closing rules modal removes it from DOM', async () => {
-    renderRevenue('?view=operations');
-    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
-    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
     await waitFor(() => screen.getByRole('dialog'));
     fireEvent.click(screen.getByLabelText('Close'));
     await waitFor(() => {
