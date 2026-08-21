@@ -1,5 +1,5 @@
 # CLAUDE.md — FIELDCORE INC.
-# Last updated: 2026-08-20
+# Last updated: 2026-08-21
 
 ## REAL STACK
 Backend:  Express.js in src/ — routes, middleware, services, PostgreSQL pool
@@ -142,6 +142,59 @@ Modifications to frozen Financials code are permitted only for:
   - Security issues
   - Required dependency or platform changes
   - Explicitly approved Financials V2 work
+
+### Operations V1 — FROZEN 2026-08-21
+Files under freeze:
+  src/services/operationsAnalyticsService.js
+  src/services/teamPerformanceService.js
+  src/services/jobCompletionAnalyticsService.js
+  src/services/commissionCalculationService.js
+  src/services/upsellAttributionService.js
+  src/services/operationsDataQualityService.js
+  src/routes/revenue.js                    (GET /api/revenue/operations and all /operations/* sub-routes)
+  client/src/components/revenue/OperationsWorkspace.jsx
+  client/src/style.css                     (ops-* classes, ops-kpi-*, ops-drawer-*, ops-empty-state,
+                                            ops-ws-body, density overrides, hover behavior)
+
+Freeze basis: Production QA passed 2026-08-21. 960/960 frontend tests passing. Live on Railway + Vercel.
+  - 6 KPI cards all clickable with correct drill-down drawers
+  - Commission Owed KPI and drawer both use pending+approved+payable (parity verified)
+  - Completion Rate: completed / (completed+cancelled+no_show) — future jobs excluded
+  - Production Value: SUM(jobs.amount WHERE status=complete) — no team-size double-count
+  - Team Performance: DISTINCT ON (user_id, job_id) dedup; is_primary=true for revenue attribution
+  - Revenue per Labor Hour: scheduled basis, limitation disclosed in UI
+  - Upsell Revenue: per-member commissionOwed column in SalesUpsellsSection
+  - Revenue by Service: delegates to FROZEN revenueAnalyticsService.getServices()
+  - Job Completion: Revenue Impact from cancelled+no_show amounts; cancellation reasons from job_status_history
+  - All KPI drawers: OpsJobsDrawer, OpsCommissionDrawer, OpsUpsellKpiDrawer, OpsLaborDrawer,
+    OpsCompletionRateDrawer, UpsellMemberDrawer
+  - CommissionSection removed from page (drawer-only access via KPI click)
+  - CompensationRulesModal removed (link to Settings only)
+  - Density: compact empty states, tight KPI grid (12px gap, 12px/14px padding)
+  - No gold hover ring on any interactive element; :focus-visible sand ring preserved for keyboard nav
+
+Approved architectural decisions:
+  - Progressive disclosure: KPI card click → drawer → data fetched on demand (not pre-loaded)
+  - Commission Owed definition: pending + approved + payable (NOT paid)
+  - Labor hours basis: scheduled duration (jobs.duration_minutes) — actual time tracking not connected
+  - ops-section-group: transparent flex column, each child section on page background
+  - ops-table-card: white card (background:#fff; border:1px solid var(--lightgray); border-radius:10px)
+  - All ops routes: requireRole('owner','manager') — techs have no access
+  - All SQL queries filter by account_id = req.accountId from JWT middleware (never client-supplied)
+
+DO NOT:
+  - Add new visible sections to the Operations page without explicit V2 approval
+  - Change commission owed definition without unfreezing
+  - Modify KPI formulas (completion rate, production value, rev/labor hour) without unfreezing
+  - Re-add CommissionSection or CompensationRulesModal to the page
+  - Add gold/sand hover borders back to any interactive element
+  - Modify ops-* CSS classes without unfreezing
+
+Modifications to frozen Operations code are permitted only for:
+  - Confirmed bugs
+  - Security issues
+  - Required dependency or platform changes
+  - Explicitly approved Operations V2 work
 
 ## CODING RULES
 - Money: integer cents. 4999 = $49.99. Never float.
