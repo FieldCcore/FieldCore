@@ -165,7 +165,7 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
       <div className="ops-empty-hint">Assign technicians to jobs to see individual performance metrics here.</div>
     </div>
   ) : (
-    <div className="table-wrap">
+    <div className="table-wrap ops-table-wrap">
       <table className="table ops-team-table" aria-label="Team performance">
         <thead>
           <tr>
@@ -371,7 +371,7 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
           <div className="ops-empty-hint">Upsells appear here when team members add revenue beyond the original booked scope.</div>
         </div>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap ops-table-wrap">
           <table className="table ops-attr-table" aria-label="Sales and upsell attribution">
             <thead>
               <tr>
@@ -722,7 +722,7 @@ function CommissionSection({ filterStart, filterEnd }) {
               No commission entries for this period.
             </div>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap ops-table-wrap">
               <table className="table ops-commission-table" aria-label="Commission entries">
                 <thead>
                   <tr>
@@ -839,7 +839,7 @@ function JobCompletionSection({ filterStart, filterEnd }) {
           {byService.length > 0 && (
             <div style={{ padding: '0 0 4px' }}>
               <div className="ops-section-divider" />
-              <div className="table-wrap">
+              <div className="table-wrap ops-table-wrap">
                 <table className="table ops-completion-table" aria-label="Completion by service">
                   <thead>
                     <tr>
@@ -1004,7 +1004,7 @@ function ServiceTableSection({ services, loading, error }) {
           <div className="ops-empty-msg">No completed jobs with revenue in this period.</div>
         </div>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap ops-table-wrap">
           <table className="table rov-service-table" aria-label="Revenue by service type">
             <thead>
               <tr>

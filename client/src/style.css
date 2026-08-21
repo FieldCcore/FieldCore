@@ -6037,6 +6037,13 @@ body {
 /* Legacy ops-kpi-row — no longer used for the KPI section */
 .ops-kpi-row { margin-bottom: 0; }
 
+/* Operations table wrapper — insets table from card edges + adds top gap */
+.ops-table-wrap {
+  padding: 5px 6px 0;
+}
+.ops-table-wrap .table thead tr th:first-child { border-top-left-radius: var(--r-sm); }
+.ops-table-wrap .table thead tr th:last-child  { border-top-right-radius: var(--r-sm); }
+
 /* Section states */
 .ops-section-loading {
   height: 72px; border-radius: 6px;
