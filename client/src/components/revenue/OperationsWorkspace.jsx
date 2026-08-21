@@ -165,8 +165,8 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
       <div className="ops-empty-hint">Assign technicians to jobs to see individual performance metrics here.</div>
     </div>
   ) : (
-    <div className="table-wrap ops-table-wrap">
-      <table className="table ops-team-table" aria-label="Team performance">
+    <div className="table-wrap">
+      <table className="table ops-team-table ops-bare-table" aria-label="Team performance">
         <thead>
           <tr>
             <th scope="col">Team Member</th>
@@ -226,8 +226,8 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
   );
 
   return (
-    <div className="rov-ws-section">
-      <div className="rov-ws-section-header">
+    <div className="ops-section-group">
+      <div className="ops-bare-heading">
         <h2 className="rov-ws-section-title">Team Performance</h2>
         {!loading && members.length > 0 && (
           <span className="rov-ws-section-sub">
@@ -237,7 +237,7 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
       </div>
       {body}
       {data?.limitations?.length > 0 && (
-        <div className="ops-limitations-bar">
+        <div className="ops-bare-info">
           {data.limitations.map((l, i) => (
             <span key={i} className="ops-limitation-note">{l}</span>
           ))}
@@ -344,8 +344,8 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
   const hasAttribution = data?.hasAttribution;
 
   return (
-    <div className="rov-ws-section">
-      <div className="rov-ws-section-header">
+    <div className="ops-section-group">
+      <div className="ops-sub-card ops-sub-card--header">
         <h2 className="rov-ws-section-title">Sales &amp; Upsell Attribution</h2>
         {!loading && hasAttribution && members.length > 0 && (
           <span className="rov-ws-section-sub">
@@ -354,57 +354,59 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
         )}
       </div>
 
-      {loading ? (
-        <div className="ops-section-loading" style={{ margin: 16 }} />
-      ) : error ? (
-        <div className="ops-section-error">Sales attribution data could not be loaded.</div>
-      ) : !hasAttribution ? (
-        <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true"><AlertCircle size={22} /></div>
-          <div className="ops-empty-msg">Upsell attribution not yet available.</div>
-          <div className="ops-empty-hint">Deploy the latest migration to enable upsell tracking.</div>
-        </div>
-      ) : members.length === 0 ? (
-        <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={22} /></div>
-          <div className="ops-empty-msg">No upsells in this period.</div>
-          <div className="ops-empty-hint">Upsells appear here when team members add revenue beyond the original booked scope.</div>
-        </div>
-      ) : (
-        <div className="table-wrap ops-table-wrap">
-          <table className="table ops-attr-table" aria-label="Sales and upsell attribution">
-            <thead>
-              <tr>
-                <th scope="col">Team Member</th>
-                <th scope="col">Role</th>
-                <th scope="col">Original Sales</th>
-                <th scope="col">Upsell Revenue</th>
-                <th scope="col">Upsell Count</th>
-                <th scope="col">Avg Upsell</th>
-                <th scope="col">Final Job Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map(m => (
-                <tr key={m.userId}>
-                  <td><strong>{m.name}</strong></td>
-                  <td>
-                    <span className="ops-role-chip ops-role-chip--primary">{formatRole(m.userRole)}</span>
-                  </td>
-                  <td>{fmtMoney(m.originalSales)}</td>
-                  <td><strong>{fmtMoney(m.upsellRevenue)}</strong></td>
-                  <td>{m.upsellCount}</td>
-                  <td>{m.avgUpsell > 0 ? fmtMoney(m.avgUpsell) : '—'}</td>
-                  <td><strong>{fmtMoney(m.finalJobValue)}</strong></td>
+      <div className="ops-sub-card">
+        {loading ? (
+          <div className="ops-section-loading" style={{ margin: '16px 18px' }} />
+        ) : error ? (
+          <div className="ops-section-error">Sales attribution data could not be loaded.</div>
+        ) : !hasAttribution ? (
+          <div className="ops-empty-state">
+            <div className="ops-empty-icon" aria-hidden="true"><AlertCircle size={22} /></div>
+            <div className="ops-empty-msg">Upsell attribution not yet available.</div>
+            <div className="ops-empty-hint">Deploy the latest migration to enable upsell tracking.</div>
+          </div>
+        ) : members.length === 0 ? (
+          <div className="ops-empty-state">
+            <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={22} /></div>
+            <div className="ops-empty-msg">No upsells in this period.</div>
+            <div className="ops-empty-hint">Upsells appear here when team members add revenue beyond the original booked scope.</div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table ops-attr-table" aria-label="Sales and upsell attribution">
+              <thead>
+                <tr>
+                  <th scope="col">Team Member</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Original Sales</th>
+                  <th scope="col">Upsell Revenue</th>
+                  <th scope="col">Upsell Count</th>
+                  <th scope="col">Avg Upsell</th>
+                  <th scope="col">Final Job Value</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {members.map(m => (
+                  <tr key={m.userId}>
+                    <td><strong>{m.name}</strong></td>
+                    <td>
+                      <span className="ops-role-chip ops-role-chip--primary">{formatRole(m.userRole)}</span>
+                    </td>
+                    <td>{fmtMoney(m.originalSales)}</td>
+                    <td><strong>{fmtMoney(m.upsellRevenue)}</strong></td>
+                    <td>{m.upsellCount}</td>
+                    <td>{m.avgUpsell > 0 ? fmtMoney(m.avgUpsell) : '—'}</td>
+                    <td><strong>{fmtMoney(m.finalJobValue)}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {data?.historicalNote && (
-        <div className="ops-limitations-bar">
+        <div className="ops-sub-card ops-sub-card--info">
           <span className="ops-limitation-note">{data.historicalNote}</span>
         </div>
       )}
@@ -670,108 +672,110 @@ function CommissionSection({ filterStart, filterEnd }) {
   };
 
   return (
-    <div className="rov-ws-section">
-      <div className="rov-ws-section-header">
+    <div className="ops-section-group">
+      <div className="ops-sub-card ops-sub-card--header">
         <h2 className="rov-ws-section-title">Commission Tracking</h2>
         <button type="button" className="ops-manage-rules-btn" onClick={() => setShowRules(true)}>
           Manage Compensation Rules →
         </button>
       </div>
 
-      {loading ? (
-        <div className="ops-section-loading" style={{ margin: 16 }} />
-      ) : error ? (
-        <div className="ops-section-error">Commission data could not be loaded.</div>
-      ) : !hasRules ? (
-        <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true"><DollarSign size={22} /></div>
-          <div className="ops-empty-msg">No compensation rules configured.</div>
-          <div className="ops-empty-hint">
-            Add a compensation rule to start tracking commissions automatically.
+      <div className="ops-sub-card">
+        {loading ? (
+          <div className="ops-section-loading" style={{ margin: '16px 18px' }} />
+        ) : error ? (
+          <div className="ops-section-error">Commission data could not be loaded.</div>
+        ) : !hasRules ? (
+          <div className="ops-empty-state">
+            <div className="ops-empty-icon" aria-hidden="true"><DollarSign size={22} /></div>
+            <div className="ops-empty-msg">No compensation rules configured.</div>
+            <div className="ops-empty-hint">
+              Add a compensation rule to start tracking commissions automatically.
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ marginTop: 12, fontSize: 12 }}
+              onClick={() => setShowRules(true)}
+            >
+              Add Compensation Rule
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ marginTop: 12, fontSize: 12 }}
-            onClick={() => setShowRules(true)}
-          >
-            Add Compensation Rule
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Summary row */}
-          <div className="ops-commission-summary">
-            {[
-              { label: 'Owed',     value: summary?.owed,               highlight: true  },
-              { label: 'Pending',  value: summary?.pending?.amount     },
-              { label: 'Approved', value: summary?.approved?.amount    },
-              { label: 'Payable',  value: summary?.payable?.amount     },
-              { label: 'Paid',     value: summary?.paid?.amount        },
-            ].map(s => (
-              <div key={s.label} className={`ops-commission-stat${s.highlight ? ' ops-commission-stat--highlight' : ''}`}>
-                <div className="ops-commission-stat-label">{s.label}</div>
-                <div className="ops-commission-stat-value">{fmtMoney(s.value || 0)}</div>
-              </div>
-            ))}
-          </div>
+        ) : (
+          <>
+            {/* Summary row */}
+            <div className="ops-commission-summary">
+              {[
+                { label: 'Owed',     value: summary?.owed,               highlight: true  },
+                { label: 'Pending',  value: summary?.pending?.amount     },
+                { label: 'Approved', value: summary?.approved?.amount    },
+                { label: 'Payable',  value: summary?.payable?.amount     },
+                { label: 'Paid',     value: summary?.paid?.amount        },
+              ].map(s => (
+                <div key={s.label} className={`ops-commission-stat${s.highlight ? ' ops-commission-stat--highlight' : ''}`}>
+                  <div className="ops-commission-stat-label">{s.label}</div>
+                  <div className="ops-commission-stat-value">{fmtMoney(s.value || 0)}</div>
+                </div>
+              ))}
+            </div>
 
-          {/* Entries table */}
-          {entries.length === 0 ? (
-            <div style={{ padding: '20px 18px', fontSize: 13, color: 'var(--steel)' }}>
-              No commission entries for this period.
-            </div>
-          ) : (
-            <div className="table-wrap ops-table-wrap">
-              <table className="table ops-commission-table" aria-label="Commission entries">
-                <thead>
-                  <tr>
-                    <th scope="col">Team Member</th>
-                    <th scope="col">Job / Service</th>
-                    <th scope="col">Rule</th>
-                    <th scope="col">Source</th>
-                    <th scope="col">Commission</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Earned</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map(e => (
-                    <tr key={e.id}>
-                      <td><strong>{e.memberName}</strong></td>
-                      <td>
-                        <div style={{ fontSize: 12 }}>{e.serviceType || 'Unspecified'}</div>
-                        <div style={{ fontSize: 11, color: 'var(--steel)' }}>
-                          {e.scheduledAt ? new Date(e.scheduledAt).toLocaleDateString() : ''}
-                        </div>
-                      </td>
-                      <td style={{ fontSize: 11, color: 'var(--slate)' }}>
-                        {e.ruleName || '—'}
-                        {e.commissionType === 'percentage' && e.ratePercent != null
-                          ? ` (${(e.ratePercent * 100).toFixed(0)}%)`
-                          : ''}
-                      </td>
-                      <td>{fmtMoney(e.sourceAmount)}</td>
-                      <td><strong>{fmtMoney(e.commissionAmount)}</strong></td>
-                      <td>
-                        <span
-                          className="ops-status-badge"
-                          style={{ color: STATUS_COLOR[e.status] || 'var(--slate)' }}
-                        >
-                          {e.status}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: 11, color: 'var(--steel)' }}>
-                        {e.earnedAt ? new Date(e.earnedAt).toLocaleDateString() : '—'}
-                      </td>
+            {/* Entries table */}
+            {entries.length === 0 ? (
+              <div style={{ padding: '20px 18px', fontSize: 13, color: 'var(--steel)' }}>
+                No commission entries for this period.
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table ops-commission-table" aria-label="Commission entries">
+                  <thead>
+                    <tr>
+                      <th scope="col">Team Member</th>
+                      <th scope="col">Job / Service</th>
+                      <th scope="col">Rule</th>
+                      <th scope="col">Source</th>
+                      <th scope="col">Commission</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Earned</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
+                  </thead>
+                  <tbody>
+                    {entries.map(e => (
+                      <tr key={e.id}>
+                        <td><strong>{e.memberName}</strong></td>
+                        <td>
+                          <div style={{ fontSize: 12 }}>{e.serviceType || 'Unspecified'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--steel)' }}>
+                            {e.scheduledAt ? new Date(e.scheduledAt).toLocaleDateString() : ''}
+                          </div>
+                        </td>
+                        <td style={{ fontSize: 11, color: 'var(--slate)' }}>
+                          {e.ruleName || '—'}
+                          {e.commissionType === 'percentage' && e.ratePercent != null
+                            ? ` (${(e.ratePercent * 100).toFixed(0)}%)`
+                            : ''}
+                        </td>
+                        <td>{fmtMoney(e.sourceAmount)}</td>
+                        <td><strong>{fmtMoney(e.commissionAmount)}</strong></td>
+                        <td>
+                          <span
+                            className="ops-status-badge"
+                            style={{ color: STATUS_COLOR[e.status] || 'var(--slate)' }}
+                          >
+                            {e.status}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, color: 'var(--steel)' }}>
+                          {e.earnedAt ? new Date(e.earnedAt).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {showRules && <CompensationRulesModal onClose={() => setShowRules(false)} />}
     </div>
@@ -803,8 +807,9 @@ function JobCompletionSection({ filterStart, filterEnd }) {
   ];
 
   return (
-    <div className="rov-ws-section">
-      <div className="rov-ws-section-header">
+    <div className="ops-section-group">
+      {/* A: Bare heading */}
+      <div className="ops-bare-heading">
         <h2 className="rov-ws-section-title">Job Completion Analysis</h2>
         {!loading && s && (
           <span className="rov-ws-section-sub">
@@ -814,93 +819,84 @@ function JobCompletionSection({ filterStart, filterEnd }) {
         )}
       </div>
 
+      {/* B: Loading / error / KPI strip */}
       {loading ? (
-        <div className="ops-section-loading" style={{ margin: 16 }} />
+        <div className="ops-section-loading" />
       ) : error ? (
         <div className="ops-section-error">Job completion data could not be loaded.</div>
       ) : (
-        <>
-          {/* Summary stats */}
-          <div className="ops-completion-summary">
-            {statsConfig.map(st => (
-              <div key={st.label} className="ops-completion-stat">
-                <div
-                  className="ops-completion-stat-value"
-                  style={{ color: st.color }}
-                >
-                  {st.value != null ? st.value : '—'}
-                </div>
-                <div className="ops-completion-stat-label">{st.label}</div>
+        <div className="ops-completion-summary">
+          {statsConfig.map(st => (
+            <div key={st.label} className="ops-completion-stat">
+              <div className="ops-completion-stat-value" style={{ color: st.color }}>
+                {st.value != null ? st.value : '—'}
+              </div>
+              <div className="ops-completion-stat-label">{st.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Cancellation reasons (own sibling, data only) */}
+      {!loading && !error && reasons.length > 0 && (
+        <div style={{ padding: '4px 0' }}>
+          <div className="ops-completion-reasons-title">Cancellation Reasons</div>
+          <div className="ops-reasons-list">
+            {reasons.map((r, i) => (
+              <div key={i} className="ops-reason-row">
+                <span className="ops-reason-label">{r.label}</span>
+                <span className="ops-reason-count">{r.count}</span>
               </div>
             ))}
           </div>
+        </div>
+      )}
 
-          {/* By service */}
-          {byService.length > 0 && (
-            <div style={{ padding: '0 0 4px' }}>
-              <div className="ops-section-divider" />
-              <div className="table-wrap ops-table-wrap">
-                <table className="table ops-completion-table" aria-label="Completion by service">
-                  <thead>
-                    <tr>
-                      <th scope="col">Service</th>
-                      <th scope="col">Completed</th>
-                      <th scope="col">Cancelled</th>
-                      <th scope="col">No-Shows</th>
-                      <th scope="col">Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byService.map((svc, i) => (
-                      <tr key={i}>
-                        <td><strong>{svc.service}</strong></td>
-                        <td style={{ color: 'var(--green)' }}>{svc.completed}</td>
-                        <td style={{ color: 'var(--red)' }}>{svc.cancelled}</td>
-                        <td style={{ color: '#B45309' }}>{svc.noShows}</td>
-                        <td>
-                          {svc.completionRate != null
-                            ? <span style={{ color: svc.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
-                                {fmtPct(svc.completionRate)}
-                              </span>
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Cancellation reasons */}
-          {reasons.length > 0 && (
-            <div style={{ padding: '12px 18px 16px' }}>
-              <div className="ops-completion-reasons-title">Cancellation Reasons</div>
-              <div className="ops-reasons-list">
-                {reasons.map((r, i) => (
-                  <div key={i} className="ops-reason-row">
-                    <span className="ops-reason-label">{r.label}</span>
-                    <span className="ops-reason-count">{r.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {data?.limitations?.length > 0 && (
-            <div className="ops-limitations-bar">
-              {data.limitations.map((l, i) => (
-                <span key={i} className="ops-limitation-note">{typeof l === 'string' ? l : l.description}</span>
+      {/* C: Service breakdown table — standalone, no outer card */}
+      {!loading && !error && byService.length > 0 && (
+        <div className="table-wrap">
+          <table className="table ops-completion-table ops-bare-table" aria-label="Completion by service">
+            <thead>
+              <tr>
+                <th scope="col">Service</th>
+                <th scope="col">Completed</th>
+                <th scope="col">Cancelled</th>
+                <th scope="col">No-Shows</th>
+                <th scope="col">Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byService.map((svc, i) => (
+                <tr key={i}>
+                  <td><strong>{svc.service}</strong></td>
+                  <td style={{ color: 'var(--green)' }}>{svc.completed}</td>
+                  <td style={{ color: 'var(--red)' }}>{svc.cancelled}</td>
+                  <td style={{ color: '#B45309' }}>{svc.noShows}</td>
+                  <td>
+                    {svc.completionRate != null
+                      ? <span style={{ color: svc.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
+                          {fmtPct(svc.completionRate)}
+                        </span>
+                      : '—'}
+                  </td>
+                </tr>
               ))}
-            </div>
-          )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-          {/* Formula provenance */}
-          <div style={{ padding: '0 18px 12px', fontSize: 10, color: 'var(--steel)', fontStyle: 'italic' }}>
+      {/* D: Formula + limitations — bare muted text */}
+      {!loading && !error && (
+        <div className="ops-bare-info">
+          {data?.limitations?.length > 0 && data.limitations.map((l, i) => (
+            <span key={i} className="ops-limitation-note">{typeof l === 'string' ? l : l.description}</span>
+          ))}
+          <span style={{ fontSize: 10, color: 'var(--steel)', fontStyle: 'italic' }}>
             Completion Rate = completed ÷ (completed + cancelled + no-shows) for jobs scheduled in period.
             Future-scheduled jobs excluded from denominator.
-          </div>
-        </>
+          </span>
+        </div>
       )}
     </div>
   );
@@ -985,8 +981,8 @@ function ServiceTableSection({ services, loading, error }) {
   }
 
   return (
-    <div className="rov-ws-section">
-      <div className="rov-ws-section-header">
+    <div className="ops-section-group">
+      <div className="ops-sub-card ops-sub-card--header">
         <h2 className="rov-ws-section-title">Revenue by Service</h2>
         {!loading && (
           <span className="rov-ws-section-sub">
@@ -994,73 +990,75 @@ function ServiceTableSection({ services, loading, error }) {
           </span>
         )}
       </div>
-      {loading ? (
-        <div className="ops-section-loading" style={{ margin: 16 }} aria-label="Loading service data" />
-      ) : error ? (
-        <div className="ops-section-error">Service breakdown could not be loaded.</div>
-      ) : rows.length === 0 ? (
-        <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true"><Wrench size={22} /></div>
-          <div className="ops-empty-msg">No completed jobs with revenue in this period.</div>
-        </div>
-      ) : (
-        <div className="table-wrap ops-table-wrap">
-          <table className="table rov-service-table" aria-label="Revenue by service type">
-            <thead>
-              <tr>
-                <th scope="col">Service</th>
-                <SortTh col="jobs"               label="Jobs"          />
-                <SortTh col="earnedRevenue"       label="Earned Rev."   />
-                <SortTh col="collectedRevenue"    label="Collected Rev." />
-                <SortTh col="avgTicket"           label="Avg Ticket"    />
-                <SortTh col="laborHours"          label="Labor Hrs"     />
-                <SortTh col="revenuePerLaborHour" label="Rev / Hr"      />
-                <SortTh col="completionRate"      label="Completion"    />
-                <SortTh col="revenueShare"        label="Share"         />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((s, i) => (
-                <tr key={i}>
-                  <td><strong>{s.service}</strong></td>
-                  <td>{s.jobs}</td>
-                  <td><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
-                  <td>{fmtMoney(s.collectedRevenue)}</td>
-                  <td>{s.avgTicket != null ? fmtMoney(s.avgTicket) : '—'}</td>
-                  <td>{s.laborHours > 0 ? `${s.laborHours}h` : '—'}</td>
-                  <td>{s.revenuePerLaborHour != null ? fmtMoney(s.revenuePerLaborHour) : '—'}</td>
-                  <td>
-                    {s.completionRate != null
-                      ? <span style={{ color: s.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
-                          {fmtPct(s.completionRate)}
-                        </span>
-                      : '—'}
-                  </td>
-                  <td>
-                    <div className="rov-share-bar-wrap" aria-label={`${s.revenueShare.toFixed(1)}%`}>
-                      <div className="rov-share-bar-fill" style={{ width: `${Math.min(100, s.revenueShare)}%` }} />
-                      <span className="rov-share-bar-pct">{s.revenueShare.toFixed(0)}%</span>
-                    </div>
-                  </td>
+      <div className="ops-sub-card">
+        {loading ? (
+          <div className="ops-section-loading" style={{ margin: 16 }} aria-label="Loading service data" />
+        ) : error ? (
+          <div className="ops-section-error">Service breakdown could not be loaded.</div>
+        ) : rows.length === 0 ? (
+          <div className="ops-empty-state">
+            <div className="ops-empty-icon" aria-hidden="true"><Wrench size={22} /></div>
+            <div className="ops-empty-msg">No completed jobs with revenue in this period.</div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table rov-service-table" aria-label="Revenue by service type">
+              <thead>
+                <tr>
+                  <th scope="col">Service</th>
+                  <SortTh col="jobs"               label="Jobs"          />
+                  <SortTh col="earnedRevenue"       label="Earned Rev."   />
+                  <SortTh col="collectedRevenue"    label="Collected Rev." />
+                  <SortTh col="avgTicket"           label="Avg Ticket"    />
+                  <SortTh col="laborHours"          label="Labor Hrs"     />
+                  <SortTh col="revenuePerLaborHour" label="Rev / Hr"      />
+                  <SortTh col="completionRate"      label="Completion"    />
+                  <SortTh col="revenueShare"        label="Share"         />
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="rov-table-total">
-                <td><strong>Total</strong></td>
-                <td><strong>{totJobs}</strong></td>
-                <td><strong>{fmtMoney(totEarned)}</strong></td>
-                <td><strong>{fmtMoney(totCollected)}</strong></td>
-                <td><strong>{totJobs > 0 ? fmtMoney(totEarned / totJobs) : '—'}</strong></td>
-                <td><strong>{totHours > 0 ? `${Math.round(totHours * 10) / 10}h` : '—'}</strong></td>
-                <td><strong>{totHours > 0 && totEarned > 0 ? fmtMoney(totEarned / totHours) : '—'}</strong></td>
-                <td />
-                <td><strong>100%</strong></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {sorted.map((s, i) => (
+                  <tr key={i}>
+                    <td><strong>{s.service}</strong></td>
+                    <td>{s.jobs}</td>
+                    <td><strong>{fmtMoney(s.earnedRevenue)}</strong></td>
+                    <td>{fmtMoney(s.collectedRevenue)}</td>
+                    <td>{s.avgTicket != null ? fmtMoney(s.avgTicket) : '—'}</td>
+                    <td>{s.laborHours > 0 ? `${s.laborHours}h` : '—'}</td>
+                    <td>{s.revenuePerLaborHour != null ? fmtMoney(s.revenuePerLaborHour) : '—'}</td>
+                    <td>
+                      {s.completionRate != null
+                        ? <span style={{ color: s.completionRate < 0.75 ? 'var(--red)' : 'var(--green)' }}>
+                            {fmtPct(s.completionRate)}
+                          </span>
+                        : '—'}
+                    </td>
+                    <td>
+                      <div className="rov-share-bar-wrap" aria-label={`${s.revenueShare.toFixed(1)}%`}>
+                        <div className="rov-share-bar-fill" style={{ width: `${Math.min(100, s.revenueShare)}%` }} />
+                        <span className="rov-share-bar-pct">{s.revenueShare.toFixed(0)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="rov-table-total">
+                  <td><strong>Total</strong></td>
+                  <td><strong>{totJobs}</strong></td>
+                  <td><strong>{fmtMoney(totEarned)}</strong></td>
+                  <td><strong>{fmtMoney(totCollected)}</strong></td>
+                  <td><strong>{totJobs > 0 ? fmtMoney(totEarned / totJobs) : '—'}</strong></td>
+                  <td><strong>{totHours > 0 ? `${Math.round(totHours * 10) / 10}h` : '—'}</strong></td>
+                  <td><strong>{totHours > 0 && totEarned > 0 ? fmtMoney(totEarned / totHours) : '—'}</strong></td>
+                  <td />
+                  <td><strong>100%</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

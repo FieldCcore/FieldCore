@@ -6037,12 +6037,57 @@ body {
 /* Legacy ops-kpi-row — no longer used for the KPI section */
 .ops-kpi-row { margin-bottom: 0; }
 
-/* Operations table wrapper — insets table from card edges + adds top gap */
-.ops-table-wrap {
-  padding: 5px 6px 0;
+/* Operations section group — transparent column; page bg shows as gap between sub-cards */
+.ops-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.ops-table-wrap .table thead tr th:first-child { border-top-left-radius: var(--r-sm); }
-.ops-table-wrap .table thead tr th:last-child  { border-top-right-radius: var(--r-sm); }
+
+/* Bare heading row — sits directly on page background, no card */
+.ops-bare-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Bare info/notes text — directly on page background, no card */
+.ops-bare-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Bare table — adds corner radius directly to thead cells so no enclosing card is needed */
+.ops-bare-table thead tr th:first-child { border-top-left-radius: 8px; }
+.ops-bare-table thead tr th:last-child  { border-top-right-radius: 8px; }
+
+/* Operations sub-card — independent card with full FieldCore card treatment */
+.ops-sub-card {
+  background: #fff;
+  border: 1px solid var(--lightgray);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Sub-card modifier: section title row */
+.ops-sub-card--header {
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Sub-card modifier: info / notes (limitations, formulae) */
+.ops-sub-card--info {
+  padding: 12px 18px;
+  background: var(--off);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
 
 /* Section states */
 .ops-section-loading {
@@ -6196,7 +6241,8 @@ body {
 
 /* Job Completion section */
 .ops-completion-summary {
-  display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--lightgray);
+  display: flex; flex-wrap: wrap;
+  border: 1px solid var(--lightgray); border-radius: 8px; overflow: hidden; background: #fff;
 }
 .ops-completion-stat {
   flex: 1; min-width: 90px; padding: 16px 18px; text-align: center;
