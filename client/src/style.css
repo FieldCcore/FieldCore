@@ -6019,7 +6019,22 @@ body {
    REVENUE → OPERATIONS V1
    ══════════════════════════════════════════════════════════ */
 
-/* Operations KPI row — reuses secondary KPI row styling */
+/* Operations KPI grid — 3 × 2 layout, uses canonical kpi-card component */
+.ops-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .ops-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .ops-kpi-grid { grid-template-columns: 1fr; }
+}
+
+/* Legacy ops-kpi-row — no longer used for the KPI section */
 .ops-kpi-row { margin-bottom: 0; }
 
 /* Section states */

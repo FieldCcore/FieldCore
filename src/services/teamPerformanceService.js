@@ -16,60 +16,55 @@ async function getTeamPerformance(accountId, { start, end }) {
   const e = end   || de;
 
   // Per-user stats from job_assignments.
+  // DISTINCT ON (user_id, job_id) deduplicates multi-role assignments on the same job,
+  // preferring the is_primary=true row so production value is attributed correctly.
   // Production value only credited to is_primary = true assignees to avoid double-counting.
   const { rows } = await pool.query(
-    `SELECT
+    `WITH deduped AS (
+       SELECT DISTINCT ON (ja.user_id, ja.job_id)
+         ja.user_id, ja.job_id, ja.assignment_role, ja.is_primary, ja.account_id
+       FROM job_assignments ja
+       WHERE ja.account_id = $1 AND ja.removed_at IS NULL
+       ORDER BY ja.user_id, ja.job_id, ja.is_primary DESC
+     )
+     SELECT
        u.id                                                                                AS user_id,
        u.name                                                                              AS member_name,
        u.role                                                                              AS user_role,
-       ja.assignment_role,
-       ja.is_primary,
+       ARRAY_AGG(DISTINCT d.assignment_role) FILTER (WHERE d.assignment_role IS NOT NULL) AS assignment_roles,
        COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'complete')::int                     AS completed_jobs,
        COUNT(DISTINCT j.id) FILTER (WHERE j.status IN ('cancelled','no_show'))::int       AS lost_jobs,
        COUNT(DISTINCT j.id) FILTER (WHERE j.status IN ('complete','cancelled','no_show'))::int AS eligible_jobs,
-       COALESCE(SUM(j.amount) FILTER (WHERE j.status = 'complete' AND ja.is_primary = true), 0) AS production_value,
+       COALESCE(SUM(j.amount) FILTER (WHERE j.status = 'complete' AND d.is_primary = true), 0) AS production_value,
        COALESCE(SUM(j.duration_minutes) FILTER (WHERE j.status = 'complete'), 0)::int     AS total_minutes,
        ARRAY_AGG(DISTINCT j.service_type) FILTER (
          WHERE j.status = 'complete' AND j.service_type IS NOT NULL
        )                                                                                   AS top_services
-     FROM job_assignments ja
-     JOIN jobs  j ON j.id = ja.job_id      AND j.account_id  = $1
-     JOIN users u ON u.id = ja.user_id     AND u.account_id  = $1
-     WHERE ja.account_id = $1
-       AND ja.removed_at IS NULL
-       AND j.scheduled_at >= $2::date
+     FROM deduped d
+     JOIN jobs  j ON j.id = d.job_id   AND j.account_id = $1
+     JOIN users u ON u.id = d.user_id  AND u.account_id = $1
+     WHERE j.scheduled_at >= $2::date
        AND j.scheduled_at <  ($3::date + INTERVAL '1 day')
-     GROUP BY u.id, u.name, u.role, ja.assignment_role, ja.is_primary
+     GROUP BY u.id, u.name, u.role
      ORDER BY production_value DESC, completed_jobs DESC`,
     [accountId, s, e]
   );
 
-  // Merge rows for same user (may have multiple assignment_role values across jobs)
+  // Each user now appears exactly once — no merge loop needed.
   const memberMap = new Map();
   for (const r of rows) {
-    const key = r.user_id;
-    if (!memberMap.has(key)) {
-      memberMap.set(key, {
-        userId:         r.user_id,
-        name:           r.member_name,
-        userRole:       r.user_role,
-        assignmentRoles: new Set([r.assignment_role]),
-        completedJobs:  pi(r.completed_jobs),
-        eligibleJobs:   pi(r.eligible_jobs),
-        productionValue: pf(r.production_value),
-        totalMinutes:   pi(r.total_minutes),
-        topServices:    r.top_services || [],
-        commissionEarned: null,
-      });
-    } else {
-      const m = memberMap.get(key);
-      m.assignmentRoles.add(r.assignment_role);
-      m.completedJobs  += pi(r.completed_jobs);
-      m.eligibleJobs   += pi(r.eligible_jobs);
-      m.productionValue = pf(m.productionValue + pf(r.production_value));
-      m.totalMinutes   += pi(r.total_minutes);
-      m.topServices    = [...new Set([...m.topServices, ...(r.top_services || [])])];
-    }
+    memberMap.set(r.user_id, {
+      userId:          r.user_id,
+      name:            r.member_name,
+      userRole:        r.user_role,
+      assignmentRoles: r.assignment_roles || [],
+      completedJobs:   pi(r.completed_jobs),
+      eligibleJobs:    pi(r.eligible_jobs),
+      productionValue: pf(r.production_value),
+      totalMinutes:    pi(r.total_minutes),
+      topServices:     r.top_services || [],
+      commissionEarned: null,
+    });
   }
 
   // Attach commission totals

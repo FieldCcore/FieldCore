@@ -263,7 +263,7 @@ const MOCK_OPS_KPIS = {
     jobsCompleted:      { value: 8,    status: 'ok' },
     completionRate:     { value: 0.80, status: 'ok' },
     productionValue:    { value: 4200, status: 'ok' },
-    upsellRevenue:      { value: null, status: 'unavailable', note: 'Requires line-item attribution.' },
+    upsellRevenue:      { value: 0,    status: 'ok' },
     commissionsOwed:    { value: null, status: 'unavailable', note: 'No active rules.' },
     revenuePerLaborHour:{ value: 87.50, status: 'ok', basis: 'scheduled_labor_hours' },
   },
@@ -271,6 +271,14 @@ const MOCK_OPS_KPIS = {
     { code: 'labor_hours_scheduled', severity: 'info', description: 'Labor hours use scheduled duration.' },
   ],
   dataQuality: { state: 'partial', limitationCount: 1, limitations: [] },
+};
+
+const MOCK_OPS_UPSELLS = {
+  period: { start: '2026-08-01', end: '2026-08-20' },
+  members: [],
+  total: { originalSales: 0, upsellRevenue: 0, upsellCount: 0 },
+  hasAttribution: true,
+  historicalNote: 'Jobs created before upsell attribution was enabled cannot be retroactively attributed.',
 };
 
 const MOCK_OPS_TEAM = {
@@ -344,6 +352,7 @@ beforeEach(() => {
     if (url.includes('/revenue/operations/team'))     return Promise.resolve({ data: MOCK_OPS_TEAM });
     if (url.includes('/revenue/operations/completion')) return Promise.resolve({ data: MOCK_OPS_COMPLETION });
     if (url.includes('/revenue/operations/commissions')) return Promise.resolve({ data: MOCK_OPS_COMMISSIONS });
+    if (url.includes('/revenue/operations/upsells'))  return Promise.resolve({ data: MOCK_OPS_UPSELLS });
     if (url.includes('/revenue/operations'))          return Promise.resolve({ data: MOCK_OPS_KPIS });
     if (url.includes('/revenue/overview'))            return Promise.resolve({ data: MOCK_OVERVIEW });
     if (url.includes('/revenue/trend'))               return Promise.resolve({ data: MOCK_TREND });
@@ -1910,11 +1919,11 @@ describe('Revenue — Operations workspace renders', () => {
     });
   });
 
-  it('shows upsell unavailable notice in Sales & Upsells', async () => {
+  it('shows no-upsells empty state in Sales & Upsell Attribution', async () => {
     renderRevenue('?view=operations');
     await waitFor(() => {
       expect(screen.getAllByText(/Upsell Revenue/i)[0]).toBeInTheDocument();
-      expect(screen.getAllByText(/Not yet available/i)[0]).toBeInTheDocument();
+      expect(screen.getByText(/No upsells in this period/i)).toBeInTheDocument();
     });
   });
 

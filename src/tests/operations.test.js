@@ -164,12 +164,12 @@ describe('GET /api/revenue/operations — KPI summary', () => {
     expect(res.body.kpis.jobsCompleted.value).toBeGreaterThanOrEqual(2);
   });
 
-  it('upsell revenue is unavailable (no line-item source)', async () => {
+  it('upsell revenue is ok with value 0 when no attributions exist', async () => {
     const res = await request(app)
       .get(`/api/revenue/operations?start=${MONTH_START}&end=${TODAY}`)
       .set('Authorization', `Bearer ${token}`);
-    expect(res.body.kpis.upsellRevenue.status).toBe('unavailable');
-    expect(res.body.kpis.upsellRevenue.value).toBeNull();
+    expect(res.body.kpis.upsellRevenue.status).toBe('ok');
+    expect(typeof res.body.kpis.upsellRevenue.value).toBe('number');
   });
 
   it('returns dataQuality with state field', async () => {
@@ -501,7 +501,7 @@ describe('operationsAnalyticsService', () => {
     const result = await opsSvc.getOperationsKpis(accountId, { start: MONTH_START, end: TODAY });
     expect(result.kpis).toBeDefined();
     expect(result.kpis.jobsCompleted.status).toBe('ok');
-    expect(result.kpis.upsellRevenue.status).toBe('unavailable');
+    expect(result.kpis.upsellRevenue.status).toBe('ok');
     expect(result.period.start).toBe(MONTH_START);
   });
 

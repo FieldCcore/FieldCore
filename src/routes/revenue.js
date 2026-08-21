@@ -291,6 +291,7 @@ const teamSvc       = require('../services/teamPerformanceService');
 const completionSvc = require('../services/jobCompletionAnalyticsService');
 const commSvc       = require('../services/commissionCalculationService');
 const opsDqSvc      = require('../services/operationsDataQualityService');
+const upsellSvc     = require('../services/upsellAttributionService');
 
 router.get('/operations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { start, end } = req.query;
@@ -345,6 +346,16 @@ router.get('/operations/commissions', requireAuth, requireRole('owner', 'manager
   } catch (err) {
     console.error('[revenue] operations/commissions error', err.message);
     res.status(500).json({ error: 'Commission data could not be loaded.' });
+  }
+});
+
+router.get('/operations/upsells', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    res.json(await upsellSvc.getUpsellSummary(req.accountId, { start, end }));
+  } catch (err) {
+    console.error('[revenue] operations/upsells error', err.message);
+    res.status(500).json({ error: 'Upsell attribution data could not be loaded.' });
   }
 });
 

@@ -1772,6 +1772,45 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_job_status_history_account ON job_status_history(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_status_history_job     ON job_status_history(job_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_status_history_status  ON job_status_history(account_id, to_status, changed_at DESC)`,
+
+  // ── UPSELL ATTRIBUTION — V1 ──────────────────────────────────────────────────
+  // job_original_scope: immutable snapshot of what was originally booked/accepted.
+  // Captured at booking time; no retroactive attribution for historical jobs.
+  `CREATE TABLE IF NOT EXISTS job_original_scope (
+     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id             UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE UNIQUE,
+     sold_by_user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+     original_amount    NUMERIC(10,2) NOT NULL,
+     booked_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     source_estimate_id UUID,
+     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_orig_scope_account ON job_original_scope(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_orig_scope_job     ON job_original_scope(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_orig_scope_seller  ON job_original_scope(account_id, sold_by_user_id)`,
+
+  // job_upsell_attributions: explicit line-item upsell records added after original booking.
+  // attribution_type='UPSELL' is the only type counted in Upsell Revenue KPI for V1.
+  `CREATE TABLE IF NOT EXISTS job_upsell_attributions (
+     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id            UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id                UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     sold_by_user_id       UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+     performed_by_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+     attribution_type      TEXT NOT NULL DEFAULT 'UPSELL'
+                             CHECK (attribution_type IN ('ORIGINAL','UPSELL','CHANGE_ORDER','ADJUSTMENT')),
+     service_description   TEXT,
+     upsell_amount         NUMERIC(10,2) NOT NULL CHECK (upsell_amount >= 0),
+     sold_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     created_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     notes                 TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_upsell_account ON job_upsell_attributions(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_upsell_job     ON job_upsell_attributions(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_upsell_seller  ON job_upsell_attributions(account_id, sold_by_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_upsell_type    ON job_upsell_attributions(account_id, attribution_type, sold_at DESC)`,
 ];
 
 async function runMigrations() {

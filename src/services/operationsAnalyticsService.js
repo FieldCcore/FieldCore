@@ -1,5 +1,6 @@
 'use strict';
-const pool = require('../db/pool');
+const pool     = require('../db/pool');
+const upsellSvc = require('./upsellAttributionService');
 
 function pi(v) { return parseInt(v, 10) || 0; }
 function pf(v) { return Math.round((parseFloat(v) || 0) * 100) / 100; }
@@ -53,6 +54,8 @@ async function getOperationsKpis(accountId, { start, end }) {
     ? { value: pf(productionValue / totalHours), basis: 'scheduled_labor_hours', status: 'ok' }
     : { value: null, status: 'unavailable', note: 'No completed labor hours in period.' };
 
+  const upsellKpi = await upsellSvc.getUpsellKpi(accountId, { start: s, end: e });
+
   return {
     period:      { start: s, end: e },
     calculatedAt: new Date().toISOString(),
@@ -62,8 +65,7 @@ async function getOperationsKpis(accountId, { start, end }) {
         ? { value: completionRate, status: 'ok' }
         : { value: null, status: 'unavailable', note: 'No eligible jobs in period.' },
       productionValue:    { value: productionValue, status: 'ok' },
-      upsellRevenue:      { value: null, status: 'unavailable',
-        note: 'Upsell tracking requires line-item attribution. Configure upsell line items to enable.' },
+      upsellRevenue:      upsellKpi,
       commissionsOwed:    commissionsOwed != null
         ? { value: commissionsOwed, status: 'ok' }
         : { value: null, status: 'unavailable', note: 'No active commission rules configured.' },
@@ -72,8 +74,6 @@ async function getOperationsKpis(accountId, { start, end }) {
     limitations: [
       { code: 'labor_hours_scheduled', severity: 'info',
         description: 'Labor hours use scheduled duration — actual time tracking not yet connected.' },
-      { code: 'upsell_no_source', severity: 'info',
-        description: 'Upsell revenue requires line-item level attribution to be configured.' },
     ],
   };
 }

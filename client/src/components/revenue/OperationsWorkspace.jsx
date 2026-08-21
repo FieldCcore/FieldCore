@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../api';
-import RevenueKpiCard from '../RevenueKpiCard';
+import KpiCard from '../KpiCard';
+import { Briefcase, Target, BarChart2, TrendingUp, DollarSign, Clock, Users, Wrench, AlertCircle } from 'lucide-react';
 
 // ── Data fetching hook ────────────────────────────────────────────────────────
 
@@ -44,61 +45,69 @@ function fmtPct(v) {
 
 function fmtNum(n) { return n != null ? String(Math.round(n)) : '—'; }
 
+function formatRole(r) {
+  return (r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ── OpsKpiRow ─────────────────────────────────────────────────────────────────
 
 function OpsKpiRow({ data, loading }) {
-  const kpis = data?.kpis || {};
+  const kpis    = data?.kpis || {};
+  const upsell  = kpis.upsellRevenue || {};
+  const commOwed = kpis.commissionsOwed || {};
+  const revHr   = kpis.revenuePerLaborHour || {};
 
-  const cards = [
-    {
-      label:  'Jobs Completed',
-      value:  kpis.jobsCompleted?.status === 'ok' ? fmtNum(kpis.jobsCompleted.value) : null,
-      status: kpis.jobsCompleted?.status || 'loading',
-    },
-    {
-      label:  'Completion Rate',
-      value:  kpis.completionRate?.status === 'ok'
-        ? fmtPct(kpis.completionRate.value) : null,
-      status: kpis.completionRate?.status || 'loading',
-    },
-    {
-      label:  'Production Value',
-      value:  kpis.productionValue?.status === 'ok' ? fmtMoney(kpis.productionValue.value) : null,
-      status: kpis.productionValue?.status || 'loading',
-    },
-    {
-      label:  'Upsell Revenue',
-      value:  null,
-      status: kpis.upsellRevenue?.status || 'loading',
-    },
-    {
-      label:  'Commissions Owed',
-      value:  kpis.commissionsOwed?.status === 'ok' ? fmtMoney(kpis.commissionsOwed.value) : null,
-      status: kpis.commissionsOwed?.status || 'loading',
-    },
-    {
-      label:  'Rev / Labor Hour',
-      value:  kpis.revenuePerLaborHour?.status === 'ok'
-        ? fmtMoney(kpis.revenuePerLaborHour.value) : null,
-      status: kpis.revenuePerLaborHour?.status || 'loading',
-      note:   kpis.revenuePerLaborHour?.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined,
-    },
-  ];
+  const completionVal  = kpis.completionRate?.status === 'ok' ? parseFloat(kpis.completionRate.value) : null;
+  const completionTone = completionVal == null ? 'neutral' : completionVal >= 0.75 ? 'success' : 'warning';
 
   return (
-    <div className="rov-kpi-row rov-kpi-row--secondary ops-kpi-row" role="list" aria-label="Operations KPIs">
-      {cards.map(c => (
-        <div key={c.label} role="listitem">
-          <RevenueKpiCard
-            label={c.label}
-            value={c.value}
-            status={c.status}
-            isLoading={loading}
-            size="secondary"
-            note={c.note}
-          />
-        </div>
-      ))}
+    <div className="ops-kpi-grid" aria-label="Operations KPIs">
+      <KpiCard
+        icon={Briefcase}
+        title="Jobs Completed"
+        value={kpis.jobsCompleted?.status === 'ok' ? fmtNum(kpis.jobsCompleted.value) : '—'}
+        tone={kpis.jobsCompleted?.value > 0 ? 'success' : 'neutral'}
+        loading={loading}
+      />
+      <KpiCard
+        icon={Target}
+        title="Completion Rate"
+        value={kpis.completionRate?.status === 'ok' ? fmtPct(kpis.completionRate.value) : '—'}
+        subtitle={kpis.completionRate?.status === 'unavailable' ? 'No eligible jobs in period' : undefined}
+        tone={completionTone}
+        loading={loading}
+      />
+      <KpiCard
+        icon={BarChart2}
+        title="Production Value"
+        value={kpis.productionValue?.status === 'ok' ? fmtMoney(kpis.productionValue.value) : '—'}
+        tone={kpis.productionValue?.value > 0 ? 'success' : 'neutral'}
+        loading={loading}
+      />
+      <KpiCard
+        icon={TrendingUp}
+        title="Upsell Revenue"
+        value={upsell.status === 'ok' ? fmtMoney(upsell.value) : '—'}
+        subtitle={upsell.status === 'unavailable' ? 'Not yet available' : upsell.value === 0 ? 'No upsells this period' : undefined}
+        tone={upsell.status === 'ok' && upsell.value > 0 ? 'success' : 'neutral'}
+        loading={loading}
+      />
+      <KpiCard
+        icon={DollarSign}
+        title="Commissions Owed"
+        value={commOwed.status === 'ok' ? fmtMoney(commOwed.value) : '—'}
+        subtitle={commOwed.status === 'unavailable' ? 'No commission rules' : undefined}
+        tone={commOwed.status === 'ok' && commOwed.value > 0 ? 'warning' : 'neutral'}
+        loading={loading}
+      />
+      <KpiCard
+        icon={Clock}
+        title="Rev / Labor Hour"
+        value={revHr.status === 'ok' ? fmtMoney(revHr.value) : '—'}
+        subtitle={revHr.basis === 'scheduled_labor_hours' ? 'Scheduled hrs' : undefined}
+        tone={revHr.status === 'ok' && revHr.value > 0 ? 'success' : 'neutral'}
+        loading={loading}
+      />
     </div>
   );
 }
@@ -151,7 +160,7 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
     <div className="ops-section-error">Team performance data could not be loaded.</div>
   ) : members.length === 0 ? (
     <div className="ops-empty-state">
-      <div className="ops-empty-icon" aria-hidden="true">👥</div>
+      <div className="ops-empty-icon" aria-hidden="true"><Users size={22} /></div>
       <div className="ops-empty-msg">No team assignment data for this period.</div>
       <div className="ops-empty-hint">Assign technicians to jobs to see individual performance metrics here.</div>
     </div>
@@ -177,9 +186,9 @@ function TeamPerformanceSection({ filterStart, filterEnd }) {
             <tr key={m.userId} className="ops-team-row">
               <td><strong>{m.name}</strong></td>
               <td>
-                <span className="ops-role-chip ops-role-chip--primary">{m.userRole}</span>
+                <span className="ops-role-chip ops-role-chip--primary">{formatRole(m.userRole)}</span>
                 {m.assignmentRoles.filter(r => r !== m.userRole).slice(0, 1).map(r => (
-                  <span key={r} className="ops-role-chip ops-role-chip--secondary">{r.replace('_', ' ')}</span>
+                  <span key={r} className="ops-role-chip ops-role-chip--secondary">{formatRole(r)}</span>
                 ))}
               </td>
               <td>{fmtNum(m.jobsCompleted)}</td>
@@ -326,42 +335,40 @@ function MemberDetailDrawer({ member, filterStart, filterEnd, onClose }) {
 
 function SalesUpsellsSection({ filterStart, filterEnd }) {
   const { data, loading, error } = useOpsData(
-    '/revenue/operations/team',
+    '/revenue/operations/upsells',
     { start: filterStart, end: filterEnd },
     [filterStart, filterEnd]
   );
 
-  const members = data?.members || [];
-
-  const salesMembers = members.filter(m =>
-    m.assignmentRoles.some(r => ['salesperson', 'sales', 'lead_technician', 'technician'].includes(r))
-  );
+  const members        = data?.members || [];
+  const hasAttribution = data?.hasAttribution;
 
   return (
     <div className="rov-ws-section">
       <div className="rov-ws-section-header">
         <h2 className="rov-ws-section-title">Sales &amp; Upsell Attribution</h2>
-        <span className="rov-ws-section-sub">Attribution by assignment role</span>
-      </div>
-
-      <div className="ops-attr-notice">
-        <div className="ops-attr-notice-icon" aria-hidden="true">ℹ</div>
-        <div>
-          <strong>Upsell Revenue:</strong> Not yet available. Line-item level upsell attribution requires
-          configuring upsell line items on jobs. Production value shown below reflects completed work
-          attributed to each team member by their assignment role.
-        </div>
+        {!loading && hasAttribution && members.length > 0 && (
+          <span className="rov-ws-section-sub">
+            {members.length} member{members.length !== 1 ? 's' : ''} · revenue added beyond original booked scope
+          </span>
+        )}
       </div>
 
       {loading ? (
         <div className="ops-section-loading" style={{ margin: 16 }} />
       ) : error ? (
         <div className="ops-section-error">Sales attribution data could not be loaded.</div>
-      ) : salesMembers.length === 0 ? (
+      ) : !hasAttribution ? (
         <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true">📊</div>
-          <div className="ops-empty-msg">No attribution data for this period.</div>
-          <div className="ops-empty-hint">Assign team members to jobs with appropriate roles to see attribution here.</div>
+          <div className="ops-empty-icon" aria-hidden="true"><AlertCircle size={22} /></div>
+          <div className="ops-empty-msg">Upsell attribution not yet available.</div>
+          <div className="ops-empty-hint">Deploy the latest migration to enable upsell tracking.</div>
+        </div>
+      ) : members.length === 0 ? (
+        <div className="ops-empty-state">
+          <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={22} /></div>
+          <div className="ops-empty-msg">No upsells in this period.</div>
+          <div className="ops-empty-hint">Upsells appear here when team members add revenue beyond the original booked scope.</div>
         </div>
       ) : (
         <div className="table-wrap">
@@ -370,31 +377,35 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
               <tr>
                 <th scope="col">Team Member</th>
                 <th scope="col">Role</th>
-                <th scope="col">Jobs</th>
-                <th scope="col">Production Value</th>
-                <th scope="col">Avg Ticket</th>
+                <th scope="col">Original Sales</th>
                 <th scope="col">Upsell Revenue</th>
+                <th scope="col">Upsell Count</th>
+                <th scope="col">Avg Upsell</th>
+                <th scope="col">Final Job Value</th>
               </tr>
             </thead>
             <tbody>
-              {salesMembers.map(m => (
+              {members.map(m => (
                 <tr key={m.userId}>
                   <td><strong>{m.name}</strong></td>
                   <td>
-                    {m.assignmentRoles.map(r => (
-                      <span key={r} className="ops-role-chip ops-role-chip--primary" style={{ marginRight: 4 }}>
-                        {r.replace(/_/g, ' ')}
-                      </span>
-                    ))}
+                    <span className="ops-role-chip ops-role-chip--primary">{formatRole(m.userRole)}</span>
                   </td>
-                  <td>{fmtNum(m.jobsCompleted)}</td>
-                  <td><strong>{fmtMoney(m.productionValue)}</strong></td>
-                  <td>{m.avgTicket != null ? fmtMoney(m.avgTicket) : '—'}</td>
-                  <td style={{ color: 'var(--steel)', fontStyle: 'italic', fontSize: 11 }}>Unavailable</td>
+                  <td>{fmtMoney(m.originalSales)}</td>
+                  <td><strong>{fmtMoney(m.upsellRevenue)}</strong></td>
+                  <td>{m.upsellCount}</td>
+                  <td>{m.avgUpsell > 0 ? fmtMoney(m.avgUpsell) : '—'}</td>
+                  <td><strong>{fmtMoney(m.finalJobValue)}</strong></td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {data?.historicalNote && (
+        <div className="ops-limitations-bar">
+          <span className="ops-limitation-note">{data.historicalNote}</span>
         </div>
       )}
     </div>
@@ -673,7 +684,7 @@ function CommissionSection({ filterStart, filterEnd }) {
         <div className="ops-section-error">Commission data could not be loaded.</div>
       ) : !hasRules ? (
         <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true">💰</div>
+          <div className="ops-empty-icon" aria-hidden="true"><DollarSign size={22} /></div>
           <div className="ops-empty-msg">No compensation rules configured.</div>
           <div className="ops-empty-hint">
             Add a compensation rule to start tracking commissions automatically.
@@ -989,7 +1000,7 @@ function ServiceTableSection({ services, loading, error }) {
         <div className="ops-section-error">Service breakdown could not be loaded.</div>
       ) : rows.length === 0 ? (
         <div className="ops-empty-state">
-          <div className="ops-empty-icon" aria-hidden="true">🔧</div>
+          <div className="ops-empty-icon" aria-hidden="true"><Wrench size={22} /></div>
           <div className="ops-empty-msg">No completed jobs with revenue in this period.</div>
         </div>
       ) : (
