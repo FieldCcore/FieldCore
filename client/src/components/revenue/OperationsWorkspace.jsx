@@ -748,9 +748,11 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
           </div>
         ) : members.length === 0 ? (
           <div className="ops-empty-state">
-            <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={22} /></div>
+            <div className="ops-empty-icon" aria-hidden="true"><TrendingUp size={18} /></div>
             <div className="ops-empty-msg">No upsells in this period.</div>
-            <div className="ops-empty-hint">Upsells appear here when team members add revenue beyond the original booked scope.</div>
+            {data?.historicalNote && (
+              <div className="ops-empty-hint">{data.historicalNote}</div>
+            )}
           </div>
         ) : (
           <div className="table-wrap">
@@ -803,8 +805,8 @@ function SalesUpsellsSection({ filterStart, filterEnd }) {
         )}
       </div>
 
-      {data?.historicalNote && (
-        <div className="ops-sub-card ops-sub-card--info">
+      {data?.historicalNote && members.length > 0 && (
+        <div className="ops-bare-info">
           <span className="ops-limitation-note">{data.historicalNote}</span>
         </div>
       )}
