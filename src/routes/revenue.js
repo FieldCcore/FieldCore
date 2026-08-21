@@ -285,6 +285,69 @@ router.get('/customers/overview', requireAuth, requireRole('owner', 'manager'), 
   }
 });
 
+// ── Operations Analytics ──────────────────────────────────────────────────────
+const opsSvc        = require('../services/operationsAnalyticsService');
+const teamSvc       = require('../services/teamPerformanceService');
+const completionSvc = require('../services/jobCompletionAnalyticsService');
+const commSvc       = require('../services/commissionCalculationService');
+const opsDqSvc      = require('../services/operationsDataQualityService');
+
+router.get('/operations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    const [kpis, dq] = await Promise.all([
+      opsSvc.getOperationsKpis(req.accountId, { start, end }),
+      opsDqSvc.getOperationsDataQuality(req.accountId, { start, end }),
+    ]);
+    res.json({ ...kpis, dataQuality: dq });
+  } catch (err) {
+    console.error('[revenue] operations error', err.message);
+    res.status(500).json({ error: 'Operations analytics could not be loaded.' });
+  }
+});
+
+router.get('/operations/team', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    res.json(await teamSvc.getTeamPerformance(req.accountId, { start, end }));
+  } catch (err) {
+    console.error('[revenue] operations/team error', err.message);
+    res.status(500).json({ error: 'Team performance data could not be loaded.' });
+  }
+});
+
+router.get('/operations/team/:userId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    const detail = await teamSvc.getMemberDetail(req.accountId, req.params.userId, { start, end });
+    if (!detail) return res.status(404).json({ error: 'Team member not found.' });
+    res.json(detail);
+  } catch (err) {
+    console.error('[revenue] operations/team/:id error', err.message);
+    res.status(500).json({ error: 'Member detail could not be loaded.' });
+  }
+});
+
+router.get('/operations/completion', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    res.json(await completionSvc.getCompletionAnalysis(req.accountId, { start, end }));
+  } catch (err) {
+    console.error('[revenue] operations/completion error', err.message);
+    res.status(500).json({ error: 'Job completion analytics could not be loaded.' });
+  }
+});
+
+router.get('/operations/commissions', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    res.json(await commSvc.getCommissionSummary(req.accountId, { start, end }));
+  } catch (err) {
+    console.error('[revenue] operations/commissions error', err.message);
+    res.status(500).json({ error: 'Commission data could not be loaded.' });
+  }
+});
+
 // ── Technician Revenue ────────────────────────────────────────────────────────
 router.get('/technicians', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { start, end } = req.query;

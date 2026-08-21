@@ -7,8 +7,9 @@ import { CHART, CATEGORICAL, varianceColor } from '../../theme/revenueChartToken
 // Mock the API module
 vi.mock('../../api', () => ({
   default: {
-    get:  vi.fn(),
-    post: vi.fn(),
+    get:    vi.fn(),
+    post:   vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -255,19 +256,104 @@ const MOCK_FORECAST_READINESS = {
 
 const MOCK_SAVED_VIEWS = { savedViews: [] };
 
+const MOCK_OPS_KPIS = {
+  period: { start: '2026-08-01', end: '2026-08-20' },
+  calculatedAt: '2026-08-20T10:00:00Z',
+  kpis: {
+    jobsCompleted:      { value: 8,    status: 'ok' },
+    completionRate:     { value: 0.80, status: 'ok' },
+    productionValue:    { value: 4200, status: 'ok' },
+    upsellRevenue:      { value: null, status: 'unavailable', note: 'Requires line-item attribution.' },
+    commissionsOwed:    { value: null, status: 'unavailable', note: 'No active rules.' },
+    revenuePerLaborHour:{ value: 87.50, status: 'ok', basis: 'scheduled_labor_hours' },
+  },
+  limitations: [
+    { code: 'labor_hours_scheduled', severity: 'info', description: 'Labor hours use scheduled duration.' },
+  ],
+  dataQuality: { state: 'partial', limitationCount: 1, limitations: [] },
+};
+
+const MOCK_OPS_TEAM = {
+  members: [
+    {
+      userId: 'user-tech-1', name: 'Alice T.', userRole: 'tech',
+      assignmentRoles: ['lead_technician'],
+      jobsCompleted: 5, productionValue: 2500, avgTicket: 500,
+      completionRate: 0.83, laborHours: 25, revenuePerLaborHour: 100,
+      commissionEarned: null, topServices: ['HVAC'],
+    },
+    {
+      userId: 'user-tech-2', name: 'Bob M.', userRole: 'tech',
+      assignmentRoles: ['technician'],
+      jobsCompleted: 3, productionValue: 1700, avgTicket: 567,
+      completionRate: 0.75, laborHours: 15, revenuePerLaborHour: 113,
+      commissionEarned: 200, topServices: ['Plumbing'],
+    },
+  ],
+  limitations: ['Production value attributed to primary assignee only.'],
+  provenance: { sources: ['job_assignments', 'jobs', 'users'], formula: 'SUM jobs.amount where is_primary' },
+};
+
+const MOCK_OPS_COMPLETION = {
+  period: { start: '2026-08-01', end: '2026-08-20' },
+  summary: {
+    scheduled: 2, completed: 8, cancelled: 1, noShows: 1, eligible: 10,
+    completionRate: 0.80, cancelledRevenue: 500, noShowRevenue: 300, revenueImpact: 800,
+  },
+  byService: [
+    { service: 'HVAC',     completed: 5, cancelled: 1, noShows: 0, eligible: 6, completionRate: 0.833 },
+    { service: 'Plumbing', completed: 3, cancelled: 0, noShows: 1, eligible: 4, completionRate: 0.75  },
+  ],
+  cancellationReasons: [{ code: 'customer_cancelled', label: 'Customer Cancelled', count: 1 }],
+  limitations: [],
+  provenance: { formula: 'Completion Rate = completed / eligible', sources: ['jobs'] },
+};
+
+const MOCK_OPS_COMMISSIONS = {
+  period: { start: '2026-08-01', end: '2026-08-20' },
+  summary: { pending: { count: 2, amount: 400 }, approved: { count: 0, amount: 0 }, payable: { count: 0, amount: 0 }, paid: { count: 0, amount: 0 }, owed: 400 },
+  byMember: [{ userId: 'user-tech-2', memberName: 'Bob M.', status: 'pending', entries: 2, total: 400 }],
+  entries: [
+    { id: 'entry-1', userId: 'user-tech-2', memberName: 'Bob M.', jobId: 'job-1',
+      serviceType: 'Plumbing', jobAmount: 1000, scheduledAt: '2026-08-10T00:00:00Z',
+      sourceAmount: 1000, commissionAmount: 200, status: 'pending',
+      ruleName: 'Tech 20%', commissionType: 'percentage', ratePercent: 0.20,
+      earnedAt: '2026-08-10T12:00:00Z', approvedAt: null, paidAt: null },
+  ],
+  hasRules: true,
+  rulesCount: 1,
+};
+
+const MOCK_RULES = {
+  rules: [
+    { id: 'rule-1', name: 'Tech 20%', commissionType: 'percentage', ratePercent: 0.20,
+      flatAmount: null, basis: 'completed_revenue', trigger: 'job_completed',
+      appliesToUserId: null, appliesToUserName: null, appliesToRole: 'tech',
+      appliesToService: null, active: true, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   api.get.mockImplementation((url) => {
-    if (url.includes('/revenue/customers/overview')) return Promise.resolve({ data: MOCK_CUSTOMERS });
-    if (url.includes('/revenue/forecast/readiness')) return Promise.resolve({ data: MOCK_FORECAST_READINESS });
-    if (url.includes('/revenue/saved-views'))        return Promise.resolve({ data: MOCK_SAVED_VIEWS });
-    if (url.includes('/revenue/financials'))         return Promise.resolve({ data: MOCK_FINANCIALS });
-    if (url.includes('/revenue/overview'))           return Promise.resolve({ data: MOCK_OVERVIEW });
-    if (url.includes('/revenue/trend'))              return Promise.resolve({ data: MOCK_TREND });
-    if (url.includes('/revenue/services'))           return Promise.resolve({ data: MOCK_SERVICES });
-    if (url.includes('/revenue/quarterly'))          return Promise.resolve({ data: MOCK_QUARTERLY });
+    if (url.includes('/revenue/customers/overview'))  return Promise.resolve({ data: MOCK_CUSTOMERS });
+    if (url.includes('/revenue/forecast/readiness'))  return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+    if (url.includes('/revenue/saved-views'))         return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+    if (url.includes('/revenue/financials'))          return Promise.resolve({ data: MOCK_FINANCIALS });
+    if (url.includes('/revenue/operations/team/'))    return Promise.resolve({ data: { user: { id: 'user-tech-1', name: 'Alice T.', role: 'tech' }, period: { start: '2026-08-01', end: '2026-08-20' }, summary: { jobsCompleted: 5, productionValue: 2500, completionRate: 0.83, laborHours: 25, revenuePerLaborHour: 100 }, jobs: [] } });
+    if (url.includes('/revenue/operations/team'))     return Promise.resolve({ data: MOCK_OPS_TEAM });
+    if (url.includes('/revenue/operations/completion')) return Promise.resolve({ data: MOCK_OPS_COMPLETION });
+    if (url.includes('/revenue/operations/commissions')) return Promise.resolve({ data: MOCK_OPS_COMMISSIONS });
+    if (url.includes('/revenue/operations'))          return Promise.resolve({ data: MOCK_OPS_KPIS });
+    if (url.includes('/revenue/overview'))            return Promise.resolve({ data: MOCK_OVERVIEW });
+    if (url.includes('/revenue/trend'))               return Promise.resolve({ data: MOCK_TREND });
+    if (url.includes('/revenue/services'))            return Promise.resolve({ data: MOCK_SERVICES });
+    if (url.includes('/revenue/quarterly'))           return Promise.resolve({ data: MOCK_QUARTERLY });
+    if (url.includes('/operations/compensation-rules')) return Promise.resolve({ data: MOCK_RULES });
     return Promise.reject(new Error('Unknown endpoint: ' + url));
   });
+  api.post.mockResolvedValue({ data: { id: 'new-rule', name: 'New Rule', active: true } });
+  api.delete.mockResolvedValue({ data: { deleted: true } });
 });
 
 // ── Workspace navigation ───────────────────────────────────────────────────────
@@ -293,10 +379,10 @@ describe('Revenue — workspace navigation', () => {
     });
   });
 
-  it('Operations workspace shows coming-soon sections for unbuilt features', async () => {
+  it('Operations workspace renders the live workspace (no placeholder sections)', async () => {
     renderRevenue('?view=operations');
     await waitFor(() => {
-      expect(screen.getAllByText(/coming in a later phase/i).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/coming in a later phase/i)).not.toBeInTheDocument();
     });
   });
 
@@ -1753,5 +1839,233 @@ describe('Revenue — QB mapping-complete auto-hide', () => {
     fireEvent.click(screen.getByText('Last Month'));
     await waitFor(() => screen.getByText('QuickBooks Online'));
     expect(screen.queryByText(/account mapping complete/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Revenue → Operations V1 ───────────────────────────────────────────────────
+
+describe('Revenue — Operations workspace renders', () => {
+  it('shows Operations KPI cards', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Jobs Completed')).toBeInTheDocument();
+      expect(screen.getByText('Completion Rate')).toBeInTheDocument();
+      expect(screen.getByText('Production Value')).toBeInTheDocument();
+      expect(screen.getByText('Upsell Revenue')).toBeInTheDocument();
+      expect(screen.getByText('Commissions Owed')).toBeInTheDocument();
+      expect(screen.getByText('Rev / Labor Hour')).toBeInTheDocument();
+    });
+  });
+
+  it('shows KPI values from mock data', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getAllByText('8')[0]).toBeInTheDocument();       // Jobs Completed
+      expect(screen.getAllByText('80.0%')[0]).toBeInTheDocument();   // Completion Rate
+    });
+  });
+
+  it('shows Revenue by Service section heading', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Revenue by Service')).toBeInTheDocument();
+    });
+  });
+
+  it('shows service rows from mock data', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Cleaning')).toBeInTheDocument();
+      expect(screen.getByText('Repair')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Team Performance section heading (not Revenue by Technician)', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Team Performance')).toBeInTheDocument();
+      expect(screen.queryByText('Revenue by Technician')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows team members in Team Performance table', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getAllByText('Alice T.')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('Bob M.')[0]).toBeInTheDocument();
+    });
+  });
+
+  it('shows commission chip for member with commission earned', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getAllByText('$200.00')[0]).toBeInTheDocument();
+    });
+  });
+
+  it('shows Sales & Upsell Attribution section', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText(/Sales.*Upsell Attribution/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows upsell unavailable notice in Sales & Upsells', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getAllByText(/Upsell Revenue/i)[0]).toBeInTheDocument();
+      expect(screen.getAllByText(/Not yet available/i)[0]).toBeInTheDocument();
+    });
+  });
+
+  it('shows Commission Tracking section', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Commission Tracking')).toBeInTheDocument();
+    });
+  });
+
+  it('shows commission summary stats when rules configured', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Owed')).toBeInTheDocument();
+      expect(screen.getAllByText('$400.00')[0]).toBeInTheDocument();
+    });
+  });
+
+  it('shows Manage Compensation Rules button', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText(/Manage Compensation Rules/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows Job Completion Analysis section (not a placeholder)', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Job Completion Analysis')).toBeInTheDocument();
+      expect(screen.queryByText(/coming in a later phase/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows completion stats from mock data', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Completion Rate')).toBeInTheDocument();
+    });
+  });
+
+  it('shows cancellation reasons', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Customer Cancelled')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Operations Team Performance interactions', () => {
+  it('clicking Details opens member detail drawer', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getAllByText('Alice T.'));
+    const detailBtns = screen.getAllByText('Details →');
+    fireEvent.click(detailBtns[0]);
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getAllByText('Jobs Completed')[0]).toBeInTheDocument();
+    });
+  });
+
+  it('closing member detail drawer removes it from DOM', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getAllByText('Alice T.'));
+    const detailBtns = screen.getAllByText('Details →');
+    fireEvent.click(detailBtns[0]);
+    await waitFor(() => screen.getByRole('dialog'));
+    fireEvent.click(screen.getByLabelText('Close'));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Operations Compensation Rules modal', () => {
+  it('clicking Manage Compensation Rules opens modal', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
+    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Compensation Rules')).toBeInTheDocument();
+    });
+  });
+
+  it('modal shows existing active rule', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
+    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
+    await waitFor(() => {
+      expect(screen.getByText('Tech 20%')).toBeInTheDocument();
+    });
+  });
+
+  it('modal shows Add New Rule form', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
+    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
+    await waitFor(() => {
+      expect(screen.getByText('Add New Rule')).toBeInTheDocument();
+      expect(screen.getByLabelText(/Rule Name/i)).toBeInTheDocument();
+    });
+  });
+
+  it('closing rules modal removes it from DOM', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText(/Manage Compensation Rules/i));
+    fireEvent.click(screen.getByText(/Manage Compensation Rules/i));
+    await waitFor(() => screen.getByRole('dialog'));
+    fireEvent.click(screen.getByLabelText('Close'));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Operations permissions', () => {
+  it('owner role sees Operations workspace without restriction', async () => {
+    useAuth.mockReturnValue({ user: { role: 'owner' } });
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Team Performance')).toBeInTheDocument();
+    });
+  });
+
+  it('manager role sees Operations workspace', async () => {
+    useAuth.mockReturnValue({ user: { role: 'manager' } });
+    renderRevenue('?view=operations');
+    await waitFor(() => {
+      expect(screen.getByText('Team Performance')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Operations data quality', () => {
+  it('Financials tab still loads correctly after Operations is built', async () => {
+    renderRevenue('?view=financials');
+    await waitFor(() => {
+      expect(screen.getByText('Gross Revenue')).toBeInTheDocument();
+    });
+  });
+
+  it('switching between Operations and Financials does not cause errors', async () => {
+    renderRevenue('?view=operations');
+    await waitFor(() => screen.getByText('Team Performance'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Financials' }));
+    await waitFor(() => {
+      expect(screen.getByText('Gross Revenue')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Operations' }));
+    await waitFor(() => {
+      expect(screen.getByText('Team Performance')).toBeInTheDocument();
+    });
   });
 });

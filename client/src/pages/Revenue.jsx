@@ -9,7 +9,8 @@ import {
   ForecastingWorkspace,
   ReportsWorkspace,
 } from '../components/revenue/RevenueWorkspaceShells';
-import { FinancialsWorkspace } from '../components/revenue/FinancialsWorkspace';
+import { FinancialsWorkspace }   from '../components/revenue/FinancialsWorkspace';
+import { OperationsWorkspace }  from '../components/revenue/OperationsWorkspace';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -738,50 +739,7 @@ function DataLimitationsPanel({ dataQuality, loading }) {
   );
 }
 
-// ── OperationsWorkspace ───────────────────────────────────────────────────────
-
-function OperationsWorkspace({ filterStart, filterEnd }) {
-  const { data: svcData, loading: svcLoading, error: svcError } =
-    useRevData('/revenue/services', { start: filterStart, end: filterEnd }, [filterStart, filterEnd]);
-
-  return (
-    <div className="rov-ws-body">
-      <ServiceTable services={svcData} loading={svcLoading} error={svcError} />
-
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <h2 className="rov-ws-section-title">Revenue by Technician</h2>
-          <span className="rov-ws-section-sub">Coming in a later phase</span>
-        </div>
-        <div className="rov-ws-placeholder">
-          <ul className="rov-ws-section-list">
-            <li>Per-technician earned and collected revenue</li>
-            <li>Jobs completed, average ticket, and completion rate per tech</li>
-            <li>Labor hours logged and revenue per labor hour</li>
-            <li>Month-over-month performance trend by technician</li>
-          </ul>
-          <p className="rov-ws-placeholder-note">Requires technician assignment data from completed job sessions.</p>
-        </div>
-      </div>
-
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <h2 className="rov-ws-section-title">Job Completion Analysis</h2>
-          <span className="rov-ws-section-sub">Coming in a later phase</span>
-        </div>
-        <div className="rov-ws-placeholder">
-          <ul className="rov-ws-section-list">
-            <li>Jobs scheduled vs. completed vs. cancelled</li>
-            <li>No-show rate and revenue impact per period</li>
-            <li>Cancellation reasons and frequency breakdown</li>
-            <li>Completion rate by service type and technician</li>
-          </ul>
-          <p className="rov-ws-placeholder-note">Built from job status history and session records.</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// OperationsWorkspace is imported from ../components/revenue/OperationsWorkspace
 
 // ── Workspace placeholders ────────────────────────────────────────────────────
 

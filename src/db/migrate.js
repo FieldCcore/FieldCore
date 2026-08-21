@@ -1700,6 +1700,78 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_revenue_saved_views_tenant ON revenue_saved_views(tenant_id)`,
   `CREATE INDEX IF NOT EXISTS idx_revenue_saved_views_owner  ON revenue_saved_views(owner_user_id)`,
+
+  // ── OPERATIONS V1 — Commission & Job Status History ───────────────────────
+
+  `CREATE TABLE IF NOT EXISTS commission_rules (
+     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id            UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name                  TEXT NOT NULL,
+     commission_type       TEXT NOT NULL CHECK (commission_type IN ('percentage','flat_amount')),
+     rate_percent          NUMERIC(8,6),
+     flat_amount           NUMERIC(10,2),
+     basis                 TEXT NOT NULL DEFAULT 'completed_revenue'
+                             CHECK (basis IN (
+                               'booked_revenue','completed_revenue','invoiced_revenue',
+                               'collected_revenue','upsell_revenue','flat_per_job'
+                             )),
+     trigger               TEXT NOT NULL DEFAULT 'job_completed'
+                             CHECK (trigger IN (
+                               'job_booked','job_completed','invoice_issued',
+                               'payment_collected','upsell_completed','manual_approval'
+                             )),
+     applies_to_user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+     applies_to_role       TEXT,
+     applies_to_service    TEXT,
+     active                BOOLEAN NOT NULL DEFAULT TRUE,
+     created_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_rules_account ON commission_rules(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_rules_user    ON commission_rules(applies_to_user_id) WHERE applies_to_user_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_rules_active  ON commission_rules(account_id, active)`,
+
+  `CREATE TABLE IF NOT EXISTS commission_entries (
+     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id        UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     rule_id           UUID REFERENCES commission_rules(id) ON DELETE SET NULL,
+     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     job_id            UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     source_amount     NUMERIC(10,2) NOT NULL,
+     commission_amount NUMERIC(10,2) NOT NULL,
+     status            TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','approved','payable','paid','voided')),
+     earned_at         TIMESTAMPTZ,
+     approved_at       TIMESTAMPTZ,
+     approved_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+     payable_at        TIMESTAMPTZ,
+     paid_at           TIMESTAMPTZ,
+     voided_at         TIMESTAMPTZ,
+     voided_reason     TEXT,
+     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (rule_id, job_id, user_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_entries_account ON commission_entries(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_entries_user    ON commission_entries(account_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_entries_job     ON commission_entries(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_commission_entries_status  ON commission_entries(account_id, status)`,
+
+  `CREATE TABLE IF NOT EXISTS job_status_history (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id      UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     from_status TEXT,
+     to_status   TEXT NOT NULL,
+     reason_code TEXT,
+     reason_text TEXT,
+     changed_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+     changed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_status_history_account ON job_status_history(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_status_history_job     ON job_status_history(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_status_history_status  ON job_status_history(account_id, to_status, changed_at DESC)`,
 ];
 
 async function runMigrations() {

@@ -53,6 +53,7 @@ const workforceRouter          = require('./routes/workforce');
 const workforceRolesRouter     = require('./routes/workforce-roles');
 const systemRouter             = require('./routes/system');
 const revenueRouter            = require('./routes/revenue');
+const operationsRouter         = require('./routes/operations');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -217,6 +218,7 @@ app.use('/api/workforce',           generalLimiter, workforceRouter);
 app.use('/api/workforce-roles',     generalLimiter, workforceRolesRouter);
 app.use('/api/system',              generalLimiter, systemRouter);
 app.use('/api/revenue',                        generalLimiter, revenueRouter);
+app.use('/api/operations',                     generalLimiter, operationsRouter);
 app.use('/api/integrations',                   generalLimiter, integrationsRouter);
 app.use('/api/integrations/banking',           generalLimiter, bankingRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
