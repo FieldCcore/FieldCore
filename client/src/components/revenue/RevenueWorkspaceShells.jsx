@@ -63,46 +63,42 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
   // API returns: { topClients: [{id, name, job_count, earned_revenue, last_job_at}], summary: {activeClientCount}, limitations }
   const topClients        = state.data?.topClients || [];
   const activeClientCount = state.data?.summary?.activeClientCount || 0;
-  const limitations       = state.data?.limitations || [];
 
   return (
-    <div className="rov-ws-body">
+    <div className="rov-ws-body ops-ws-body">
 
       {/* ── Top Clients ────────────────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Top Clients</span>
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Top Clients</h2>
           <span className="rov-ws-section-sub">by earned revenue this period</span>
         </div>
 
         {topClients.length === 0 ? (
-          <div className="rov-ws-placeholder">
-            <p className="rov-ws-placeholder-note">No completed jobs found in this period.</p>
+          <div className="ops-table-card">
+            <div className="ops-empty-state">
+              <span className="ops-empty-msg">No completed jobs found in this period.</span>
+            </div>
           </div>
         ) : (
-          <>
+          <div className="ops-table-card">
             <div style={{ overflowX: 'auto' }}>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: 14,
-                color: 'var(--navy)',
-              }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: 'var(--navy)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--lightgray)', color: 'var(--slate)', fontWeight: 500 }}>
-                    <th style={{ textAlign: 'left',  padding: '8px 12px 8px 0' }}>Client Name</th>
-                    <th style={{ textAlign: 'right', padding: '8px 12px' }}>Jobs</th>
-                    <th style={{ textAlign: 'right', padding: '8px 12px' }}>Earned Revenue</th>
-                    <th style={{ textAlign: 'right', padding: '8px 0 8px 12px' }}>Last Job</th>
+                    <th style={{ textAlign: 'left',  padding: '10px 16px' }}>Client Name</th>
+                    <th style={{ textAlign: 'right', padding: '10px 16px' }}>Jobs</th>
+                    <th style={{ textAlign: 'right', padding: '10px 16px' }}>Earned Revenue</th>
+                    <th style={{ textAlign: 'right', padding: '10px 16px' }}>Last Job</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topClients.map((c, i) => (
                     <tr key={c.id || i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
-                      <td style={{ padding: '10px 12px 10px 0', fontWeight: 500 }}>{c.name || '—'}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{c.job_count ?? '—'}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmtMoney(c.earned_revenue)}</td>
-                      <td style={{ padding: '10px 0 10px 12px', textAlign: 'right', color: 'var(--slate)' }}>
+                      <td style={{ padding: '10px 16px', fontWeight: 500 }}>{c.name || '—'}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'right' }}>{c.job_count ?? '—'}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'right' }}>{fmtMoney(c.earned_revenue)}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--slate)' }}>
                         {c.last_job_at ? new Date(c.last_job_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                       </td>
                     </tr>
@@ -110,65 +106,62 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
                 </tbody>
               </table>
             </div>
-
-            <p style={{ marginTop: 12, fontSize: 13, color: 'var(--slate)' }}>
-              {activeClientCount} active client{activeClientCount !== 1 ? 's' : ''} generated revenue in this period.
-            </p>
-          </>
+            {activeClientCount > 0 && (
+              <p style={{ margin: 0, padding: '10px 16px', fontSize: 13, color: 'var(--slate)', borderTop: '1px solid var(--lightgray)' }}>
+                {activeClientCount} active client{activeClientCount !== 1 ? 's' : ''} generated revenue in this period.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
-      {/* ── Unavailable sections ──────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Customer Lifetime Value</span>
+      {/* ── Customer Lifetime Value ───────────────────────────────────────── */}
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Customer Lifetime Value</h2>
         </div>
-        <div className="dash-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--slate)' }}>
-            <strong style={{ color: 'var(--navy)' }}>Requires 6+ months of data.</strong>
-            {' '}LTV projections become meaningful once enough job history has accumulated.
+        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
+            Requires 6+ months of data.
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
+            LTV projections become meaningful once enough job history has accumulated.
             This section will activate automatically when the threshold is met.
           </p>
         </div>
       </div>
 
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">At-Risk / Churn Detection</span>
+      {/* ── At-Risk / Churn Detection ─────────────────────────────────────── */}
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">At-Risk / Churn Detection</h2>
         </div>
-        <div className="dash-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--slate)' }}>
-            <strong style={{ color: 'var(--navy)' }}>Customer inactivity policy required.</strong>
-            {' '}FieldCore needs to know what counts as "inactive" for your business — 60 days?
-            90 days? Configure this policy when it best fits your workflow.
+        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
+            Customer inactivity policy required.
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
+            FieldCore needs to know what counts as &#8220;inactive&#8221; for your business
+            &#8212; 60 days? 90 days? Configure this policy when it best fits your workflow.
           </p>
         </div>
       </div>
 
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Segment Analysis</span>
+      {/* ── Segment Analysis ──────────────────────────────────────────────── */}
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Segment Analysis</h2>
         </div>
-        <div className="dash-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--slate)' }}>
-            <strong style={{ color: 'var(--navy)' }}>Requires client segment tags.</strong>
-            {' '}Tag your clients as residential, commercial, or recurring to unlock
-            revenue breakdowns by segment.
+        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
+            Requires client segment tags.
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
+            Tag clients as residential, commercial, recurring, or other configured
+            segments to unlock revenue breakdowns by segment.
           </p>
         </div>
       </div>
-
-      {/* ── Limitations ───────────────────────────────────────────────────── */}
-      {limitations && limitations.length > 0 && (
-        <div className="rov-limitations">
-          <div className="rov-limitations-header">Data Notes</div>
-          <ul className="rov-limitations-list">
-            {limitations.map((lim, i) => (
-              <li key={i}>{lim}</li>
-            ))}
-          </ul>
-        </div>
-      )}
 
     </div>
   );
