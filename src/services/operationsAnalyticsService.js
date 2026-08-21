@@ -42,7 +42,7 @@ async function getOperationsKpis(accountId, { start, end }) {
       `SELECT COALESCE(SUM(commission_amount), 0) AS owed
        FROM commission_entries
        WHERE account_id = $1
-         AND status IN ('pending','approved')
+         AND status IN ('pending','approved','payable')
          AND created_at >= $2::date
          AND created_at <  ($3::date + INTERVAL '1 day')`,
       [accountId, s, e]
