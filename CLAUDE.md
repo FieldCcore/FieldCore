@@ -196,7 +196,7 @@ Modifications to frozen Operations code are permitted only for:
   - Required dependency or platform changes
   - Explicitly approved Operations V2 work
 
-### Customers V1 — FROZEN 2026-08-22
+### Customers V1 — FROZEN 2026-08-21
 Files under freeze:
   src/services/customerAnalyticsService.js
   src/routes/revenue.js                    (GET /api/revenue/customers/overview, customers export)
@@ -210,53 +210,79 @@ Files under freeze:
   client/src/pages/BusinessSettings.jsx    (Customer Policy section)
   client/src/pages/__tests__/Revenue.test.jsx
 
-Freeze basis: Production QA passed 2026-08-22. 681 backend tests, 969 frontend tests, all passing.
-Production commit: 72b083c (bug fix). Live on Railway + Vercel.
+Freeze basis: Production QA + post-incident smoke test passed 2026-08-21.
+681 backend tests, 969 frontend tests, all passing. Live on Railway + Vercel.
+Production commit: 72b083c. Post-incident smoke test commit: 96d7743.
 
-Post-freeze bug fixed (commit 72b083c): active count query in /customers/overview used
-`FROM jobs WHERE ...` without a `j` alias. dateFilter references j.scheduled_at, so the
-query threw "missing FROM-clause entry for table j" whenever start/end params were present
-(production always sends them). Fixed: `FROM jobs j WHERE j.account_id …`. Regression test
-added to customers.test.js that passes date params to catch this class of SQL alias bug.
+Frozen features:
   - Top Clients: period-scoped, earned revenue from complete jobs only, sorted DESC, UUID grouping
-  - LTV: all-time historical, 6-month eligibility gate (MIN/MAX scheduled_at for complete jobs),
-    avg/median revenue per customer, avg jobs/customer, avg ticket, top 5 clients by revenue
-  - Churn: snapshot-based, reads customer_inactivity_days from business_profiles,
-    ACTIVE (future scheduled OR ≤threshold days) / AT_RISK (>threshold, ≤2×threshold) / INACTIVE (>2×threshold),
-    excludes clients with 0 completed jobs
-  - Segments: period-scoped revenue (start/end filter), all-time client membership,
-    non-exclusive multi-tag attribution, denominator uses DISTINCT client IN subquery
-    (avoids double-counting multi-segment clients); shares may sum >100%
-  - Frontend auto-activation: LTV/Churn/Segments render live data or locked state from API eligibility flags,
-    no hardcoded static copy, no code deploy needed for activation
-  - Customer Policy in BusinessSettings: inactivity threshold dropdown (1–3650 days validated)
-  - Customers export: CSV type, top clients + LTV summary if eligible
-  - All routes: requireAuth + requireRole('owner','manager')
-  - All SQL queries filter by account_id = req.accountId (never client-supplied)
+  - Customer Lifetime Value (LTV): all-time historical, 6-month eligibility gate
+    (span between MIN/MAX of scheduled_at for complete jobs), avg/median revenue per customer,
+    avg jobs/customer, avg ticket, top 5 clients by all-time revenue
+  - LTV auto-activation: frontend renders live data when eligible:true; LockedSection when not —
+    no code deploy needed for activation
+  - Customer inactivity policy: customer_inactivity_days on business_profiles (1–3650, validated),
+    configurable via BusinessSettings Customer Policy dropdown
+  - At-Risk / Churn Detection: snapshot-based (not period-scoped), reads customer_inactivity_days,
+    ACTIVE (future scheduled OR last complete ≤threshold days) / AT_RISK (>threshold, ≤2×threshold) /
+    INACTIVE (>2×threshold); excludes clients with 0 completed jobs
+  - Churn auto-activation: renders live data when configured:true; LockedSection when not
+  - Client Segments: CRUD on /api/clients/segments (GET/POST/DELETE); 409 on duplicate name
+  - Segment assignments: POST/DELETE /api/clients/:id/segments; idempotent on re-assignment;
+    validates segment belongs to same account
+  - Segment Analytics: period-scoped revenue/job counts, all-time clientCount;
+    non-exclusive multi-tag attribution — revenue counted in each segment independently,
+    shares may sum >100%; denominator uses DISTINCT client IN subquery (avoids double-counting
+    multi-tag clients)
+  - Segment auto-activation: renders table when configured:true and data present;
+    "no clients tagged" state when configured but data:null; LockedSection when not configured
+  - Customers CSV export: /api/revenue/export?type=customers — top clients + LTV summary if eligible
+  - Date-range behavior: top clients and segment revenue are period-scoped;
+    LTV and churn are always all-time/snapshot regardless of date filter
+  - Tenant / entity isolation: all SQL filters by account_id = req.accountId (never client-supplied);
+    all routes requireAuth + requireRole('owner','manager')
+  - Approved UI/layout: ops-section-group transparent flex column, ops-table-card white cards,
+    LockedSection placeholder, no gold/sand hover borders
+
+PRODUCTION INCIDENT (2026-08-21 — recorded in freeze):
+  Root cause: dateFilter string references j.scheduled_at (with j. prefix). The active client count
+  query used `FROM jobs WHERE account_id = $1` with no j alias. PostgreSQL threw
+  "missing FROM-clause entry for table j" on every request that included start/end params.
+  Production always sends date params from the Revenue page URL; tests called the endpoint
+  with no params — the bug was invisible to the entire test suite until live production use.
+  Fix (commit 72b083c): `FROM jobs j WHERE j.account_id = $1 AND j.status = 'complete'` — one alias.
+  Regression test: customers.test.js "returns 200 with start+end date params" now mandates
+  date params on every run. Future SQL queries that share a dateFilter must use a table alias
+  on every FROM clause in the same Promise.all.
 
 Approved architectural decisions:
-  - LTV all-time (not period-scoped) — date filter from Revenue page does NOT apply
-  - Churn snapshot (not period-scoped) — always current as-of-today
-  - Segment revenue period-scoped; segment membership (clientCount) always all-time
-  - Segment revenue share denominator: sum of each DISTINCT tagged client's revenue once
-    (not once per segment assignment) to keep shares meaningful
-  - LTV eligibility: span between MIN and MAX of completed-job scheduled_at (not account creation date)
-  - Churn classification: integer days comparison using EXTRACT(EPOCH FROM ...) / 86400
-  - LockedSection component renders placeholder when section is not yet activatable
-  - ops-section-group layout used (transparent flex column, gap 10px) — same as Operations
+  - LTV all-time (not period-scoped) — Revenue page date filter does NOT apply to LTV
+  - Churn snapshot (not period-scoped) — always current as-of-today; inactivityDays from DB
+  - Segment revenue period-scoped; segment clientCount always all-time membership
+  - Segment revenue share denominator: SUM of each DISTINCT tagged client's revenue once
+    via IN subquery — never JOIN (JOIN would double-count clients in multiple segments)
+  - LTV eligibility gate: 6 months (REQUIRED_HISTORY_MONTHS constant); span is MIN-to-MAX
+    of scheduled_at for complete jobs, not account creation date
+  - Churn classification: EXTRACT(EPOCH FROM ...) / 86400 integer day comparison
+  - LockedSection renders static placeholder when section is not yet activatable (no API data needed)
+  - ops-section-group layout (transparent flex column, gap 10px) — same as Operations V1
 
 DO NOT:
   - Change LTV to be period-scoped
   - Change churn to be period-scoped
-  - Change segment denominator back to JOIN (would double-count multi-tag clients)
-  - Add new Customers analytics sections without Customers V2 approval
-  - Change eligibility gate from 6 months (REQUIRED_HISTORY_MONTHS)
-  - Add gold/sand hover borders to Customers section cards
+  - Change segment denominator from IN subquery back to JOIN
+  - Add new Customers analytics sections without explicit Customers V2 approval
+  - Change the LTV eligibility gate from 6 months
+  - Add gold/sand hover borders to any Customers section card
   - Remove conditional rendering (revert to static placeholder copy)
+  - Refactor Customers files while working on another Revenue subsection
+  - Change the approved date-range behavior (LTV/churn always all-time, segments period-scoped)
+  - Modify the Customers API contract (response keys, eligibility flags, error shape)
+  - Write new SQL in customers routes that shares a dateFilter without a table alias on FROM
 
 Modifications to frozen Customers code are permitted only for:
-  - Confirmed bugs
-  - Security issues
+  - Confirmed production defects
+  - Security or data-integrity issues
   - Required dependency or platform changes
   - Explicitly approved Customers V2 work
 
