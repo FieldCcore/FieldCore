@@ -222,22 +222,23 @@ describe('customerAnalyticsService.getChurnAnalysis', () => {
   });
 
   it('correctly classifies clients after setting threshold', async () => {
-    // Set 60-day threshold on primary account
+    // clientC's job is ~122 days ago (monthsAgo(100/30) truncates setMonth to 4 months).
+    // Use threshold=90 so AT_RISK window is 90–180 days — clientC falls in AT_RISK.
     await pool.query(
       `INSERT INTO business_profiles (account_id, business_name, timezone, customer_inactivity_days)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (account_id) DO UPDATE SET customer_inactivity_days = $4`,
-      [accountId, 'Test Biz', 'America/New_York', 60]
+      [accountId, 'Test Biz', 'America/New_York', 90]
     );
 
     const result = await custSvc.getChurnAnalysis(accountId);
     expect(result.configured).toBe(true);
-    expect(result.inactivityDays).toBe(60);
+    expect(result.inactivityDays).toBe(90);
     expect(result.counts).not.toBeNull();
 
-    // clientB: last job ~20 days ago → ACTIVE
-    // clientC: last job ~100 days ago → AT_RISK (> 60, <= 120)
-    // clientA: last job ~1 month ago → ACTIVE
+    // clientA: last complete job ~30 days ago → ≤ 90 → ACTIVE
+    // clientB: last complete job ~20 days ago → ≤ 90 → ACTIVE
+    // clientC: last complete job ~122 days ago → > 90, ≤ 180 → AT_RISK
     expect(result.counts.active).toBeGreaterThanOrEqual(2);
     expect(result.counts.atRisk).toBeGreaterThanOrEqual(1);
     expect(result.counts.total).toBe(3);

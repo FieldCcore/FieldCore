@@ -235,12 +235,15 @@ async function getSegmentAnalysis(accountId, { start, end } = {}) {
     params
   );
 
-  // Total for revenue share denominator: all jobs by any tagged client in period
+  // Total for revenue share denominator: each tagged client counted once.
+  // Using IN subquery avoids double-counting clients with multiple segment assignments.
   const { rows: totRows } = await pool.query(
     `SELECT COALESCE(SUM(j.amount), 0) AS total
      FROM jobs j
-     JOIN client_segment_assignments csa ON csa.client_id = j.client_id AND csa.account_id = $1
-     WHERE j.account_id = $1 AND j.status = 'complete' ${dateFilter}`,
+     WHERE j.account_id = $1 AND j.status = 'complete' ${dateFilter}
+       AND j.client_id IN (
+         SELECT DISTINCT client_id FROM client_segment_assignments WHERE account_id = $1
+       )`,
     params
   );
   const totalRevenue = pf(totRows[0]?.total || 0);
