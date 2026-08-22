@@ -352,7 +352,7 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
 // Chart color tokens (inlined — no external import needed)
 const FC_BLUE   = '#2563EB';       // earned/actual
 const FC_PURPLE = '#7C3AED';       // projected (no system token; established chart value)
-const FC_GREEN  = 'var(--green)';  // booked — success/committed semantic token
+const FC_GREEN  = '#2E7D32';       // booked — var(--green) resolved; direct hex avoids chaining
 
 function ReadinessBadge({ status }) {
   const map = {
