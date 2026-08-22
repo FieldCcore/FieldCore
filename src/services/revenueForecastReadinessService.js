@@ -25,7 +25,7 @@ async function getForecastReadiness(accountId, { year, policies } = {}) {
 
   // Count completed jobs in targetYear for rate stability check
   const volumeResult = await pool.query(
-    `SELECT COUNT(*)::int FILTER (WHERE status = 'complete') AS completed
+    `SELECT (COUNT(*) FILTER (WHERE status = 'complete'))::int AS completed
      FROM jobs WHERE account_id = $1
      AND EXTRACT(YEAR FROM scheduled_at AT TIME ZONE 'UTC') = $2`,
     [accountId, targetYear]
