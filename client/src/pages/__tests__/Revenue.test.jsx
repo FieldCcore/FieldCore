@@ -1386,10 +1386,44 @@ describe('Revenue — Forecasting workspace', () => {
     });
   });
 
-  it('shows no-AI disclaimer', async () => {
+  it('shows "How forecasting works" help button', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
-      expect(screen.getByText(/rules-based projections, not ai/i)).toBeInTheDocument();
+      expect(screen.getByText('How forecasting works')).toBeInTheDocument();
+    });
+  });
+
+  it('toggles help content when help button is clicked', async () => {
+    renderRevenue('?view=forecasting');
+    const btn = await screen.findByText('How forecasting works');
+    // Help content hidden by default
+    expect(screen.queryByText(/no ai or machine learning/i)).not.toBeInTheDocument();
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.getByText(/no ai or machine learning/i)).toBeInTheDocument();
+    });
+    // Click again to collapse
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.queryByText(/no ai or machine learning/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not render a permanent "About Forecasting" panel', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText('Forecast KPI Summary')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/about forecasting/i)).not.toBeInTheDocument();
+  });
+
+  it('renders four KPI cards in the forecast KPI grid', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText('Earned Revenue')).toBeInTheDocument();
+      expect(screen.getByText('Booked Revenue')).toBeInTheDocument();
+      expect(screen.getByText('Projected Period Revenue')).toBeInTheDocument();
+      expect(screen.getByText('Forecast Gap')).toBeInTheDocument();
     });
   });
 

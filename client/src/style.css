@@ -6049,6 +6049,18 @@ body {
    --fc-kpi-accent CSS custom property set inline on each card element. */
 .forecast-kpi-card::before { background: var(--fc-kpi-accent, var(--sand)); }
 
+/* Forecasting KPI grid — 2×2 layout (vs ops-kpi-grid 3-column) */
+.fc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.fc-kpi-grid .kpi-card { padding: 12px 14px; }
+@media (max-width: 480px) {
+  .fc-kpi-grid { grid-template-columns: 1fr; }
+}
+
 /* ops-kpi-btn — transparent clickable wrapper around a KpiCard */
 .ops-kpi-btn {
   display: block; width: 100%; background: none; border: none;

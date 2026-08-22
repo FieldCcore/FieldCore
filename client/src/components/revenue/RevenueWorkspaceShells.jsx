@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { HelpCircle, Info } from 'lucide-react';
 import api from '../../api';
 
 // ── Money formatter ────────────────────────────────────────────────────────────
@@ -397,8 +398,10 @@ function ForecastKpi({ label, value, sub, color, note }) {
           <span
             title={note}
             aria-label="How this is calculated"
-            style={{ cursor: 'help', color: 'var(--steel)', fontSize: 10, lineHeight: 1, userSelect: 'none' }}
-          >ⓘ</span>
+            style={{ display: 'inline-flex', cursor: 'help', color: 'var(--steel)', marginLeft: 2, lineHeight: 1 }}
+          >
+            <Info size={10} />
+          </span>
         )}
       </div>
       <div className="kpi-card__value">{value}</div>
@@ -410,7 +413,7 @@ function ForecastKpi({ label, value, sub, color, note }) {
 function ForecastTrendChart({ trend, isPast }) {
   if (!trend || trend.length === 0) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
+      <div style={{ padding: '0.75rem 0', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
         No trend data for this period.
       </div>
     );
@@ -600,9 +603,43 @@ function PipelineTable({ drivers, onSelect }) {
   );
 }
 
+function ForecastHelp({ open, onToggle }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          fontSize: 12, color: 'var(--steel)', width: 'fit-content',
+        }}
+      >
+        <HelpCircle size={13} />
+        How forecasting works
+      </button>
+      {open && (
+        <div style={{
+          fontSize: 12, color: 'var(--slate)', lineHeight: 1.65,
+          background: 'var(--offwhite)', borderRadius: 8, padding: '12px 16px',
+        }}>
+          <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <li>Forecasts use real FieldCore job data — no AI or machine learning.</li>
+            <li>Earned revenue: completed jobs within the selected period.</li>
+            <li>Booked revenue: eligible scheduled jobs not yet completed or cancelled.</li>
+            <li>Expected unbooked revenue activates when sufficient history exists (30+ days, 5+ completed jobs). It uses a 90-day historical daily run-rate to estimate remaining unscheduled revenue.</li>
+            <li>Projections become more reliable as job history accumulates.</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ForecastingWorkspace({ filterStart, filterEnd }) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
   const [selectedDriver, setSelectedDriver] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -643,13 +680,11 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
           <div className="ops-bare-heading">
             <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
           </div>
-          <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-            <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>
-              Selected period has ended. Showing actual results only.
-            </div>
-            <div className="ops-kpi-grid">
-              <ForecastKpi label="Earned Revenue" value={fmtMoney(actual.earnedRevenue)} color={FC_BLUE} />
-            </div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)' }}>
+            Selected period has ended. Showing actual results only.
+          </p>
+          <div className="fc-kpi-grid">
+            <ForecastKpi label="Earned Revenue" value={fmtMoney(actual.earnedRevenue)} color={FC_BLUE} />
           </div>
         </div>
 
@@ -664,14 +699,7 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
           </div>
         )}
 
-        <div className="rov-limitations">
-          <div className="rov-limitations-header">About Forecasting</div>
-          <ul className="rov-limitations-list">
-            <li>FieldCore uses rules-based projections, not AI or machine learning.</li>
-            <li>Projections are estimates based on historical daily run-rates — not guarantees.</li>
-            <li>Historical run-rate uses the last 90 days of completed jobs.</li>
-          </ul>
-        </div>
+        <ForecastHelp open={helpOpen} onToggle={() => setHelpOpen(h => !h)} />
       </div>
     );
   }
@@ -690,44 +718,38 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
           <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
           <span style={{ fontSize: 12, color: 'var(--steel)' }}>As of {period.asOf}</span>
         </div>
-        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-          {readiness.status === 'INSUFFICIENT_DATA' && (
-            <div style={{
-              fontSize: 12, color: 'var(--slate)', background: '#F9FAFB',
-              border: '1px solid var(--lightgray)', borderRadius: 8,
-              padding: '10px 14px', marginBottom: 14, lineHeight: 1.5,
-            }}>
-              FieldCore is currently forecasting from earned and booked revenue. More history is needed before unbooked revenue can be projected reliably.
-            </div>
-          )}
-          <div className="ops-kpi-grid">
-            <ForecastKpi
-              label="Earned Revenue"
-              value={fmtMoney(actual.earnedRevenue)}
-              sub="Completed jobs to date"
-              color={FC_BLUE}
-            />
-            <ForecastKpi
-              label="Booked Revenue"
-              value={fmtMoney(booked.revenue)}
-              sub={`${booked.jobCount} job${booked.jobCount !== 1 ? 's' : ''} scheduled`}
-              color={FC_GREEN}
-            />
-            <ForecastKpi
-              label="Projected Period Revenue"
-              value={fmtMoney(forecast.projectedRevenue)}
-              sub={readiness.status === 'INSUFFICIENT_DATA' ? 'Earned + booked only' : 'Earned + booked + run-rate'}
-              color={FC_PURPLE}
-              note="Earned + booked + expected unbooked revenue when sufficient history exists."
-            />
-            <ForecastKpi
-              label="Forecast Gap"
-              value={fmtMoney(forecast.forecastGap)}
-              sub={forecastGapLabel}
-              color="var(--slate)"
-              note="Projected period revenue minus revenue already earned."
-            />
-          </div>
+        {readiness.status === 'INSUFFICIENT_DATA' && (
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--slate)', lineHeight: 1.5 }}>
+            FieldCore is currently forecasting from earned and booked revenue. More history is needed before unbooked revenue can be projected reliably.
+          </p>
+        )}
+        <div className="fc-kpi-grid">
+          <ForecastKpi
+            label="Earned Revenue"
+            value={fmtMoney(actual.earnedRevenue)}
+            sub="Completed jobs to date"
+            color={FC_BLUE}
+          />
+          <ForecastKpi
+            label="Booked Revenue"
+            value={fmtMoney(booked.revenue)}
+            sub={`${booked.jobCount} job${booked.jobCount !== 1 ? 's' : ''} scheduled`}
+            color={FC_GREEN}
+          />
+          <ForecastKpi
+            label="Projected Period Revenue"
+            value={fmtMoney(forecast.projectedRevenue)}
+            sub={readiness.status === 'INSUFFICIENT_DATA' ? 'Earned + booked only' : 'Earned + booked + run-rate'}
+            color={FC_PURPLE}
+            note="Earned + booked + expected unbooked revenue when sufficient history exists."
+          />
+          <ForecastKpi
+            label="Forecast Gap"
+            value={fmtMoney(forecast.forecastGap)}
+            sub={forecastGapLabel}
+            color="var(--slate)"
+            note="Projected period revenue minus revenue already earned."
+          />
         </div>
       </div>
 
@@ -780,15 +802,7 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
         />
       )}
 
-      <div className="rov-limitations">
-        <div className="rov-limitations-header">About Forecasting</div>
-        <ul className="rov-limitations-list">
-          <li>FieldCore uses rules-based projections, not AI or machine learning.</li>
-          <li>Projections are estimates based on historical daily run-rates — not guarantees.</li>
-          <li>Historical run-rate uses the last 90 days of completed jobs.</li>
-          <li>Projected revenue = earned + booked + expected unbooked (max(0, daily rate &times; remaining days &minus; already booked)).</li>
-        </ul>
-      </div>
+      <ForecastHelp open={helpOpen} onToggle={() => setHelpOpen(h => !h)} />
     </div>
   );
 }
