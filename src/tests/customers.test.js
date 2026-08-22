@@ -165,6 +165,27 @@ describe('GET /api/revenue/customers/overview — Top Clients', () => {
     expect(names).not.toContain('Beta LLC');
   });
 
+  it('returns 200 with start+end date params — regression: j alias in active count query', async () => {
+    // Production always sends ?start=YYYY-MM-DD&end=YYYY-MM-DD. The dateFilter
+    // references j.scheduled_at, which requires a `j` alias on the FROM clause.
+    // Without the alias, PostgreSQL throws "missing FROM-clause entry for table j"
+    // and the entire Promise.all rejects with 500. This test must pass date params.
+    const start = monthsAgo(6).slice(0, 10);
+    const end   = new Date().toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get('/api/revenue/customers/overview')
+      .query({ start, end })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body).toHaveProperty('topClients');
+    expect(res.body).toHaveProperty('summary');
+    expect(res.body).toHaveProperty('lifetimeValue');
+    expect(res.body).toHaveProperty('churn');
+    expect(res.body).toHaveProperty('segments');
+  });
+
   it('requires authentication', async () => {
     await request(app)
       .get('/api/revenue/customers/overview')

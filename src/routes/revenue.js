@@ -290,7 +290,7 @@ router.get('/customers/overview', requireAuth, requireRole('owner', 'manager'), 
       ),
       pool.query(
         `SELECT COUNT(DISTINCT client_id)::int AS active
-         FROM jobs WHERE account_id = $1 AND status = 'complete'${dateFilter}`,
+         FROM jobs j WHERE j.account_id = $1 AND j.status = 'complete'${dateFilter}`,
         params
       ),
       custSvc.getLtv(accountId),
