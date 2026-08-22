@@ -60,6 +60,98 @@ router.get('/search', requireAuth, async (req, res) => {
   }
 });
 
+// ── Segment Management ────────────────────────────────────────────────────────
+// Must appear BEFORE /:id to avoid routing conflict.
+
+// GET /api/clients/segments
+router.get('/segments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT cs.id, cs.name, cs.color,
+              COUNT(csa.client_id)::int AS client_count
+       FROM client_segments cs
+       LEFT JOIN client_segment_assignments csa ON csa.segment_id = cs.id AND csa.account_id = $1
+       WHERE cs.account_id = $1
+       GROUP BY cs.id, cs.name, cs.color
+       ORDER BY cs.name`,
+      [req.accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/clients/segments
+router.post('/segments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { name, color } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name is required.' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO client_segments (account_id, name, color) VALUES ($1,$2,$3) RETURNING *`,
+      [req.accountId, name.trim(), color || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A segment with that name already exists.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/clients/segments/:segmentId
+router.delete('/segments/:segmentId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM client_segments WHERE id = $1 AND account_id = $2`,
+      [req.params.segmentId, req.accountId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Segment not found.' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/clients/:id/segments — assign client to a segment
+router.post('/:id/segments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { segmentId } = req.body;
+  if (!segmentId) return res.status(400).json({ error: 'segmentId is required.' });
+  try {
+    // Verify segment belongs to this account
+    const segCheck = await pool.query(
+      `SELECT id FROM client_segments WHERE id = $1 AND account_id = $2`,
+      [segmentId, req.accountId]
+    );
+    if (!segCheck.rows.length) return res.status(404).json({ error: 'Segment not found.' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO client_segment_assignments (account_id, client_id, segment_id)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (client_id, segment_id) DO NOTHING
+       RETURNING *`,
+      [req.accountId, req.params.id, segmentId]
+    );
+    res.status(201).json(rows[0] || { ok: true, alreadyAssigned: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/clients/:id/segments/:segmentId — remove assignment
+router.delete('/:id/segments/:segmentId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM client_segment_assignments
+       WHERE client_id = $1 AND segment_id = $2 AND account_id = $3`,
+      [req.params.id, req.params.segmentId, req.accountId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Assignment not found.' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/clients/:id — with full job history
 router.get('/:id', requireAuth, async (req, res) => {
   try {

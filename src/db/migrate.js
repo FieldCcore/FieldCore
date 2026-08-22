@@ -1811,6 +1811,36 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_job_upsell_job     ON job_upsell_attributions(job_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_upsell_seller  ON job_upsell_attributions(account_id, sold_by_user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_upsell_type    ON job_upsell_attributions(account_id, attribution_type, sold_at DESC)`,
+
+  // ── CUSTOMERS V1 ANALYTICS ────────────────────────────────────────────────
+  // Customer inactivity policy on business_profiles — drives At-Risk/Churn engine.
+  // NULL = not configured (status card shown). INT = days before a repeat customer
+  // is considered at-risk.
+  `ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS customer_inactivity_days INT DEFAULT NULL`,
+
+  // Account-scoped client segments (tags). name is unique per tenant.
+  `CREATE TABLE IF NOT EXISTS client_segments (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     name       TEXT NOT NULL,
+     color      TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, name)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_client_segments_account ON client_segments(account_id)`,
+
+  // Client-to-segment many-to-many. One client can belong to multiple segments.
+  // UNIQUE(client_id, segment_id) prevents duplicate assignments.
+  `CREATE TABLE IF NOT EXISTS client_segment_assignments (
+     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id  UUID NOT NULL REFERENCES clients(id)  ON DELETE CASCADE,
+     segment_id UUID NOT NULL REFERENCES client_segments(id) ON DELETE CASCADE,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (client_id, segment_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_csa_account_client  ON client_segment_assignments(account_id, client_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_csa_segment         ON client_segment_assignments(segment_id)`,
 ];
 
 async function runMigrations() {

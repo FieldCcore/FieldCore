@@ -60,7 +60,7 @@ export default function BusinessSettings() {
   const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
 
-  const [profile, setProfile] = useState({ business_name:'', phone:'', address:'', city:'', state:'', zip:'', website:'', description:'', timezone:'America/New_York', vertical:'', ein:'' });
+  const [profile, setProfile] = useState({ business_name:'', phone:'', address:'', city:'', state:'', zip:'', website:'', description:'', timezone:'America/New_York', vertical:'', ein:'', customer_inactivity_days: null });
   const [hours, setHours] = useState([]);
   const [closures, setClosures] = useState([]);
   const [newClosure, setNewClosure] = useState({ closure_date:'', name:'', is_emergency: false });
@@ -783,6 +783,37 @@ export default function BusinessSettings() {
           </div>
         </div>
         <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} label="Save tax settings" />
+      </Section>
+
+      {/* ── Customer Policy ── */}
+      <Section title="Customer Policy">
+        <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.5 }}>
+          Controls churn detection in the Customers analytics section. Clients with no completed jobs
+          beyond this threshold are classified as At-Risk or Inactive.
+        </div>
+        <div className="bss-grid-2">
+          <div className="bss-field">
+            <label className="bss-label mt0">Customer Inactivity Threshold</label>
+            <select
+              className="bss-input"
+              value={profile.customer_inactivity_days ?? ''}
+              onChange={e => setProfile(p => ({ ...p, customer_inactivity_days: e.target.value === '' ? null : parseInt(e.target.value, 10) }))}
+            >
+              <option value="">Not configured</option>
+              <option value="30">30 days</option>
+              <option value="45">45 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+              <option value="120">120 days</option>
+              <option value="180">180 days</option>
+              <option value="365">365 days (1 year)</option>
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 5 }}>
+              Clients with no completed job in this window are flagged as At-Risk (1–2× threshold) or Inactive (2× threshold).
+            </div>
+          </div>
+        </div>
+        <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} label="Save customer policy" />
       </Section>
 
       {/* ── No-Show Clock ── */}

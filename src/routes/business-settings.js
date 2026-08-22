@@ -41,29 +41,33 @@ router.get('/', requireAuth, async (req, res) => {
 // PUT /api/business-settings/profile
 router.put('/profile', requireAuth, async (req, res) => {
   const accountId = req.accountId;
-  const { business_name, phone, address, city, state, zip, website, description, timezone, vertical } = req.body;
-  const { ein } = req.body;
+  const { business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days } = req.body;
   if (timezone && !validateIanaTimezone(timezone)) {
     return res.status(400).json({ error: `Invalid timezone: ${timezone}. Use an IANA identifier such as America/New_York.` });
   }
+  const inactivityDays = customer_inactivity_days != null ? parseInt(customer_inactivity_days, 10) || null : null;
+  if (inactivityDays !== null && (inactivityDays < 1 || inactivityDays > 3650)) {
+    return res.status(400).json({ error: 'customer_inactivity_days must be between 1 and 3650.' });
+  }
   try {
     await pool.query(`
-      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
       ON CONFLICT (account_id) DO UPDATE SET
-        business_name = EXCLUDED.business_name,
-        phone         = EXCLUDED.phone,
-        address       = EXCLUDED.address,
-        city          = EXCLUDED.city,
-        state         = EXCLUDED.state,
-        zip           = EXCLUDED.zip,
-        website       = EXCLUDED.website,
-        description   = EXCLUDED.description,
-        timezone      = EXCLUDED.timezone,
-        vertical      = EXCLUDED.vertical,
-        ein           = EXCLUDED.ein,
-        updated_at    = NOW()
-    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical, ein || null]);
+        business_name             = EXCLUDED.business_name,
+        phone                     = EXCLUDED.phone,
+        address                   = EXCLUDED.address,
+        city                      = EXCLUDED.city,
+        state                     = EXCLUDED.state,
+        zip                       = EXCLUDED.zip,
+        website                   = EXCLUDED.website,
+        description               = EXCLUDED.description,
+        timezone                  = EXCLUDED.timezone,
+        vertical                  = EXCLUDED.vertical,
+        ein                       = EXCLUDED.ein,
+        customer_inactivity_days  = EXCLUDED.customer_inactivity_days,
+        updated_at                = NOW()
+    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical, ein || null, inactivityDays]);
 
     // Sync name to accounts table if provided
     if (business_name) {

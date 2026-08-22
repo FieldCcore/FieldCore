@@ -235,8 +235,49 @@ const MOCK_CUSTOMERS = {
     { id: 'client-2', name: 'Beta LLC',  job_count: 2, earned_revenue:  600.00, last_job_at: '2026-07-28T10:00:00Z' },
   ],
   summary: { activeClientCount: 2 },
-  limitations: ['Churn threshold not configured.'],
-  provenance: { calculationState: 'complete' },
+  lifetimeValue: {
+    eligible: false, reason: 'INSUFFICIENT_HISTORY',
+    historySpanMonths: 2.1, requiredMonths: 6, data: null,
+  },
+  churn: { configured: false, inactivityDays: null, counts: null, atRiskClients: null },
+  segments: { configured: false, segmentCount: 0, clientsTagged: 0, data: null },
+};
+
+const MOCK_CUSTOMERS_LIVE = {
+  topClients: [
+    { id: 'client-1', name: 'Acme Corp', job_count: 4, earned_revenue: 1200.00, last_job_at: '2026-08-01T10:00:00Z' },
+    { id: 'client-2', name: 'Beta LLC',  job_count: 2, earned_revenue:  600.00, last_job_at: '2026-07-28T10:00:00Z' },
+  ],
+  summary: { activeClientCount: 2 },
+  lifetimeValue: {
+    eligible: true, reason: null,
+    historySpanMonths: 8.2, requiredMonths: 6,
+    data: {
+      avgRevenuePerCustomer: 900, medianRevenuePerCustomer: 750,
+      avgJobsPerCustomer: 3, avgTicket: 300,
+      totalCustomers: 2, totalJobs: 6,
+      topCustomers: [
+        { id: 'client-1', name: 'Acme Corp', totalRevenue: 1200, jobCount: 4 },
+        { id: 'client-2', name: 'Beta LLC',  totalRevenue: 600,  jobCount: 2 },
+      ],
+    },
+    provenance: { formula: 'avg', basis: 'all-time', source: 'jobs', components: [] },
+  },
+  churn: {
+    configured: true, inactivityDays: 60,
+    counts: { active: 1, atRisk: 1, inactive: 0, total: 2 },
+    atRiskClients: [{ id: 'client-2', name: 'Beta LLC', daysSinceLastJob: 75, totalJobs: 2, status: 'AT_RISK' }],
+    rules: { active: 'Future or ≤60d', atRisk: '60–120d', inactive: '>120d', excluded: '0 completed' },
+  },
+  segments: {
+    configured: true, segmentCount: 2, clientsTagged: 2,
+    data: [
+      { id: 'seg-1', name: 'Residential', color: '#4CAF50', clientCount: 2, jobCount: 4, earnedRevenue: 1200, avgTicket: 300, revenueShare: 100 },
+      { id: 'seg-2', name: 'Commercial',  color: '#2196F3', clientCount: 1, jobCount: 2, earnedRevenue:  600, avgTicket: 300, revenueShare:  50 },
+    ],
+    attributionNote: 'Multi-tag clients counted in each segment; shares may sum > 100%.',
+    provenance: { basis: 'period-scoped', source: 'jobs+segments' },
+  },
 };
 
 const MOCK_FORECAST_READINESS = {
@@ -1073,7 +1114,7 @@ describe('Revenue — trend chart body anchoring', () => {
 
 // ── Customers workspace ────────────────────────────────────────────────────────
 
-describe('Revenue — Customers workspace', () => {
+describe('Revenue — Customers workspace (locked state)', () => {
   it('renders Top Clients section with client names', async () => {
     renderRevenue('?view=customers');
     await waitFor(() => {
@@ -1083,18 +1124,140 @@ describe('Revenue — Customers workspace', () => {
     });
   });
 
-  it('shows Customer inactivity policy required message', async () => {
+  it('shows LTV locked message with progress when historySpanMonths is present', async () => {
     renderRevenue('?view=customers');
     await waitFor(() => {
+      expect(screen.getByText(/customer lifetime value/i)).toBeInTheDocument();
+      // MOCK_CUSTOMERS has historySpanMonths: 2.1 → shows progress
+      expect(screen.getByText(/2.1 of 6 months/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows At-Risk / Churn Detection section in locked state', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText(/at-risk \/ churn detection/i)).toBeInTheDocument();
       expect(screen.getByText(/customer inactivity policy required/i)).toBeInTheDocument();
     });
   });
 
-  it('shows At-Risk / Churn Detection section', async () => {
+  it('shows Segment Analysis section in locked state', async () => {
     renderRevenue('?view=customers');
     await waitFor(() => {
-      expect(screen.getByText(/at-risk/i)).toBeInTheDocument();
+      expect(screen.getByText(/segment analysis/i)).toBeInTheDocument();
+      expect(screen.getByText(/requires client segment tags/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe('Revenue — Customers workspace (live state)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/customers/overview'))  return Promise.resolve({ data: MOCK_CUSTOMERS_LIVE });
+      if (url.includes('/revenue/forecast/readiness'))  return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))         return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))          return Promise.resolve({ data: MOCK_FINANCIALS });
+      if (url.includes('/revenue/overview'))            return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))               return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))            return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))           return Promise.resolve({ data: MOCK_QUARTERLY });
+      if (url.includes('/revenue/operations'))          return Promise.resolve({ data: MOCK_OPS_KPIS });
+      return Promise.reject(new Error('Unknown endpoint: ' + url));
+    });
+  });
+
+  it('renders LTV KPI cards when eligible:true', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText('Customer Lifetime Value')).toBeInTheDocument();
+      expect(screen.getByText('Avg Revenue / Customer')).toBeInTheDocument();
+      expect(screen.getByText('$900.00')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Top Clients by All-Time Revenue table in LTV section', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText('Top Clients by All-Time Revenue')).toBeInTheDocument();
+    });
+  });
+
+  it('renders churn counts when configured:true', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText('At-Risk / Churn Detection')).toBeInTheDocument();
+      expect(screen.getByText('threshold: 60 days')).toBeInTheDocument();
+      // Counts
+      const activeLabels = screen.getAllByText('Active');
+      expect(activeLabels.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders at-risk client list with Beta LLC', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getAllByText('Beta LLC').length).toBeGreaterThan(0);
+      expect(screen.getByText('75')).toBeInTheDocument(); // daysSinceLastJob
+    });
+  });
+
+  it('renders segment table when segments.data is present', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText('Segment Analysis')).toBeInTheDocument();
+      expect(screen.getByText('Residential')).toBeInTheDocument();
+      expect(screen.getByText('Commercial')).toBeInTheDocument();
+    });
+  });
+
+  it('shows multi-tag attribution note', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText(/multi-tag clients counted in each segment/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Customers workspace (segments configured but no clients tagged)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/customers/overview'))  return Promise.resolve({
+        data: {
+          ...MOCK_CUSTOMERS,
+          segments: { configured: true, segmentCount: 2, clientsTagged: 0, data: null },
+        },
+      });
+      if (url.includes('/revenue/forecast/readiness'))  return Promise.resolve({ data: MOCK_FORECAST_READINESS });
+      if (url.includes('/revenue/saved-views'))         return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      if (url.includes('/revenue/financials'))          return Promise.resolve({ data: MOCK_FINANCIALS });
+      if (url.includes('/revenue/overview'))            return Promise.resolve({ data: MOCK_OVERVIEW });
+      if (url.includes('/revenue/trend'))               return Promise.resolve({ data: MOCK_TREND });
+      if (url.includes('/revenue/services'))            return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/revenue/quarterly'))           return Promise.resolve({ data: MOCK_QUARTERLY });
+      if (url.includes('/revenue/operations'))          return Promise.resolve({ data: MOCK_OPS_KPIS });
+      return Promise.reject(new Error('Unknown endpoint: ' + url));
+    });
+  });
+
+  it('shows "no clients tagged" message when segments configured but clientsTagged:0', async () => {
+    renderRevenue('?view=customers');
+    await waitFor(() => {
+      expect(screen.getByText(/no clients have been tagged yet/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Revenue — Reports workspace Customer Value Report', () => {
+  it('shows Customer Value Report as AVAILABLE with Export CSV button', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Customer Value Report')).toBeInTheDocument();
+    });
+    // Should have an Export CSV button in the same row (not "Coming soon")
+    const exportButtons = screen.getAllByText('Export CSV');
+    expect(exportButtons.length).toBeGreaterThanOrEqual(1);
   });
 });
 

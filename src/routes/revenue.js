@@ -126,6 +126,39 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
         r.paid_at    ? new Date(r.paid_at).toLocaleDateString()    : '',
         r.due_date   ? new Date(r.due_date).toLocaleDateString()   : '',
       ]);
+    } else if (type === 'customers') {
+      const [topResult, ltv] = await Promise.all([
+        pool.query(
+          `SELECT c.name,
+                  COUNT(j.id)::int AS job_count,
+                  COALESCE(SUM(j.amount), 0) AS earned_revenue,
+                  MAX(j.scheduled_at) AS last_job_at
+           FROM clients c
+           JOIN jobs j ON j.client_id = c.id AND j.account_id = $1 AND j.status = 'complete'
+           WHERE c.account_id = $1
+             AND j.scheduled_at >= $2::date
+             AND j.scheduled_at <  ($3::date + INTERVAL '1 day')
+           GROUP BY c.name ORDER BY earned_revenue DESC`,
+          [accountId, s, e]
+        ),
+        custSvc.getLtv(accountId),
+      ]);
+      filename = 'customers.csv';
+      header   = ['Client Name', 'Jobs', 'Earned Revenue', 'Last Job'];
+      rows     = topResult.rows.map(r => [
+        r.name,
+        r.job_count,
+        parseFloat(r.earned_revenue).toFixed(2),
+        r.last_job_at ? new Date(r.last_job_at).toLocaleDateString() : '',
+      ]);
+      if (ltv.eligible && ltv.data) {
+        rows.push([]);
+        rows.push(['--- Lifetime Value Summary ---', '', '', '']);
+        rows.push(['Avg Revenue per Customer', ltv.data.avgRevenuePerCustomer.toFixed(2), '', '']);
+        rows.push(['Median Revenue per Customer', ltv.data.medianRevenuePerCustomer.toFixed(2), '', '']);
+        rows.push(['Avg Jobs per Customer', ltv.data.avgJobsPerCustomer, '', '']);
+        rows.push(['Avg Ticket', ltv.data.avgTicket.toFixed(2), '', '']);
+      }
     } else {
       // Default: overview summary
       const overview = await svc.getOverview(accountId, { start: s, end: e });
@@ -230,6 +263,8 @@ router.get('/metrics', requireAuth, requireRole('owner', 'manager'), (_req, res)
 });
 
 // ── Customers Overview ────────────────────────────────────────────────────────
+const custSvc = require('../services/customerAnalyticsService');
+
 router.get('/customers/overview', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { start, end } = req.query;
   const accountId = req.accountId;
@@ -239,45 +274,36 @@ router.get('/customers/overview', requireAuth, requireRole('owner', 'manager'), 
     if (start) { params.push(start); dateFilter += ` AND j.scheduled_at >= $${params.length}::date`; }
     if (end)   { params.push(end);   dateFilter += ` AND j.scheduled_at <  ($${params.length}::date + INTERVAL '1 day')`; }
 
-    const result = await pool.query(
-      `SELECT c.id, c.name,
-              COUNT(j.id)::int AS job_count,
-              COALESCE(SUM(j.amount), 0) AS earned_revenue,
-              MAX(j.scheduled_at) AS last_job_at
-       FROM clients c
-       JOIN jobs j ON j.client_id = c.id AND j.account_id = $1 AND j.status = 'complete'
-       WHERE c.account_id = $1 ${dateFilter}
-       GROUP BY c.id, c.name
-       ORDER BY earned_revenue DESC
-       LIMIT 15`,
-      params
-    );
-
-    // Total unique active clients in period
-    const activeResult = await pool.query(
-      `SELECT COUNT(DISTINCT client_id)::int AS active
-       FROM jobs WHERE account_id = $1 AND status = 'complete' ${
-         start || end
-           ? `AND scheduled_at >= ${start ? '$2::date' : "'1970-01-01'"}${end ? ` AND scheduled_at < ($${start ? 3 : 2}::date + INTERVAL '1 day')` : ''}`
-           : ''
-       }`,
-      params
-    );
+    const [topResult, activeResult, ltv, churn, segments] = await Promise.all([
+      pool.query(
+        `SELECT c.id, c.name,
+                COUNT(j.id)::int AS job_count,
+                COALESCE(SUM(j.amount), 0) AS earned_revenue,
+                MAX(j.scheduled_at) AS last_job_at
+         FROM clients c
+         JOIN jobs j ON j.client_id = c.id AND j.account_id = $1 AND j.status = 'complete'
+         WHERE c.account_id = $1 ${dateFilter}
+         GROUP BY c.id, c.name
+         ORDER BY earned_revenue DESC
+         LIMIT 15`,
+        params
+      ),
+      pool.query(
+        `SELECT COUNT(DISTINCT client_id)::int AS active
+         FROM jobs WHERE account_id = $1 AND status = 'complete'${dateFilter}`,
+        params
+      ),
+      custSvc.getLtv(accountId),
+      custSvc.getChurnAnalysis(accountId),
+      custSvc.getSegmentAnalysis(accountId, { start, end }),
+    ]);
 
     res.json({
-      topClients: result.rows,
+      topClients: topResult.rows,
       summary: { activeClientCount: activeResult.rows[0]?.active || 0 },
-      limitations: [
-        'Customer Lifetime Value calculation requires multi-period history.',
-        'Churn threshold not configured — inactive client analysis requires customer_inactivity_policy.',
-        'Client segment analysis requires segment tags to be configured.',
-      ],
-      provenance: {
-        formula: 'SUM(jobs.amount WHERE status=complete) grouped by client',
-        sources: ['jobs', 'clients'],
-        calculationState: 'complete',
-        missingPolicies: ['customerInactivityPolicy'],
-      },
+      lifetimeValue: ltv,
+      churn,
+      segments,
     });
   } catch (err) {
     console.error('[revenue] customers/overview error', err.message);

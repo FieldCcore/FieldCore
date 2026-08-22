@@ -36,6 +36,16 @@ function ErrorState({ message }) {
 // CUSTOMERS WORKSPACE
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Sub-component: locked state card used when a section needs configuration
+function LockedSection({ title, reason, detail }) {
+  return (
+    <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
+      <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{reason}</p>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>{detail}</p>
+    </div>
+  );
+}
+
 export function CustomersWorkspace({ filterStart, filterEnd }) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
 
@@ -60,9 +70,11 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
   if (state.loading) return <LoadingState />;
   if (state.error)   return <ErrorState message={state.error} />;
 
-  // API returns: { topClients: [{id, name, job_count, earned_revenue, last_job_at}], summary: {activeClientCount}, limitations }
   const topClients        = state.data?.topClients || [];
   const activeClientCount = state.data?.summary?.activeClientCount || 0;
+  const ltv               = state.data?.lifetimeValue;
+  const churn             = state.data?.churn;
+  const segments          = state.data?.segments;
 
   return (
     <div className="rov-ws-body ops-ws-body">
@@ -119,48 +131,214 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
       <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">Customer Lifetime Value</h2>
+          {ltv?.eligible && ltv.data && (
+            <span className="rov-ws-section-sub">
+              based on {ltv.historySpanMonths} months of history
+            </span>
+          )}
         </div>
-        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
-          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
-            Requires 6+ months of data.
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
-            LTV projections become meaningful once enough job history has accumulated.
-            This section will activate automatically when the threshold is met.
-          </p>
-        </div>
+
+        {ltv?.eligible && ltv.data ? (
+          <>
+            {/* KPI grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 }}>
+              {[
+                { label: 'Avg Revenue / Customer', value: fmtMoney(ltv.data.avgRevenuePerCustomer) },
+                { label: 'Median Revenue / Customer', value: fmtMoney(ltv.data.medianRevenuePerCustomer) },
+                { label: 'Avg Jobs / Customer', value: ltv.data.avgJobsPerCustomer },
+                { label: 'Avg Ticket', value: fmtMoney(ltv.data.avgTicket) },
+                { label: 'Total Customers', value: ltv.data.totalCustomers.toLocaleString() },
+                { label: 'Total Jobs', value: ltv.data.totalJobs.toLocaleString() },
+              ].map(kpi => (
+                <div key={kpi.label} className="ops-sub-card" style={{ padding: '12px 14px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 4 }}>{kpi.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)' }}>{kpi.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Top customers by all-time revenue */}
+            {ltv.data.topCustomers?.length > 0 && (
+              <div className="ops-table-card" style={{ marginTop: 10 }}>
+                <div style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--slate)', borderBottom: '1px solid var(--lightgray)' }}>
+                  Top Clients by All-Time Revenue
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: 'var(--navy)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--lightgray)', color: 'var(--slate)', fontWeight: 500 }}>
+                        <th style={{ textAlign: 'left',  padding: '8px 16px' }}>Client</th>
+                        <th style={{ textAlign: 'right', padding: '8px 16px' }}>Jobs</th>
+                        <th style={{ textAlign: 'right', padding: '8px 16px' }}>All-Time Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ltv.data.topCustomers.map((c, i) => (
+                        <tr key={c.id || i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                          <td style={{ padding: '8px 16px', fontWeight: 500 }}>{c.name}</td>
+                          <td style={{ padding: '8px 16px', textAlign: 'right' }}>{c.jobCount}</td>
+                          <td style={{ padding: '8px 16px', textAlign: 'right' }}>{fmtMoney(c.totalRevenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p style={{ margin: 0, padding: '8px 16px', fontSize: 12, color: 'var(--steel)', borderTop: '1px solid var(--lightgray)' }}>
+                  All-time historical — not period-scoped.
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <LockedSection
+            reason={`Requires ${ltv?.requiredMonths ?? 6}+ months of job history.`}
+            detail={
+              ltv?.historySpanMonths
+                ? `${ltv.historySpanMonths} of ${ltv.requiredMonths} months accumulated. This section will activate automatically when the threshold is met.`
+                : 'LTV projections become meaningful once enough job history has accumulated. This section will activate automatically when the threshold is met.'
+            }
+          />
+        )}
       </div>
 
       {/* ── At-Risk / Churn Detection ─────────────────────────────────────── */}
       <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">At-Risk / Churn Detection</h2>
+          {churn?.configured && churn.counts && (
+            <span className="rov-ws-section-sub">
+              threshold: {churn.inactivityDays} days
+            </span>
+          )}
         </div>
-        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
-          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
-            Customer inactivity policy required.
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
-            FieldCore needs to know what counts as &#8220;inactive&#8221; for your business
-            &#8212; 60 days? 90 days? Configure this policy when it best fits your workflow.
-          </p>
-        </div>
+
+        {churn?.configured && churn.counts ? (
+          <>
+            {/* Summary counts */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
+              {[
+                { label: 'Active', value: churn.counts.active, color: 'var(--green)' },
+                { label: 'At Risk', value: churn.counts.atRisk, color: 'var(--amber)' },
+                { label: 'Inactive', value: churn.counts.inactive, color: 'var(--red)' },
+                { label: 'Total', value: churn.counts.total, color: 'var(--navy)' },
+              ].map(c => (
+                <div key={c.label} className="ops-sub-card" style={{ padding: '12px 14px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 4 }}>{c.label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: c.color }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* At-risk client list */}
+            {churn.atRiskClients?.length > 0 && (
+              <div className="ops-table-card" style={{ marginTop: 10 }}>
+                <div style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--slate)', borderBottom: '1px solid var(--lightgray)' }}>
+                  At-Risk Clients
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: 'var(--navy)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--lightgray)', color: 'var(--slate)', fontWeight: 500 }}>
+                        <th style={{ textAlign: 'left',  padding: '8px 16px' }}>Client</th>
+                        <th style={{ textAlign: 'right', padding: '8px 16px' }}>Days Since Last Job</th>
+                        <th style={{ textAlign: 'right', padding: '8px 16px' }}>Total Jobs</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {churn.atRiskClients.map((c, i) => (
+                        <tr key={c.id || i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                          <td style={{ padding: '8px 16px', fontWeight: 500 }}>{c.name}</td>
+                          <td style={{ padding: '8px 16px', textAlign: 'right', color: 'var(--amber)', fontWeight: 600 }}>
+                            {c.daysSinceLastJob}
+                          </td>
+                          <td style={{ padding: '8px 16px', textAlign: 'right' }}>{c.totalJobs}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {churn.atRiskClients?.length === 0 && (
+              <div className="ops-table-card" style={{ marginTop: 10 }}>
+                <div className="ops-empty-state">
+                  <span className="ops-empty-msg">No at-risk clients at this time.</span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <LockedSection
+            reason="Customer inactivity policy required."
+            detail="Set a customer inactivity threshold in Business Settings to enable at-risk detection. FieldCore will classify clients as Active, At-Risk, or Inactive based on days since their last completed job."
+          />
+        )}
       </div>
 
       {/* ── Segment Analysis ──────────────────────────────────────────────── */}
       <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">Segment Analysis</h2>
+          {segments?.configured && segments.data && (
+            <span className="rov-ws-section-sub">
+              {segments.segmentCount} segment{segments.segmentCount !== 1 ? 's' : ''} · {segments.clientsTagged} client{segments.clientsTagged !== 1 ? 's' : ''} tagged
+            </span>
+          )}
         </div>
-        <div className="ops-sub-card" style={{ padding: '16px 18px' }}>
-          <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
-            Requires client segment tags.
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)', lineHeight: 1.5 }}>
-            Tag clients as residential, commercial, recurring, or other configured
-            segments to unlock revenue breakdowns by segment.
-          </p>
-        </div>
+
+        {segments?.configured && segments.data && segments.data.length > 0 ? (
+          <>
+            <div className="ops-table-card">
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: 'var(--navy)' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--lightgray)', color: 'var(--slate)', fontWeight: 500 }}>
+                      <th style={{ textAlign: 'left',  padding: '10px 16px' }}>Segment</th>
+                      <th style={{ textAlign: 'right', padding: '10px 16px' }}>Clients</th>
+                      <th style={{ textAlign: 'right', padding: '10px 16px' }}>Jobs</th>
+                      <th style={{ textAlign: 'right', padding: '10px 16px' }}>Earned Revenue</th>
+                      <th style={{ textAlign: 'right', padding: '10px 16px' }}>Avg Ticket</th>
+                      <th style={{ textAlign: 'right', padding: '10px 16px' }}>Rev Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {segments.data.map((seg, i) => (
+                      <tr key={seg.id || i} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+                        <td style={{ padding: '10px 16px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            {seg.color && (
+                              <span style={{ width: 10, height: 10, borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
+                            )}
+                            <span style={{ fontWeight: 500 }}>{seg.name}</span>
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{seg.clientCount}</td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{seg.jobCount}</td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{fmtMoney(seg.earnedRevenue)}</td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{seg.avgTicket != null ? fmtMoney(seg.avgTicket) : '—'}</td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{seg.revenueShare}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: 0, padding: '8px 16px', fontSize: 12, color: 'var(--steel)', borderTop: '1px solid var(--lightgray)' }}>
+                Multi-tag clients counted in each segment; shares may sum above 100%.
+              </p>
+            </div>
+          </>
+        ) : segments?.configured && !segments.data ? (
+          <LockedSection
+            reason="No clients have been tagged yet."
+            detail={`${segments.segmentCount} segment${segments.segmentCount !== 1 ? 's' : ''} configured. Assign clients to segments to see revenue breakdowns here.`}
+          />
+        ) : (
+          <LockedSection
+            reason="Requires client segment tags."
+            detail="Tag clients as residential, commercial, recurring, or other configured segments to unlock revenue breakdowns by segment."
+          />
+        )}
       </div>
 
     </div>
@@ -372,9 +550,9 @@ const REPORT_CATALOG = [
   },
   {
     label:       'Customer Value Report',
-    description: 'Top clients by revenue',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Top clients by revenue with LTV summary',
+    status:      'AVAILABLE',
+    exportType:  'customers',
   },
   {
     label:       'Cancellation & No-Show Report',
