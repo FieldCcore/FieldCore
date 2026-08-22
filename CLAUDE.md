@@ -210,8 +210,14 @@ Files under freeze:
   client/src/pages/BusinessSettings.jsx    (Customer Policy section)
   client/src/pages/__tests__/Revenue.test.jsx
 
-Freeze basis: Production QA passed 2026-08-22. 326 backend tests, 969 frontend tests, all passing.
-Production commit: 57878aa. Live on Railway + Vercel.
+Freeze basis: Production QA passed 2026-08-22. 681 backend tests, 969 frontend tests, all passing.
+Production commit: 72b083c (bug fix). Live on Railway + Vercel.
+
+Post-freeze bug fixed (commit 72b083c): active count query in /customers/overview used
+`FROM jobs WHERE ...` without a `j` alias. dateFilter references j.scheduled_at, so the
+query threw "missing FROM-clause entry for table j" whenever start/end params were present
+(production always sends them). Fixed: `FROM jobs j WHERE j.account_id …`. Regression test
+added to customers.test.js that passes date params to catch this class of SQL alias bug.
   - Top Clients: period-scoped, earned revenue from complete jobs only, sorted DESC, UUID grouping
   - LTV: all-time historical, 6-month eligibility gate (MIN/MAX scheduled_at for complete jobs),
     avg/median revenue per customer, avg jobs/customer, avg ticket, top 5 clients by revenue
