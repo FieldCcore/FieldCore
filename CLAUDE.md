@@ -1,5 +1,5 @@
 # CLAUDE.md — FIELDCORE INC.
-# Last updated: 2026-08-21
+# Last updated: 2026-08-22
 
 ## REAL STACK
 Backend:  Express.js in src/ — routes, middleware, services, PostgreSQL pool
@@ -195,6 +195,64 @@ Modifications to frozen Operations code are permitted only for:
   - Security issues
   - Required dependency or platform changes
   - Explicitly approved Operations V2 work
+
+### Customers V1 — FROZEN 2026-08-22
+Files under freeze:
+  src/services/customerAnalyticsService.js
+  src/routes/revenue.js                    (GET /api/revenue/customers/overview, customers export)
+  src/routes/clients.js                    (GET/POST /api/clients/segments, DELETE /api/clients/segments/:id,
+                                            POST/DELETE /api/clients/:id/segments)
+  src/routes/business-settings.js          (customer_inactivity_days in PUT /profile)
+  src/db/migrate.js                        (customer_inactivity_days, client_segments,
+                                            client_segment_assignments tables + indexes)
+  src/tests/customers.test.js
+  client/src/components/revenue/RevenueWorkspaceShells.jsx  (CustomersWorkspace component)
+  client/src/pages/BusinessSettings.jsx    (Customer Policy section)
+  client/src/pages/__tests__/Revenue.test.jsx
+
+Freeze basis: Production QA passed 2026-08-22. 326 backend tests, 969 frontend tests, all passing.
+Production commit: 57878aa. Live on Railway + Vercel.
+  - Top Clients: period-scoped, earned revenue from complete jobs only, sorted DESC, UUID grouping
+  - LTV: all-time historical, 6-month eligibility gate (MIN/MAX scheduled_at for complete jobs),
+    avg/median revenue per customer, avg jobs/customer, avg ticket, top 5 clients by revenue
+  - Churn: snapshot-based, reads customer_inactivity_days from business_profiles,
+    ACTIVE (future scheduled OR ≤threshold days) / AT_RISK (>threshold, ≤2×threshold) / INACTIVE (>2×threshold),
+    excludes clients with 0 completed jobs
+  - Segments: period-scoped revenue (start/end filter), all-time client membership,
+    non-exclusive multi-tag attribution, denominator uses DISTINCT client IN subquery
+    (avoids double-counting multi-segment clients); shares may sum >100%
+  - Frontend auto-activation: LTV/Churn/Segments render live data or locked state from API eligibility flags,
+    no hardcoded static copy, no code deploy needed for activation
+  - Customer Policy in BusinessSettings: inactivity threshold dropdown (1–3650 days validated)
+  - Customers export: CSV type, top clients + LTV summary if eligible
+  - All routes: requireAuth + requireRole('owner','manager')
+  - All SQL queries filter by account_id = req.accountId (never client-supplied)
+
+Approved architectural decisions:
+  - LTV all-time (not period-scoped) — date filter from Revenue page does NOT apply
+  - Churn snapshot (not period-scoped) — always current as-of-today
+  - Segment revenue period-scoped; segment membership (clientCount) always all-time
+  - Segment revenue share denominator: sum of each DISTINCT tagged client's revenue once
+    (not once per segment assignment) to keep shares meaningful
+  - LTV eligibility: span between MIN and MAX of completed-job scheduled_at (not account creation date)
+  - Churn classification: integer days comparison using EXTRACT(EPOCH FROM ...) / 86400
+  - LockedSection component renders placeholder when section is not yet activatable
+  - ops-section-group layout used (transparent flex column, gap 10px) — same as Operations
+
+DO NOT:
+  - Change LTV to be period-scoped
+  - Change churn to be period-scoped
+  - Change segment denominator back to JOIN (would double-count multi-tag clients)
+  - Add new Customers analytics sections without Customers V2 approval
+  - Change eligibility gate from 6 months (REQUIRED_HISTORY_MONTHS)
+  - Add gold/sand hover borders to Customers section cards
+  - Remove conditional rendering (revert to static placeholder copy)
+
+Modifications to frozen Customers code are permitted only for:
+  - Confirmed bugs
+  - Security issues
+  - Required dependency or platform changes
+  - Explicitly approved Customers V2 work
 
 ## CODING RULES
 - Money: integer cents. 4999 = $49.99. Never float.
