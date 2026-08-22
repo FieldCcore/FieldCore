@@ -346,10 +346,191 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FORECASTING WORKSPACE
+// FORECASTING WORKSPACE — V1
 // ══════════════════════════════════════════════════════════════════════════════
 
-// API returns: { ready, score (0-100), items: [{key, label, met, value}], missingPolicies, message, disclaimer }
+// Chart color tokens (inlined — no external import needed)
+const FC_BLUE   = '#2563EB';  // earned/actual
+const FC_PURPLE = '#7C3AED';  // projected
+const FC_SAND   = '#D6B58A';  // booked
+
+function ReadinessBadge({ status }) {
+  const map = {
+    READY:             { label: 'Ready',              bg: '#D1FAE5', color: '#065F46' },
+    LIMITED:           { label: 'Limited Data',       bg: '#FEF3C7', color: '#92400E' },
+    INSUFFICIENT_DATA: { label: 'Insufficient Data',  bg: '#F3F4F6', color: '#6B7280' },
+  };
+  const cfg = map[status] || map.INSUFFICIENT_DATA;
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 10px',
+      borderRadius: 12,
+      fontSize: 12,
+      fontWeight: 600,
+      background: cfg.bg,
+      color: cfg.color,
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function ConfidenceBadge({ confidence }) {
+  if (!confidence) return null;
+  const map = {
+    HIGH:   { bg: '#D1FAE5', color: '#065F46' },
+    MEDIUM: { bg: '#FEF3C7', color: '#92400E' },
+    LOW:    { bg: '#F3F4F6', color: '#6B7280' },
+  };
+  const cfg = map[confidence] || map.LOW;
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 10px',
+      borderRadius: 12,
+      fontSize: 12,
+      fontWeight: 600,
+      background: cfg.bg,
+      color: cfg.color,
+    }}>
+      {confidence} confidence
+    </span>
+  );
+}
+
+function ForecastKpi({ label, value, sub, color }) {
+  return (
+    <div className="kpi-card" style={{ borderTop: `3px solid ${color || 'var(--lightgray)'}` }}>
+      <div className="kpi-card__title">{label}</div>
+      <div className="kpi-card__value">{value}</div>
+      {sub && <div className="kpi-card__subtitle">{sub}</div>}
+    </div>
+  );
+}
+
+function ForecastTrendChart({ trend, isPast }) {
+  if (!trend || trend.length === 0) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--steel)', fontSize: 13 }}>
+        No trend data for this period.
+      </div>
+    );
+  }
+
+  const maxVal = Math.max(...trend.map(d => Math.max(d.earned, d.booked, d.projected)), 1);
+
+  return (
+    <div>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_BLUE, display: 'inline-block' }} />
+          Earned
+        </div>
+        {!isPast && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_SAND, display: 'inline-block' }} />
+              Booked
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_PURPLE, opacity: 0.5, display: 'inline-block' }} />
+              Projected
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Bar chart */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 120, overflowX: 'auto' }}>
+        {trend.map(d => {
+          const earnedH  = Math.round((d.earned   / maxVal) * 112);
+          const bookedH  = Math.round((d.booked   / maxVal) * 112);
+          const projH    = Math.round((d.projected / maxVal) * 112);
+          const barH     = Math.max(earnedH, bookedH, projH, 2);
+          const bgColor  = d.type === 'actual'    ? FC_BLUE
+                         : d.type === 'booked'    ? FC_SAND
+                         : d.type === 'projected' ? FC_PURPLE
+                         : FC_BLUE; // mixed — use blue base
+          return (
+            <div
+              key={d.date}
+              title={`${d.date}\nEarned: $${d.earned.toFixed(2)}\nBooked: $${d.booked.toFixed(2)}\nProjected: $${d.projected.toFixed(2)}`}
+              style={{
+                flex: '1 1 0',
+                minWidth: 4,
+                maxWidth: 28,
+                height: barH,
+                background: bgColor,
+                opacity: d.type === 'projected' ? 0.45 : 1,
+                borderRadius: '2px 2px 0 0',
+                alignSelf: 'flex-end',
+                cursor: 'default',
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* X-axis endpoints */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: 'var(--steel)' }}>
+        <span>{trend[0]?.date}</span>
+        <span>{trend[trend.length - 1]?.date}</span>
+      </div>
+    </div>
+  );
+}
+
+function DriversTable({ drivers }) {
+  if (!drivers || drivers.length === 0) {
+    return (
+      <div style={{ padding: '1rem 0', color: 'var(--steel)', fontSize: 13 }}>
+        No upcoming scheduled jobs in this period.
+      </div>
+    );
+  }
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--lightgray)' }}>
+            {['Scheduled', 'Client', 'Service', 'Status', 'Amount'].map(h => (
+              <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--steel)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {drivers.map(d => (
+            <tr key={d.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+              <td style={{ padding: '7px 8px', color: 'var(--slate)', whiteSpace: 'nowrap' }}>
+                {d.scheduledAt ? new Date(d.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+              </td>
+              <td style={{ padding: '7px 8px', color: 'var(--navy)', fontWeight: 500 }}>{d.clientName}</td>
+              <td style={{ padding: '7px 8px', color: 'var(--slate)' }}>{d.serviceType || '—'}</td>
+              <td style={{ padding: '7px 8px' }}>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '1px 8px',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background: d.status === 'scheduled' ? '#EFF6FF' : '#F3F4F6',
+                  color:      d.status === 'scheduled' ? '#1D4ED8' : '#4B5563',
+                }}>
+                  {d.status}
+                </span>
+              </td>
+              <td style={{ padding: '7px 8px', color: 'var(--navy)', fontWeight: 500, textAlign: 'right' }}>
+                {fmtMoney(d.amount)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function ForecastingWorkspace({ filterStart, filterEnd }) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
@@ -358,163 +539,172 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
     let cancelled = false;
     setState({ data: null, loading: true, error: null });
 
-    api.get('/revenue/forecast/readiness')
+    const params = {};
+    if (filterStart) params.start = filterStart;
+    if (filterEnd)   params.end   = filterEnd;
+
+    api.get('/revenue/forecasting/overview', { params })
       .then(res => {
         if (!cancelled) setState({ data: res.data, loading: false, error: null });
       })
       .catch(err => {
         if (!cancelled) {
-          const msg = err.response?.data?.error || 'Forecasting readiness could not be loaded.';
+          const msg = err.response?.data?.error || 'Forecasting could not be loaded.';
           setState({ data: null, loading: false, error: msg });
         }
       });
 
     return () => { cancelled = true; };
-  }, []); // readiness doesn't depend on date filters
+  }, [filterStart, filterEnd]);
 
   if (state.loading) return <LoadingState />;
   if (state.error)   return <ErrorState message={state.error} />;
 
-  const {
-    score           = 0,
-    ready           = false,
-    items           = [],
-    missingPolicies = [],
-    message         = '',
-  } = state.data || {};
+  const d = state.data;
+  if (!d) return <ErrorState message="No data returned." />;
+
+  const { readiness, period, actual, booked, forecast, trend, drivers } = d;
+
+  // ── Past period: show actual results only ─────────────────────────────────
+  if (period.isPast) {
+    return (
+      <div className="rov-ws-body ops-ws-body">
+        <div className="ops-section-group">
+
+          <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+            <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>
+              Selected period has ended. Showing actual results only.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              <ForecastKpi label="Earned Revenue" value={fmtMoney(actual.earnedRevenue)} color={FC_BLUE} />
+            </div>
+          </div>
+
+          {trend && trend.length > 0 && (
+            <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 16 }}>Revenue by Day</div>
+              <ForecastTrendChart trend={trend} isPast={true} />
+            </div>
+          )}
+
+        </div>
+
+        <div className="rov-limitations">
+          <div className="rov-limitations-header">About Forecasting</div>
+          <ul className="rov-limitations-list">
+            <li>FieldCore uses rules-based projections, not AI or machine learning.</li>
+            <li>Projections are estimates based on historical daily run-rates — not guarantees.</li>
+            <li>Historical run-rate uses the last 90 days of completed jobs.</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Active/future period ──────────────────────────────────────────────────
+  const forecastGapLabel = forecast.forecastGap >= 0
+    ? `+${fmtMoney(forecast.forecastGap)} vs earned`
+    : `${fmtMoney(forecast.forecastGap)} vs earned`;
 
   return (
-    <div className="rov-ws-body">
+    <div className="rov-ws-body ops-ws-body">
+      <div className="ops-section-group">
 
-      {/* ── Readiness checklist ───────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Forecast Readiness</span>
-          <span className="rov-ws-section-sub">{score}% ready</span>
-        </div>
+        {/* ── 1. Readiness + Summary ────────────────────────────────────────── */}
+        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>Forecast Summary</div>
+            <ReadinessBadge status={readiness.status} />
+            {forecast.confidence && <ConfidenceBadge confidence={forecast.confidence} />}
+          </div>
 
-        {/* Progress bar */}
-        <div style={{
-          height: 8,
-          background: 'var(--lightgray)',
-          borderRadius: 4,
-          margin: '0 0 20px',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            height: '100%',
-            width: `${score}%`,
-            background: ready ? 'var(--green)' : score >= 60 ? 'var(--amber)' : 'var(--red)',
-            borderRadius: 4,
-            transition: 'width 0.4s ease',
-          }} />
-        </div>
+          {readiness.limitations && readiness.limitations.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              {readiness.limitations.map((l, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--slate)', padding: '2px 0' }}>
+                  {l}
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Check list — items: [{key, label, met, value}] */}
-        <div>
-          {items.map((item) => (
-            <div key={item.key} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '7px 0',
-              borderBottom: '1px solid var(--lightgray)',
-              fontSize: 14,
-            }}>
-              <span style={{
-                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                background: item.met ? 'var(--green)' : 'var(--lightgray)',
-                color: item.met ? 'var(--white)' : 'var(--steel)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 700,
-              }}>
-                {item.met ? '✓' : '✗'}
-              </span>
-              <span style={{ flex: 1, color: item.met ? 'var(--navy)' : 'var(--slate)' }}>
-                {item.label}
-              </span>
-              {item.value && (
-                <span style={{ fontSize: 12, color: 'var(--steel)', fontFamily: "'DM Mono', monospace" }}>
-                  {item.value}
+          {forecast.confidenceReasons && forecast.confidenceReasons.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {forecast.confidenceReasons.map((r, i) => (
+                <span key={i} style={{ fontSize: 11, color: 'var(--steel)', background: 'var(--offwhite)', padding: '2px 8px', borderRadius: 10 }}>
+                  {r}
                 </span>
-              )}
+              ))}
             </div>
-          ))}
-        </div>
+          )}
 
-        {message && (
-          <p style={{ marginTop: 16, fontSize: 14, color: ready ? 'var(--green)' : 'var(--amber)', fontWeight: 500 }}>
-            {message}
-          </p>
-        )}
-      </div>
-
-      {/* ── What forecasting will include ─────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">What Forecasting Will Include</span>
-          <span className="rov-ws-section-sub">{ready ? 'Available now' : 'Unlocks when ready'}</span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[
-            { label: 'Projected Month-End Revenue',       desc: 'Estimate of total revenue by end of current month based on pacing.' },
-            { label: 'Projected Quarter-End Revenue',     desc: 'Quarter-level projection based on historical quarterly patterns.' },
-            { label: 'Best / Expected / Worst Case',      desc: 'Scenario bands built from completion rate variance.' },
-            { label: 'Capacity-Adjusted Forecast',        desc: 'Revenue ceiling based on available technician hours.' },
-            { label: 'Collection Timeline Forecast',      desc: 'When outstanding invoices are likely to convert to collected revenue.' },
-          ].map(item => (
-            <div key={item.label} className="dash-card" style={{
-              padding: '1rem 1.25rem',
-              opacity: ready ? 1 : 0.6,
-            }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 4 }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--slate)' }}>
-                {item.desc}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Policy configuration ──────────────────────────────────────────── */}
-      {missingPolicies && missingPolicies.length > 0 && (
-        <div className="rov-ws-section">
-          <div className="rov-ws-section-header">
-            <span className="rov-ws-section-title">Policy Configuration Needed</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {missingPolicies.map((policy, i) => (
-              <div key={i} className="dash-card" style={{ padding: '1rem 1.25rem', background: 'var(--offwhite)' }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 4 }}>
-                  {policy.label || policy}
-                </div>
-                {policy.description && (
-                  <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 6 }}>
-                    {policy.description}
-                  </div>
-                )}
-                <div style={{ fontSize: 12, color: 'var(--steel)', fontStyle: 'italic' }}>
-                  Configuration coming in next phase.
-                </div>
-              </div>
-            ))}
+          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 4 }}>
+            As of {period.asOf} &nbsp;&middot;&nbsp; Period: {period.start} to {period.end}
           </div>
         </div>
-      )}
 
-      {/* ── Disclaimer ────────────────────────────────────────────────────── */}
+        {/* ── 2. KPIs ───────────────────────────────────────────────────────── */}
+        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 14 }}>Forecast KPIs</div>
+          <div className="ops-kpi-grid">
+            <ForecastKpi
+              label="Earned Revenue"
+              value={fmtMoney(actual.earnedRevenue)}
+              sub="Completed jobs to date"
+              color={FC_BLUE}
+            />
+            <ForecastKpi
+              label="Booked Revenue"
+              value={fmtMoney(booked.revenue)}
+              sub={`${booked.jobCount} job${booked.jobCount !== 1 ? 's' : ''} scheduled`}
+              color={FC_SAND}
+            />
+            <ForecastKpi
+              label="Projected Period Revenue"
+              value={fmtMoney(forecast.projectedRevenue)}
+              sub={readiness.status === 'INSUFFICIENT_DATA' ? 'Earned + booked only' : 'Earned + booked + run-rate'}
+              color={FC_PURPLE}
+            />
+            <ForecastKpi
+              label="Forecast Gap"
+              value={fmtMoney(forecast.forecastGap)}
+              sub={forecastGapLabel}
+              color="var(--slate)"
+            />
+          </div>
+        </div>
+
+        {/* ── 3. Revenue Forecast Trend ─────────────────────────────────────── */}
+        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 16 }}>Revenue Forecast Trend</div>
+          <ForecastTrendChart trend={trend} isPast={false} />
+        </div>
+
+        {/* ── 4. Forecast Drivers / Pipeline ────────────────────────────────── */}
+        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>Forecast Drivers</div>
+            {readiness.scheduledFutureJobs > 0 && (
+              <span style={{ fontSize: 12, color: 'var(--slate)' }}>
+                {readiness.scheduledFutureJobs} scheduled job{readiness.scheduledFutureJobs !== 1 ? 's' : ''} total
+              </span>
+            )}
+          </div>
+          <DriversTable drivers={drivers} />
+        </div>
+
+      </div>
+
+      {/* ── Disclaimer ─────────────────────────────────────────────────────── */}
       <div className="rov-limitations">
         <div className="rov-limitations-header">About Forecasting</div>
         <ul className="rov-limitations-list">
-          <li>FieldCore uses rules-based projections. No AI or machine learning.</li>
-          <li>Forecasts are estimates based on historical patterns and current pacing — not guarantees.</li>
-          <li>Projections improve with more complete job history.</li>
+          <li>FieldCore uses rules-based projections, not AI or machine learning.</li>
+          <li>Projections are estimates based on historical daily run-rates — not guarantees.</li>
+          <li>Historical run-rate uses the last 90 days of completed jobs.</li>
+          <li>Projected revenue = earned + booked + expected unbooked (max(0, daily rate &times; remaining days &minus; already booked)).</li>
         </ul>
       </div>
-
     </div>
   );
 }
@@ -553,6 +743,12 @@ const REPORT_CATALOG = [
     description: 'Top clients by revenue with LTV summary',
     status:      'AVAILABLE',
     exportType:  'customers',
+  },
+  {
+    label:       'Forecast Pipeline Report',
+    description: 'Upcoming scheduled jobs with projected revenue summary',
+    status:      'AVAILABLE',
+    exportType:  'forecasting',
   },
   {
     label:       'Cancellation & No-Show Report',

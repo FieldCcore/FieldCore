@@ -159,6 +159,24 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
         rows.push(['Avg Jobs per Customer', ltv.data.avgJobsPerCustomer, '', '']);
         rows.push(['Avg Ticket', ltv.data.avgTicket.toFixed(2), '', '']);
       }
+    } else if (type === 'forecasting') {
+      const fc = await forecastingSvc.getOverview(accountId, { start: s, end: e });
+      filename = 'forecast-pipeline.csv';
+      header   = ['Scheduled At', 'Client', 'Service', 'Status', 'Amount'];
+      rows     = fc.drivers.map(d => [
+        d.scheduledAt ? new Date(d.scheduledAt).toLocaleDateString() : '',
+        d.clientName,
+        d.serviceType || '',
+        d.status,
+        d.amount.toFixed(2),
+      ]);
+      rows.unshift([]);
+      rows.unshift(['--- Forecast Summary ---', '', '', '', '']);
+      rows.unshift(['Projected Revenue', fc.forecast.projectedRevenue.toFixed(2), '', '', '']);
+      rows.unshift(['Booked Revenue', fc.booked.revenue.toFixed(2), '', '', '']);
+      rows.unshift(['Earned Revenue', fc.actual.earnedRevenue.toFixed(2), '', '', '']);
+      rows.unshift(['Period', `${fc.period.start} to ${fc.period.end}`, '', '', '']);
+      rows.unshift(['Confidence', fc.forecast.confidence || 'N/A', '', '', '']);
     } else {
       // Default: overview summary
       const overview = await svc.getOverview(accountId, { start: s, end: e });
@@ -242,16 +260,30 @@ router.patch('/policies', requireAuth, requireRole('owner', 'manager'), async (r
   }
 });
 
-// ── Forecast Readiness ────────────────────────────────────────────────────────
+// ── Forecast Readiness (legacy — kept for backwards compatibility) ─────────────
 const forecastReadinessSvc = require('../services/revenueForecastReadinessService');
 
 router.get('/forecast/readiness', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const policies = await policiesSvc.getPolicies(req.accountId);
+    let policies = {};
+    try { policies = await policiesSvc.getPolicies(req.accountId); } catch (_) { /* table may not exist */ }
     const year = req.query.year ? parseInt(req.query.year, 10) : undefined;
     res.json(await forecastReadinessSvc.getForecastReadiness(req.accountId, { year, policies }));
   } catch (err) {
     res.status(500).json({ error: 'Could not assess forecast readiness.' });
+  }
+});
+
+// ── Forecasting Overview (V1) ─────────────────────────────────────────────────
+const forecastingSvc = require('../services/forecastingService');
+
+router.get('/forecasting/overview', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { start, end } = req.query;
+  try {
+    const result = await forecastingSvc.getOverview(req.accountId, { start, end });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Forecasting overview could not be loaded.' });
   }
 });
 
