@@ -1277,31 +1277,24 @@ describe('Revenue — Reports workspace Customer Value Report', () => {
 // ── Forecasting workspace ──────────────────────────────────────────────────────
 
 describe('Revenue — Forecasting workspace', () => {
-  it('renders Forecast Summary section', async () => {
+  it('renders Forecast KPI Summary section heading', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
-      expect(screen.getByText('Forecast Summary')).toBeInTheDocument();
+      expect(screen.getByText('Forecast KPI Summary')).toBeInTheDocument();
     });
   });
 
-  it('shows READY readiness badge', async () => {
+  it('shows READY readiness badge inline with Revenue Forecast heading', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
       expect(screen.getByText('Ready')).toBeInTheDocument();
     });
   });
 
-  it('shows MEDIUM confidence badge', async () => {
+  it('shows MEDIUM confidence badge inline with Revenue Forecast heading', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
       expect(screen.getByText(/medium confidence/i)).toBeInTheDocument();
-    });
-  });
-
-  it('renders Forecast KPIs section', async () => {
-    renderRevenue('?view=forecasting');
-    await waitFor(() => {
-      expect(screen.getByText('Forecast KPIs')).toBeInTheDocument();
     });
   });
 
@@ -1321,40 +1314,75 @@ describe('Revenue — Forecasting workspace', () => {
     });
   });
 
-  it('shows Projected Period Revenue KPI', async () => {
+  it('shows Projected Period Revenue KPI with How Calculated tooltip', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
       expect(screen.getByText('Projected Period Revenue')).toBeInTheDocument();
       expect(screen.getByText('$5,800.00')).toBeInTheDocument();
     });
+    const tooltips = screen.getAllByLabelText(/how this is calculated/i);
+    expect(tooltips.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('shows Forecast Gap KPI', async () => {
+  it('shows Forecast Gap KPI with How Calculated tooltip', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
       expect(screen.getByText('Forecast Gap')).toBeInTheDocument();
       expect(screen.getByText('$2,600.00')).toBeInTheDocument();
     });
+    const tooltips = screen.getAllByLabelText(/how this is calculated/i);
+    expect(tooltips.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('renders Revenue Forecast Trend section', async () => {
+  it('renders Revenue Forecast section heading', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
-      expect(screen.getByText('Revenue Forecast Trend')).toBeInTheDocument();
+      expect(screen.getByText('Revenue Forecast')).toBeInTheDocument();
     });
   });
 
-  it('renders Forecast Drivers section', async () => {
+  it('renders Booked Pipeline section heading', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
-      expect(screen.getByText('Forecast Drivers')).toBeInTheDocument();
+      expect(screen.getByText('Booked Pipeline')).toBeInTheDocument();
     });
   });
 
-  it('shows driver client name from API', async () => {
+  it('shows booked job count and total in Booked Pipeline heading', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      // "4 jobs" appears in the heading AND in the KPI subtitle ("4 jobs scheduled") — both are correct
+      expect(screen.getAllByText(/4 jobs/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('$1,800.00').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('shows pipeline client name from API', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
       expect(screen.getByText('Alpha Corp')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Details button for each pipeline row', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText('Details')).toBeInTheDocument();
+    });
+  });
+
+  it('opens pipeline details drawer when Details is clicked', async () => {
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText('Details')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Details'));
+    await waitFor(() => {
+      // Drawer header is unique; "Booked Value" label only appears in drawer
+      expect(screen.getByText('Booked Job Details')).toBeInTheDocument();
+      expect(screen.getByText('Booked Value')).toBeInTheDocument();
+      // Alpha Corp appears in both table row and drawer — verify at least 2 instances
+      expect(screen.getAllByText('Alpha Corp').length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -1368,8 +1396,23 @@ describe('Revenue — Forecasting workspace', () => {
   it('shows actual earned revenue value (not fabricated data)', async () => {
     renderRevenue('?view=forecasting');
     await waitFor(() => {
-      // $3,200.00 should appear — it is the API mock value, not fabricated
       expect(screen.getByText('$3,200.00')).toBeInTheDocument();
+    });
+  });
+
+  it('shows INSUFFICIENT_DATA warning message when readiness status is INSUFFICIENT_DATA', async () => {
+    const insufficientMock = {
+      ...MOCK_FORECASTING,
+      readiness: { status: 'INSUFFICIENT_DATA', historyDays: 3, completedJobs: 2, scheduledFutureJobs: 1, limitations: ['2 completed jobs — 5 needed'] },
+      forecast: { ...MOCK_FORECASTING.forecast, confidence: 'LOW', expectedUnbookedRevenue: 0 },
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/forecasting/overview')) return Promise.resolve({ data: insufficientMock });
+      return Promise.resolve({ data: {} });
+    });
+    renderRevenue('?view=forecasting');
+    await waitFor(() => {
+      expect(screen.getByText(/more history is needed before unbooked revenue/i)).toBeInTheDocument();
     });
   });
 

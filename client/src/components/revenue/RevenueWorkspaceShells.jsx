@@ -349,27 +349,21 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
 // FORECASTING WORKSPACE — V1
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Chart color tokens (inlined — no external import needed)
-const FC_BLUE   = '#2563EB';       // earned/actual
-const FC_PURPLE = '#7C3AED';       // projected (no system token; established chart value)
-const FC_GREEN  = '#2E7D32';       // booked — var(--green) resolved; direct hex avoids chaining
+const FC_BLUE   = '#2563EB';
+const FC_PURPLE = '#7C3AED';
+const FC_GREEN  = '#2E7D32';
 
 function ReadinessBadge({ status }) {
   const map = {
-    READY:             { label: 'Ready',              bg: '#D1FAE5', color: '#065F46' },
-    LIMITED:           { label: 'Limited Data',       bg: '#FEF3C7', color: '#92400E' },
-    INSUFFICIENT_DATA: { label: 'Insufficient Data',  bg: '#F3F4F6', color: '#6B7280' },
+    READY:             { label: 'Ready',             bg: '#D1FAE5', color: '#065F46' },
+    LIMITED:           { label: 'Limited Data',      bg: '#FEF3C7', color: '#92400E' },
+    INSUFFICIENT_DATA: { label: 'Insufficient Data', bg: '#F3F4F6', color: '#6B7280' },
   };
   const cfg = map[status] || map.INSUFFICIENT_DATA;
   return (
     <span style={{
-      display: 'inline-block',
-      padding: '2px 10px',
-      borderRadius: 12,
-      fontSize: 12,
-      fontWeight: 600,
-      background: cfg.bg,
-      color: cfg.color,
+      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+      fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color,
     }}>
       {cfg.label}
     </span>
@@ -386,23 +380,27 @@ function ConfidenceBadge({ confidence }) {
   const cfg = map[confidence] || map.LOW;
   return (
     <span style={{
-      display: 'inline-block',
-      padding: '2px 10px',
-      borderRadius: 12,
-      fontSize: 12,
-      fontWeight: 600,
-      background: cfg.bg,
-      color: cfg.color,
+      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+      fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color,
     }}>
       {confidence} confidence
     </span>
   );
 }
 
-function ForecastKpi({ label, value, sub, color }) {
+function ForecastKpi({ label, value, sub, color, note }) {
   return (
     <div className="kpi-card forecast-kpi-card" style={{ '--fc-kpi-accent': color || 'var(--sand)' }}>
-      <div className="kpi-card__title">{label}</div>
+      <div className="kpi-card__title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span>{label}</span>
+        {note && (
+          <span
+            title={note}
+            aria-label="How this is calculated"
+            style={{ cursor: 'help', color: 'var(--steel)', fontSize: 10, lineHeight: 1, userSelect: 'none' }}
+          >ⓘ</span>
+        )}
+      </div>
       <div className="kpi-card__value">{value}</div>
       {sub && <div className="kpi-card__subtitle">{sub}</div>}
     </div>
@@ -422,7 +420,6 @@ function ForecastTrendChart({ trend, isPast }) {
 
   return (
     <div>
-      {/* Legend */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
           <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_BLUE, display: 'inline-block' }} />
@@ -441,39 +438,29 @@ function ForecastTrendChart({ trend, isPast }) {
           </>
         )}
       </div>
-
-      {/* Bar chart */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 120, overflowX: 'auto' }}>
         {trend.map(d => {
-          const earnedH  = Math.round((d.earned   / maxVal) * 112);
-          const bookedH  = Math.round((d.booked   / maxVal) * 112);
-          const projH    = Math.round((d.projected / maxVal) * 112);
-          const barH     = Math.max(earnedH, bookedH, projH, 2);
-          const bgColor  = d.type === 'actual'    ? FC_BLUE
-                         : d.type === 'booked'    ? FC_GREEN
-                         : d.type === 'projected' ? FC_PURPLE
-                         : FC_BLUE; // mixed — use blue base
+          const earnedH = Math.round((d.earned    / maxVal) * 112);
+          const bookedH = Math.round((d.booked    / maxVal) * 112);
+          const projH   = Math.round((d.projected / maxVal) * 112);
+          const barH    = Math.max(earnedH, bookedH, projH, 2);
+          const bgColor = d.type === 'actual'    ? FC_BLUE
+                        : d.type === 'booked'    ? FC_GREEN
+                        : d.type === 'projected' ? FC_PURPLE
+                        : FC_BLUE;
           return (
             <div
               key={d.date}
               title={`${d.date}\nEarned: $${d.earned.toFixed(2)}\nBooked: $${d.booked.toFixed(2)}\nProjected: $${d.projected.toFixed(2)}`}
               style={{
-                flex: '1 1 0',
-                minWidth: 4,
-                maxWidth: 28,
-                height: barH,
-                background: bgColor,
-                opacity: d.type === 'projected' ? 0.45 : 1,
-                borderRadius: '2px 2px 0 0',
-                alignSelf: 'flex-end',
-                cursor: 'default',
+                flex: '1 1 0', minWidth: 4, maxWidth: 28, height: barH,
+                background: bgColor, opacity: d.type === 'projected' ? 0.45 : 1,
+                borderRadius: '2px 2px 0 0', alignSelf: 'flex-end', cursor: 'default',
               }}
             />
           );
         })}
       </div>
-
-      {/* X-axis endpoints */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: 'var(--steel)' }}>
         <span>{trend[0]?.date}</span>
         <span>{trend[trend.length - 1]?.date}</span>
@@ -482,7 +469,69 @@ function ForecastTrendChart({ trend, isPast }) {
   );
 }
 
-function DriversTable({ drivers }) {
+function PipelineDrawer({ driver, bookedRevenue, onClose }) {
+  const scheduledLabel = driver.scheduledAt
+    ? new Date(driver.scheduledAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—';
+  const contributionPct = bookedRevenue > 0
+    ? Math.round((driver.amount / bookedRevenue) * 100)
+    : null;
+
+  return (
+    <div
+      className="fin-modal-overlay"
+      role="presentation"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="fin-modal-body ops-drawer-body"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pipeline-drawer-title"
+      >
+        <div className="fin-modal-header">
+          <h3 id="pipeline-drawer-title" className="fin-modal-title">Booked Job Details</h3>
+          <button type="button" className="fin-modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div className="ops-drawer-summary">
+          <div>
+            <div className="ops-drawer-stat-label">Scheduled</div>
+            <div className="ops-drawer-stat-value">{scheduledLabel}</div>
+          </div>
+          <div>
+            <div className="ops-drawer-stat-label">Booked Value</div>
+            <div className="ops-drawer-stat-value">{fmtMoney(driver.amount)}</div>
+          </div>
+          {contributionPct !== null && (
+            <div>
+              <div className="ops-drawer-stat-label">% of Pipeline</div>
+              <div className="ops-drawer-stat-value">{contributionPct}%</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {[
+            { label: 'Client',  value: driver.clientName },
+            { label: 'Service', value: driver.serviceType || '—' },
+            { label: 'Status',  value: driver.status },
+          ].map(({ label, value }) => (
+            <div key={label} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 0', borderBottom: '1px solid var(--lightgray)',
+            }}>
+              <span style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>{label}</span>
+              <span style={{ fontSize: 13, color: 'var(--navy)', fontWeight: 600 }}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PipelineTable({ drivers, onSelect }) {
   if (!drivers || drivers.length === 0) {
     return (
       <div style={{ padding: '1rem 0', color: 'var(--steel)', fontSize: 13 }}>
@@ -495,26 +544,33 @@ function DriversTable({ drivers }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--lightgray)' }}>
-            {['Scheduled', 'Client', 'Service', 'Status', 'Amount'].map(h => (
-              <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--steel)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            {['Scheduled', 'Client', 'Service', 'Status', 'Amount', ''].map((h, i) => (
+              <th key={i} style={{
+                textAlign: h === 'Amount' ? 'right' : 'left',
+                padding: '6px 8px', color: 'var(--steel)', fontWeight: 600,
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
+              }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {drivers.map(d => (
-            <tr key={d.id} style={{ borderBottom: '1px solid var(--lightgray)' }}>
+            <tr
+              key={d.id}
+              style={{ borderBottom: '1px solid var(--lightgray)', cursor: 'pointer' }}
+              onClick={() => onSelect(d)}
+            >
               <td style={{ padding: '7px 8px', color: 'var(--slate)', whiteSpace: 'nowrap' }}>
-                {d.scheduledAt ? new Date(d.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                {d.scheduledAt
+                  ? new Date(d.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : '—'}
               </td>
               <td style={{ padding: '7px 8px', color: 'var(--navy)', fontWeight: 500 }}>{d.clientName}</td>
               <td style={{ padding: '7px 8px', color: 'var(--slate)' }}>{d.serviceType || '—'}</td>
               <td style={{ padding: '7px 8px' }}>
                 <span style={{
-                  display: 'inline-block',
-                  padding: '1px 8px',
-                  borderRadius: 10,
-                  fontSize: 11,
-                  fontWeight: 600,
+                  display: 'inline-block', padding: '1px 8px', borderRadius: 10,
+                  fontSize: 11, fontWeight: 600,
                   background: d.status === 'scheduled' ? '#EFF6FF' : '#F3F4F6',
                   color:      d.status === 'scheduled' ? '#1D4ED8' : '#4B5563',
                 }}>
@@ -523,6 +579,18 @@ function DriversTable({ drivers }) {
               </td>
               <td style={{ padding: '7px 8px', color: 'var(--navy)', fontWeight: 500, textAlign: 'right' }}>
                 {fmtMoney(d.amount)}
+              </td>
+              <td style={{ padding: '7px 8px', textAlign: 'right' }}>
+                <button
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 600, color: 'var(--sand)', padding: '2px 6px',
+                    borderRadius: 4,
+                  }}
+                  onClick={e => { e.stopPropagation(); onSelect(d); }}
+                >
+                  Details
+                </button>
               </td>
             </tr>
           ))}
@@ -534,6 +602,7 @@ function DriversTable({ drivers }) {
 
 export function ForecastingWorkspace({ filterStart, filterEnd }) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
+  const [selectedDriver, setSelectedDriver] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -571,20 +640,27 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
       <div className="rov-ws-body ops-ws-body">
         <div className="ops-section-group">
 
+          <div className="ops-bare-heading">
+            <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
+          </div>
           <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
             <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>
               Selected period has ended. Showing actual results only.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div className="ops-kpi-grid">
               <ForecastKpi label="Earned Revenue" value={fmtMoney(actual.earnedRevenue)} color={FC_BLUE} />
             </div>
           </div>
 
           {trend && trend.length > 0 && (
-            <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 16 }}>Revenue by Day</div>
-              <ForecastTrendChart trend={trend} isPast={true} />
-            </div>
+            <>
+              <div className="ops-bare-heading">
+                <h2 className="rov-ws-section-title">Revenue Forecast</h2>
+              </div>
+              <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+                <ForecastTrendChart trend={trend} isPast={true} />
+              </div>
+            </>
           )}
 
         </div>
@@ -610,42 +686,21 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
     <div className="rov-ws-body ops-ws-body">
       <div className="ops-section-group">
 
-        {/* ── 1. Readiness + Summary ────────────────────────────────────────── */}
-        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>Forecast Summary</div>
-            <ReadinessBadge status={readiness.status} />
-            {forecast.confidence && <ConfidenceBadge confidence={forecast.confidence} />}
-          </div>
-
-          {readiness.limitations && readiness.limitations.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              {readiness.limitations.map((l, i) => (
-                <div key={i} style={{ fontSize: 12, color: 'var(--slate)', padding: '2px 0' }}>
-                  {l}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {forecast.confidenceReasons && forecast.confidenceReasons.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {forecast.confidenceReasons.map((r, i) => (
-                <span key={i} style={{ fontSize: 11, color: 'var(--steel)', background: 'var(--offwhite)', padding: '2px 8px', borderRadius: 10 }}>
-                  {r}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 4 }}>
-            As of {period.asOf} &nbsp;&middot;&nbsp; Period: {period.start} to {period.end}
-          </div>
+        {/* ── 1. Forecast KPI Summary ───────────────────────────────────────── */}
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
+          <span style={{ fontSize: 12, color: 'var(--steel)' }}>As of {period.asOf}</span>
         </div>
-
-        {/* ── 2. KPIs ───────────────────────────────────────────────────────── */}
         <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 14 }}>Forecast KPIs</div>
+          {readiness.status === 'INSUFFICIENT_DATA' && (
+            <div style={{
+              fontSize: 12, color: 'var(--slate)', background: '#F9FAFB',
+              border: '1px solid var(--lightgray)', borderRadius: 8,
+              padding: '10px 14px', marginBottom: 14, lineHeight: 1.5,
+            }}>
+              FieldCore is currently forecasting from earned and booked revenue. More history is needed before unbooked revenue can be projected reliably.
+            </div>
+          )}
           <div className="ops-kpi-grid">
             <ForecastKpi
               label="Earned Revenue"
@@ -664,38 +719,65 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
               value={fmtMoney(forecast.projectedRevenue)}
               sub={readiness.status === 'INSUFFICIENT_DATA' ? 'Earned + booked only' : 'Earned + booked + run-rate'}
               color={FC_PURPLE}
+              note="Earned + booked + expected unbooked revenue when sufficient history exists."
             />
             <ForecastKpi
               label="Forecast Gap"
               value={fmtMoney(forecast.forecastGap)}
               sub={forecastGapLabel}
               color="var(--slate)"
+              note="Projected period revenue minus revenue already earned."
             />
           </div>
         </div>
 
-        {/* ── 3. Revenue Forecast Trend ─────────────────────────────────────── */}
+        {/* ── 2. Revenue Forecast + Confidence/Readiness inline ────────────── */}
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Revenue Forecast</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ReadinessBadge status={readiness.status} />
+            {forecast.confidence && <ConfidenceBadge confidence={forecast.confidence} />}
+          </div>
+        </div>
         <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 16 }}>Revenue Forecast Trend</div>
+          {forecast.confidenceReasons && forecast.confidenceReasons.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {forecast.confidenceReasons.map((r, i) => (
+                <span key={i} style={{
+                  fontSize: 11, color: 'var(--steel)', background: 'var(--offwhite)',
+                  padding: '2px 8px', borderRadius: 10,
+                }}>
+                  {r}
+                </span>
+              ))}
+            </div>
+          )}
           <ForecastTrendChart trend={trend} isPast={false} />
         </div>
 
-        {/* ── 4. Forecast Drivers / Pipeline ────────────────────────────────── */}
+        {/* ── 3. Booked Pipeline ───────────────────────────────────────────── */}
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Booked Pipeline</h2>
+          {booked.jobCount > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--slate)' }}>
+              {booked.jobCount} job{booked.jobCount !== 1 ? 's' : ''}&nbsp;&middot;&nbsp;{fmtMoney(booked.revenue)}
+            </span>
+          )}
+        </div>
         <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>Forecast Drivers</div>
-            {readiness.scheduledFutureJobs > 0 && (
-              <span style={{ fontSize: 12, color: 'var(--slate)' }}>
-                {readiness.scheduledFutureJobs} scheduled job{readiness.scheduledFutureJobs !== 1 ? 's' : ''} total
-              </span>
-            )}
-          </div>
-          <DriversTable drivers={drivers} />
+          <PipelineTable drivers={drivers} onSelect={setSelectedDriver} />
         </div>
 
       </div>
 
-      {/* ── Disclaimer ─────────────────────────────────────────────────────── */}
+      {selectedDriver && (
+        <PipelineDrawer
+          driver={selectedDriver}
+          bookedRevenue={booked.revenue}
+          onClose={() => setSelectedDriver(null)}
+        />
+      )}
+
       <div className="rov-limitations">
         <div className="rov-limitations-header">About Forecasting</div>
         <ul className="rov-limitations-list">
