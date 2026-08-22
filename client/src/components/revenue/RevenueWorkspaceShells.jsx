@@ -401,7 +401,7 @@ function ConfidenceBadge({ confidence }) {
 
 function ForecastKpi({ label, value, sub, color }) {
   return (
-    <div className="kpi-card" style={{ borderTop: `3px solid ${color || 'var(--lightgray)'}` }}>
+    <div className="kpi-card forecast-kpi-card" style={{ '--fc-kpi-accent': color || 'var(--sand)' }}>
       <div className="kpi-card__title">{label}</div>
       <div className="kpi-card__value">{value}</div>
       {sub && <div className="kpi-card__subtitle">{sub}</div>}

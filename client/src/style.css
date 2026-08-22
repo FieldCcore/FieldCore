@@ -6044,6 +6044,11 @@ body {
 /* ops-ws-body — Operations-specific body gap override (Financials uses 18px, Operations uses 28px) */
 .ops-ws-body { gap: 28px; }
 
+/* Forecast KPI cards — semantic accent override.
+   Suppresses the global sand ::before and replaces it with the per-card
+   --fc-kpi-accent CSS custom property set inline on each card element. */
+.forecast-kpi-card::before { background: var(--fc-kpi-accent, var(--sand)); }
+
 /* ops-kpi-btn — transparent clickable wrapper around a KpiCard */
 .ops-kpi-btn {
   display: block; width: 100%; background: none; border: none;
