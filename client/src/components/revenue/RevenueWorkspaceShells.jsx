@@ -535,7 +535,7 @@ function PipelineTable({ drivers, onSelect }) {
   if (!drivers || drivers.length === 0) {
     return (
       <div style={{ padding: '1rem 0', color: 'var(--steel)', fontSize: 13 }}>
-        No upcoming scheduled jobs in this period.
+        No booked jobs in this forecast period.
       </div>
     );
   }
@@ -638,8 +638,8 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
   if (period.isPast) {
     return (
       <div className="rov-ws-body ops-ws-body">
-        <div className="ops-section-group">
 
+        <div className="ops-section-group">
           <div className="ops-bare-heading">
             <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
           </div>
@@ -651,19 +651,18 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
               <ForecastKpi label="Earned Revenue" value={fmtMoney(actual.earnedRevenue)} color={FC_BLUE} />
             </div>
           </div>
-
-          {trend && trend.length > 0 && (
-            <>
-              <div className="ops-bare-heading">
-                <h2 className="rov-ws-section-title">Revenue Forecast</h2>
-              </div>
-              <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
-                <ForecastTrendChart trend={trend} isPast={true} />
-              </div>
-            </>
-          )}
-
         </div>
+
+        {trend && trend.length > 0 && (
+          <div className="ops-section-group">
+            <div className="ops-bare-heading">
+              <h2 className="rov-ws-section-title">Revenue Forecast</h2>
+            </div>
+            <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
+              <ForecastTrendChart trend={trend} isPast={true} />
+            </div>
+          </div>
+        )}
 
         <div className="rov-limitations">
           <div className="rov-limitations-header">About Forecasting</div>
@@ -684,9 +683,9 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
 
   return (
     <div className="rov-ws-body ops-ws-body">
-      <div className="ops-section-group">
 
-        {/* ── 1. Forecast KPI Summary ───────────────────────────────────────── */}
+      {/* ── 1. Forecast KPI Summary ─────────────────────────────────────────── */}
+      <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">Forecast KPI Summary</h2>
           <span style={{ fontSize: 12, color: 'var(--steel)' }}>As of {period.asOf}</span>
@@ -730,8 +729,10 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
             />
           </div>
         </div>
+      </div>
 
-        {/* ── 2. Revenue Forecast + Confidence/Readiness inline ────────────── */}
+      {/* ── 2. Revenue Forecast + Confidence/Readiness inline ───────────────── */}
+      <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">Revenue Forecast</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -754,8 +755,10 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
           )}
           <ForecastTrendChart trend={trend} isPast={false} />
         </div>
+      </div>
 
-        {/* ── 3. Booked Pipeline ───────────────────────────────────────────── */}
+      {/* ── 3. Booked Pipeline ──────────────────────────────────────────────── */}
+      <div className="ops-section-group">
         <div className="ops-bare-heading">
           <h2 className="rov-ws-section-title">Booked Pipeline</h2>
           {booked.jobCount > 0 && (
@@ -767,7 +770,6 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
         <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem' }}>
           <PipelineTable drivers={drivers} onSelect={setSelectedDriver} />
         </div>
-
       </div>
 
       {selectedDriver && (
