@@ -350,9 +350,9 @@ export function CustomersWorkspace({ filterStart, filterEnd }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Chart color tokens (inlined — no external import needed)
-const FC_BLUE   = '#2563EB';  // earned/actual
-const FC_PURPLE = '#7C3AED';  // projected
-const FC_SAND   = '#D6B58A';  // booked
+const FC_BLUE   = '#2563EB';       // earned/actual
+const FC_PURPLE = '#7C3AED';       // projected (no system token; established chart value)
+const FC_GREEN  = 'var(--green)';  // booked — success/committed semantic token
 
 function ReadinessBadge({ status }) {
   const map = {
@@ -431,7 +431,7 @@ function ForecastTrendChart({ trend, isPast }) {
         {!isPast && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
-              <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_SAND, display: 'inline-block' }} />
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: FC_GREEN, display: 'inline-block' }} />
               Booked
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
@@ -450,7 +450,7 @@ function ForecastTrendChart({ trend, isPast }) {
           const projH    = Math.round((d.projected / maxVal) * 112);
           const barH     = Math.max(earnedH, bookedH, projH, 2);
           const bgColor  = d.type === 'actual'    ? FC_BLUE
-                         : d.type === 'booked'    ? FC_SAND
+                         : d.type === 'booked'    ? FC_GREEN
                          : d.type === 'projected' ? FC_PURPLE
                          : FC_BLUE; // mixed — use blue base
           return (
@@ -657,7 +657,7 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
               label="Booked Revenue"
               value={fmtMoney(booked.revenue)}
               sub={`${booked.jobCount} job${booked.jobCount !== 1 ? 's' : ''} scheduled`}
-              color={FC_SAND}
+              color={FC_GREEN}
             />
             <ForecastKpi
               label="Projected Period Revenue"
