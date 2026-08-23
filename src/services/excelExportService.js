@@ -786,6 +786,82 @@ function buildCompletion(analysis, meta) {
   return wb;
 }
 
+// ── 11. Profit & Loss Statement ───────────────────────────────────────────────
+function buildPnl(financialsData, meta) {
+  const wb = createWorkbook(meta.entity);
+  const ws = wb.addWorksheet('P&L Statement');
+  const nc = 3;
+  colWidths(ws, [32, 18, 32]);
+
+  addTitleBlock(ws, { ...meta, reportName: 'Profit & Loss Statement' }, nc);
+  addDisclaimerRow(ws,
+    'COGS, margins, and expenses require QuickBooks integration. ' +
+    'Gross Revenue is sourced from FieldCore completed jobs. ' +
+    'This report is NOT a tax return or audited financial statement.',
+    nc);
+
+  const pnlRows = financialsData?.pnl?.rows || [];
+  const get = (key) => pnlRows.find(r => r.key === key) || { value: null, status: 'unavailable' };
+
+  const fmts    = [null, FMT.USD,  null];
+  const pctFmts = [null, FMT.PCT1, null];
+  const aligns  = ['left', 'right', 'left'];
+
+  const usdVal  = (r) => (r.status === 'unavailable' || r.value == null) ? null : parseFloat(r.value);
+  const pctVal  = (r) => (r.status === 'unavailable' || r.value == null) ? null : parseFloat(r.value) / 100;
+  const noteStr = (r) => r.status === 'unavailable' ? 'Requires accounting integration' : '';
+
+  // ─ REVENUE ─
+  addSectionHeader(ws, 'REVENUE', nc);
+  const gr     = get('grossRevenue');
+  const refund = get('refunds');
+  const netRev = get('netRevenue');
+  addDataRow(ws,  ['Gross Revenue',     usdVal(gr),     noteStr(gr)],     { alt: false, fmts, aligns });
+  addDataRow(ws,  ['Refunds & Credits', usdVal(refund), noteStr(refund)], { alt: true,  fmts, aligns });
+  addTotalRow(ws, ['Net Revenue',       usdVal(netRev), ''],              { fmts });
+
+  ws.addRow(Array(nc).fill(null)).height = 6;
+
+  // ─ COST OF GOODS SOLD ─
+  addSectionHeader(ws, 'COST OF GOODS SOLD', nc);
+  const cogs = get('cogs');
+  const gp   = get('grossProfit');
+  const gm   = get('grossMargin');
+  addDataRow(ws,  ['COGS',          usdVal(cogs), noteStr(cogs)], { alt: false, fmts, aligns });
+  addTotalRow(ws, ['Gross Profit',  usdVal(gp),   ''],             { fmts });
+  addDataRow(ws,  ['Gross Margin %', pctVal(gm),  noteStr(gm)],   { alt: false, fmts: pctFmts, aligns });
+
+  ws.addRow(Array(nc).fill(null)).height = 6;
+
+  // ─ OPERATING EXPENSES ─
+  addSectionHeader(ws, 'OPERATING EXPENSES', nc);
+  const opex     = get('operatingExpenses');
+  const mfees    = get('merchantFees');
+  const opProfit = get('operatingProfit');
+  addDataRow(ws,  ['Operating Expenses', usdVal(opex),     noteStr(opex)],     { alt: false, fmts, aligns });
+  addDataRow(ws,  ['Merchant Fees',      usdVal(mfees),    noteStr(mfees)],    { alt: true,  fmts, aligns });
+  addTotalRow(ws, ['Operating Profit',   usdVal(opProfit), ''],                { fmts });
+
+  ws.addRow(Array(nc).fill(null)).height = 6;
+
+  // ─ TAXES ─
+  addSectionHeader(ws, 'TAXES', nc);
+  const taxes = get('taxes');
+  addDataRow(ws, ['Taxes', usdVal(taxes), noteStr(taxes)], { alt: false, fmts, aligns });
+
+  ws.addRow(Array(nc).fill(null)).height = 6;
+
+  // ─ NET RESULT ─
+  addSectionHeader(ws, 'NET RESULT', nc);
+  const netP = get('netProfit');
+  const netM = get('netMargin');
+  addTotalRow(ws, ['Net Profit',   usdVal(netP), ''],               { fmts, grand: true });
+  addDataRow(ws,  ['Net Margin %', pctVal(netM), noteStr(netM)],    { alt: false, fmts: pctFmts, aligns });
+
+  applyPrint(ws);
+  return wb;
+}
+
 // ─── Exports ─────────────────────────────────────────────────────────────────
 module.exports = {
   makeXlsxFilename,
@@ -800,6 +876,7 @@ module.exports = {
   buildTax,
   buildQuarterly,
   buildCompletion,
+  buildPnl,
   // Expose for tests
   _C: C, _FMT: FMT,
 };

@@ -224,6 +224,11 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
         wb = xlsSvc.buildCompletion(analysis, xMeta);
         xlsFilename = xlsSvc.makeXlsxFilename('Job_Completion_Analysis', accountName, s, e);
 
+      } else if (type === 'pnl') {
+        const financialsData = await finSvc.getFinancials(accountId, { start: s, end: e });
+        wb = xlsSvc.buildPnl(financialsData, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('PnL_Statement', accountName, s, e);
+
       } else {
         // Default: Revenue Summary
         const overview = await svc.getOverview(accountId, { start: s, end: e });

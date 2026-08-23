@@ -204,6 +204,39 @@ describe('Outstanding AR', () => {
     const ar2 = await svc._outstandingAr(accountId);
     expect(ar1.value).toBe(ar2.value);
   });
+
+  it('counts invoices with no due_date as overdue after 30 days via proxy (IS-002 regression)', async () => {
+    // Invoice with no due_date, no sent_at, created 35 days ago → proxy due = created_at + 30d → overdue
+    const jobId = await createJob({ amount: 7500 });
+    const { rows: [inv] } = await pool.query(
+      `INSERT INTO invoices (account_id, job_id, client_id, amount, status, created_at)
+       VALUES ($1, $2, $3, 7500, 'pending', NOW() - INTERVAL '35 days') RETURNING id`,
+      [accountId, jobId, clientId]
+    );
+
+    const ar = await svc._outstandingAr(accountId);
+    expect(ar.overdueCount).toBeGreaterThan(0);
+    expect(ar.overdueTotal).toBeGreaterThan(0);
+
+    await pool.query('DELETE FROM invoices WHERE id = $1', [inv.id]);
+  });
+
+  it('does not count invoices with no due_date as overdue before 30 days (IS-002 regression)', async () => {
+    // Invoice with no due_date, created yesterday → proxy due = yesterday + 30d → not yet overdue
+    const jobId = await createJob({ amount: 9900 });
+    const before = await svc._outstandingAr(accountId);
+    const { rows: [inv] } = await pool.query(
+      `INSERT INTO invoices (account_id, job_id, client_id, amount, status, created_at)
+       VALUES ($1, $2, $3, 9900, 'pending', NOW() - INTERVAL '1 day') RETURNING id`,
+      [accountId, jobId, clientId]
+    );
+
+    const after = await svc._outstandingAr(accountId);
+    // New invoice created yesterday is NOT past 30-day proxy → overdueCount stays same
+    expect(after.overdueCount).toBe(before.overdueCount);
+
+    await pool.query('DELETE FROM invoices WHERE id = $1', [inv.id]);
+  });
 });
 
 // ── Average Ticket ────────────────────────────────────────────────────────────

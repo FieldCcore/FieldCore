@@ -159,12 +159,14 @@ async function getOverview(accountId, { start, end } = {}) {
   if (!isPast) {
     const bookedCoverage = projectedRevenue > 0 ? bookedRevenue / projectedRevenue : 0;
 
-    if (historyDays >= HIGH_DAYS && completedJobs >= HIGH_JOBS && bookedCoverage >= HIGH_COVERAGE) {
-      confidence = 'HIGH';
-    } else if (historyDays >= MED_DAYS && completedJobs >= MED_JOBS) {
-      confidence = 'MEDIUM';
-    } else {
-      confidence = 'LOW';
+    if (readinessStatus !== 'INSUFFICIENT_DATA') {
+      if (historyDays >= HIGH_DAYS && completedJobs >= HIGH_JOBS && bookedCoverage >= HIGH_COVERAGE) {
+        confidence = 'HIGH';
+      } else if (historyDays >= MED_DAYS && completedJobs >= MED_JOBS) {
+        confidence = 'MEDIUM';
+      } else {
+        confidence = 'LOW';
+      }
     }
 
     if (historyDays < READY_DAYS)

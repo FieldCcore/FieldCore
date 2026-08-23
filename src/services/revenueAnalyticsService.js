@@ -148,9 +148,9 @@ async function outstandingAr(accountId) {
     `SELECT
        COALESCE(SUM(amount), 0)                                                         AS total,
        COUNT(*)                                                                          AS invoice_count,
-       COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND due_date < NOW()
+       COALESCE(SUM(CASE WHEN COALESCE(due_date, COALESCE(sent_at, created_at) + INTERVAL '30 days') < NOW()
                          THEN amount ELSE 0 END), 0)                                    AS overdue_total,
-       COUNT(CASE WHEN due_date IS NOT NULL AND due_date < NOW() THEN 1 END)             AS overdue_count,
+       COUNT(CASE WHEN COALESCE(due_date, COALESCE(sent_at, created_at) + INTERVAL '30 days') < NOW() THEN 1 END) AS overdue_count,
        COALESCE(AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0), 0)             AS avg_age_days
      FROM invoices
      WHERE account_id = $1

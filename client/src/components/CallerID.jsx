@@ -37,6 +37,7 @@ export default function CallerID({ onClose, autoMode = false }) {
     let cancelled = false;
 
     async function poll() {
+      if (!localStorage.getItem('fc_token')) return;
       try {
         const r = await api.get('/phone/calls/latest-inbound');
         if (!cancelled) {

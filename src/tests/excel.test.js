@@ -78,7 +78,7 @@ afterAll(async () => {
 describe('Excel export — response basics', () => {
   it('returns xlsx content-type for all report types', async () => {
     const types = ['summary', 'services', 'invoices', 'technicians', 'customers',
-                   'cancellations', 'tax', 'quarterly', 'completion'];
+                   'cancellations', 'tax', 'quarterly', 'completion', 'pnl'];
     for (const type of types) {
       const res = await request(app)
         .get(`/api/revenue/export?type=${type}&start=${MONTH_START}&end=${TODAY}&format=xlsx`)
@@ -437,6 +437,126 @@ describe('Excel — Job Completion workbook', () => {
   it('By Service has autofilter', () => {
     const ws = wb.getWorksheet('By Service');
     expect(ws.autoFilter).toBeTruthy();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  P&L STATEMENT WORKBOOK  (IS-001 regression)
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('Excel — P&L Statement workbook', () => {
+  let wb;
+  beforeAll(async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?type=pnl&start=${MONTH_START}&end=${TODAY}&format=xlsx`)
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true).parse((res, cb) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    wb = await parseXlsx(res.body);
+  });
+
+  it('has P&L Statement sheet — NOT Revenue Summary (IS-001 regression)', () => {
+    const names = sheetNames(wb);
+    expect(names).toContain('P&L Statement');
+    expect(names).not.toContain('Revenue Summary');
+  });
+
+  it('report title is Profit & Loss Statement', () => {
+    const ws = wb.getWorksheet('P&L Statement');
+    let found = false;
+    ws.eachRow(row => {
+      const v = String(row.getCell(1).value || '');
+      if (v.includes('Profit') && v.includes('Loss')) found = true;
+    });
+    expect(found).toBe(true);
+  });
+
+  it('has REVENUE section label', () => {
+    const ws = wb.getWorksheet('P&L Statement');
+    let found = false;
+    ws.eachRow(row => { if (String(row.getCell(1).value || '').includes('REVENUE')) found = true; });
+    expect(found).toBe(true);
+  });
+
+  it('has NET RESULT section label', () => {
+    const ws = wb.getWorksheet('P&L Statement');
+    let found = false;
+    ws.eachRow(row => { if (String(row.getCell(1).value || '').includes('NET RESULT')) found = true; });
+    expect(found).toBe(true);
+  });
+
+  it('has Gross Revenue and Net Profit row labels', () => {
+    const ws = wb.getWorksheet('P&L Statement');
+    let foundGross = false, foundNet = false;
+    ws.eachRow(row => {
+      const v = String(row.getCell(1).value || '');
+      if (v === 'Gross Revenue') foundGross = true;
+      if (v === 'Net Profit')    foundNet   = true;
+    });
+    expect(foundGross).toBe(true);
+    expect(foundNet).toBe(true);
+  });
+
+  it('has disclaimer text about QuickBooks / not a tax return', () => {
+    const ws = wb.getWorksheet('P&L Statement');
+    let found = false;
+    ws.eachRow(row => {
+      const v = String(row.getCell(1).value || '').toLowerCase();
+      if (v.includes('quickbooks') || v.includes('not a tax return')) found = true;
+    });
+    expect(found).toBe(true);
+  });
+
+  it('filename contains PnL_Statement', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?type=pnl&start=${MONTH_START}&end=${TODAY}&format=xlsx`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.headers['content-disposition']).toMatch(/FieldCore_PnL_Statement/);
+  });
+});
+
+// ── Cross-exporter routing regression (IS-001) ──────────────────────────────
+
+describe('Excel — each report type maps to its own exporter', () => {
+  const EXPECTED_SHEETS = {
+    summary:     'Revenue Summary',
+    services:    'Revenue by Service',
+    invoices:    'Summary',           // Invoice & Collections has Summary as first sheet
+    technicians: 'Team Summary',
+    completion:  'Summary',           // Completion also uses Summary as first sheet
+    pnl:         'P&L Statement',
+  };
+
+  for (const [type, expectedSheet] of Object.entries(EXPECTED_SHEETS)) {
+    it(`type=${type} returns a workbook containing "${expectedSheet}"`, async () => {
+      const res = await request(app)
+        .get(`/api/revenue/export?type=${type}&start=${MONTH_START}&end=${TODAY}&format=xlsx`)
+        .set('Authorization', `Bearer ${token}`)
+        .buffer(true).parse((res, cb) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const w = await parseXlsx(res.body);
+      expect(sheetNames(w)).toContain(expectedSheet);
+    });
+  }
+
+  it('type=pnl does not return Revenue Summary workbook (IS-001 direct regression)', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?type=pnl&start=${MONTH_START}&end=${TODAY}&format=xlsx`)
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true).parse((res, cb) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    const w = await parseXlsx(res.body);
+    expect(sheetNames(w)).not.toContain('Revenue Summary');
   });
 });
 

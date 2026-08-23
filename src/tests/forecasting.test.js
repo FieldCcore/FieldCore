@@ -251,6 +251,17 @@ describe('Confidence rules', () => {
 
     expect(Array.isArray(res.body.forecast.confidenceReasons)).toBe(true);
   });
+
+  it('returns null confidence when readiness is INSUFFICIENT_DATA (IS-003 regression)', async () => {
+    // otherAccount has no jobs — must be INSUFFICIENT_DATA
+    const res = await request(app)
+      .get('/api/revenue/forecasting/overview')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(200);
+
+    expect(res.body.readiness.status).toBe('INSUFFICIENT_DATA');
+    expect(res.body.forecast.confidence).toBeNull();
+  });
 });
 
 // ── Earned revenue ────────────────────────────────────────────────────────────
