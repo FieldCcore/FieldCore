@@ -310,6 +310,22 @@ const MOCK_FORECASTING = {
 
 const MOCK_SAVED_VIEWS = { savedViews: [] };
 
+const MOCK_REPORTS_READINESS = {
+  reports: {
+    summary:       { status: 'AVAILABLE',              exportType: 'summary' },
+    services:      { status: 'AVAILABLE',              exportType: 'services' },
+    invoices:      { status: 'AVAILABLE',              exportType: 'invoices' },
+    technicians:   { status: 'AVAILABLE',              exportType: 'technicians' },
+    customers:     { status: 'AVAILABLE',              exportType: 'customers' },
+    forecasting:   { status: 'AVAILABLE',              exportType: 'forecasting' },
+    cancellations: { status: 'AVAILABLE',              exportType: 'cancellations' },
+    tax:           { status: 'AVAILABLE',              exportType: 'tax' },
+    quarterly:     { status: 'AVAILABLE',              exportType: 'quarterly' },
+    completion:    { status: 'AVAILABLE',              exportType: 'completion' },
+    pnl:           { status: 'REQUIRES_CONFIGURATION', exportType: null, reason: 'Requires accounting integration' },
+  },
+};
+
 const MOCK_OPS_KPIS = {
   period: { start: '2026-08-01', end: '2026-08-20' },
   calculatedAt: '2026-08-20T10:00:00Z',
@@ -408,6 +424,7 @@ beforeEach(() => {
   api.get.mockImplementation((url) => {
     if (url.includes('/revenue/customers/overview'))  return Promise.resolve({ data: MOCK_CUSTOMERS });
     if (url.includes('/revenue/forecasting/overview'))  return Promise.resolve({ data: MOCK_FORECASTING });
+    if (url.includes('/revenue/reports/readiness'))   return Promise.resolve({ data: MOCK_REPORTS_READINESS });
     if (url.includes('/revenue/saved-views'))         return Promise.resolve({ data: MOCK_SAVED_VIEWS });
     if (url.includes('/revenue/financials'))          return Promise.resolve({ data: MOCK_FINANCIALS });
     if (url.includes('/revenue/operations/team/'))    return Promise.resolve({ data: { user: { id: 'user-tech-1', name: 'Alice T.', role: 'tech' }, period: { start: '2026-08-01', end: '2026-08-20' }, summary: { jobsCompleted: 5, productionValue: 2500, completionRate: 0.83, laborHours: 25, revenuePerLaborHour: 100 }, jobs: [] } });
@@ -1474,34 +1491,104 @@ describe('Revenue — Forecasting workspace', () => {
 // ── Reports workspace ──────────────────────────────────────────────────────────
 
 describe('Revenue — Reports workspace', () => {
-  it('renders Report Catalog', async () => {
+  it('renders Report Catalog heading standalone (no outer card)', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Report Catalog')).toBeInTheDocument();
     });
   });
 
-  it('shows available report types with Export CSV buttons', async () => {
+  it('shows Export CSV for all AVAILABLE reports', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
-      expect(screen.getByText('Revenue Summary')).toBeInTheDocument();
-      expect(screen.getByText('Revenue by Service')).toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThan(0);
+      // 10 AVAILABLE reports (all except P&L with REQUIRES_CONFIGURATION)
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(10);
     });
+  });
+
+  it('Revenue by Technician is now AVAILABLE with Export CSV', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Revenue by Technician')).toBeInTheDocument();
+    });
+    // Confirm the row has an Export CSV button, not a badge
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
+  });
+
+  it('Cancellation & No-Show Report is AVAILABLE with Export CSV', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Cancellation & No-Show Report')).toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('Tax Summary is AVAILABLE with Export CSV', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Tax Summary')).toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('Quarterly Financial is AVAILABLE with Export CSV', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Quarterly Financial')).toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('Job Completion Analysis is AVAILABLE with Export CSV', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Job Completion Analysis')).toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('P&L shows REQUIRES_CONFIGURATION badge from readiness API', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('P&L Statement')).toBeInTheDocument();
+      expect(screen.getAllByText(/requires accounting integration/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('P&L shows Export CSV when readiness returns AVAILABLE', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/reports/readiness')) return Promise.resolve({
+        data: {
+          reports: {
+            ...MOCK_REPORTS_READINESS.reports,
+            pnl: { status: 'AVAILABLE', exportType: 'pnl' },
+          },
+        },
+      });
+      if (url.includes('/revenue/saved-views')) return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      return Promise.resolve({ data: {} });
+    });
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('P&L Statement')).toBeInTheDocument();
+      // With accounting connected, P&L should show Export CSV not badge
+      expect(screen.queryByText(/requires accounting integration/i)).not.toBeInTheDocument();
+      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(11);
+    });
+  });
+
+  it('no generic Coming soon badges remain', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Report Catalog')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
   it('shows Saved Views section', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Saved Views')).toBeInTheDocument();
-    });
-  });
-
-  it('shows P&L requires accounting integration', async () => {
-    renderRevenue('?view=reports');
-    await waitFor(() => {
-      expect(screen.getAllByText(/p&l statement/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/requires accounting integration/i).length).toBeGreaterThan(0);
     });
   });
 });

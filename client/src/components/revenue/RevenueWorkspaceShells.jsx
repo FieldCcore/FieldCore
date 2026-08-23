@@ -811,72 +811,86 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
 // REPORTS WORKSPACE
 // ══════════════════════════════════════════════════════════════════════════════
 
+// reportKey maps to the key returned by /api/revenue/reports/readiness
+// status here is the default/static value; ReportsWorkspace overrides via readiness API
 const REPORT_CATALOG = [
   {
     label:       'Revenue Summary',
     description: 'Period totals: collected, earned, by service',
+    reportKey:   'summary',
     status:      'AVAILABLE',
     exportType:  'summary',
   },
   {
     label:       'Revenue by Service',
     description: 'Job counts, revenue, and completion by service type',
+    reportKey:   'services',
     status:      'AVAILABLE',
     exportType:  'services',
   },
   {
     label:       'Invoice & Collections',
     description: 'All invoices with status, amounts, and dates',
+    reportKey:   'invoices',
     status:      'AVAILABLE',
     exportType:  'invoices',
   },
   {
     label:       'Revenue by Technician',
-    description: 'Per-technician revenue (primary assignment)',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Per-technician earned revenue and labor hours (primary assignment)',
+    reportKey:   'technicians',
+    status:      'AVAILABLE',
+    exportType:  'technicians',
   },
   {
     label:       'Customer Value Report',
     description: 'Top clients by revenue with LTV summary',
+    reportKey:   'customers',
     status:      'AVAILABLE',
     exportType:  'customers',
   },
   {
     label:       'Forecast Pipeline Report',
     description: 'Upcoming scheduled jobs with projected revenue summary',
+    reportKey:   'forecasting',
     status:      'AVAILABLE',
     exportType:  'forecasting',
   },
   {
     label:       'Cancellation & No-Show Report',
-    description: 'Cancelled/no-show revenue impact',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Cancelled and no-show jobs with revenue impact',
+    reportKey:   'cancellations',
+    status:      'AVAILABLE',
+    exportType:  'cancellations',
   },
   {
     label:       'Tax Summary',
-    description: 'Tax collected by period',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Tax collected on invoices by period',
+    reportKey:   'tax',
+    status:      'AVAILABLE',
+    exportType:  'tax',
   },
   {
     label:       'Quarterly Financial',
-    description: 'Q1-Q4 comparison',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Q1–Q4 earned and collected revenue comparison',
+    reportKey:   'quarterly',
+    status:      'AVAILABLE',
+    exportType:  'quarterly',
   },
   {
     label:       'P&L Statement',
-    description: 'Requires accounting integration',
-    status:      'REQUIRES_INTEGRATION',
+    description: 'Revenue, COGS, gross profit, operating expenses, and net profit',
+    reportKey:   'pnl',
+    status:      'REQUIRES_CONFIGURATION',
     exportType:  null,
+    requiresConfig: 'Requires accounting integration',
   },
   {
     label:       'Job Completion Analysis',
-    description: 'Scheduled vs actual labor',
-    status:      'COMING_SOON',
-    exportType:  null,
+    description: 'Completion rate by service with cancellation and no-show breakdown',
+    reportKey:   'completion',
+    status:      'AVAILABLE',
+    exportType:  'completion',
   },
 ];
 
@@ -924,8 +938,8 @@ function ExportButton({ exportType, filterStart, filterEnd }) {
   );
 }
 
-function StatusBadge({ status }) {
-  if (status === 'REQUIRES_INTEGRATION') {
+function StatusBadge({ status, reason }) {
+  if (status === 'REQUIRES_CONFIGURATION' || status === 'REQUIRES_INTEGRATION') {
     return (
       <span style={{
         fontSize: 12,
@@ -936,11 +950,11 @@ function StatusBadge({ status }) {
         fontWeight: 500,
         whiteSpace: 'nowrap',
       }}>
-        Requires accounting integration
+        {reason || 'Requires configuration'}
       </span>
     );
   }
-  if (status === 'COMING_SOON') {
+  if (status === 'NOT_IMPLEMENTED') {
     return (
       <span style={{
         fontSize: 12,
@@ -959,19 +973,39 @@ function StatusBadge({ status }) {
 }
 
 export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
-  const [savedViews, setSavedViews] = useState({ data: null, loading: true, error: null });
+  const [savedViews, setSavedViews]   = useState({ data: null, loading: true, error: null });
+  const [readiness,  setReadiness]    = useState({});
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/revenue/saved-views', { params: { workspace: 'reports' } })
-      .then(res => {
-        if (!cancelled) setSavedViews({ data: res.data, loading: false, error: null });
-      })
-      .catch(() => {
-        if (!cancelled) setSavedViews({ data: [], loading: false, error: null });
-      });
+    Promise.all([
+      api.get('/revenue/saved-views', { params: { workspace: 'reports' } }),
+      api.get('/revenue/reports/readiness'),
+    ]).then(([viewsRes, readinessRes]) => {
+      if (!cancelled) {
+        setSavedViews({ data: viewsRes.data,     loading: false, error: null });
+        setReadiness(readinessRes.data?.reports || {});
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setSavedViews({ data: [],   loading: false, error: null });
+        setReadiness({});
+      }
+    });
     return () => { cancelled = true; };
   }, []);
+
+  // Merge static catalog with live readiness overrides
+  const resolvedCatalog = REPORT_CATALOG.map(report => {
+    const live = readiness[report.reportKey];
+    if (!live) return report;
+    return {
+      ...report,
+      status:     live.status,
+      exportType: live.exportType ?? report.exportType,
+      requiresConfig: live.reason || report.requiresConfig,
+    };
+  });
 
   // API returns { savedViews: [...] }
   const views = savedViews.data?.savedViews || (Array.isArray(savedViews.data) ? savedViews.data : []);
@@ -989,14 +1023,14 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {REPORT_CATALOG.map(report => (
+          {resolvedCatalog.map(report => (
             <div key={report.label} className="ops-table-card" style={{
               padding: '0.875rem 1.25rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 16,
-              opacity: report.status === 'COMING_SOON' ? 0.65 : 1,
+              opacity: report.status === 'NOT_IMPLEMENTED' ? 0.65 : 1,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 2 }}>
@@ -1014,7 +1048,7 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
                     filterEnd={filterEnd}
                   />
                 ) : (
-                  <StatusBadge status={report.status} />
+                  <StatusBadge status={report.status} reason={report.requiresConfig} />
                 )}
               </div>
             </div>
