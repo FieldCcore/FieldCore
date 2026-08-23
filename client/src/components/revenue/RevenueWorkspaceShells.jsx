@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { HelpCircle, Info } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { HelpCircle, Info, ChevronDown } from 'lucide-react';
 import api from '../../api';
 
 // ── Money formatter ────────────────────────────────────────────────────────────
@@ -899,19 +900,59 @@ const REPORT_CATALOG = [
   },
 ];
 
+// Singleton: only one ExportButton menu open at a time.
+let _activeExportClose = null;
+
 function ExportButton({ exportType, filterStart, filterEnd }) {
   const [open,      setOpen]      = useState(false);
   const [exporting, setExporting] = useState(false);
-  const menuRef = useRef(null);
+  const [menuPos,   setMenuPos]   = useState({ top: 0, left: 0 });
+
+  const triggerRef = useRef(null);
+  const menuRef    = useRef(null);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  // Anchor menu to trigger using position:fixed (escapes all overflow ancestors).
+  // Right-aligns menu edge to button edge; flips above if insufficient space below.
+  const calcPos = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect       = triggerRef.current.getBoundingClientRect();
+    const menuH      = 104; // 2 items × ~44px + 8px top+bottom padding
+    const menuW      = 244;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp     = spaceBelow < menuH + 16 && rect.top > menuH + 16;
+    let left = rect.right - menuW;
+    if (left < 8) left = 8; // prevent left-edge bleed
+    setMenuPos({ top: openUp ? rect.top - menuH - 7 : rect.bottom + 7, left });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    function handleOutside(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    // Close any other open Export menu first.
+    if (_activeExportClose && _activeExportClose !== close) _activeExportClose();
+    _activeExportClose = close;
+    calcPos();
+
+    function onDown(e) {
+      if (!triggerRef.current?.contains(e.target) && !menuRef.current?.contains(e.target)) {
+        setOpen(false);
+      }
     }
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [open]);
+    function onKey(e) { if (e.key === 'Escape') setOpen(false); }
+
+    window.addEventListener('scroll', calcPos, true);
+    window.addEventListener('resize', calcPos);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown',   onKey);
+    return () => {
+      window.removeEventListener('scroll', calcPos, true);
+      window.removeEventListener('resize', calcPos);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown',   onKey);
+      if (_activeExportClose === close) _activeExportClose = null;
+    };
+  }, [open, close, calcPos]);
 
   async function handleDownload(format) {
     setOpen(false);
@@ -941,55 +982,108 @@ function ExportButton({ exportType, filterStart, filterEnd }) {
     }
   }
 
-  return (
-    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
+  const menu = open && createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label="Export options"
+      style={{
+        position:     'fixed',
+        top:          menuPos.top,
+        left:         menuPos.left,
+        width:        244,
+        zIndex:       9999,
+        background:   '#fff',
+        border:       '1px solid var(--lightgray)',
+        borderRadius: 10,
+        boxShadow:    '0 8px 24px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.06)',
+        padding:      '4px 0',
+        fontFamily:   'Inter, sans-serif',
+      }}
+    >
       <button
-        className="btn-primary"
-        onClick={() => setOpen(o => !o)}
+        role="menuitem"
+        onClick={() => handleDownload('xlsx')}
+        style={{
+          display:    'flex', alignItems: 'center', gap: 6,
+          width:      '100%', textAlign: 'left',
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding:    '9px 16px', fontSize: 13, color: 'var(--navy)',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      >
+        <span style={{ fontWeight: 600 }}>Excel Workbook (.xlsx)</span>
+        <span style={{
+          fontSize: 10, fontWeight: 600, letterSpacing: '0.02em',
+          color: '#92400E', background: '#FEF3C7',
+          padding: '2px 5px', borderRadius: 4, whiteSpace: 'nowrap',
+        }}>
+          Recommended
+        </span>
+      </button>
+      <button
+        role="menuitem"
+        onClick={() => handleDownload('csv')}
+        style={{
+          display:    'block', width: '100%', textAlign: 'left',
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding:    '9px 16px', fontSize: 13, color: 'var(--navy)',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      >
+        Raw Data (.csv)
+      </button>
+    </div>,
+    document.body
+  );
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
         disabled={exporting}
-        style={{ fontSize: 13, padding: '5px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display:      'inline-flex',
+          alignItems:   'center',
+          gap:          5,
+          height:       32,
+          padding:      '0 11px',
+          background:   '#fff',
+          border:       `1.5px solid ${open ? 'var(--navy)' : 'var(--lightgray)'}`,
+          borderRadius: 8,
+          fontSize:     13,
+          fontWeight:   500,
+          fontFamily:   'Inter, sans-serif',
+          color:        'var(--navy)',
+          cursor:       exporting ? 'not-allowed' : 'pointer',
+          opacity:      exporting ? 0.55 : 1,
+          whiteSpace:   'nowrap',
+          transition:   'border-color .15s',
+        }}
+        onMouseEnter={e => { if (!exporting) e.currentTarget.style.borderColor = 'var(--slate)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = open ? 'var(--navy)' : 'var(--lightgray)'; }}
       >
         {exporting ? 'Exporting…' : 'Export'}
         {!exporting && (
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ flexShrink: 0 }}>
-            <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <ChevronDown
+            size={13}
+            style={{
+              color:      'var(--slate)',
+              flexShrink: 0,
+              transform:  open ? 'rotate(180deg)' : 'none',
+              transition: 'transform .18s',
+            }}
+          />
         )}
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 100,
-          background: '#fff', border: '1px solid var(--lightgray)', borderRadius: 8,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, padding: '4px 0',
-        }}>
-          <button
-            onClick={() => handleDownload('xlsx')}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left',
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '9px 16px', fontSize: 13, color: 'var(--navy)',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'none'}
-          >
-            <span style={{ fontWeight: 600 }}>Excel Workbook (.xlsx)</span>
-            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--sand)', fontWeight: 500 }}>Recommended</span>
-          </button>
-          <button
-            onClick={() => handleDownload('csv')}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left',
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '9px 16px', fontSize: 13, color: 'var(--navy)',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'none'}
-          >
-            Raw Data (.csv)
-          </button>
-        </div>
-      )}
-    </div>
+      {menu}
+    </>
   );
 }
 
