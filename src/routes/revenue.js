@@ -177,6 +177,173 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
       rows.unshift(['Earned Revenue', fc.actual.earnedRevenue.toFixed(2), '', '', '']);
       rows.unshift(['Period', `${fc.period.start} to ${fc.period.end}`, '', '', '']);
       rows.unshift(['Confidence', fc.forecast.confidence || 'N/A', '', '', '']);
+
+    } else if (type === 'technicians') {
+      const params = [accountId];
+      let dateFilter = '';
+      if (s) { params.push(s); dateFilter += ` AND j.scheduled_at >= $${params.length}::date`; }
+      if (e) { params.push(e); dateFilter += ` AND j.scheduled_at <  ($${params.length}::date + INTERVAL '1 day')`; }
+      const { rows: techRows } = await pool.query(
+        `SELECT
+           COALESCE(u.name, 'Unassigned') AS technician_name,
+           COUNT(j.id) FILTER (WHERE j.status = 'complete')::int AS completed_jobs,
+           COUNT(j.id) FILTER (WHERE j.status IN ('cancelled','no_show'))::int AS lost_jobs,
+           COALESCE(SUM(j.amount) FILTER (WHERE j.status = 'complete'), 0) AS earned_revenue,
+           COALESCE(SUM(j.duration_minutes) FILTER (WHERE j.status = 'complete'), 0)::int AS total_minutes
+         FROM jobs j
+         LEFT JOIN users u ON u.id = j.tech_id AND u.account_id = $1
+         WHERE j.account_id = $1${dateFilter}
+         GROUP BY j.tech_id, u.name
+         ORDER BY earned_revenue DESC`,
+        params
+      );
+      filename = 'revenue-by-technician.csv';
+      header   = ['Technician', 'Jobs Completed', 'Lost Jobs', 'Earned Revenue', 'Avg Ticket', 'Labor Hours (Scheduled)'];
+      rows     = techRows.map(r => {
+        const earned = parseFloat(r.earned_revenue) || 0;
+        const completed = r.completed_jobs || 0;
+        return [
+          r.technician_name,
+          completed,
+          r.lost_jobs,
+          earned.toFixed(2),
+          completed > 0 ? (earned / completed).toFixed(2) : '',
+          r.total_minutes > 0 ? (r.total_minutes / 60).toFixed(1) : '',
+        ];
+      });
+      rows.unshift(['Note: Shows primary tech assignment only. Labor hours are scheduled duration.', '', '', '', '', '']);
+      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+
+    } else if (type === 'cancellations') {
+      const { rows: cancelRows } = await pool.query(
+        `SELECT j.scheduled_at, j.service_type, j.status, j.amount,
+                COALESCE(c.name, 'Unknown') AS client_name,
+                COALESCE(u.name, 'Unassigned') AS tech_name
+         FROM jobs j
+         LEFT JOIN clients c ON c.id = j.client_id AND c.account_id = $1
+         LEFT JOIN users   u ON u.id = j.tech_id   AND u.account_id = $1
+         WHERE j.account_id = $1
+           AND j.status IN ('cancelled', 'no_show')
+           AND j.scheduled_at >= $2::date
+           AND j.scheduled_at <  ($3::date + INTERVAL '1 day')
+         ORDER BY j.scheduled_at DESC`,
+        [accountId, s, e]
+      );
+      // Try to enrich with cancellation reasons (table may not exist)
+      let reasonMap = {};
+      try {
+        const { rows: rRows } = await pool.query(
+          `SELECT job_id, reason_code
+           FROM job_status_history
+           WHERE account_id = $1
+             AND to_status IN ('cancelled','no_show')
+             AND changed_at >= $2::date
+             AND changed_at <  ($3::date + INTERVAL '1 day')`,
+          [accountId, s, e]
+        );
+        rRows.forEach(r => { reasonMap[r.job_id] = r.reason_code || ''; });
+      } catch { /* table absent — omit reasons */ }
+      const reasonLabels = {
+        customer_cancelled: 'Customer Cancelled', customer_unavailable: 'Customer Unavailable',
+        weather: 'Weather', tech_unavailable: 'Technician Unavailable',
+        scheduling_conflict: 'Scheduling Conflict', duplicate_booking: 'Duplicate Booking',
+        payment_issue: 'Payment Issue', other: 'Other',
+      };
+      filename = 'cancellations-noshows.csv';
+      header   = ['Date', 'Client', 'Service', 'Status', 'Reason', 'Revenue Impact', 'Assigned Tech'];
+      rows     = cancelRows.map(r => {
+        const raw = reasonMap[r.id] || '';
+        return [
+          r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString() : '',
+          r.client_name,
+          r.service_type || 'Unspecified',
+          r.status === 'no_show' ? 'No-Show' : 'Cancelled',
+          raw ? (reasonLabels[raw] || raw) : 'Not captured',
+          parseFloat(r.amount || 0).toFixed(2),
+          r.tech_name,
+        ];
+      });
+      const totalImpact = cancelRows.reduce((t, r) => t + (parseFloat(r.amount) || 0), 0);
+      rows.unshift([]);
+      rows.unshift(['Total Revenue Impact', totalImpact.toFixed(2), '', '', '', '', '']);
+      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '', '']);
+
+    } else if (type === 'tax') {
+      const { rows: taxRows } = await pool.query(
+        `SELECT i.id, COALESCE(c.name, 'Unknown') AS client_name,
+                COALESCE(j.service_type, 'Unspecified') AS service,
+                i.amount, COALESCE(i.tax_amount, 0) AS tax_amount,
+                i.status, i.created_at
+         FROM invoices i
+         LEFT JOIN clients c ON c.id = i.client_id AND c.account_id = $1
+         LEFT JOIN jobs    j ON j.id = i.job_id
+         WHERE i.account_id = $1
+           AND i.created_at >= $2::date
+           AND i.created_at <  ($3::date + INTERVAL '1 day')
+         ORDER BY i.created_at DESC`,
+        [accountId, s, e]
+      );
+      const taxableRows  = taxRows.filter(r => parseFloat(r.amount) > 0);
+      const totalTaxable = taxableRows.reduce((t, r) => t + (parseFloat(r.amount) || 0), 0);
+      const totalTax     = taxRows.reduce((t, r) => t + (parseFloat(r.tax_amount) || 0), 0);
+      filename = 'tax-summary.csv';
+      header   = ['Date', 'Client', 'Service', 'Invoice Amount', 'Tax Amount', 'Status'];
+      rows     = taxRows.map(r => [
+        r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+        r.client_name,
+        r.service,
+        parseFloat(r.amount || 0).toFixed(2),
+        parseFloat(r.tax_amount || 0).toFixed(2),
+        r.status,
+      ]);
+      rows.unshift([]);
+      rows.unshift(['Total Tax Collected', totalTax.toFixed(2), '', '', '', '']);
+      rows.unshift(['Total Taxable Sales', totalTaxable.toFixed(2), '', '', '', '']);
+      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+
+    } else if (type === 'quarterly') {
+      const yr      = new Date().getUTCFullYear();
+      const qData   = await svc.getQuarterly(accountId, { year: yr });
+      filename = `quarterly-financial-${yr}.csv`;
+      header   = ['Quarter', 'Earned Revenue', 'Collected Revenue', 'Avg Ticket', 'YoY Growth %'];
+      const quarterLabels = { Q1: 'Q1', Q2: 'Q2', Q3: 'Q3', Q4: 'Q4', year: 'Full Year' };
+      rows = ['Q1', 'Q2', 'Q3', 'Q4', 'year'].map(k => {
+        const q = qData.quarters[k] || {};
+        const yoy = q.yoyGrowth != null ? q.yoyGrowth.toFixed(1) + '%' : 'N/A';
+        return [
+          quarterLabels[k],
+          (q.earnedRevenue   || 0).toFixed(2),
+          (q.collectedRevenue || 0).toFixed(2),
+          q.avgTicket != null ? q.avgTicket.toFixed(2) : 'N/A',
+          yoy,
+        ];
+      });
+      rows.push([]);
+      rows.push(['Note: COGS, Gross Profit, Operating Expenses require accounting integration.', '', '', '', '']);
+      rows.unshift(['Year', yr, '', '', '']);
+
+    } else if (type === 'completion') {
+      const analysis  = await completionSvc.getCompletionAnalysis(accountId, { start: s, end: e });
+      const { summary, byService } = analysis;
+      filename = 'job-completion-analysis.csv';
+      header   = ['Service', 'Completed', 'Cancelled', 'No-Shows', 'Eligible', 'Completion Rate %'];
+      rows     = byService.map(r => [
+        r.service,
+        r.completed,
+        r.cancelled,
+        r.noShows,
+        r.eligible,
+        r.completionRate != null ? (r.completionRate * 100).toFixed(1) : 'N/A',
+      ]);
+      rows.unshift([]);
+      rows.unshift(['--- Summary ---', '', '', '', '', '']);
+      rows.unshift(['Revenue Impact (Cancelled + No-Show)', summary.revenueImpact.toFixed(2), '', '', '', '']);
+      rows.unshift(['Overall Completion Rate', summary.completionRate != null ? (summary.completionRate * 100).toFixed(1) + '%' : 'N/A', '', '', '', '']);
+      rows.unshift(['Cancelled', summary.cancelled, '', '', '', '']);
+      rows.unshift(['No-Shows', summary.noShows, '', '', '', '']);
+      rows.unshift(['Completed', summary.completed, '', '', '', '']);
+      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+
     } else {
       // Default: overview summary
       const overview = await svc.getOverview(accountId, { start: s, end: e });
@@ -485,6 +652,38 @@ router.get('/technicians', requireAuth, requireRole('owner', 'manager'), async (
   } catch (err) {
     console.error('[revenue] technicians error', err.message);
     res.status(500).json({ error: 'Could not load technician revenue.' });
+  }
+});
+
+// ── Report Readiness ─────────────────────────────────────────────────────────
+// Returns per-report status based on actual backend data availability.
+// P&L status is driven by accounting coverage; all others are always AVAILABLE.
+router.get('/reports/readiness', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const coverage    = await coverageSvc.getFinancialCoverage(req.accountId);
+    const acctStatus  = coverage.accounting?.status;
+    const acctActive  = acctStatus === 'active' || acctStatus === 'partial';
+
+    res.json({
+      reports: {
+        summary:       { status: 'AVAILABLE',              exportType: 'summary' },
+        services:      { status: 'AVAILABLE',              exportType: 'services' },
+        invoices:      { status: 'AVAILABLE',              exportType: 'invoices' },
+        technicians:   { status: 'AVAILABLE',              exportType: 'technicians' },
+        customers:     { status: 'AVAILABLE',              exportType: 'customers' },
+        forecasting:   { status: 'AVAILABLE',              exportType: 'forecasting' },
+        cancellations: { status: 'AVAILABLE',              exportType: 'cancellations' },
+        tax:           { status: 'AVAILABLE',              exportType: 'tax' },
+        quarterly:     { status: 'AVAILABLE',              exportType: 'quarterly' },
+        completion:    { status: 'AVAILABLE',              exportType: 'completion' },
+        pnl:           acctActive
+          ? { status: 'AVAILABLE',              exportType: 'pnl' }
+          : { status: 'REQUIRES_CONFIGURATION', exportType: null,  reason: 'Requires accounting integration' },
+      },
+    });
+  } catch (err) {
+    console.error('[revenue] reports/readiness error', err.message);
+    res.status(500).json({ error: 'Report readiness could not be loaded.' });
   }
 });
 

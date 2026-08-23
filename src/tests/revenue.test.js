@@ -659,3 +659,159 @@ describe('Date boundaries', () => {
     expect(ev.status).toBe('ok');
   });
 });
+
+// ── Reports: new export types ─────────────────────────────────────────────────
+
+describe('GET /api/revenue/export — new report types', () => {
+  it('technicians export returns CSV with correct headers', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=technicians`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.text).toContain('Technician');
+    expect(res.text).toContain('Jobs Completed');
+    expect(res.text).toContain('Earned Revenue');
+  });
+
+  it('cancellations export returns CSV with correct headers', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=cancellations`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Date');
+    expect(res.text).toContain('Client');
+    expect(res.text).toContain('Revenue Impact');
+  });
+
+  it('cancellations export returns empty CSV (not error) when no cancelled jobs', async () => {
+    const res = await request(app)
+      .get('/api/revenue/export?start=2000-01-01&end=2000-01-31&type=cancellations')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    // Header row should still be present
+    expect(res.text).toContain('Date');
+  });
+
+  it('tax export returns CSV with correct headers', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=tax`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Tax Amount');
+    expect(res.text).toContain('Invoice Amount');
+  });
+
+  it('quarterly export returns CSV with Q1–Q4 rows', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=quarterly`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Q1');
+    expect(res.text).toContain('Q2');
+    expect(res.text).toContain('Q3');
+    expect(res.text).toContain('Q4');
+    expect(res.text).toContain('Earned Revenue');
+  });
+
+  it('completion export returns CSV with service breakdown', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=completion`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Service');
+    expect(res.text).toContain('Completion Rate');
+    expect(res.text).toContain('Completed');
+  });
+
+  it('does not cross account boundaries (technicians)', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=technicians`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res.status).toBe(200);
+    // Other account has no jobs — result should not contain our test account data
+    expect(res.text).not.toContain('Main Tech');
+  });
+
+  it('does not cross account boundaries (cancellations)', async () => {
+    const res = await request(app)
+      .get(`/api/revenue/export?start=${MONTH_START}&end=${TODAY}&type=cancellations`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('Test Client');
+  });
+
+  it('rejects unauthenticated requests for new export types', async () => {
+    for (const type of ['technicians', 'cancellations', 'tax', 'quarterly', 'completion']) {
+      const res = await request(app).get(`/api/revenue/export?type=${type}`);
+      expect([401, 403]).toContain(res.status);
+    }
+  });
+});
+
+// ── GET /api/revenue/reports/readiness ───────────────────────────────────────
+
+describe('GET /api/revenue/reports/readiness', () => {
+  it('returns 200 with all expected report keys', async () => {
+    const res = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const keys = ['summary', 'services', 'invoices', 'technicians', 'customers',
+                  'forecasting', 'cancellations', 'tax', 'quarterly', 'completion', 'pnl'];
+    for (const key of keys) {
+      expect(res.body.reports[key]).toBeDefined();
+      expect(res.body.reports[key].status).toBeDefined();
+    }
+  });
+
+  it('returns AVAILABLE for all non-P&L reports', async () => {
+    const res = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const available = ['summary', 'services', 'invoices', 'technicians', 'customers',
+                       'forecasting', 'cancellations', 'tax', 'quarterly', 'completion'];
+    for (const key of available) {
+      expect(res.body.reports[key].status).toBe('AVAILABLE');
+      expect(res.body.reports[key].exportType).toBeTruthy();
+    }
+  });
+
+  it('P&L shows REQUIRES_CONFIGURATION when no accounting integration active', async () => {
+    const res = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.reports.pnl.status).toBe('REQUIRES_CONFIGURATION');
+    expect(res.body.reports.pnl.exportType).toBeNull();
+    expect(res.body.reports.pnl.reason).toMatch(/accounting integration/i);
+  });
+
+  it('does not cross account boundaries', async () => {
+    const res1 = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${token}`);
+    const res2 = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    // Both should return the same structure — neither leaks the other's data
+    expect(Object.keys(res1.body.reports)).toEqual(Object.keys(res2.body.reports));
+  });
+
+  it('rejects unauthenticated requests', async () => {
+    const res = await request(app).get('/api/revenue/reports/readiness');
+    expect([401, 403]).toContain(res.status);
+  });
+
+  it('rejects tech role (requires owner/manager)', async () => {
+    const techToken = makeToken(tech1Id, accountId, 'tech');
+    const res = await request(app)
+      .get('/api/revenue/reports/readiness')
+      .set('Authorization', `Bearer ${techToken}`);
+    expect([401, 403]).toContain(res.status);
+  });
+});
