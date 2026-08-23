@@ -895,21 +895,22 @@ const REPORT_CATALOG = [
 ];
 
 function ExportButton({ exportType, filterStart, filterEnd }) {
-  const [exporting, setExporting] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const [exportingCsv,  setExportingCsv]  = useState(false);
+  const busy = exportingXlsx || exportingCsv;
 
-  async function handleExport() {
-    setExporting(true);
+  async function handleDownload(format) {
+    const setExp = format === 'xlsx' ? setExportingXlsx : setExportingCsv;
+    setExp(true);
     try {
       const res = await api.get('/revenue/export', {
-        params:       { type: exportType, start: filterStart, end: filterEnd },
+        params:       { type: exportType, start: filterStart, end: filterEnd, format },
         responseType: 'blob',
       });
-
-      // Build filename from content-disposition or fall back to type
       const disposition = res.headers['content-disposition'] || '';
       const match       = disposition.match(/filename="?([^"]+)"?/);
-      const filename    = match ? match[1] : `${exportType}-report.csv`;
-
+      const ext         = format === 'xlsx' ? '.xlsx' : '.csv';
+      const filename    = match ? match[1] : `${exportType}-report${ext}`;
       const url    = URL.createObjectURL(res.data);
       const anchor = document.createElement('a');
       anchor.href     = url;
@@ -922,19 +923,29 @@ function ExportButton({ exportType, filterStart, filterEnd }) {
       const msg = err.response?.data?.error || 'Export failed. Please try again.';
       alert(msg);
     } finally {
-      setExporting(false);
+      setExp(false);
     }
   }
 
   return (
-    <button
-      className="btn-secondary"
-      onClick={handleExport}
-      disabled={exporting}
-      style={{ fontSize: 13, padding: '5px 14px', whiteSpace: 'nowrap' }}
-    >
-      {exporting ? 'Exporting…' : 'Export CSV'}
-    </button>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <button
+        className="btn-primary"
+        onClick={() => handleDownload('xlsx')}
+        disabled={busy}
+        style={{ fontSize: 13, padding: '5px 14px', whiteSpace: 'nowrap' }}
+      >
+        {exportingXlsx ? 'Exporting…' : 'Export Excel'}
+      </button>
+      <button
+        className="btn-secondary"
+        onClick={() => handleDownload('csv')}
+        disabled={busy}
+        style={{ fontSize: 12, padding: '4px 10px', whiteSpace: 'nowrap' }}
+      >
+        {exportingCsv ? '…' : 'CSV'}
+      </button>
+    </div>
   );
 }
 

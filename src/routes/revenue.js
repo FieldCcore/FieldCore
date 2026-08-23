@@ -4,6 +4,8 @@ const router   = express.Router();
 const pool     = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const svc      = require('../services/revenueAnalyticsService');
+const csvSvc   = require('../services/csvExportService');
+const xlsSvc   = require('../services/excelExportService');
 
 // ── GET /api/revenue/overview ─────────────────────────────────────────────────
 // Primary + secondary KPIs, insights, services, risk, opportunities
@@ -80,52 +82,225 @@ router.get('/quarterly', requireAuth, requireRole('owner', 'manager'), async (re
 // Query params: start, end, type (summary|services|invoices)
 
 router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { start, end, type = 'summary' } = req.query;
+  const { start, end, type = 'summary', format = 'csv' } = req.query;
   const accountId = req.accountId;
 
   const s = start || svc.defaultPeriod().start;
   const e = end   || svc.defaultPeriod().end;
+  const generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
   try {
-    let rows, filename, header;
+    const { accountName, timezone } = await csvSvc.getAccountMeta(pool, accountId);
+
+    // ── Excel (.xlsx) export path ─────────────────────────────────────────────
+    if (format === 'xlsx') {
+      const xMeta = { entity: accountName, periodStart: s, periodEnd: e, generatedAt, timezone };
+      let wb, xlsFilename;
+
+      if (type === 'services') {
+        const services = await svc.getServices(accountId, { start: s, end: e });
+        wb = xlsSvc.buildRevenueByService(services, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Revenue_by_Service', accountName, s, e);
+
+      } else if (type === 'invoices') {
+        const { rows } = await pool.query(
+          `SELECT i.id, COALESCE(c.name, 'Unknown') AS client,
+                  COALESCE(j.service_type, 'Unspecified') AS service,
+                  i.amount, COALESCE(i.tax_amount, 0) AS tax_amount,
+                  i.status, i.created_at, i.paid_at, i.due_date
+           FROM invoices i
+           LEFT JOIN clients c ON c.id = i.client_id AND c.account_id = $1
+           LEFT JOIN jobs    j ON j.id = i.job_id
+           WHERE i.account_id = $1
+             AND i.created_at >= $2::date
+             AND i.created_at <  ($3::date + INTERVAL '1 day')
+           ORDER BY i.created_at DESC`,
+          [accountId, s, e]
+        );
+        wb = xlsSvc.buildInvoices(rows, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Invoice_Collections', accountName, s, e);
+
+      } else if (type === 'customers') {
+        const [topResult, ltv] = await Promise.all([
+          pool.query(
+            `SELECT c.name,
+                    COUNT(j.id)::int AS job_count,
+                    COALESCE(SUM(j.amount), 0) AS earned_revenue,
+                    MAX(j.scheduled_at) AS last_job_at
+             FROM clients c
+             JOIN jobs j ON j.client_id = c.id AND j.account_id = $1 AND j.status = 'complete'
+             WHERE c.account_id = $1
+               AND j.scheduled_at >= $2::date
+               AND j.scheduled_at <  ($3::date + INTERVAL '1 day')
+             GROUP BY c.name ORDER BY earned_revenue DESC`,
+            [accountId, s, e]
+          ),
+          custSvc.getLtv(accountId),
+        ]);
+        wb = xlsSvc.buildCustomers(topResult.rows, ltv, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Customer_Value', accountName, s, e);
+
+      } else if (type === 'forecasting') {
+        const fc = await forecastingSvc.getOverview(accountId, { start: s, end: e });
+        wb = xlsSvc.buildForecasting(fc, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Forecast_Pipeline', accountName, s, e);
+
+      } else if (type === 'technicians') {
+        const tParams = [accountId];
+        let tFilter = '';
+        if (s) { tParams.push(s); tFilter += ` AND j.scheduled_at >= $${tParams.length}::date`; }
+        if (e) { tParams.push(e); tFilter += ` AND j.scheduled_at <  ($${tParams.length}::date + INTERVAL '1 day')`; }
+        const { rows: techRows } = await pool.query(
+          `SELECT COALESCE(u.name, 'Unassigned') AS technician_name,
+                  COALESCE(u.role, '') AS tech_role,
+                  COUNT(j.id) FILTER (WHERE j.status = 'complete')::int AS completed_jobs,
+                  COUNT(j.id) FILTER (WHERE j.status IN ('cancelled','no_show'))::int AS lost_jobs,
+                  COALESCE(SUM(j.amount) FILTER (WHERE j.status = 'complete'), 0) AS earned_revenue,
+                  COALESCE(SUM(j.duration_minutes) FILTER (WHERE j.status = 'complete'), 0)::int AS total_minutes
+           FROM jobs j
+           LEFT JOIN users u ON u.id = j.tech_id AND u.account_id = $1
+           WHERE j.account_id = $1${tFilter}
+           GROUP BY j.tech_id, u.name, u.role
+           ORDER BY earned_revenue DESC`,
+          tParams
+        );
+        wb = xlsSvc.buildTechnicians(techRows, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Revenue_by_Technician', accountName, s, e);
+
+      } else if (type === 'cancellations') {
+        const { rows: cancelRows } = await pool.query(
+          `SELECT j.id, j.scheduled_at, j.service_type, j.status, j.amount,
+                  COALESCE(c.name, 'Unknown') AS client_name,
+                  COALESCE(u.name, 'Unassigned') AS tech_name
+           FROM jobs j
+           LEFT JOIN clients c ON c.id = j.client_id AND c.account_id = $1
+           LEFT JOIN users   u ON u.id = j.tech_id   AND u.account_id = $1
+           WHERE j.account_id = $1
+             AND j.status IN ('cancelled', 'no_show')
+             AND j.scheduled_at >= $2::date
+             AND j.scheduled_at <  ($3::date + INTERVAL '1 day')
+           ORDER BY j.scheduled_at DESC`,
+          [accountId, s, e]
+        );
+        let xReasonMap = {};
+        try {
+          const { rows: rRows } = await pool.query(
+            `SELECT job_id, reason_code FROM job_status_history
+             WHERE account_id = $1 AND to_status IN ('cancelled','no_show')
+               AND changed_at >= $2::date AND changed_at < ($3::date + INTERVAL '1 day')`,
+            [accountId, s, e]
+          );
+          rRows.forEach(r => { xReasonMap[r.job_id] = r.reason_code || ''; });
+        } catch { /* table absent */ }
+        wb = xlsSvc.buildCancellations(cancelRows, xReasonMap, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Cancellations_NoShows', accountName, s, e);
+
+      } else if (type === 'tax') {
+        const { rows: taxRows } = await pool.query(
+          `SELECT COALESCE(c.name, 'Unknown') AS client_name,
+                  COALESCE(j.service_type, 'Unspecified') AS service,
+                  i.amount, COALESCE(i.tax_amount, 0) AS tax_amount,
+                  i.status, i.created_at
+           FROM invoices i
+           LEFT JOIN clients c ON c.id = i.client_id AND c.account_id = $1
+           LEFT JOIN jobs    j ON j.id = i.job_id
+           WHERE i.account_id = $1
+             AND i.created_at >= $2::date
+             AND i.created_at <  ($3::date + INTERVAL '1 day')
+           ORDER BY i.created_at DESC`,
+          [accountId, s, e]
+        );
+        wb = xlsSvc.buildTax(taxRows, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Tax_Summary', accountName, s, e);
+
+      } else if (type === 'quarterly') {
+        const xYear = new Date().getUTCFullYear();
+        const qData = await svc.getQuarterly(accountId, { year: xYear });
+        wb = xlsSvc.buildQuarterly(qData, xYear, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename(`Quarterly_Financial_${xYear}`, accountName, `${xYear}-01-01`, `${xYear}-12-31`);
+
+      } else if (type === 'completion') {
+        const analysis = await completionSvc.getCompletionAnalysis(accountId, { start: s, end: e });
+        wb = xlsSvc.buildCompletion(analysis, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Job_Completion_Analysis', accountName, s, e);
+
+      } else {
+        // Default: Revenue Summary
+        const overview = await svc.getOverview(accountId, { start: s, end: e });
+        wb = xlsSvc.buildRevenueSummary(overview, xMeta);
+        xlsFilename = xlsSvc.makeXlsxFilename('Revenue_Summary', accountName, s, e);
+      }
+
+      return xlsSvc.sendWorkbook(res, wb, xlsFilename);
+    }
+    // ── End Excel export path ─────────────────────────────────────────────────
+
+    let allRows, filename;
+
+    const { fmtDate, fmtMoney, fmtPct, statusLabel, makeFilename, metaSection, buildCSV } = csvSvc;
 
     if (type === 'services') {
       const services = await svc.getServices(accountId, { start: s, end: e });
-      filename = 'revenue-by-service.csv';
-      header   = ['Service', 'Jobs', 'Earned Revenue', 'Collected Revenue', 'Avg Ticket', 'Labor Hours', 'Rev per Labor Hr', 'Completion Rate %', 'Revenue Share %'];
-      rows     = services.map(sv => [
+      filename = makeFilename('revenue-by-service', accountName, s, e);
+      const header = ['Service', 'Jobs', 'Earned Revenue', 'Collected Revenue', 'Average Ticket', 'Labor Hours', 'Revenue / Labor Hour', 'Completion Rate', 'Revenue Share'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Revenue by Service'],
+        ['Entity',        accountName],
+        ['Period Start',  s],
+        ['Period End',    e],
+        ['Generated At',  generatedAt],
+      ], cols);
+      const dataRows = services.map(sv => [
         sv.service,
         sv.jobs,
-        sv.earnedRevenue.toFixed(2),
-        sv.collectedRevenue.toFixed(2),
-        sv.avgTicket != null ? sv.avgTicket.toFixed(2) : '',
-        sv.laborHours,
-        sv.revenuePerLaborHour != null ? sv.revenuePerLaborHour.toFixed(2) : '',
-        sv.completionRate != null ? (sv.completionRate * 100).toFixed(1) : '',
-        sv.revenueShare.toFixed(1),
+        fmtMoney(sv.earnedRevenue),
+        fmtMoney(sv.collectedRevenue),
+        sv.avgTicket        != null ? fmtMoney(sv.avgTicket)          : '',
+        sv.laborHours       != null ? sv.laborHours                   : '',
+        sv.revenuePerLaborHour != null ? fmtMoney(sv.revenuePerLaborHour) : '',
+        sv.completionRate   != null ? fmtPct(sv.completionRate * 100) : '',
+        fmtPct(sv.revenueShare),
       ]);
+      allRows = [...meta, header, ...dataRows];
+
     } else if (type === 'invoices') {
       const result = await pool.query(
-        `SELECT i.id, c.name AS client, j.service_type AS service,
-                i.amount, i.tax_amount, i.status, i.created_at, i.paid_at, i.due_date
+        `SELECT i.id, COALESCE(c.name, 'Unknown') AS client,
+                COALESCE(j.service_type, 'Unspecified') AS service,
+                i.amount, COALESCE(i.tax_amount, 0) AS tax_amount,
+                i.status, i.created_at, i.paid_at, i.due_date
          FROM invoices i
-         JOIN clients c ON c.id = i.client_id
-         JOIN jobs j     ON j.id = i.job_id
+         LEFT JOIN clients c ON c.id = i.client_id AND c.account_id = $1
+         LEFT JOIN jobs    j ON j.id = i.job_id
          WHERE i.account_id = $1
            AND i.created_at >= $2::date
            AND i.created_at <  ($3::date + INTERVAL '1 day')
          ORDER BY i.created_at DESC`,
         [accountId, s, e]
       );
-      filename = 'revenue-invoices.csv';
-      header   = ['Invoice ID', 'Client', 'Service', 'Amount', 'Tax', 'Status', 'Created', 'Paid At', 'Due Date'];
-      rows     = result.rows.map(r => [
-        r.id, r.client, r.service,
-        r.amount, r.tax_amount || 0, r.status,
-        r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
-        r.paid_at    ? new Date(r.paid_at).toLocaleDateString()    : '',
-        r.due_date   ? new Date(r.due_date).toLocaleDateString()   : '',
+      filename = makeFilename('invoice-collections', accountName, s, e);
+      const header = ['Invoice ID', 'Client', 'Service', 'Invoice Date', 'Due Date', 'Status', 'Invoice Amount', 'Tax Amount'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Invoice & Collections'],
+        ['Entity',        accountName],
+        ['Period Start',  s],
+        ['Period End',    e],
+        ['Generated At',  generatedAt],
+      ], cols);
+      const dataRows = result.rows.map(r => [
+        r.id,
+        r.client,
+        r.service,
+        fmtDate(r.created_at),
+        fmtDate(r.due_date),
+        statusLabel(r.status),
+        fmtMoney(r.amount),
+        fmtMoney(r.tax_amount),
       ]);
+      allRows = [...meta, header, ...dataRows];
+
     } else if (type === 'customers') {
       const [topResult, ltv] = await Promise.all([
         pool.query(
@@ -143,40 +318,58 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
         ),
         custSvc.getLtv(accountId),
       ]);
-      filename = 'customers.csv';
-      header   = ['Client Name', 'Jobs', 'Earned Revenue', 'Last Job'];
-      rows     = topResult.rows.map(r => [
+      filename = makeFilename('customer-value', accountName, s, e);
+      const ltvMeta = ltv.eligible && ltv.data ? [
+        ['Avg Revenue / Customer',    fmtMoney(ltv.data.avgRevenuePerCustomer)],
+        ['Median Revenue / Customer', fmtMoney(ltv.data.medianRevenuePerCustomer)],
+        ['Avg Jobs / Customer',       ltv.data.avgJobsPerCustomer],
+        ['Avg Ticket',                fmtMoney(ltv.data.avgTicket)],
+      ] : [];
+      const header = ['Client', 'Jobs Completed', 'Earned Revenue', 'Last Completed Job'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Customer Value Report'],
+        ['Entity',        accountName],
+        ['Period Start',  s],
+        ['Period End',    e],
+        ['Generated At',  generatedAt],
+        ...(ltvMeta.length ? [['--- Lifetime Value (All-Time) ---', '']] : []),
+        ...ltvMeta,
+      ], cols);
+      const dataRows = topResult.rows.map(r => [
         r.name,
         r.job_count,
-        parseFloat(r.earned_revenue).toFixed(2),
-        r.last_job_at ? new Date(r.last_job_at).toLocaleDateString() : '',
+        fmtMoney(r.earned_revenue),
+        fmtDate(r.last_job_at),
       ]);
-      if (ltv.eligible && ltv.data) {
-        rows.push([]);
-        rows.push(['--- Lifetime Value Summary ---', '', '', '']);
-        rows.push(['Avg Revenue per Customer', ltv.data.avgRevenuePerCustomer.toFixed(2), '', '']);
-        rows.push(['Median Revenue per Customer', ltv.data.medianRevenuePerCustomer.toFixed(2), '', '']);
-        rows.push(['Avg Jobs per Customer', ltv.data.avgJobsPerCustomer, '', '']);
-        rows.push(['Avg Ticket', ltv.data.avgTicket.toFixed(2), '', '']);
-      }
+      allRows = [...meta, header, ...dataRows];
+
     } else if (type === 'forecasting') {
       const fc = await forecastingSvc.getOverview(accountId, { start: s, end: e });
-      filename = 'forecast-pipeline.csv';
-      header   = ['Scheduled At', 'Client', 'Service', 'Status', 'Amount'];
-      rows     = fc.drivers.map(d => [
-        d.scheduledAt ? new Date(d.scheduledAt).toLocaleDateString() : '',
-        d.clientName,
-        d.serviceType || '',
-        d.status,
-        d.amount.toFixed(2),
-      ]);
-      rows.unshift([]);
-      rows.unshift(['--- Forecast Summary ---', '', '', '', '']);
-      rows.unshift(['Projected Revenue', fc.forecast.projectedRevenue.toFixed(2), '', '', '']);
-      rows.unshift(['Booked Revenue', fc.booked.revenue.toFixed(2), '', '', '']);
-      rows.unshift(['Earned Revenue', fc.actual.earnedRevenue.toFixed(2), '', '', '']);
-      rows.unshift(['Period', `${fc.period.start} to ${fc.period.end}`, '', '', '']);
-      rows.unshift(['Confidence', fc.forecast.confidence || 'N/A', '', '', '']);
+      filename = makeFilename('forecast-pipeline', accountName, s, e);
+      const header = ['Scheduled Date', 'Client', 'Service', 'Status', 'Booked Value'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',            'Forecast Pipeline Report'],
+        ['Entity',            accountName],
+        ['Period Start',      fc.period.start],
+        ['Period End',        fc.period.end],
+        ['Generated At',      generatedAt],
+        ['Confidence',        fc.forecast.confidence || 'N/A'],
+        ['Earned Revenue',    fmtMoney(fc.actual.earnedRevenue)],
+        ['Booked Revenue',    fmtMoney(fc.booked.revenue)],
+        ['Projected Revenue', fmtMoney(fc.forecast.projectedRevenue)],
+      ], cols);
+      const dataRows = [...fc.drivers]
+        .sort((a, b) => (a.scheduledAt || '') < (b.scheduledAt || '') ? -1 : 1)
+        .map(d => [
+          fmtDate(d.scheduledAt),
+          d.clientName,
+          d.serviceType || '',
+          statusLabel(d.status),
+          fmtMoney(d.amount),
+        ]);
+      allRows = [...meta, header, ...dataRows];
 
     } else if (type === 'technicians') {
       const params = [accountId];
@@ -186,6 +379,7 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
       const { rows: techRows } = await pool.query(
         `SELECT
            COALESCE(u.name, 'Unassigned') AS technician_name,
+           COALESCE(u.role, '') AS tech_role,
            COUNT(j.id) FILTER (WHERE j.status = 'complete')::int AS completed_jobs,
            COUNT(j.id) FILTER (WHERE j.status IN ('cancelled','no_show'))::int AS lost_jobs,
            COALESCE(SUM(j.amount) FILTER (WHERE j.status = 'complete'), 0) AS earned_revenue,
@@ -193,30 +387,41 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
          FROM jobs j
          LEFT JOIN users u ON u.id = j.tech_id AND u.account_id = $1
          WHERE j.account_id = $1${dateFilter}
-         GROUP BY j.tech_id, u.name
+         GROUP BY j.tech_id, u.name, u.role
          ORDER BY earned_revenue DESC`,
         params
       );
-      filename = 'revenue-by-technician.csv';
-      header   = ['Technician', 'Jobs Completed', 'Lost Jobs', 'Earned Revenue', 'Avg Ticket', 'Labor Hours (Scheduled)'];
-      rows     = techRows.map(r => {
-        const earned = parseFloat(r.earned_revenue) || 0;
+      filename = makeFilename('revenue-by-technician', accountName, s, e);
+      const header = ['Technician', 'Role', 'Jobs Completed', 'Lost Jobs', 'Production Value', 'Average Ticket', 'Labor Hours', 'Revenue / Labor Hour'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Revenue by Technician'],
+        ['Entity',        accountName],
+        ['Period Start',  s],
+        ['Period End',    e],
+        ['Generated At',  generatedAt],
+        ['Note',          'Primary tech assignment only. Labor hours are scheduled duration.'],
+      ], cols);
+      const dataRows = techRows.map(r => {
+        const earned    = parseFloat(r.earned_revenue) || 0;
         const completed = r.completed_jobs || 0;
+        const hrs       = r.total_minutes > 0 ? r.total_minutes / 60 : null;
         return [
           r.technician_name,
+          statusLabel(r.tech_role) || r.tech_role,
           completed,
           r.lost_jobs,
-          earned.toFixed(2),
-          completed > 0 ? (earned / completed).toFixed(2) : '',
-          r.total_minutes > 0 ? (r.total_minutes / 60).toFixed(1) : '',
+          fmtMoney(earned),
+          completed > 0 ? fmtMoney(earned / completed) : '',
+          hrs != null ? hrs.toFixed(1) : '',
+          hrs != null && hrs > 0 ? fmtMoney(earned / hrs) : '',
         ];
       });
-      rows.unshift(['Note: Shows primary tech assignment only. Labor hours are scheduled duration.', '', '', '', '', '']);
-      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+      allRows = [...meta, header, ...dataRows];
 
     } else if (type === 'cancellations') {
       const { rows: cancelRows } = await pool.query(
-        `SELECT j.scheduled_at, j.service_type, j.status, j.amount,
+        `SELECT j.id, j.scheduled_at, j.service_type, j.status, j.amount,
                 COALESCE(c.name, 'Unknown') AS client_name,
                 COALESCE(u.name, 'Unassigned') AS tech_name
          FROM jobs j
@@ -229,7 +434,6 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
          ORDER BY j.scheduled_at DESC`,
         [accountId, s, e]
       );
-      // Try to enrich with cancellation reasons (table may not exist)
       let reasonMap = {};
       try {
         const { rows: rRows } = await pool.query(
@@ -242,35 +446,42 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
           [accountId, s, e]
         );
         rRows.forEach(r => { reasonMap[r.job_id] = r.reason_code || ''; });
-      } catch { /* table absent — omit reasons */ }
+      } catch { /* table absent */ }
       const reasonLabels = {
         customer_cancelled: 'Customer Cancelled', customer_unavailable: 'Customer Unavailable',
         weather: 'Weather', tech_unavailable: 'Technician Unavailable',
         scheduling_conflict: 'Scheduling Conflict', duplicate_booking: 'Duplicate Booking',
         payment_issue: 'Payment Issue', other: 'Other',
       };
-      filename = 'cancellations-noshows.csv';
-      header   = ['Date', 'Client', 'Service', 'Status', 'Reason', 'Revenue Impact', 'Assigned Tech'];
-      rows     = cancelRows.map(r => {
+      const totalImpact = cancelRows.reduce((t, r) => t + (parseFloat(r.amount) || 0), 0);
+      filename = makeFilename('cancellations-noshows', accountName, s, e);
+      const header = ['Scheduled Date', 'Client', 'Service', 'Status', 'Reason', 'Revenue Impact', 'Assigned Tech'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',              'Cancellation & No-Show Report'],
+        ['Entity',              accountName],
+        ['Period Start',        s],
+        ['Period End',          e],
+        ['Generated At',        generatedAt],
+        ['Total Revenue Impact', fmtMoney(totalImpact)],
+      ], cols);
+      const dataRows = cancelRows.map(r => {
         const raw = reasonMap[r.id] || '';
         return [
-          r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString() : '',
+          fmtDate(r.scheduled_at),
           r.client_name,
           r.service_type || 'Unspecified',
-          r.status === 'no_show' ? 'No-Show' : 'Cancelled',
+          statusLabel(r.status),
           raw ? (reasonLabels[raw] || raw) : 'Not captured',
-          parseFloat(r.amount || 0).toFixed(2),
+          fmtMoney(r.amount),
           r.tech_name,
         ];
       });
-      const totalImpact = cancelRows.reduce((t, r) => t + (parseFloat(r.amount) || 0), 0);
-      rows.unshift([]);
-      rows.unshift(['Total Revenue Impact', totalImpact.toFixed(2), '', '', '', '', '']);
-      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '', '']);
+      allRows = [...meta, header, ...dataRows];
 
     } else if (type === 'tax') {
       const { rows: taxRows } = await pool.query(
-        `SELECT i.id, COALESCE(c.name, 'Unknown') AS client_name,
+        `SELECT COALESCE(c.name, 'Unknown') AS client_name,
                 COALESCE(j.service_type, 'Unspecified') AS service,
                 i.amount, COALESCE(i.tax_amount, 0) AS tax_amount,
                 i.status, i.created_at
@@ -283,87 +494,110 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
          ORDER BY i.created_at DESC`,
         [accountId, s, e]
       );
-      const taxableRows  = taxRows.filter(r => parseFloat(r.amount) > 0);
-      const totalTaxable = taxableRows.reduce((t, r) => t + (parseFloat(r.amount) || 0), 0);
+      const totalTaxable = taxRows.reduce((t, r) => t + (parseFloat(r.amount)     || 0), 0);
       const totalTax     = taxRows.reduce((t, r) => t + (parseFloat(r.tax_amount) || 0), 0);
-      filename = 'tax-summary.csv';
-      header   = ['Date', 'Client', 'Service', 'Invoice Amount', 'Tax Amount', 'Status'];
-      rows     = taxRows.map(r => [
-        r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+      filename = makeFilename('tax-summary', accountName, s, e);
+      const header = ['Invoice Date', 'Client', 'Service', 'Invoice Amount', 'Tax Amount', 'Status'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',            'Tax Summary'],
+        ['Entity',            accountName],
+        ['Period Start',      s],
+        ['Period End',        e],
+        ['Generated At',      generatedAt],
+        ['Total Taxable Sales', fmtMoney(totalTaxable)],
+        ['Total Tax Collected', fmtMoney(totalTax)],
+      ], cols);
+      const dataRows = taxRows.map(r => [
+        fmtDate(r.created_at),
         r.client_name,
         r.service,
-        parseFloat(r.amount || 0).toFixed(2),
-        parseFloat(r.tax_amount || 0).toFixed(2),
-        r.status,
+        fmtMoney(r.amount),
+        fmtMoney(r.tax_amount),
+        statusLabel(r.status),
       ]);
-      rows.unshift([]);
-      rows.unshift(['Total Tax Collected', totalTax.toFixed(2), '', '', '', '']);
-      rows.unshift(['Total Taxable Sales', totalTaxable.toFixed(2), '', '', '', '']);
-      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+      allRows = [...meta, header, ...dataRows];
 
     } else if (type === 'quarterly') {
-      const yr      = new Date().getUTCFullYear();
-      const qData   = await svc.getQuarterly(accountId, { year: yr });
-      filename = `quarterly-financial-${yr}.csv`;
-      header   = ['Quarter', 'Earned Revenue', 'Collected Revenue', 'Avg Ticket', 'YoY Growth %'];
+      const yr    = new Date().getUTCFullYear();
+      const qData = await svc.getQuarterly(accountId, { year: yr });
+      filename = makeFilename(`quarterly-financial-${yr}`, accountName, `${yr}-01-01`, `${yr}-12-31`);
+      const header = ['Quarter', 'Earned Revenue', 'Collected Revenue', 'Average Ticket', 'YoY Growth'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Quarterly Financial'],
+        ['Entity',        accountName],
+        ['Year',          yr],
+        ['Generated At',  generatedAt],
+        ['Note',          'COGS, Gross Profit, Operating Expenses require accounting integration.'],
+      ], cols);
       const quarterLabels = { Q1: 'Q1', Q2: 'Q2', Q3: 'Q3', Q4: 'Q4', year: 'Full Year' };
-      rows = ['Q1', 'Q2', 'Q3', 'Q4', 'year'].map(k => {
+      const dataRows = ['Q1', 'Q2', 'Q3', 'Q4', 'year'].map(k => {
         const q = qData.quarters[k] || {};
-        const yoy = q.yoyGrowth != null ? q.yoyGrowth.toFixed(1) + '%' : 'N/A';
         return [
           quarterLabels[k],
-          (q.earnedRevenue   || 0).toFixed(2),
-          (q.collectedRevenue || 0).toFixed(2),
-          q.avgTicket != null ? q.avgTicket.toFixed(2) : 'N/A',
-          yoy,
+          fmtMoney(q.earnedRevenue   || 0),
+          fmtMoney(q.collectedRevenue || 0),
+          q.avgTicket != null ? fmtMoney(q.avgTicket) : '',
+          q.yoyGrowth != null ? fmtPct(q.yoyGrowth)  : '',
         ];
       });
-      rows.push([]);
-      rows.push(['Note: COGS, Gross Profit, Operating Expenses require accounting integration.', '', '', '', '']);
-      rows.unshift(['Year', yr, '', '', '']);
+      allRows = [...meta, header, ...dataRows];
 
     } else if (type === 'completion') {
-      const analysis  = await completionSvc.getCompletionAnalysis(accountId, { start: s, end: e });
+      const analysis      = await completionSvc.getCompletionAnalysis(accountId, { start: s, end: e });
       const { summary, byService } = analysis;
-      filename = 'job-completion-analysis.csv';
-      header   = ['Service', 'Completed', 'Cancelled', 'No-Shows', 'Eligible', 'Completion Rate %'];
-      rows     = byService.map(r => [
+      filename = makeFilename('job-completion-analysis', accountName, s, e);
+      const header = ['Service', 'Completed', 'Cancelled', 'No-Shows', 'Completion Rate', 'Revenue Impact'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',                    'Job Completion Analysis'],
+        ['Entity',                    accountName],
+        ['Period Start',              s],
+        ['Period End',                e],
+        ['Generated At',              generatedAt],
+        ['Overall Completion Rate',   summary.completionRate != null ? fmtPct(summary.completionRate * 100) : ''],
+        ['Cancelled Revenue Impact',  fmtMoney(summary.cancelledRevenue)],
+        ['No-Show Revenue Impact',    fmtMoney(summary.noShowRevenue)],
+        ['Total Revenue Impact',      fmtMoney(summary.revenueImpact)],
+      ], cols);
+      const dataRows = byService.map(r => [
         r.service,
         r.completed,
         r.cancelled,
         r.noShows,
-        r.eligible,
-        r.completionRate != null ? (r.completionRate * 100).toFixed(1) : 'N/A',
+        r.completionRate != null ? fmtPct(r.completionRate * 100) : '',
+        '',
       ]);
-      rows.unshift([]);
-      rows.unshift(['--- Summary ---', '', '', '', '', '']);
-      rows.unshift(['Revenue Impact (Cancelled + No-Show)', summary.revenueImpact.toFixed(2), '', '', '', '']);
-      rows.unshift(['Overall Completion Rate', summary.completionRate != null ? (summary.completionRate * 100).toFixed(1) + '%' : 'N/A', '', '', '', '']);
-      rows.unshift(['Cancelled', summary.cancelled, '', '', '', '']);
-      rows.unshift(['No-Shows', summary.noShows, '', '', '', '']);
-      rows.unshift(['Completed', summary.completed, '', '', '', '']);
-      rows.unshift(['Period', `${s} to ${e}`, '', '', '', '']);
+      allRows = [...meta, header, ...dataRows];
 
     } else {
-      // Default: overview summary
+      // Default: Revenue Summary
       const overview = await svc.getOverview(accountId, { start: s, end: e });
       const pk = overview.primaryKpis;
-      filename = 'revenue-summary.csv';
-      header   = ['Metric', 'Value', 'Status', 'Note'];
-      rows     = [
-        ['Period', `${s} to ${e}`, '', ''],
-        ['Collected Revenue', pk.collectedRevenue.value.toFixed(2), pk.collectedRevenue.status, ''],
-        ['Earned Revenue',    pk.earnedRevenue.value.toFixed(2),    pk.earnedRevenue.status, ''],
-        ['Gross Profit',      '', pk.grossProfit.status, pk.grossProfit.missingSources?.join('; ') || ''],
-        ['Outstanding AR',    pk.outstandingAr.value.toFixed(2),   pk.outstandingAr.status, `${pk.outstandingAr.invoiceCount} invoice(s); ${pk.outstandingAr.overdueCount} overdue`],
-        ['Projected Month-End', pk.projectedMonthEnd.value.toFixed(2), pk.projectedMonthEnd.status, pk.projectedMonthEnd.method],
+      filename = makeFilename('revenue-summary', accountName, s, e);
+      const header = ['Metric', 'Value'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report',        'Revenue Summary'],
+        ['Entity',        accountName],
+        ['Period Start',  s],
+        ['Period End',    e],
+        ['Generated At',  generatedAt],
+      ], cols);
+      const dataRows = [
+        ['Collected Revenue',    fmtMoney(pk.collectedRevenue.value)],
+        ['Earned Revenue',       fmtMoney(pk.earnedRevenue.value)],
+        ['Outstanding AR',       fmtMoney(pk.outstandingAr.value)],
+        ['Open Invoices',        pk.outstandingAr.invoiceCount],
+        ['Overdue Invoices',     pk.outstandingAr.overdueCount],
+        ['Projected Month-End',  pk.projectedMonthEnd.status === 'ok' ? fmtMoney(pk.projectedMonthEnd.value) : ''],
       ];
+      allRows = [...meta, header, ...dataRows];
     }
 
-    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const csv    = [header, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
-
-    res.setHeader('Content-Type', 'text/csv');
+    const csv = buildCSV(allRows);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (err) {

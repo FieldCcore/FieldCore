@@ -1279,13 +1279,13 @@ describe('Revenue — Customers workspace (segments configured but no clients ta
 });
 
 describe('Revenue — Reports workspace Customer Value Report', () => {
-  it('shows Customer Value Report as AVAILABLE with Export CSV button', async () => {
+  it('shows Customer Value Report as AVAILABLE with Export Excel button', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Customer Value Report')).toBeInTheDocument();
     });
-    // Should have an Export CSV button in the same row (not "Coming soon")
-    const exportButtons = screen.getAllByText('Export CSV');
+    // Should have an Export Excel button in the same row (not "Coming soon")
+    const exportButtons = screen.getAllByText('Export Excel');
     expect(exportButtons.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -1497,52 +1497,52 @@ describe('Revenue — Reports workspace', () => {
     });
   });
 
-  it('shows Export CSV for all AVAILABLE reports', async () => {
+  it('shows Export Excel for all AVAILABLE reports', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       // 10 AVAILABLE reports (all except P&L with REQUIRES_CONFIGURATION)
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(10);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(10);
     });
   });
 
-  it('Revenue by Technician is now AVAILABLE with Export CSV', async () => {
+  it('Revenue by Technician is now AVAILABLE with Export Excel', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Revenue by Technician')).toBeInTheDocument();
     });
-    // Confirm the row has an Export CSV button, not a badge
+    // Confirm the row has an Export Excel button, not a badge
     expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
-  it('Cancellation & No-Show Report is AVAILABLE with Export CSV', async () => {
+  it('Cancellation & No-Show Report is AVAILABLE with Export Excel', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Cancellation & No-Show Report')).toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it('Tax Summary is AVAILABLE with Export CSV', async () => {
+  it('Tax Summary is AVAILABLE with Export Excel', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Tax Summary')).toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it('Quarterly Financial is AVAILABLE with Export CSV', async () => {
+  it('Quarterly Financial is AVAILABLE with Export Excel', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Quarterly Financial')).toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it('Job Completion Analysis is AVAILABLE with Export CSV', async () => {
+  it('Job Completion Analysis is AVAILABLE with Export Excel', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('Job Completion Analysis')).toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -1554,7 +1554,7 @@ describe('Revenue — Reports workspace', () => {
     });
   });
 
-  it('P&L shows Export CSV when readiness returns AVAILABLE', async () => {
+  it('P&L shows Export Excel when readiness returns AVAILABLE', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('/revenue/reports/readiness')) return Promise.resolve({
         data: {
@@ -1570,9 +1570,9 @@ describe('Revenue — Reports workspace', () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('P&L Statement')).toBeInTheDocument();
-      // With accounting connected, P&L should show Export CSV not badge
+      // With accounting connected, P&L should show Export Excel not badge
       expect(screen.queryByText(/requires accounting integration/i)).not.toBeInTheDocument();
-      expect(screen.getAllByText('Export CSV').length).toBeGreaterThanOrEqual(11);
+      expect(screen.getAllByText('Export Excel').length).toBeGreaterThanOrEqual(11);
     });
   });
 
