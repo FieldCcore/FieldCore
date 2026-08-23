@@ -977,21 +977,21 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
   const views = savedViews.data?.savedViews || (Array.isArray(savedViews.data) ? savedViews.data : []);
 
   return (
-    <div className="rov-ws-body">
+    <div className="rov-ws-body ops-ws-body">
 
       {/* ── Report catalog ────────────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Report Catalog</span>
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Report Catalog</h2>
           <span className="rov-ws-section-sub">
             {filterStart} — {filterEnd}
           </span>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {REPORT_CATALOG.map(report => (
-            <div key={report.label} className="dash-card" style={{
-              padding: '1rem 1.25rem',
+            <div key={report.label} className="ops-table-card" style={{
+              padding: '0.875rem 1.25rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1023,15 +1023,15 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
       </div>
 
       {/* ── Saved views ───────────────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Saved Views</span>
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Saved Views</h2>
         </div>
 
         {savedViews.loading ? (
           <div style={{ fontSize: 14, color: 'var(--slate)', padding: '8px 0' }}>Loading…</div>
         ) : views.length === 0 ? (
-          <div className="dash-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
+          <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
             <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 4 }}>
               No saved views yet.
             </p>
@@ -1040,9 +1040,9 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {views.map((view, i) => (
-              <div key={view.id || i} className="dash-card" style={{
+              <div key={view.id || i} className="ops-table-card" style={{
                 padding: '0.75rem 1.25rem',
                 display: 'flex',
                 alignItems: 'center',
@@ -1063,11 +1063,11 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
       </div>
 
       {/* ── Export history ────────────────────────────────────────────────── */}
-      <div className="rov-ws-section">
-        <div className="rov-ws-section-header">
-          <span className="rov-ws-section-title">Export History</span>
+      <div className="ops-section-group">
+        <div className="ops-bare-heading">
+          <h2 className="rov-ws-section-title">Export History</h2>
         </div>
-        <div className="dash-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
+        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
           <p style={{ margin: 0, fontSize: 14, color: 'var(--slate)' }}>
             No recent exports. Export history will appear here in a future update.
           </p>
