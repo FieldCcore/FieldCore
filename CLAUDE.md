@@ -286,6 +286,70 @@ Modifications to frozen Customers code are permitted only for:
   - Required dependency or platform changes
   - Explicitly approved Customers V2 work
 
+### Forecasting V1 — FROZEN 2026-08-23
+Files under freeze:
+  src/services/forecastingService.js
+  src/routes/revenue.js                    (GET /api/revenue/forecasting/overview)
+  client/src/components/revenue/RevenueWorkspaceShells.jsx  (ForecastingWorkspace, ForecastKpi,
+                                            ForecastTrendChart, PipelineTable, PipelineDrawer,
+                                            ForecastHelp components)
+  client/src/style.css                     (forecast-kpi-card, fc-kpi-grid classes)
+  client/src/pages/__tests__/Revenue.test.jsx  (Forecasting workspace describe block)
+
+Freeze basis: Production QA passed 2026-08-23. 984/984 frontend tests passing. Clean production
+build. Live on Railway + Vercel.
+  GitHub commit: 56d479c
+  - Forecast KPI Summary: 2×2 fc-kpi-grid, no outer card wrapper, INSUFFICIENT_DATA inline message
+  - Earned Revenue (FC_BLUE #2563EB): completed jobs in period
+  - Booked Revenue (FC_GREEN #2E7D32): eligible scheduled jobs not yet complete/cancelled
+  - Projected Period Revenue (FC_PURPLE #7C3AED): earned + booked + run-rate unbooked when READY
+  - Forecast Gap (slate): projected − earned; "ahead of pace" / "behind pace" / "on pace" label
+  - Forecast Readiness: INSUFFICIENT_DATA (<5 jobs OR <14 days), LIMITED (14–29 days), READY (≥30 days)
+  - Forecast Confidence: HIGH (≥60 days, ≥20 jobs, ≥50% booked coverage), MEDIUM (≥30 days,
+    ≥10 jobs), LOW (else); null when INSUFFICIENT_DATA
+  - Expected Unbooked Revenue: 90-day daily run-rate × remaining days, 0 when INSUFFICIENT_DATA
+  - Revenue Forecast: trend chart (recharts), compact empty state (0.75rem padding)
+  - Booked Pipeline: driver table, Details button → PipelineDrawer; compact empty state
+  - Past period branch: isPast=true → earned-only KPI, trend chart if available, no pipeline
+  - Forecast date/horizon semantics: period.start/end from query params; asOf = today
+  - Forecasting export: /api/revenue/export?type=forecasting (CSV)
+  - Collapsible "How forecasting works" help (HelpCircle icon, hidden by default)
+  - Info size={10} from lucide-react on KPI tooltip notes
+  - Single-layer UI: ops-bare-heading + data surface, no outer card wrapping KPI section
+  - Tenant isolation: all queries filter by account_id = req.accountId (never client-supplied)
+  - Route requires requireAuth + requireRole('owner','manager')
+
+Approved architectural decisions:
+  - fc-kpi-grid: repeat(2, minmax(0, 1fr)) — separate from ops-kpi-grid (3-column Operations)
+  - KPI accent colors via --fc-kpi-accent CSS custom property; must use direct hex (not var() chain)
+  - Projected = earned + booked + max(0, dailyRate×remainingDays − booked); clamp 0 when INSUFFICIENT
+  - forecastGap = projectedRevenue − earnedRevenue (not projectedRevenue − target)
+  - isPast: periodEnd < todayStr → projected = earned, booked = 0, confidence = null
+  - RATE_WINDOW_DAYS = 90 (look-back for daily run-rate)
+  - pf() rounds monetary values to 2 decimal places; pi() parses integers
+  - ForecastHelp is collapsible (helpOpen state), not permanently visible
+
+DO NOT:
+  - Change KPI accent colors or their hex values without unfreezing
+  - Change the fc-kpi-grid layout (2×2) without unfreezing
+  - Re-add a permanent "About Forecasting" panel
+  - Modify readiness thresholds (MIN_JOBS=5, MIN_DAYS=14, READY_DAYS=30) without unfreezing
+  - Modify confidence thresholds without unfreezing
+  - Change the run-rate window (RATE_WINDOW_DAYS=90) without unfreezing
+  - Change the projected revenue formula without unfreezing
+  - Change the forecastGap definition without unfreezing
+  - Re-add outer ops-table-card wrapper to the KPI Summary section
+  - Change isPast semantics without unfreezing
+  - Modify Forecasting export CSV shape without unfreezing
+  - Add new Forecasting sections or KPIs without explicit V2 approval
+  - Add gold/sand hover borders to any Forecasting element
+
+Modifications to frozen Forecasting code are permitted only for:
+  - Confirmed production defects
+  - Security or data-integrity issues
+  - Required dependency or platform changes
+  - Explicitly approved Forecasting V2 work
+
 ## CODING RULES
 - Money: integer cents. 4999 = $49.99. Never float.
 - All data from Express API — inline styles in React components, className for CSS modules
