@@ -671,7 +671,7 @@ describe('GET /api/revenue/export — new report types', () => {
     expect(res.headers['content-type']).toMatch(/text\/csv/);
     expect(res.text).toContain('Technician');
     expect(res.text).toContain('Jobs Completed');
-    expect(res.text).toContain('Earned Revenue');
+    expect(res.text).toContain('Production Value');
   });
 
   it('cancellations export returns CSV with correct headers', async () => {

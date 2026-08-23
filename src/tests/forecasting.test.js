@@ -486,6 +486,6 @@ describe('GET /api/revenue/export?type=forecasting', () => {
       .expect(200);
 
     expect(res.headers['content-type']).toMatch(/text\/csv/);
-    expect(res.headers['content-disposition']).toMatch(/forecast-pipeline\.csv/);
+    expect(res.headers['content-disposition']).toMatch(/forecast-pipeline/);
   });
 });

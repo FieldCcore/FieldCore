@@ -3,6 +3,7 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const requireEntitlement = require('../middleware/requireEntitlement');
+const csvSvc  = require('../services/csvExportService');
 
 // GET /api/analytics/dashboard — all stats for the main dashboard
 router.get('/dashboard', requireAuth, async (req, res) => {
@@ -759,7 +760,11 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
   };
 
   try {
-    let rows, filename, header;
+    const { accountName } = await csvSvc.getAccountMeta(pool, accountId);
+    const generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+    const { fmtDate, fmtDateTime, fmtMoney, statusLabel, makeFilename, metaSection, buildCSV } = csvSvc;
+
+    let allRows, filename;
 
     if (type === 'revenue') {
       const result = await pool.query(
@@ -772,23 +777,41 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
          ORDER BY i.created_at DESC`,
         [accountId]
       );
-      rows     = result.rows;
-      filename = 'revenue-report.csv';
-      header   = ['Invoice ID', 'Client', 'Service', 'Amount', 'Tax', 'Status', 'Created', 'Paid At'];
-      rows = rows.map(r => [r.id, r.client, r.service, r.amount, r.tax_amount || 0, r.status,
-        r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
-        r.paid_at    ? new Date(r.paid_at).toLocaleDateString()    : '']);
+      filename = makeFilename('revenue-analytics', accountName, from, to);
+      const header = ['Invoice ID', 'Client', 'Service', 'Amount', 'Tax Amount', 'Status', 'Created', 'Paid At'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report', 'Revenue Analytics'], ['Entity', accountName],
+        ['Period Start', from || 'All'], ['Period End', to || 'All'], ['Generated At', generatedAt],
+      ], cols);
+      const dataRows = result.rows.map(r => [
+        r.id, r.client, r.service,
+        fmtMoney(r.amount), fmtMoney(r.tax_amount),
+        statusLabel(r.status),
+        fmtDate(r.created_at), fmtDate(r.paid_at),
+      ]);
+      allRows = [...meta, header, ...dataRows];
+
     } else if (type === 'clients') {
       const result = await pool.query(
         `SELECT id, name, email, phone, tier, ltv, created_at
          FROM clients WHERE account_id = $1 ORDER BY name`,
         [accountId]
       );
-      rows     = result.rows;
-      filename = 'clients-export.csv';
-      header   = ['ID', 'Name', 'Email', 'Phone', 'Tier', 'LTV', 'Created'];
-      rows = rows.map(r => [r.id, r.name, r.email || '', r.phone || '', r.tier || 'standard',
-        r.ltv || 0, r.created_at ? new Date(r.created_at).toLocaleDateString() : '']);
+      filename = makeFilename('clients', accountName, from, to);
+      const header = ['Client ID', 'Name', 'Email', 'Phone', 'Tier', 'Lifetime Value', 'Created'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report', 'Client Export'], ['Entity', accountName],
+        ['Period Start', from || 'All'], ['Period End', to || 'All'], ['Generated At', generatedAt],
+      ], cols);
+      const dataRows = result.rows.map(r => [
+        r.id, r.name, r.email || '', r.phone || '',
+        r.tier || 'standard', fmtMoney(r.ltv),
+        fmtDate(r.created_at),
+      ]);
+      allRows = [...meta, header, ...dataRows];
+
     } else {
       // Default: jobs
       const result = await pool.query(
@@ -802,22 +825,28 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
          ORDER BY j.scheduled_at DESC`,
         [accountId]
       );
-      rows     = result.rows;
-      filename = 'jobs-export.csv';
-      header   = ['Job ID', 'Client', 'Service', 'Status', 'Amount', 'Scheduled', 'Tech', 'Notes'];
-      rows = rows.map(r => [r.id, r.client, r.service, r.status, r.amount || 0,
-        r.scheduled_at ? new Date(r.scheduled_at).toLocaleString() : '',
-        r.tech || '', (r.notes || '').replace(/,/g, ';')]);
+      filename = makeFilename('jobs', accountName, from, to);
+      const header = ['Job ID', 'Client', 'Service', 'Status', 'Amount', 'Scheduled', 'Tech', 'Notes'];
+      const cols = header.length;
+      const meta = metaSection([
+        ['Report', 'Jobs Export'], ['Entity', accountName],
+        ['Period Start', from || 'All'], ['Period End', to || 'All'], ['Generated At', generatedAt],
+      ], cols);
+      const dataRows = result.rows.map(r => [
+        r.id, r.client, r.service,
+        statusLabel(r.status), fmtMoney(r.amount),
+        fmtDateTime(r.scheduled_at),
+        r.tech || '', r.notes || '',
+      ]);
+      allRows = [...meta, header, ...dataRows];
     }
 
-    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const csv    = [header, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
-
-    res.setHeader('Content-Type', 'text/csv');
+    const csv = buildCSV(allRows);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Export failed.' });
   }
 });
 

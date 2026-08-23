@@ -377,26 +377,49 @@ export default function Team() {
   }
 
   function exportPayrollCSV() {
-    const rows = [
-      ['Name', 'Role', 'Jobs', 'Completed', 'Revenue', 'Commission (5%)'],
-      ...techs.map(t => [
-        t.name,
-        t.role || '',
-        t.jobs,
-        t.completed,
-        parseFloat(t.revenue || 0).toFixed(2),
-        parseFloat(t.commission || 0).toFixed(2),
-      ]),
-      ['TOTAL', '', techs.reduce((s,t) => s + parseInt(t.jobs||0), 0), '',
-        techs.reduce((s,t) => s + parseFloat(t.revenue||0), 0).toFixed(2),
-        techs.reduce((s,t) => s + parseFloat(t.commission||0), 0).toFixed(2)],
+    const { mon, sun } = getWeekBounds();
+    const weekStart   = toLocalDateStr(mon);
+    const weekEnd     = toLocalDateStr(sun);
+    const generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
+    const esc = v => {
+      let s = String(v ?? '');
+      if (s.length > 0 && '=+@-'.includes(s[0])) s = '\t' + s;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
+    const cols = 6;
+    const pad  = arr => { while (arr.length < cols) arr.push(''); return arr; };
+    const meta = [
+      pad(['Report', 'Payroll Summary']),
+      pad(['Week Start', weekStart]),
+      pad(['Week End', weekEnd]),
+      pad(['Generated At', generatedAt]),
+      Array(cols).fill(''),
     ];
-    const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const header = ['Name', 'Role', 'Jobs', 'Completed', 'Revenue', 'Commission (5%)'];
+    const dataRows = techs.map(t => [
+      t.name, t.role || '',
+      t.jobs, t.completed,
+      parseFloat(t.revenue || 0).toFixed(2),
+      parseFloat(t.commission || 0).toFixed(2),
+    ]);
+    const totalRow = [
+      'TOTAL', '',
+      techs.reduce((s, t) => s + parseInt(t.jobs || 0), 0), '',
+      techs.reduce((s, t) => s + parseFloat(t.revenue || 0), 0).toFixed(2),
+      techs.reduce((s, t) => s + parseFloat(t.commission || 0), 0).toFixed(2),
+    ];
+
+    const allRows = [...meta, header, ...dataRows, totalRow];
+    const csv = '﻿' + allRows.map(r => r.map(esc).join(',')).join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv; charset=utf-8' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `fieldcore-payroll-${toLocalDateStr(new Date())}.csv`;
+    a.download = `fieldcore_payroll_${weekStart}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
