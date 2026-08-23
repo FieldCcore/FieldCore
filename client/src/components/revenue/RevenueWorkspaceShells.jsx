@@ -973,25 +973,17 @@ function StatusBadge({ status, reason }) {
 }
 
 export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
-  const [savedViews, setSavedViews]   = useState({ data: null, loading: true, error: null });
-  const [readiness,  setReadiness]    = useState({});
+  const [readiness, setReadiness] = useState({});
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get('/revenue/saved-views', { params: { workspace: 'reports' } }),
-      api.get('/revenue/reports/readiness'),
-    ]).then(([viewsRes, readinessRes]) => {
-      if (!cancelled) {
-        setSavedViews({ data: viewsRes.data,     loading: false, error: null });
-        setReadiness(readinessRes.data?.reports || {});
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setSavedViews({ data: [],   loading: false, error: null });
-        setReadiness({});
-      }
-    });
+    api.get('/revenue/reports/readiness')
+      .then(res => {
+        if (!cancelled) setReadiness(res.data?.reports || {});
+      })
+      .catch(() => {
+        if (!cancelled) setReadiness({});
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -1001,14 +993,11 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
     if (!live) return report;
     return {
       ...report,
-      status:     live.status,
-      exportType: live.exportType ?? report.exportType,
+      status:         live.status,
+      exportType:     live.exportType ?? report.exportType,
       requiresConfig: live.reason || report.requiresConfig,
     };
   });
-
-  // API returns { savedViews: [...] }
-  const views = savedViews.data?.savedViews || (Array.isArray(savedViews.data) ? savedViews.data : []);
 
   return (
     <div className="rov-ws-body ops-ws-body">
@@ -1054,46 +1043,6 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* ── Saved views ───────────────────────────────────────────────────── */}
-      <div className="ops-section-group">
-        <div className="ops-bare-heading">
-          <h2 className="rov-ws-section-title">Saved Views</h2>
-        </div>
-
-        {savedViews.loading ? (
-          <div style={{ fontSize: 14, color: 'var(--slate)', padding: '8px 0' }}>Loading…</div>
-        ) : views.length === 0 ? (
-          <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: 'var(--navy)', marginBottom: 4 }}>
-              No saved views yet.
-            </p>
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--slate)' }}>
-              Saved views allow you to bookmark filter configurations for quick access.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {views.map((view, i) => (
-              <div key={view.id || i} className="ops-table-card" style={{
-                padding: '0.75rem 1.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <span style={{ fontSize: 14, color: 'var(--navy)', fontWeight: 500 }}>
-                  {view.name || 'Saved View'}
-                </span>
-                {view.createdAt && (
-                  <span style={{ fontSize: 12, color: 'var(--slate)' }}>
-                    {new Date(view.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Export history ────────────────────────────────────────────────── */}

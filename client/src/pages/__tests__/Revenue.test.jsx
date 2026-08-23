@@ -425,7 +425,6 @@ beforeEach(() => {
     if (url.includes('/revenue/customers/overview'))  return Promise.resolve({ data: MOCK_CUSTOMERS });
     if (url.includes('/revenue/forecasting/overview'))  return Promise.resolve({ data: MOCK_FORECASTING });
     if (url.includes('/revenue/reports/readiness'))   return Promise.resolve({ data: MOCK_REPORTS_READINESS });
-    if (url.includes('/revenue/saved-views'))         return Promise.resolve({ data: MOCK_SAVED_VIEWS });
     if (url.includes('/revenue/financials'))          return Promise.resolve({ data: MOCK_FINANCIALS });
     if (url.includes('/revenue/operations/team/'))    return Promise.resolve({ data: { user: { id: 'user-tech-1', name: 'Alice T.', role: 'tech' }, period: { start: '2026-08-01', end: '2026-08-20' }, summary: { jobsCompleted: 5, productionValue: 2500, completionRate: 0.83, laborHours: 25, revenuePerLaborHour: 100 }, jobs: [] } });
     if (url.includes('/revenue/operations/team'))     return Promise.resolve({ data: MOCK_OPS_TEAM });
@@ -1585,11 +1584,21 @@ describe('Revenue — Reports workspace', () => {
     expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
-  it('shows Saved Views section', async () => {
+  it('Saved Views heading is absent', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
-      expect(screen.getByText('Saved Views')).toBeInTheDocument();
+      expect(screen.getByText('Report Catalog')).toBeInTheDocument();
     });
+    expect(screen.queryByText('Saved Views')).not.toBeInTheDocument();
+  });
+
+  it('Saved Views empty state copy is absent', async () => {
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('Report Catalog')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no saved views yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/bookmark filter configurations/i)).not.toBeInTheDocument();
   });
 });
 
