@@ -325,7 +325,7 @@ router.get('/export', requireAuth, requireRole('owner', 'manager'), async (req, 
         ['Avg Jobs / Customer',       ltv.data.avgJobsPerCustomer],
         ['Avg Ticket',                fmtMoney(ltv.data.avgTicket)],
       ] : [];
-      const header = ['Client', 'Jobs Completed', 'Earned Revenue', 'Last Completed Job'];
+      const header = ['Client Name', 'Jobs Completed', 'Earned Revenue', 'Last Completed Job'];
       const cols = header.length;
       const meta = metaSection([
         ['Report',        'Customer Value Report'],
@@ -911,8 +911,9 @@ router.get('/reports/readiness', requireAuth, requireRole('owner', 'manager'), a
         quarterly:     { status: 'AVAILABLE',              exportType: 'quarterly' },
         completion:    { status: 'AVAILABLE',              exportType: 'completion' },
         pnl:           acctActive
-          ? { status: 'AVAILABLE',              exportType: 'pnl' }
-          : { status: 'REQUIRES_CONFIGURATION', exportType: null,  reason: 'Requires accounting integration' },
+          ? { status: 'AVAILABLE',                    exportType: 'pnl' }
+          : { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null,
+              reason: 'Requires QuickBooks or accounting integration (COGS + operating expenses)' },
       },
     });
   } catch (err) {

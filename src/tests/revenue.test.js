@@ -779,12 +779,12 @@ describe('GET /api/revenue/reports/readiness', () => {
     }
   });
 
-  it('P&L shows REQUIRES_CONFIGURATION when no accounting integration active', async () => {
+  it('P&L shows INCOMPLETE_FINANCIAL_COVERAGE when no accounting integration active', async () => {
     const res = await request(app)
       .get('/api/revenue/reports/readiness')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.reports.pnl.status).toBe('REQUIRES_CONFIGURATION');
+    expect(res.body.reports.pnl.status).toBe('INCOMPLETE_FINANCIAL_COVERAGE');
     expect(res.body.reports.pnl.exportType).toBeNull();
     expect(res.body.reports.pnl.reason).toMatch(/accounting integration/i);
   });

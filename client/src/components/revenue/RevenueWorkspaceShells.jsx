@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HelpCircle, Info } from 'lucide-react';
 import api from '../../api';
 
@@ -814,6 +814,7 @@ export function ForecastingWorkspace({ filterStart, filterEnd }) {
 // reportKey maps to the key returned by /api/revenue/reports/readiness
 // status here is the default/static value; ReportsWorkspace overrides via readiness API
 const REPORT_CATALOG = [
+  // ── Revenue & Collections ────────────────────────────────────────────────
   {
     label:       'Revenue Summary',
     description: 'Period totals: collected, earned, by service',
@@ -835,6 +836,7 @@ const REPORT_CATALOG = [
     status:      'AVAILABLE',
     exportType:  'invoices',
   },
+  // ── Operations ───────────────────────────────────────────────────────────
   {
     label:       'Revenue by Technician',
     description: 'Per-technician earned revenue and labor hours (primary assignment)',
@@ -843,12 +845,28 @@ const REPORT_CATALOG = [
     exportType:  'technicians',
   },
   {
+    label:       'Cancellation & No-Show Report',
+    description: 'Cancelled and no-show jobs with revenue impact',
+    reportKey:   'cancellations',
+    status:      'AVAILABLE',
+    exportType:  'cancellations',
+  },
+  {
+    label:       'Job Completion Analysis',
+    description: 'Completion rate by service with cancellation and no-show breakdown',
+    reportKey:   'completion',
+    status:      'AVAILABLE',
+    exportType:  'completion',
+  },
+  // ── Customers ────────────────────────────────────────────────────────────
+  {
     label:       'Customer Value Report',
     description: 'Top clients by revenue with LTV summary',
     reportKey:   'customers',
     status:      'AVAILABLE',
     exportType:  'customers',
   },
+  // ── Forecasting ──────────────────────────────────────────────────────────
   {
     label:       'Forecast Pipeline Report',
     description: 'Upcoming scheduled jobs with projected revenue summary',
@@ -856,13 +874,7 @@ const REPORT_CATALOG = [
     status:      'AVAILABLE',
     exportType:  'forecasting',
   },
-  {
-    label:       'Cancellation & No-Show Report',
-    description: 'Cancelled and no-show jobs with revenue impact',
-    reportKey:   'cancellations',
-    status:      'AVAILABLE',
-    exportType:  'cancellations',
-  },
+  // ── Financial & Accounting ───────────────────────────────────────────────
   {
     label:       'Tax Summary',
     description: 'Tax collected on invoices by period',
@@ -881,27 +893,29 @@ const REPORT_CATALOG = [
     label:       'P&L Statement',
     description: 'Revenue, COGS, gross profit, operating expenses, and net profit',
     reportKey:   'pnl',
-    status:      'REQUIRES_CONFIGURATION',
+    status:      'INCOMPLETE_FINANCIAL_COVERAGE',
     exportType:  null,
-    requiresConfig: 'Requires accounting integration',
-  },
-  {
-    label:       'Job Completion Analysis',
-    description: 'Completion rate by service with cancellation and no-show breakdown',
-    reportKey:   'completion',
-    status:      'AVAILABLE',
-    exportType:  'completion',
+    requiresConfig: 'Requires QuickBooks or accounting integration (COGS + operating expenses)',
   },
 ];
 
 function ExportButton({ exportType, filterStart, filterEnd }) {
-  const [exportingXlsx, setExportingXlsx] = useState(false);
-  const [exportingCsv,  setExportingCsv]  = useState(false);
-  const busy = exportingXlsx || exportingCsv;
+  const [open,      setOpen]      = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
 
   async function handleDownload(format) {
-    const setExp = format === 'xlsx' ? setExportingXlsx : setExportingCsv;
-    setExp(true);
+    setOpen(false);
+    setExporting(true);
     try {
       const res = await api.get('/revenue/export', {
         params:       { type: exportType, start: filterStart, end: filterEnd, format },
@@ -923,33 +937,80 @@ function ExportButton({ exportType, filterStart, filterEnd }) {
       const msg = err.response?.data?.error || 'Export failed. Please try again.';
       alert(msg);
     } finally {
-      setExp(false);
+      setExporting(false);
     }
   }
 
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         className="btn-primary"
-        onClick={() => handleDownload('xlsx')}
-        disabled={busy}
-        style={{ fontSize: 13, padding: '5px 14px', whiteSpace: 'nowrap' }}
+        onClick={() => setOpen(o => !o)}
+        disabled={exporting}
+        style={{ fontSize: 13, padding: '5px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
       >
-        {exportingXlsx ? 'Exporting…' : 'Export Excel'}
+        {exporting ? 'Exporting…' : 'Export'}
+        {!exporting && (
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ flexShrink: 0 }}>
+            <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
       </button>
-      <button
-        className="btn-secondary"
-        onClick={() => handleDownload('csv')}
-        disabled={busy}
-        style={{ fontSize: 12, padding: '4px 10px', whiteSpace: 'nowrap' }}
-      >
-        {exportingCsv ? '…' : 'CSV'}
-      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 100,
+          background: '#fff', border: '1px solid var(--lightgray)', borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, padding: '4px 0',
+        }}>
+          <button
+            onClick={() => handleDownload('xlsx')}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '9px 16px', fontSize: 13, color: 'var(--navy)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            <span style={{ fontWeight: 600 }}>Excel Workbook (.xlsx)</span>
+            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--sand)', fontWeight: 500 }}>Recommended</span>
+          </button>
+          <button
+            onClick={() => handleDownload('csv')}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '9px 16px', fontSize: 13, color: 'var(--navy)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            Raw Data (.csv)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 function StatusBadge({ status, reason }) {
+  if (status === 'INCOMPLETE_FINANCIAL_COVERAGE') {
+    return (
+      <span style={{
+        fontSize: 12,
+        padding: '3px 10px',
+        borderRadius: 'var(--r-sm)',
+        background: '#FEF3C7',
+        color: '#92400E',
+        fontWeight: 500,
+        whiteSpace: 'nowrap',
+        maxWidth: 260,
+        display: 'inline-block',
+      }}>
+        {reason || 'Incomplete financial coverage'}
+      </span>
+    );
+  }
   if (status === 'REQUIRES_CONFIGURATION' || status === 'REQUIRES_INTEGRATION') {
     return (
       <span style={{
@@ -1053,18 +1114,6 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* ── Export history ────────────────────────────────────────────────── */}
-      <div className="ops-section-group">
-        <div className="ops-bare-heading">
-          <h2 className="rov-ws-section-title">Export History</h2>
-        </div>
-        <div className="ops-table-card" style={{ padding: '1.25rem 1.5rem', background: 'var(--offwhite)' }}>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--slate)' }}>
-            No recent exports. Export history will appear here in a future update.
-          </p>
         </div>
       </div>
 
