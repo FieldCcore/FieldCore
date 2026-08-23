@@ -75,6 +75,7 @@ import Account         from './pages/Account';
 import Communications  from './pages/Communications';
 import Requests        from './pages/Requests';
 import Projects        from './pages/Projects';
+import EntitySwitcher  from './components/EntitySwitcher';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -310,7 +311,7 @@ function CreateMenu({ open, onOpen, onClose }) {
 
 function AppShell() {
   const { pathname } = useLocation();
-  const { user, logout, accounts, switching, switchError, switchAccount } = useAuth();
+  const { user, logout, accounts } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
   const [callerOpen,  setCallerOpen]  = useState(false);
@@ -480,39 +481,7 @@ function AppShell() {
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
         </Link>
 
-        <div className="entity-panel">
-          <div className="entity-section-label">Entities</div>
-          {accounts.map((a, i) => {
-            const isActive = a.id === user?.accountId;
-            const dotColors = ['#D6B58A', '#7B9EC9', '#82C9A0', '#C98282', '#C9B882'];
-            const isSwitchingToThis = switching && !isActive;
-            return (
-              <button
-                key={a.id}
-                onClick={async () => { if (!isActive && !switching) { try { await switchAccount(a.id); nav('/dashboard'); } catch {} } }}
-                className={'entity-opt' + (isActive ? ' active' : '')}
-                disabled={switching}
-                style={{ opacity: switching && !isActive ? 0.6 : 1, cursor: switching ? 'wait' : (isActive ? 'default' : 'pointer') }}
-              >
-                <span className="entity-dot" style={{ background: isSwitchingToThis ? '#8A90A2' : (isActive ? '#D6B58A' : dotColors[i % dotColors.length]) }} />
-                <span className={'entity-name' + (isActive ? ' active' : '')} style={{ fontSize: 11.5 }}>
-                  {switching && !isActive ? 'Switching…' : a.name}
-                </span>
-                <span className={'entity-badge' + (isActive ? ' active' : '')}>{isActive ? (switching ? '…' : a.role) : a.role}</span>
-              </button>
-            );
-          })}
-          {switchError && (
-            <div style={{ fontSize: 10.5, color: '#ff8a80', padding: '4px 12px 6px', lineHeight: 1.4 }}>
-              {switchError}
-            </div>
-          )}
-          {accounts.length <= 1 && (
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.22)', padding: '4px 12px', fontStyle: 'italic' }}>
-              Add more entities in <a href="/entities" style={{ color: 'rgba(214,181,138,.55)', textDecoration: 'none' }}>Entities</a>
-            </div>
-          )}
-        </div>
+        <EntitySwitcher />
 
         <nav className="sb-nav">
           {(() => {

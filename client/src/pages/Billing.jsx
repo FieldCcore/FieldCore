@@ -64,7 +64,7 @@ function payoutStatusVariant(status) {
   return 'gray';
 }
 function payoutStatusLabel(status) {
-  const map = { paid: 'Paid', pending: 'Pending / Next Up', in_transit: 'Payment in Transit', failed: 'Failed', canceled: 'Canceled' };
+  const map = { paid: 'Paid', pending: 'Pending / Next Up', in_transit: 'Payment in Transit', failed: 'Failed', canceled: 'Cancelled' };
   return map[status] || String(status).replace(/_/g, ' ');
 }
 function fmtDate(ts) {
@@ -629,7 +629,7 @@ export default function Billing() {
 
   const statusLabel = planStatus === 'trialing'  ? 'Trial'
                     : planStatus === 'past_due'   ? 'Past Due'
-                    : planStatus === 'canceled'   ? 'Canceled'
+                    : planStatus === 'canceled'   ? 'Cancelled'
                     : 'Active';
   const statusClass = (planStatus === 'active' || planStatus === 'trialing') ? 'js-active'
                     : planStatus === 'past_due' ? 'js-pending'

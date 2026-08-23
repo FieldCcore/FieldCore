@@ -236,6 +236,18 @@ body {
 }
 .entity-badge.active { background: rgba(214,181,138,.2); color: #D6B58A; }
 
+/* ── Entity Switcher ─────────────────────────────────────── */
+.entity-trigger { cursor: pointer !important; }
+.entity-trigger:hover { background: rgba(214,181,138,.18) !important; }
+.entity-trigger:focus-visible { outline: 2px solid rgba(214,181,138,.45); outline-offset: -2px; border-radius: 8px; }
+.entity-chevron { color: rgba(214,181,138,.55); flex-shrink: 0; margin-left: 2px; transition: transform .18s; }
+.entity-chevron.open { transform: rotate(180deg); }
+.entity-dropdown { border-top: 1px solid rgba(255,255,255,.07); margin-top: 2px; padding-top: 2px; max-height: 200px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.entity-dropdown::-webkit-scrollbar { display: none; }
+.entity-dropdown .entity-opt { margin-bottom: 0; border-radius: 6px; }
+.entity-dropdown-item:focus-visible { outline: 2px solid rgba(214,181,138,.45); outline-offset: -2px; border-radius: 6px; }
+.entity-switch-error { font-size: 10.5px; color: #ff8a80; padding: 4px 12px 6px; line-height: 1.4; }
+
 /* ── Sidebar Nav ─────────────────────────────────────────── */
 .sb-nav { flex: 1; padding: 8px 0; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
 .sb-nav::-webkit-scrollbar { display: none; }

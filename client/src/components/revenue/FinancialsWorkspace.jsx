@@ -1151,9 +1151,8 @@ function SrcCard({
                 className="fin-int-connect-btn btn-secondary"
                 onClick={handleConnect}
                 disabled={connectBusy}
-                aria-label="Connect QuickBooks Online"
               >
-                {connectBusy ? 'Connecting…' : 'Connect QuickBooks'}
+                {connectBusy ? 'Connecting…' : 'Connect QuickBooks Online'}
               </button>
             ) : (
               <button

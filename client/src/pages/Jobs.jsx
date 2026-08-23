@@ -25,7 +25,7 @@ const LEGEND = [
   { key: 'scheduled',   label: 'Scheduled',  color: CAL_STATUS_COLOR.scheduled   },
   { key: 'in_progress', label: 'In Progress', color: CAL_STATUS_COLOR.in_progress },
   { key: 'complete',    label: 'Completed',   color: CAL_STATUS_COLOR.complete    },
-  { key: 'cancelled',   label: 'Canceled',    color: CAL_STATUS_COLOR.cancelled   },
+  { key: 'cancelled',   label: 'Cancelled',   color: CAL_STATUS_COLOR.cancelled   },
 ];
 
 const VALID_VIEWS   = ['month', 'week', 'day', 'agenda'];
