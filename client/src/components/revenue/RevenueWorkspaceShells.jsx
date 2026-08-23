@@ -896,7 +896,7 @@ const REPORT_CATALOG = [
     reportKey:   'pnl',
     status:      'INCOMPLETE_FINANCIAL_COVERAGE',
     exportType:  null,
-    requiresConfig: 'Requires QuickBooks or accounting integration (COGS + operating expenses)',
+    requiresConfig: 'Connect QuickBooks Online',
   },
 ];
 
@@ -1088,49 +1088,34 @@ function ExportButton({ exportType, filterStart, filterEnd }) {
 }
 
 function StatusBadge({ status, reason }) {
+  const base = {
+    fontSize: 12,
+    padding: '3px 10px',
+    borderRadius: 'var(--r-sm)',
+    fontWeight: 500,
+    display: 'inline-block',
+    maxWidth: 200,
+    wordBreak: 'break-word',
+    textAlign: 'right',
+    lineHeight: 1.4,
+  };
   if (status === 'INCOMPLETE_FINANCIAL_COVERAGE') {
     return (
-      <span style={{
-        fontSize: 12,
-        padding: '3px 10px',
-        borderRadius: 'var(--r-sm)',
-        background: '#FEF3C7',
-        color: '#92400E',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-        maxWidth: 260,
-        display: 'inline-block',
-      }}>
+      <span style={{ ...base, background: '#FEF3C7', color: '#92400E' }}>
         {reason || 'Incomplete financial coverage'}
       </span>
     );
   }
   if (status === 'REQUIRES_CONFIGURATION' || status === 'REQUIRES_INTEGRATION') {
     return (
-      <span style={{
-        fontSize: 12,
-        padding: '3px 10px',
-        borderRadius: 'var(--r-sm)',
-        background: '#FFF3E0',
-        color: 'var(--amber)',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-      }}>
+      <span style={{ ...base, background: '#FFF3E0', color: 'var(--amber)' }}>
         {reason || 'Requires configuration'}
       </span>
     );
   }
   if (status === 'NOT_IMPLEMENTED') {
     return (
-      <span style={{
-        fontSize: 12,
-        padding: '3px 10px',
-        borderRadius: 'var(--r-sm)',
-        background: 'var(--lightgray)',
-        color: 'var(--slate)',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-      }}>
+      <span style={{ ...base, background: 'var(--lightgray)', color: 'var(--slate)', wordBreak: 'normal' }}>
         Coming soon
       </span>
     );
@@ -1184,7 +1169,8 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 16,
+              flexWrap: 'wrap',
+              gap: 12,
               opacity: report.status === 'NOT_IMPLEMENTED' ? 0.65 : 1,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1195,7 +1181,7 @@ export function ReportsWorkspace({ filterStart, filterEnd, onExport }) {
                   {report.description}
                 </div>
               </div>
-              <div style={{ flexShrink: 0 }}>
+              <div style={{ flexShrink: 0, maxWidth: 220 }}>
                 {report.status === 'AVAILABLE' ? (
                   <ExportButton
                     exportType={report.exportType}

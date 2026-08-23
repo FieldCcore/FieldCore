@@ -322,7 +322,7 @@ const MOCK_REPORTS_READINESS = {
     tax:           { status: 'AVAILABLE',              exportType: 'tax' },
     quarterly:     { status: 'AVAILABLE',              exportType: 'quarterly' },
     completion:    { status: 'AVAILABLE',              exportType: 'completion' },
-    pnl:           { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null, reason: 'Requires QuickBooks or accounting integration (COGS + operating expenses)' },
+    pnl:           { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null, reason: 'Connect QuickBooks Online' },
   },
 };
 
@@ -1546,15 +1546,54 @@ describe('Revenue — Reports workspace', () => {
     });
   });
 
-  it('P&L shows INCOMPLETE_FINANCIAL_COVERAGE badge from readiness API', async () => {
+  it('P&L shows INCOMPLETE_FINANCIAL_COVERAGE badge with connect-QB reason when not connected', async () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('P&L Statement')).toBeInTheDocument();
-      expect(screen.getAllByText(/requires quickbooks or accounting integration/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/connect quickbooks online/i).length).toBeGreaterThan(0);
     });
   });
 
-  it('P&L shows Export button when readiness returns AVAILABLE', async () => {
+  it('P&L shows mapping-required reason when QB connected but accounts unmapped', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/reports/readiness')) return Promise.resolve({
+        data: {
+          reports: {
+            ...MOCK_REPORTS_READINESS.reports,
+            pnl: { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null, reason: '3 accounts need mapping' },
+          },
+        },
+      });
+      if (url.includes('/revenue/saved-views')) return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      return Promise.resolve({ data: {} });
+    });
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText('P&L Statement')).toBeInTheDocument();
+      expect(screen.getByText(/3 accounts need mapping/i)).toBeInTheDocument();
+    });
+  });
+
+  it('P&L shows reconnect reason when QB is degraded', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/revenue/reports/readiness')) return Promise.resolve({
+        data: {
+          reports: {
+            ...MOCK_REPORTS_READINESS.reports,
+            pnl: { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null, reason: 'QuickBooks reconnect required' },
+          },
+        },
+      });
+      if (url.includes('/revenue/saved-views')) return Promise.resolve({ data: MOCK_SAVED_VIEWS });
+      return Promise.resolve({ data: {} });
+    });
+    renderRevenue('?view=reports');
+    await waitFor(() => {
+      expect(screen.getByText(/quickbooks reconnect required/i)).toBeInTheDocument();
+    });
+  });
+
+  it('P&L shows Export button when readiness returns AVAILABLE (QB fully connected)', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('/revenue/reports/readiness')) return Promise.resolve({
         data: {
@@ -1570,8 +1609,7 @@ describe('Revenue — Reports workspace', () => {
     renderRevenue('?view=reports');
     await waitFor(() => {
       expect(screen.getByText('P&L Statement')).toBeInTheDocument();
-      // With accounting connected, P&L should show Export not badge
-      expect(screen.queryByText(/requires quickbooks or accounting integration/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/connect quickbooks/i)).not.toBeInTheDocument();
       expect(screen.getAllByText('Export').length).toBeGreaterThanOrEqual(11);
     });
   });

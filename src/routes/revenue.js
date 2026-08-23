@@ -894,26 +894,50 @@ router.get('/technicians', requireAuth, requireRole('owner', 'manager'), async (
 // P&L status is driven by accounting coverage; all others are always AVAILABLE.
 router.get('/reports/readiness', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const coverage    = await coverageSvc.getFinancialCoverage(req.accountId);
-    const acctStatus  = coverage.accounting?.status;
-    const acctActive  = acctStatus === 'active' || acctStatus === 'partial';
+    // resolveSourceStatuses returns { fieldcore_core, fieldcore_payments, accounting, banking }
+    // each with a .status string.  getFinancialCoverage() wraps that in evaluateCoverage()
+    // which flattens sources into arrays — it has no .accounting key, so we go one level lower.
+    const statuses   = await coverageSvc.resolveSourceStatuses(req.accountId);
+    const acct       = statuses.accounting;
+    const acctStatus = acct?.status; // 'active' | 'degraded' | 'not_connected' | 'not_configured'
+    const unmapped   = acct?.connectionInfo?.unmappedAccountCount ?? 0;
+
+    let pnlReadiness;
+    if (acctStatus === 'active' && unmapped === 0) {
+      pnlReadiness = { status: 'AVAILABLE', exportType: 'pnl' };
+    } else if (acctStatus === 'active' && unmapped > 0) {
+      pnlReadiness = {
+        status:     'INCOMPLETE_FINANCIAL_COVERAGE',
+        exportType: null,
+        reason:     `${unmapped} account${unmapped === 1 ? '' : 's'} need mapping`,
+      };
+    } else if (acctStatus === 'degraded') {
+      pnlReadiness = {
+        status:     'INCOMPLETE_FINANCIAL_COVERAGE',
+        exportType: null,
+        reason:     'QuickBooks reconnect required',
+      };
+    } else {
+      pnlReadiness = {
+        status:     'INCOMPLETE_FINANCIAL_COVERAGE',
+        exportType: null,
+        reason:     'Connect QuickBooks Online',
+      };
+    }
 
     res.json({
       reports: {
-        summary:       { status: 'AVAILABLE',              exportType: 'summary' },
-        services:      { status: 'AVAILABLE',              exportType: 'services' },
-        invoices:      { status: 'AVAILABLE',              exportType: 'invoices' },
-        technicians:   { status: 'AVAILABLE',              exportType: 'technicians' },
-        customers:     { status: 'AVAILABLE',              exportType: 'customers' },
-        forecasting:   { status: 'AVAILABLE',              exportType: 'forecasting' },
-        cancellations: { status: 'AVAILABLE',              exportType: 'cancellations' },
-        tax:           { status: 'AVAILABLE',              exportType: 'tax' },
-        quarterly:     { status: 'AVAILABLE',              exportType: 'quarterly' },
-        completion:    { status: 'AVAILABLE',              exportType: 'completion' },
-        pnl:           acctActive
-          ? { status: 'AVAILABLE',                    exportType: 'pnl' }
-          : { status: 'INCOMPLETE_FINANCIAL_COVERAGE', exportType: null,
-              reason: 'Requires QuickBooks or accounting integration (COGS + operating expenses)' },
+        summary:       { status: 'AVAILABLE', exportType: 'summary' },
+        services:      { status: 'AVAILABLE', exportType: 'services' },
+        invoices:      { status: 'AVAILABLE', exportType: 'invoices' },
+        technicians:   { status: 'AVAILABLE', exportType: 'technicians' },
+        customers:     { status: 'AVAILABLE', exportType: 'customers' },
+        forecasting:   { status: 'AVAILABLE', exportType: 'forecasting' },
+        cancellations: { status: 'AVAILABLE', exportType: 'cancellations' },
+        tax:           { status: 'AVAILABLE', exportType: 'tax' },
+        quarterly:     { status: 'AVAILABLE', exportType: 'quarterly' },
+        completion:    { status: 'AVAILABLE', exportType: 'completion' },
+        pnl:           pnlReadiness,
       },
     });
   } catch (err) {

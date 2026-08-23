@@ -779,14 +779,104 @@ describe('GET /api/revenue/reports/readiness', () => {
     }
   });
 
-  it('P&L shows INCOMPLETE_FINANCIAL_COVERAGE when no accounting integration active', async () => {
+  it('P&L shows INCOMPLETE_FINANCIAL_COVERAGE with connect-QB reason when not connected', async () => {
     const res = await request(app)
       .get('/api/revenue/reports/readiness')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.reports.pnl.status).toBe('INCOMPLETE_FINANCIAL_COVERAGE');
     expect(res.body.reports.pnl.exportType).toBeNull();
-    expect(res.body.reports.pnl.reason).toMatch(/accounting integration/i);
+    expect(res.body.reports.pnl.reason).toMatch(/connect quickbooks/i);
+  });
+
+  describe('P&L readiness — QuickBooks connected states', () => {
+    afterEach(async () => {
+      await pool.query(
+        `DELETE FROM accounting_connections WHERE account_id = $1`,
+        [accountId]
+      );
+      await pool.query(
+        `DELETE FROM accounting_account_mappings WHERE account_id = $1`,
+        [accountId]
+      );
+    });
+
+    it('P&L is AVAILABLE when QB connected and no unmapped accounts', async () => {
+      await pool.query(
+        `INSERT INTO accounting_connections (account_id, provider, status)
+         VALUES ($1, 'quickbooks_online', 'connected')
+         ON CONFLICT (account_id, provider) DO UPDATE SET status = 'connected'`,
+        [accountId]
+      );
+      const res = await request(app)
+        .get('/api/revenue/reports/readiness')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.reports.pnl.status).toBe('AVAILABLE');
+      expect(res.body.reports.pnl.exportType).toBe('pnl');
+    });
+
+    it('P&L shows mapping reason when QB connected but unmapped accounts exist', async () => {
+      await pool.query(
+        `INSERT INTO accounting_connections (account_id, provider, status)
+         VALUES ($1, 'quickbooks_online', 'connected')
+         ON CONFLICT (account_id, provider) DO UPDATE SET status = 'connected'`,
+        [accountId]
+      );
+      // is_balance_sheet=FALSE, is_ignored=FALSE, is_active=TRUE, fieldcore_category=NULL → counted as unmapped
+      await pool.query(
+        `INSERT INTO accounting_account_mappings
+           (account_id, provider, provider_account_id, provider_account_name, provider_account_type,
+            fieldcore_category, fieldcore_subcategory, is_balance_sheet, is_ignored, is_active)
+         VALUES ($1, 'quickbooks_online', 'test-acct-1', 'Test Expense', 'Expense',
+                 NULL, NULL, FALSE, FALSE, TRUE)`,
+        [accountId]
+      );
+      const res = await request(app)
+        .get('/api/revenue/reports/readiness')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.reports.pnl.status).toBe('INCOMPLETE_FINANCIAL_COVERAGE');
+      expect(res.body.reports.pnl.reason).toMatch(/need mapping/i);
+    });
+
+    it('P&L shows reconnect reason when QB status is degraded (reauth_required)', async () => {
+      await pool.query(
+        `INSERT INTO accounting_connections (account_id, provider, status)
+         VALUES ($1, 'quickbooks_online', 'reauth_required')
+         ON CONFLICT (account_id, provider) DO UPDATE SET status = 'reauth_required'`,
+        [accountId]
+      );
+      const res = await request(app)
+        .get('/api/revenue/reports/readiness')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.reports.pnl.status).toBe('INCOMPLETE_FINANCIAL_COVERAGE');
+      expect(res.body.reports.pnl.reason).toMatch(/reconnect/i);
+    });
+
+    it('P&L is AVAILABLE when QB connected and only balance-sheet accounts (unmapped = 0)', async () => {
+      await pool.query(
+        `INSERT INTO accounting_connections (account_id, provider, status)
+         VALUES ($1, 'quickbooks_online', 'connected')
+         ON CONFLICT (account_id, provider) DO UPDATE SET status = 'connected'`,
+        [accountId]
+      );
+      // Balance-sheet accounts excluded from unmapped count (is_balance_sheet=TRUE)
+      await pool.query(
+        `INSERT INTO accounting_account_mappings
+           (account_id, provider, provider_account_id, provider_account_name, provider_account_type,
+            fieldcore_category, fieldcore_subcategory, is_balance_sheet, is_ignored, is_active)
+         VALUES ($1, 'quickbooks_online', 'bs-acct-1', 'Checking', 'Bank',
+                 'balance_sheet', 'cash_bank', TRUE, FALSE, TRUE)`,
+        [accountId]
+      );
+      const res = await request(app)
+        .get('/api/revenue/reports/readiness')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.reports.pnl.status).toBe('AVAILABLE');
+    });
   });
 
   it('does not cross account boundaries', async () => {
