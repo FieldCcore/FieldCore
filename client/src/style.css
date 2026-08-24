@@ -7425,3 +7425,58 @@ body {
   .ops-rule-form-row--2col { grid-template-columns: 1fr; }
   .ops-drawer-summary { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   AGREEMENT BUILDER
+   ════════════════════════════════════════════════════════════════ */
+.ab-overlay {
+  position: fixed; inset: 0; background: rgba(28,35,51,.45);
+  z-index: 600; display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 16px; overflow-y: auto;
+}
+.ab-sheet {
+  background: var(--white); border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(28,35,51,.22);
+  width: 100%; max-width: 680px;
+  display: flex; flex-direction: column;
+  margin: auto;
+}
+.ab-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--lightgray);
+}
+.ab-title { font-size: 1.1rem; font-weight: 700; color: var(--navy); margin: 0; }
+.ab-body  { padding: 0 24px 8px; overflow-y: auto; max-height: 72vh; }
+
+.ab-section { padding: 16px 0; border-bottom: 1px solid var(--lightgray); }
+.ab-section:last-child { border-bottom: none; }
+
+.ab-label {
+  display: block; font-size: 0.78rem; font-weight: 600;
+  color: var(--slate); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em;
+}
+.ab-hint  { font-size: 0.76rem; color: var(--steel); margin: 4px 0 0; }
+
+.ab-row          { display: flex; gap: 12px; }
+.ab-row--gap     { flex-wrap: wrap; }
+.ab-field        { display: flex; flex-direction: column; }
+.ab-field--grow  { flex: 1; }
+.ab-field--sm    { max-width: 200px; }
+
+/* Line items inside agreement builder */
+.ab-li-row   { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ab-li-name  { flex: 1; }
+.ab-li-price { width: 110px; flex-shrink: 0; }
+.ab-add-li   {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.82rem; font-weight: 600; color: var(--sand-dark);
+  background: none; border: none; cursor: pointer; padding: 4px 0;
+}
+.ab-add-li:hover { text-decoration: underline; }
+
+/* Coverage example callout */
+.ab-coverage-example {
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--offwhite); border-radius: 6px;
+  font-size: 0.82rem; color: var(--slate); line-height: 1.5;
+}

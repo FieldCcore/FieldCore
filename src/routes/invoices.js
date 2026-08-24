@@ -145,32 +145,44 @@ function fmtPeriod(start, end) {
   return `${sm} ${s.getDate()}–${em} ${e.getDate()}, ${e.getFullYear()}`;
 }
 
-function currentBillingPeriod(cadence, startedAt) {
+// Returns the current billing period window for a given cadence.
+// For interval-based cadences (weekly, every_N_weeks, biweekly, custom),
+// startedAt is used as the epoch anchor so "every 2 weeks" means exactly 14 days,
+// not "twice per calendar month."
+function currentBillingPeriod(cadence, startedAt, intervalDays) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let ps, pe;
-  if (cadence === 'monthly') {
+
+  // Normalize legacy 'biweekly' alias
+  const c = cadence === 'biweekly' ? 'every_2_weeks' : cadence;
+
+  if (c === 'monthly') {
     ps = new Date(today.getFullYear(), today.getMonth(), 1);
     pe = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  } else if (cadence === 'quarterly') {
+  } else if (c === 'quarterly') {
     const q = Math.floor(today.getMonth() / 3);
     ps = new Date(today.getFullYear(), q * 3, 1);
     pe = new Date(today.getFullYear(), q * 3 + 3, 0);
-  } else if (cadence === 'annual') {
+  } else if (c === 'annual') {
     ps = new Date(today.getFullYear(), 0, 1);
     pe = new Date(today.getFullYear(), 11, 31);
-  } else if (cadence === 'weekly') {
-    const dow = today.getDay();
-    const mondayOffset = dow === 0 ? -6 : 1 - dow;
-    ps = new Date(today); ps.setDate(today.getDate() + mondayOffset);
-    pe = new Date(ps);    pe.setDate(ps.getDate() + 6);
-  } else if (cadence === 'biweekly') {
-    const ref = startedAt ? new Date(startedAt + 'T00:00:00') : new Date(today.getFullYear(), today.getMonth(), 1);
+  } else if (['weekly','every_2_weeks','every_3_weeks','every_4_weeks','custom'].includes(c)) {
+    // True interval-based: count days from started_at anchor
+    const days = c === 'weekly' ? 7
+               : c === 'every_2_weeks' ? 14
+               : c === 'every_3_weeks' ? 21
+               : c === 'every_4_weeks' ? 28
+               : (parseInt(intervalDays, 10) || 7);
+    const ref = startedAt
+      ? new Date(startedAt + 'T00:00:00')
+      : new Date(today.getFullYear(), today.getMonth(), 1);
     const daysDiff = Math.floor((today - ref) / 86400000);
-    const win = Math.max(0, Math.floor(daysDiff / 14));
-    ps = new Date(ref); ps.setDate(ref.getDate() + win * 14);
-    pe = new Date(ps);  pe.setDate(ps.getDate() + 13);
+    const win = Math.max(0, Math.floor(daysDiff / days));
+    ps = new Date(ref); ps.setDate(ref.getDate() + win * days);
+    pe = new Date(ps);  pe.setDate(ps.getDate() + days - 1);
   } else {
+    // Fallback: calendar month
     ps = new Date(today.getFullYear(), today.getMonth(), 1);
     pe = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   }
@@ -431,10 +443,16 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     const { validItems, subtotal, discountAmount, taxAmount, total } =
       computeTotals(baseLineItems, discount_type, discount_value, taxRate);
 
-    // Atomically claim the next invoice number for this account
+    // Atomically claim the next invoice number for this account.
+    // On first invoice: seed from configured invoice_starting_number (default 1001).
+    // On subsequent invoices: increment the live sequence.
     const numRes = await client.query(
-      `INSERT INTO invoice_number_sequences (account_id, next_val)
-       VALUES ($1, 1001)
+      `WITH cfg AS (
+         SELECT COALESCE(invoice_starting_number, 1001) AS start_val
+         FROM booking_settings WHERE account_id = $1
+       )
+       INSERT INTO invoice_number_sequences (account_id, next_val, starting_number)
+       VALUES ($1, COALESCE((SELECT start_val FROM cfg), 1001), COALESCE((SELECT start_val FROM cfg), 1001))
        ON CONFLICT (account_id) DO UPDATE
          SET next_val = invoice_number_sequences.next_val + 1
        RETURNING next_val AS invoice_number`,
@@ -508,17 +526,23 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
   try {
     const [numRes, bkRes] = await Promise.all([
       pool.query(
+        // Use the live sequence when it exists; otherwise fall back to the
+        // account's configured starting number (default 1001).
         `SELECT COALESCE(
            (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
-           1001
+           COALESCE(
+             (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
+             1001
+           )
          ) AS next_number`,
         [req.accountId]
       ),
       pool.query(
-        `SELECT COALESCE(tax_rate, 0)                 AS tax_rate,
-                COALESCE(accept_card, TRUE)            AS accept_card,
-                COALESCE(accept_ach, FALSE)            AS accept_ach,
-                COALESCE(allow_partial_payments, FALSE) AS allow_partial_payments,
+        `SELECT COALESCE(tax_rate, 0)                    AS tax_rate,
+                COALESCE(accept_card, TRUE)               AS accept_card,
+                COALESCE(accept_ach, FALSE)               AS accept_ach,
+                COALESCE(allow_partial_payments, FALSE)   AS allow_partial_payments,
+                COALESCE(invoice_starting_number, 1001)   AS invoice_starting_number,
                 default_terms
          FROM booking_settings
          WHERE account_id = $1`,
@@ -527,12 +551,13 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
     ]);
     const bs = bkRes.rows[0] || {};
     res.json({
-      next_number:            numRes.rows[0]?.next_number || 1001,
-      tax_rate:               parseFloat(bs.tax_rate || 0),
-      accept_card:            bs.accept_card !== false,
-      accept_ach:             !!bs.accept_ach,
-      allow_partial_payments: !!bs.allow_partial_payments,
-      default_terms:          bs.default_terms || null,
+      next_number:             numRes.rows[0]?.next_number ?? null,
+      invoice_starting_number: parseInt(bs.invoice_starting_number || 1001, 10),
+      tax_rate:                parseFloat(bs.tax_rate || 0),
+      accept_card:             bs.accept_card !== false,
+      accept_ach:              !!bs.accept_ach,
+      allow_partial_payments:  !!bs.allow_partial_payments,
+      default_terms:           bs.default_terms || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -788,7 +813,9 @@ router.get('/eligible-agreements', requireAuth, requireRole('owner', 'manager'),
 
     const { rows } = await pool.query(
       `SELECT a.id, a.name, a.service_type, a.service_address,
-              a.cadence, a.billing_cadence, a.plan_price, a.status, a.payment_status,
+              a.cadence, a.billing_cadence, a.billing_trigger, a.billing_day,
+              a.included_services_per_period, a.extra_occurrence_policy, a.service_interval_days,
+              a.plan_price, a.status, a.payment_status,
               a.notes, a.line_items, a.started_at, a.next_billing_date,
               c.id AS client_id, c.name AS client_name,
               c.email AS client_email, c.address AS client_address
@@ -803,9 +830,9 @@ router.get('/eligible-agreements', requireAuth, requireRole('owner', 'manager'),
 
     // Resolve current billing period and check if already invoiced for each agreement
     const enriched = await Promise.all(rows.map(async agr => {
+      const startedAtStr = agr.started_at ? agr.started_at.toISOString().slice(0, 10) : null;
       const { period_start, period_end } = currentBillingPeriod(
-        agr.cadence,
-        agr.started_at ? agr.started_at.toISOString().slice(0, 10) : null
+        agr.cadence, startedAtStr, agr.service_interval_days
       );
       const dup = await pool.query(
         `SELECT id FROM agreement_invoice_periods

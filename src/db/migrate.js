@@ -1951,6 +1951,61 @@ const MIGRATIONS = [
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
      CHECK (status IN ('draft','pending','paid','partially_paid','void','failed'))`,
+
+  // ── INVOICE DATA-TRUTH PASS ───────────────────────────────────────────────────
+
+  // Configurable invoice starting number per account (stored alongside the live sequence)
+  `ALTER TABLE invoice_number_sequences ADD COLUMN IF NOT EXISTS starting_number INT NOT NULL DEFAULT 1001`,
+
+  // Configurable starting number exposed through business settings
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS invoice_starting_number INT NOT NULL DEFAULT 1001`,
+
+  // ── RECURRING AGREEMENT — BILLING MODEL EXPANSION ────────────────────────────
+
+  // Expand service cadence to support fine-grained intervals
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_cadence_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_cadence_check
+     CHECK (cadence IN ('weekly','every_2_weeks','every_3_weeks','every_4_weeks',
+                        'monthly','quarterly','annual','custom'))`,
+
+  // Expand billing cadence — every_service means bill on each occurrence
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_billing_cadence_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_billing_cadence_check
+     CHECK (billing_cadence IN ('every_service','weekly','every_2_weeks',
+                                'monthly','quarterly','annual','custom'))`,
+
+  // When within a billing period does the invoice trigger
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS billing_trigger TEXT NOT NULL DEFAULT 'first_day'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_billing_trigger_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_billing_trigger_check
+     CHECK (billing_trigger IN ('every_service','first_scheduled','first_completed','first_day','specific_day'))`,
+
+  // Day of month for specific_day trigger (1–28 to handle all months safely)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS billing_day INT`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_billing_day_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_billing_day_check
+     CHECK (billing_day IS NULL OR (billing_day BETWEEN 1 AND 28))`,
+
+  // Number of service visits included per billing period
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS included_services_per_period INT NOT NULL DEFAULT 1`,
+
+  // What to do when actual visits exceed included_services_per_period
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS extra_occurrence_policy TEXT NOT NULL DEFAULT 'all_included'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_extra_occurrence_policy_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_extra_occurrence_policy_check
+     CHECK (extra_occurrence_policy IN ('all_included','max_n','rollover','manual_review'))`,
+
+  // Interval in days for custom cadence values
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS service_interval_days INT`,
+
+  // Expand agreement_invoice_periods to track occurrence-level coverage
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS included_occurrence_count INT`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS used_occurrence_count INT NOT NULL DEFAULT 0`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS plan_amount NUMERIC(10,2)`,
+  `ALTER TABLE agreement_invoice_periods DROP CONSTRAINT IF EXISTS agreement_invoice_periods_coverage_status_check`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS coverage_status TEXT NOT NULL DEFAULT 'open'`,
+  `ALTER TABLE agreement_invoice_periods ADD CONSTRAINT agreement_invoice_periods_coverage_status_check
+     CHECK (coverage_status IN ('open','covered','paid_in_advance','overage'))`,
 ];
 
 async function runMigrations() {

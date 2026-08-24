@@ -721,9 +721,59 @@ describe('GET /api/invoices/settings', () => {
 
     expect(res.body).toHaveProperty('next_number');
     expect(res.body).toHaveProperty('tax_rate');
-    expect(typeof res.body.next_number).toBe('number');
     expect(typeof res.body.tax_rate).toBe('number');
-    expect(res.body.next_number).toBeGreaterThanOrEqual(1001);
+    // next_number may be null for a brand-new account or a number >= starting value
+    expect(res.body.next_number === null || typeof res.body.next_number === 'number').toBe(true);
+  });
+
+  it('returns payment capability fields', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.body).toHaveProperty('accept_card');
+    expect(res.body).toHaveProperty('accept_ach');
+    expect(res.body).toHaveProperty('allow_partial_payments');
+  });
+
+  it('returns invoice_starting_number', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.body).toHaveProperty('invoice_starting_number');
+    expect(typeof res.body.invoice_starting_number).toBe('number');
+    expect(res.body.invoice_starting_number).toBeGreaterThanOrEqual(1);
+  });
+
+  it('invoice numbers increment by 1 on sequential creates', async () => {
+    // Find a fresh account with no sequence yet
+    const hash = require('bcryptjs').hashSync('pw', 4);
+    const { rows: [acct] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_SEQ_${Date.now()}__`]
+    );
+    const { rows: [u] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'Seq','seq-${Date.now()}@test.fc',$2,'owner') RETURNING id`,
+      [acct.id, hash]
+    );
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'Seq Client','sc@test.fc') RETURNING id`,
+      [acct.id]
+    );
+    const seqToken = require('jsonwebtoken').sign({ userId: u.id, accountId: acct.id, role: 'owner' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const li = [{ name: 'Item', quantity: 1, unit_price: 10 }];
+
+    const r1 = await request(app).post('/api/invoices').set('Authorization', `Bearer ${seqToken}`)
+      .send({ source_type: 'MANUAL', client_id: c.id, line_items: li }).expect(201);
+    const r2 = await request(app).post('/api/invoices').set('Authorization', `Bearer ${seqToken}`)
+      .send({ source_type: 'MANUAL', client_id: c.id, line_items: li }).expect(201);
+
+    expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
+    expect(r1.body.invoice_number).toBeGreaterThanOrEqual(1001);
+
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [acct.id]);
   });
 });
 

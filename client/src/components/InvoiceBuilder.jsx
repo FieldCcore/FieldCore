@@ -255,7 +255,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       .then(r => {
         const d = r.data;
         setTaxRate(d.tax_rate || 0);
-        setPreviewNumber(d.next_number || 1001);
+        setPreviewNumber(d.next_number);
         setAcceptCard(d.accept_card !== false);
         setAcceptAch(!!d.accept_ach);
         setAllowPartial(!!d.allow_partial_payments);
@@ -582,15 +582,17 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     }
   }
 
-  const canSave = !saving && (
-    source === 'job'
-      ? (!!selectedJob && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-      : source === 'estimate'
-        ? (!!selectedEstimate && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-        : source === 'agreement'
-          ? (!!selectedAgreement && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-          : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-  );
+  // Draft: source selected + at least one line item with any data
+  const hasLineItem = lineItems.some(i => i.name || parseFloat(i.unit_price) > 0);
+  const hasSource   = source === 'job'      ? !!selectedJob
+                    : source === 'estimate' ? !!selectedEstimate
+                    : source === 'agreement'? !!selectedAgreement
+                    : !!selectedClient;
+
+  const canDraft = !saving && hasSource && hasLineItem;
+
+  // Send: same as draft but also requires at least one line item with a positive amount
+  const canSend  = canDraft && lineItems.some(i => parseFloat(i.unit_price) > 0);
 
   const showCollect = acceptCard || acceptAch;
 
@@ -1177,9 +1179,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             Cancel
           </button>
           <button
-            className="btn btn-outline"
+            className="btn btn-secondary"
             onClick={() => handleSave('draft')}
-            disabled={!canSave}
+            disabled={!canDraft}
+            title={!hasSource ? 'Select a client or source first' : !hasLineItem ? 'Add at least one line item' : ''}
           >
             {saving ? 'Saving…' : 'Save Draft'}
           </button>
@@ -1187,7 +1190,8 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             <button
               className="btn btn-primary ib-save-primary"
               onClick={() => handleSave('send')}
-              disabled={!canSave}
+              disabled={!canSend}
+              title={!canSend && canDraft ? 'Add a line item with an amount > $0' : ''}
             >
               {saving ? 'Saving…' : 'Save & Send'}
             </button>
@@ -1206,7 +1210,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     <button
                       className="ib-save-drop-item"
                       onClick={() => handleSave('collect')}
-                      disabled={!canSave}
+                      disabled={!canSend}
                     >
                       Save &amp; Collect Payment
                     </button>
