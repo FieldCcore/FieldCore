@@ -2056,6 +2056,19 @@ body {
 .ib-est-card-amount { font-size: 0.9rem; font-weight: 700; color: var(--navy); font-family: 'DM Mono', monospace; }
 .ib-est-card-meta { font-size: 0.75rem; color: var(--steel); margin-top: 4px; }
 
+/* Agreement selected card */
+.ib-agr-card { border: 1.5px solid var(--sand); border-radius: 8px; padding: 12px 14px; background: #fffdf9; }
+.ib-agr-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ib-agr-card-title { font-size: 0.85rem; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+.ib-agr-card-client { font-size: 0.78rem; color: var(--slate); }
+.ib-agr-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ib-agr-card-amount { font-size: 0.9rem; font-weight: 700; color: var(--navy); font-family: 'DM Mono', monospace; }
+.ib-agr-card-meta { font-size: 0.75rem; color: var(--steel); margin-top: 4px; }
+.ib-agr-card-warn { font-size: 0.75rem; color: #b45309; margin-top: 6px; font-weight: 600; }
+.ib-agr-paid { color: #15803d; font-weight: 600; }
+.ib-agr-invoiced { color: #b45309; font-weight: 600; }
+.ib-job-row--dim { opacity: 0.6; }
+
 /* Textareas */
 .ib-textarea {
   width: 100%;

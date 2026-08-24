@@ -126,35 +126,37 @@ async function probePlaidRuntime() {
   }
 }
 
-// Start server immediately so health checks pass during deployment
-const server = app.listen(PORT, () => {
-  console.log(`FieldCore API running on port ${PORT}`);
-  validateQuickBooksConfig();
-  validateMapsConfig();
-  validatePlaidConfig();
-  scheduler.startReminderJob();
-  // Non-blocking post-startup tasks
-  runMigrations()
-    .then(() => {
-      const { recoverStaleSyncingConnections } = require('./src/services/bankingSyncService');
-      return recoverStaleSyncingConnections();
-    })
-    .catch(err => console.error('[DB] runMigrations error:', err.message));
-  probeGeocoding();
-  probePlaidRuntime().catch(err => console.error('[PLAID RUNTIME TEST] probe threw:', err.message));
-});
+// Run migrations before accepting any requests — eliminates schema-not-ready race condition.
+// Railway health check has a generous timeout; migrations complete in < 10 seconds.
+runMigrations()
+  .catch(err => console.error('[DB] runMigrations error:', err.message))
+  .finally(() => {
+    const server = app.listen(PORT, () => {
+      console.log(`FieldCore API running on port ${PORT}`);
+      validateQuickBooksConfig();
+      validateMapsConfig();
+      validatePlaidConfig();
+      scheduler.startReminderJob();
+      // Non-blocking post-startup tasks
+      require('./src/services/bankingSyncService').recoverStaleSyncingConnections()
+        .catch(err => console.error('[DB] recoverStaleSyncingConnections error:', err.message));
+      probeGeocoding();
+      probePlaidRuntime().catch(err => console.error('[PLAID RUNTIME TEST] probe threw:', err.message));
+    });
 
-function shutdown(signal) {
-  console.log(`[${signal}] Graceful shutdown…`);
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
+    function shutdown(signal) {
+      console.log(`[${signal}] Graceful shutdown…`);
+      server.close(() => {
+        console.log('HTTP server closed.');
+        process.exit(0);
+      });
+      setTimeout(() => {
+        console.error('Shutdown timed out — forcing exit.');
+        process.exit(1);
+      }, 10_000).unref();
+    }
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
   });
-  setTimeout(() => {
-    console.error('Shutdown timed out — forcing exit.');
-    process.exit(1);
-  }, 10_000).unref();
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));

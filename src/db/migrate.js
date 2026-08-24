@@ -1855,6 +1855,52 @@ const MIGRATIONS = [
   // Traceability: estimate records which invoice was created from it (prevents re-conversion)
   `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL`,
 
+  // ── RECURRING AGREEMENTS V1 ──────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS recurring_agreements (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id        UUID NOT NULL REFERENCES clients(id),
+     name             TEXT NOT NULL,
+     service_type     TEXT,
+     service_address  TEXT,
+     cadence          TEXT NOT NULL DEFAULT 'monthly'
+                        CHECK (cadence IN ('weekly','biweekly','monthly','quarterly','annual')),
+     billing_cadence  TEXT NOT NULL DEFAULT 'monthly'
+                        CHECK (billing_cadence IN ('weekly','biweekly','monthly','quarterly','annual')),
+     plan_price       NUMERIC(10,2) NOT NULL DEFAULT 0,
+     status           TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active','paused','cancelled','expired')),
+     payment_status   TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (payment_status IN ('paid_in_advance','pending','failed','overdue')),
+     notes            TEXT,
+     line_items       JSONB NOT NULL DEFAULT '[]',
+     started_at       DATE NOT NULL DEFAULT CURRENT_DATE,
+     next_billing_date DATE,
+     created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_agreements_account ON recurring_agreements(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agreements_client  ON recurring_agreements(account_id, client_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agreements_status  ON recurring_agreements(account_id, status)`,
+
+  // Period-level invoice tracking — prevents duplicate invoices per billing period
+  `CREATE TABLE IF NOT EXISTS agreement_invoice_periods (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     agreement_id  UUID NOT NULL REFERENCES recurring_agreements(id) ON DELETE CASCADE,
+     invoice_id    UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+     period_start  DATE NOT NULL,
+     period_end    DATE NOT NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (agreement_id, period_start, period_end)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_inv_periods_agreement ON agreement_invoice_periods(agreement_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_inv_periods_invoice   ON agreement_invoice_periods(invoice_id)`,
+
+  // Invoice traceability for agreement source
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source_agreement_id UUID REFERENCES recurring_agreements(id) ON DELETE SET NULL`,
+
   // ── CUSTOMERS V1 ANALYTICS ────────────────────────────────────────────────
   // Customer inactivity policy on business_profiles — drives At-Risk/Churn engine.
   // NULL = not configured (status card shown). INT = days before a repeat customer

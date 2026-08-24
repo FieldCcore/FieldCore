@@ -133,6 +133,53 @@ function generateInvoicePdfBuffer(inv) {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+function fmtPeriod(start, end) {
+  if (!start || !end) return '';
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end   + 'T00:00:00');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sm = months[s.getMonth()], em = months[e.getMonth()];
+  if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
+    return `${sm} ${s.getDate()}–${e.getDate()}, ${e.getFullYear()}`;
+  }
+  return `${sm} ${s.getDate()}–${em} ${e.getDate()}, ${e.getFullYear()}`;
+}
+
+function currentBillingPeriod(cadence, startedAt) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let ps, pe;
+  if (cadence === 'monthly') {
+    ps = new Date(today.getFullYear(), today.getMonth(), 1);
+    pe = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (cadence === 'quarterly') {
+    const q = Math.floor(today.getMonth() / 3);
+    ps = new Date(today.getFullYear(), q * 3, 1);
+    pe = new Date(today.getFullYear(), q * 3 + 3, 0);
+  } else if (cadence === 'annual') {
+    ps = new Date(today.getFullYear(), 0, 1);
+    pe = new Date(today.getFullYear(), 11, 31);
+  } else if (cadence === 'weekly') {
+    const dow = today.getDay();
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    ps = new Date(today); ps.setDate(today.getDate() + mondayOffset);
+    pe = new Date(ps);    pe.setDate(ps.getDate() + 6);
+  } else if (cadence === 'biweekly') {
+    const ref = startedAt ? new Date(startedAt + 'T00:00:00') : new Date(today.getFullYear(), today.getMonth(), 1);
+    const daysDiff = Math.floor((today - ref) / 86400000);
+    const win = Math.max(0, Math.floor(daysDiff / 14));
+    ps = new Date(ref); ps.setDate(ref.getDate() + win * 14);
+    pe = new Date(ps);  pe.setDate(ps.getDate() + 13);
+  } else {
+    ps = new Date(today.getFullYear(), today.getMonth(), 1);
+    pe = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  }
+  return {
+    period_start: ps.toISOString().slice(0, 10),
+    period_end:   pe.toISOString().slice(0, 10),
+  };
+}
+
 function computeDueDate(paymentTerms, issuedDate) {
   const termDays = { net_7: 7, net_15: 15, net_30: 30, net_45: 45, net_60: 60, net_90: 90 };
   const days = termDays[paymentTerms];
@@ -185,6 +232,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     job_id,
     client_id:        bodyClientId,
     source_estimate_id,
+    source_agreement_id,
+    period_start,
+    period_end,
     subject,
     line_items:       reqLineItems,
     discount_type,
@@ -198,8 +248,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     status:           reqStatus,
   } = req.body;
 
-  if (!['JOB', 'MANUAL', 'ESTIMATE'].includes(source_type)) {
-    return res.status(400).json({ error: 'source_type must be JOB, MANUAL, or ESTIMATE' });
+  if (!['JOB', 'MANUAL', 'ESTIMATE', 'AGREEMENT'].includes(source_type)) {
+    return res.status(400).json({ error: 'source_type must be JOB, MANUAL, ESTIMATE, or AGREEMENT' });
   }
 
   const status = ['draft', 'pending'].includes(reqStatus) ? reqStatus : 'draft';
@@ -214,12 +264,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     );
     const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
 
-    let finalClientId         = null;
-    let finalJobId            = null;
-    let finalSourceEstimateId = null;
-    let finalSubject          = subject || null;
-    let finalClientMessage    = client_message || null;
-    let baseLineItems         = [];
+    let finalClientId           = null;
+    let finalJobId              = null;
+    let finalSourceEstimateId   = null;
+    let finalSourceAgreementId  = null;
+    let finalPeriodStart        = null;
+    let finalPeriodEnd          = null;
+    let finalSubject            = subject || null;
+    let finalClientMessage      = client_message || null;
+    let baseLineItems           = [];
 
     if (source_type === 'JOB') {
       if (!job_id) {
@@ -296,6 +349,61 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
             taxable:     true,
           }));
 
+    } else if (source_type === 'AGREEMENT') {
+      if (!source_agreement_id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'source_agreement_id is required for AGREEMENT source' });
+      }
+      if (!period_start || !period_end) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'period_start and period_end are required for AGREEMENT source' });
+      }
+      const agrRes = await client.query(
+        `SELECT a.*, c.name AS client_name FROM recurring_agreements a
+         JOIN clients c ON c.id = a.client_id
+         WHERE a.id = $1 AND a.account_id = $2`,
+        [source_agreement_id, req.accountId]
+      );
+      const agr = agrRes.rows[0];
+      if (!agr) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Agreement not found' });
+      }
+      if (agr.status !== 'active') {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ error: 'Only active agreements can be invoiced' });
+      }
+      const dupRes = await client.query(
+        `SELECT id FROM agreement_invoice_periods
+         WHERE agreement_id = $1 AND period_start = $2 AND period_end = $3`,
+        [source_agreement_id, period_start, period_end]
+      );
+      if (dupRes.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'This billing period has already been invoiced' });
+      }
+      finalClientId          = agr.client_id;
+      finalSourceAgreementId = source_agreement_id;
+      finalPeriodStart       = period_start;
+      finalPeriodEnd         = period_end;
+      if (!finalSubject) finalSubject = `${agr.name} — ${fmtPeriod(period_start, period_end)}`;
+      const agrItems = Array.isArray(agr.line_items) ? agr.line_items : [];
+      baseLineItems = agrItems.length > 0
+        ? agrItems.map(item => ({
+            name:        item.description || item.name || agr.name || 'Service',
+            description: '',
+            quantity:    parseFloat(item.quantity) || 1,
+            unit_price:  parseFloat(item.unit_price ?? item.amount) || 0,
+            taxable:     true,
+          }))
+        : [{
+            name:        agr.name || 'Recurring Service',
+            description: `Coverage: ${fmtPeriod(period_start, period_end)}`,
+            quantity:    1,
+            unit_price:  parseFloat(agr.plan_price) || 0,
+            taxable:     true,
+          }];
+
     } else {
       if (!bodyClientId) {
         await client.query('ROLLBACK');
@@ -340,18 +448,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 
     const { rows } = await client.query(
       `INSERT INTO invoices (
-         account_id, job_id, client_id, source_type, source_estimate_id, invoice_number,
+         account_id, job_id, client_id, source_type, source_estimate_id, source_agreement_id,
+         invoice_number,
          amount, tax_amount, subtotal, discount_type, discount_value, discount_amount,
          line_items, subject, issued_date, payment_terms, due_date,
          client_message, internal_notes, terms, status, created_by
        ) VALUES (
          $1,$2,$3,$4,$5,$6,
-         $7,$8,$9,$10,$11,$12,
-         $13,$14,$15,$16,$17,
-         $18,$19,$20,$21,$22
+         $7,
+         $8,$9,$10,$11,$12,$13,
+         $14,$15,$16,$17,$18,
+         $19,$20,$21,$22,$23
        ) RETURNING *`,
       [
-        req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, invoiceNumber,
+        req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, finalSourceAgreementId,
+        invoiceNumber,
         total, taxAmount, subtotal, discount_type || null, parseFloat(discount_value) || null, discountAmount || null,
         JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
         finalClientMessage, internal_notes || null, terms || null, status, req.userId,
@@ -362,6 +473,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       await client.query(
         `UPDATE estimates SET converted_invoice_id = $1 WHERE id = $2 AND account_id = $3`,
         [rows[0].id, finalSourceEstimateId, req.accountId]
+      );
+    }
+
+    if (source_type === 'AGREEMENT') {
+      await client.query(
+        `INSERT INTO agreement_invoice_periods
+           (account_id, agreement_id, invoice_id, period_start, period_end)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.accountId, finalSourceAgreementId, rows[0].id, finalPeriodStart, finalPeriodEnd]
       );
     }
 
@@ -626,6 +746,70 @@ router.get('/eligible-estimates', requireAuth, requireRole('owner', 'manager'), 
 
     res.json(rows);
   } catch (err) {
+    // If converted_invoice_id column doesn't exist yet (migration race), return empty safely
+    if (err.message && err.message.includes('converted_invoice_id')) {
+      return res.json([]);
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/invoices/eligible-agreements ────────────────────────────────────
+router.get('/eligible-agreements', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { q = '' } = req.query;
+    const params = [req.accountId];
+    const conds  = [`a.status = 'active'`];
+
+    const term = q.trim();
+    if (term) {
+      params.push(`%${term}%`);
+      const p = params.length;
+      conds.push(
+        `(c.name ILIKE $${p} OR a.name ILIKE $${p} OR a.service_type ILIKE $${p} OR a.service_address ILIKE $${p})`
+      );
+    }
+
+    const { rows } = await pool.query(
+      `SELECT a.id, a.name, a.service_type, a.service_address,
+              a.cadence, a.billing_cadence, a.plan_price, a.status, a.payment_status,
+              a.notes, a.line_items, a.started_at, a.next_billing_date,
+              c.id AS client_id, c.name AS client_name,
+              c.email AS client_email, c.address AS client_address
+       FROM recurring_agreements a
+       JOIN clients c ON c.id = a.client_id
+       WHERE a.account_id = $1
+         AND ${conds.join(' AND ')}
+       ORDER BY c.name ASC, a.name ASC
+       LIMIT 100`,
+      params
+    );
+
+    // Resolve current billing period and check if already invoiced for each agreement
+    const enriched = await Promise.all(rows.map(async agr => {
+      const { period_start, period_end } = currentBillingPeriod(
+        agr.cadence,
+        agr.started_at ? agr.started_at.toISOString().slice(0, 10) : null
+      );
+      const dup = await pool.query(
+        `SELECT id FROM agreement_invoice_periods
+         WHERE agreement_id = $1 AND period_start = $2 AND period_end = $3`,
+        [agr.id, period_start, period_end]
+      );
+      return {
+        ...agr,
+        period_start,
+        period_end,
+        period_already_invoiced: dup.rows.length > 0,
+      };
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    // If tables don't exist yet (migration race), return empty safely
+    if (err.message && (err.message.includes('recurring_agreements') || err.message.includes('agreement_invoice_periods'))) {
+      return res.json([]);
+    }
     res.status(500).json({ error: err.message });
   }
 });

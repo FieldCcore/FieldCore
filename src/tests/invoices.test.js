@@ -33,6 +33,8 @@ let pendingInvId, paidInvId, voidInvId, overdueInvId;
 let eligibleJobId, incompleteJobId;
 // Estimates for eligible-estimates + ESTIMATE-source tests
 let signedEstimateId, draftEstimateId, alreadyConvertedEstimateId;
+// Agreements for eligible-agreements + AGREEMENT-source tests
+let activeAgreementId, pausedAgreementId;
 
 beforeAll(async () => {
   await runMigrations();
@@ -178,6 +180,28 @@ beforeAll(async () => {
     [accountId, clientId, pendingInvId]
   );
   alreadyConvertedEstimateId = ce.id;
+
+  // Active recurring agreement — should appear in eligible-agreements
+  const { rows: [ra] } = await pool.query(
+    `INSERT INTO recurring_agreements
+       (account_id, client_id, name, service_type, cadence, billing_cadence, plan_price, status, payment_status,
+        line_items, started_at)
+     VALUES ($1,$2,'Monthly AC Service','HVAC Maintenance','monthly','monthly',200,'active','pending',
+        '[{"name":"AC Maintenance","amount":200}]', CURRENT_DATE - INTERVAL '30 days')
+     RETURNING id`,
+    [accountId, clientId]
+  );
+  activeAgreementId = ra.id;
+
+  // Paused agreement — must NOT appear in eligible-agreements
+  const { rows: [pausedAgr] } = await pool.query(
+    `INSERT INTO recurring_agreements
+       (account_id, client_id, name, cadence, billing_cadence, plan_price, status, payment_status, line_items, started_at)
+     VALUES ($1,$2,'Paused Agreement','monthly','monthly',100,'paused','pending','[]', CURRENT_DATE)
+     RETURNING id`,
+    [accountId, clientId]
+  );
+  pausedAgreementId = pausedAgr.id;
 });
 
 afterAll(async () => {
@@ -1122,5 +1146,194 @@ describe('POST /api/invoices — ESTIMATE source', () => {
       .expect(201);
 
     expect(res.body.subject).toBe('Custom Subject');
+  });
+});
+
+// ── GET /api/invoices/eligible-agreements — auth ────────────────────────────────
+
+describe('GET /api/invoices/eligible-agreements — auth', () => {
+  it('returns 401 with no token', async () => {
+    await request(app).get('/api/invoices/eligible-agreements').expect(401);
+  });
+
+  it('returns 403 for tech role', async () => {
+    const techToken = makeToken(techId, accountId, 'tech');
+    await request(app)
+      .get('/api/invoices/eligible-agreements')
+      .set('Authorization', `Bearer ${techToken}`)
+      .expect(403);
+  });
+});
+
+// ── GET /api/invoices/eligible-agreements — eligibility ────────────────────────
+
+describe('eligible-agreements — eligibility', () => {
+  it('returns 200 with active agreements', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    const ids = res.body.map(a => a.id);
+    expect(ids).toContain(activeAgreementId);
+  });
+
+  it('excludes paused agreements', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const ids = res.body.map(a => a.id);
+    expect(ids).not.toContain(pausedAgreementId);
+  });
+
+  it('includes current period and period_already_invoiced flag', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const agr = res.body.find(a => a.id === activeAgreementId);
+    expect(agr).toBeDefined();
+    expect(agr.period_start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(agr.period_end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(typeof agr.period_already_invoiced).toBe('boolean');
+  });
+
+  it('tenant isolation: cannot see other account agreements', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-agreements')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(200);
+    const ids = res.body.map(a => a.id);
+    expect(ids).not.toContain(activeAgreementId);
+  });
+
+  it('search by agreement name filters results', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-agreements?q=Monthly+AC')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    res.body.forEach(a => {
+      const haystack = `${a.name} ${a.client_name} ${a.service_type || ''}`.toLowerCase();
+      expect(haystack).toContain('monthly ac'.toLowerCase());
+    });
+  });
+});
+
+// ── POST /api/invoices — AGREEMENT source ──────────────────────────────────────
+
+describe('POST /api/invoices — AGREEMENT source', () => {
+  function getToday() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function getMonthStart() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  }
+  function getMonthEnd() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+  }
+
+  it('creates invoice from agreement with correct source_type', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:         'AGREEMENT',
+        source_agreement_id: activeAgreementId,
+        period_start:        getMonthStart(),
+        period_end:          getMonthEnd(),
+      })
+      .expect(201);
+    expect(res.body.source_type).toBe('AGREEMENT');
+    expect(res.body.source_agreement_id).toBe(activeAgreementId);
+  });
+
+  it('returns 409 when same period already invoiced', async () => {
+    const ps = getMonthStart();
+    const pe = getMonthEnd();
+
+    // Use a fresh agreement to avoid conflict with the test above
+    const { rows: [newAgr] } = await pool.query(
+      `INSERT INTO recurring_agreements
+         (account_id, client_id, name, cadence, billing_cadence, plan_price, status, payment_status, line_items, started_at)
+       VALUES ($1,$2,'409 Test Agreement','monthly','monthly',50,'active','pending','[]', CURRENT_DATE)
+       RETURNING id`,
+      [accountId, clientId]
+    );
+
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'AGREEMENT', source_agreement_id: newAgr.id, period_start: ps, period_end: pe })
+      .expect(201);
+
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'AGREEMENT', source_agreement_id: newAgr.id, period_start: ps, period_end: pe })
+      .expect(409);
+  });
+
+  it('returns 422 for paused agreement', async () => {
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:         'AGREEMENT',
+        source_agreement_id: pausedAgreementId,
+        period_start:        getMonthStart(),
+        period_end:          getMonthEnd(),
+      })
+      .expect(422);
+  });
+
+  it('returns 400 when period_start missing', async () => {
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'AGREEMENT', source_agreement_id: activeAgreementId, period_end: getMonthEnd() })
+      .expect(400);
+  });
+
+  it('returns 404 for another tenant agreement', async () => {
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({
+        source_type:         'AGREEMENT',
+        source_agreement_id: activeAgreementId,
+        period_start:        getMonthStart(),
+        period_end:          getMonthEnd(),
+      })
+      .expect(404);
+  });
+
+  it('prefills plan_price as line item when no agreement line_items', async () => {
+    const { rows: [simplAgr] } = await pool.query(
+      `INSERT INTO recurring_agreements
+         (account_id, client_id, name, cadence, billing_cadence, plan_price, status, payment_status, line_items, started_at)
+       VALUES ($1,$2,'Simple Agreement','monthly','monthly',300,'active','pending','[]', CURRENT_DATE)
+       RETURNING id`,
+      [accountId, clientId]
+    );
+
+    const today = getToday();
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:         'AGREEMENT',
+        source_agreement_id: simplAgr.id,
+        period_start:        today,
+        period_end:          today,
+      })
+      .expect(201);
+
+    const li = Array.isArray(res.body.line_items) ? res.body.line_items : JSON.parse(res.body.line_items || '[]');
+    expect(li.length).toBeGreaterThan(0);
+    expect(li[0].unit_price).toBe(300);
   });
 });

@@ -33,9 +33,32 @@ function lineTotal(item) {
   return q * p;
 }
 
+const CADENCE_LABELS = {
+  weekly:    'Every week',
+  biweekly:  'Every 2 weeks',
+  monthly:   'Monthly',
+  quarterly: 'Quarterly',
+  annual:    'Annually',
+};
+
+const BILLING_LABELS = {
+  weekly:    '$x/week',
+  biweekly:  '$x/2 weeks',
+  monthly:   '$x/month',
+  quarterly: '$x/quarter',
+  annual:    '$x/year',
+};
+
+function fmtPeriodFE(start, end) {
+  if (!start || !end) return '';
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end   + 'T00:00:00');
+  return `${format(s, 'MMM d')}–${format(e, 'MMM d, yyyy')}`;
+}
+
 export default function InvoiceBuilder({ onClose, onCreated }) {
   // ── source ──────────────────────────────────────────────────────────────────
-  const [source, setSource] = useState('blank'); // 'blank' | 'job' | 'estimate'
+  const [source, setSource] = useState('blank'); // 'blank' | 'job' | 'estimate' | 'agreement'
 
   // ── settings (tax rate + preview invoice number) ─────────────────────────
   const [taxRate, setTaxRate]           = useState(0);
@@ -65,6 +88,14 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [selectedEstimate, setSelectedEstimate] = useState(null);
   const [estimatesError, setEstimatesError]     = useState('');
   const estimateDebounce = useRef(null);
+
+  // ── agreement selection (source = 'agreement') ───────────────────────────
+  const [agreementQuery, setAgreementQuery]         = useState('');
+  const [eligibleAgreements, setEligibleAgreements] = useState([]);
+  const [agreementsLoading, setAgreementsLoading]   = useState(false);
+  const [selectedAgreement, setSelectedAgreement]   = useState(null);
+  const [agreementsError, setAgreementsError]       = useState('');
+  const agreementDebounce = useRef(null);
 
   // ── header fields ────────────────────────────────────────────────────────
   const [subject, setSubject]             = useState('For Services Rendered');
@@ -100,8 +131,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
 
   // ── on source change: load eligible data ─────────────────────────────────
   useEffect(() => {
-    if (source === 'job') loadEligibleJobs('');
-    if (source === 'estimate') loadEligibleEstimates('');
+    if (source === 'job')       loadEligibleJobs('');
+    if (source === 'estimate')  loadEligibleEstimates('');
+    if (source === 'agreement') loadEligibleAgreements('');
   }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── close client dropdown on outside click ───────────────────────────────
@@ -191,6 +223,59 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setSelectedEstimate(null);
     setEstimateQuery('');
     setEligibleEstimates([]);
+  }
+
+  // ── eligible agreements ──────────────────────────────────────────────────
+  function loadEligibleAgreements(q = '') {
+    setAgreementsLoading(true);
+    setAgreementsError('');
+    const qs = new URLSearchParams();
+    if (q.trim()) qs.set('q', q.trim());
+    api.get(`/invoices/eligible-agreements?${qs}`)
+      .then(r => setEligibleAgreements(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setAgreementsError('Could not load agreements.'))
+      .finally(() => setAgreementsLoading(false));
+  }
+
+  function handleAgreementQuery(val) {
+    setAgreementQuery(val);
+    clearTimeout(agreementDebounce.current);
+    agreementDebounce.current = setTimeout(() => loadEligibleAgreements(val), 250);
+  }
+
+  function selectAgreement(agr) {
+    setSelectedAgreement(agr);
+    setSelectedClient({ id: agr.client_id, name: agr.client_name, email: agr.client_email, address: agr.client_address });
+    setClientQuery(agr.client_name);
+    const subj = `${agr.name} — ${fmtPeriodFE(agr.period_start, agr.period_end)}`;
+    setSubject(subj);
+    const agrItems = Array.isArray(agr.line_items) ? agr.line_items : [];
+    setLineItems(agrItems.length > 0
+      ? agrItems.map((item, i) => ({
+          _id:        `agr-line-${i}`,
+          name:       item.description || item.name || agr.name || 'Service',
+          description:'',
+          quantity:   String(parseFloat(item.quantity) || 1),
+          unit_price: String(parseFloat(item.unit_price ?? item.amount) || 0),
+          taxable:    true,
+        }))
+      : [{
+          _id:        'agr-line-0',
+          name:       agr.name || 'Recurring Service',
+          description:`Coverage: ${fmtPeriodFE(agr.period_start, agr.period_end)}`,
+          quantity:   '1',
+          unit_price: String(parseFloat(agr.plan_price) || 0),
+          taxable:    true,
+        }]
+    );
+  }
+
+  function clearAgreement() {
+    setSelectedAgreement(null);
+    setAgreementQuery('');
+    setEligibleAgreements([]);
+    setSelectedClient(null);
+    setClientQuery('');
   }
 
   // ── eligible jobs ────────────────────────────────────────────────────────
@@ -286,11 +371,17 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       setSaveError('Please select a signed estimate.');
       return;
     }
+    if (source === 'agreement' && !selectedAgreement) {
+      setSaveError('Please select a recurring agreement.');
+      return;
+    }
     const clientId = source === 'job'
       ? (selectedJob?.client_id || selectedClient?.id)
       : source === 'estimate'
         ? selectedEstimate?.client_id
-        : selectedClient?.id;
+        : source === 'agreement'
+          ? selectedAgreement?.client_id
+          : selectedClient?.id;
 
     if (!clientId) {
       setSaveError('Please select a client.');
@@ -305,9 +396,17 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setSaving(true);
     try {
       const payload = {
-        source_type:    source === 'job' ? 'JOB' : source === 'estimate' ? 'ESTIMATE' : 'MANUAL',
-        ...(source === 'job'      ? { job_id: selectedJob.id } : {}),
-        ...(source === 'estimate' ? { source_estimate_id: selectedEstimate.id } : {}),
+        source_type: source === 'job' ? 'JOB'
+          : source === 'estimate' ? 'ESTIMATE'
+          : source === 'agreement' ? 'AGREEMENT'
+          : 'MANUAL',
+        ...(source === 'job'       ? { job_id: selectedJob.id } : {}),
+        ...(source === 'estimate'  ? { source_estimate_id: selectedEstimate.id } : {}),
+        ...(source === 'agreement' ? {
+          source_agreement_id: selectedAgreement.id,
+          period_start:        selectedAgreement.period_start,
+          period_end:          selectedAgreement.period_end,
+        } : {}),
         ...(source === 'blank'    ? { client_id: clientId } : {}),
         subject:        subject.trim() || 'For Services Rendered',
         issued_date:    issuedDate,
@@ -338,7 +437,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       onCreated(res.data);
     } catch (err) {
       const msg = (err.response?.data?.error || '').toLowerCase();
-      if (msg.includes('already been invoiced')) {
+      if (msg.includes('billing period has already been invoiced')) {
+        setSaveError('This billing period has already been invoiced for this agreement.');
+      } else if (msg.includes('already been invoiced')) {
         setSaveError('This estimate has already been converted to an invoice.');
       } else if (msg.includes('signed')) {
         setSaveError('Only signed estimates can be converted to invoices.');
@@ -361,7 +462,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       ? (!!selectedJob && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
       : source === 'estimate'
         ? (!!selectedEstimate && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-        : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
+        : source === 'agreement'
+          ? (!!selectedAgreement && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
+          : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
   );
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -401,11 +504,14 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             </button>
             <button
               className={`ib-source-btn${source === 'estimate' ? ' active' : ''}`}
-              onClick={() => { setSource('estimate'); setSelectedJob(null); }}
+              onClick={() => { setSource('estimate'); setSelectedJob(null); clearAgreement(); }}
             >
               Existing Estimate
             </button>
-            <button className="ib-source-btn disabled" disabled title="Future release">
+            <button
+              className={`ib-source-btn${source === 'agreement' ? ' active' : ''}`}
+              onClick={() => { setSource('agreement'); setSelectedJob(null); clearEstimate(); }}
+            >
               Recurring Agreement
             </button>
           </div>
@@ -521,6 +627,93 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                         <div className="ib-job-meta">
                           Signed {est.signed_at ? format(new Date(est.signed_at), 'MMM d, yyyy') : format(new Date(est.created_at), 'MMM d, yyyy')}
                           {est.client_address && <span className="ib-job-addr"> · {est.client_address}</span>}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Agreement picker — shown when source = 'agreement' */}
+        {source === 'agreement' && (
+          <div className="ib-section">
+            <p className="ib-section-label">Active Recurring Agreement <span className="ib-required">*</span></p>
+            {selectedAgreement ? (
+              <div className="ib-agr-card">
+                <div className="ib-agr-card-top">
+                  <div>
+                    <div className="ib-agr-card-title">{selectedAgreement.name}</div>
+                    <div className="ib-agr-card-client">{selectedAgreement.client_name}</div>
+                  </div>
+                  <div className="ib-agr-card-right">
+                    <span className="ib-agr-card-amount">${parseFloat(selectedAgreement.plan_price || 0).toFixed(2)}</span>
+                    <button className="ib-client-clear" onClick={clearAgreement} aria-label="Change agreement">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="ib-agr-card-meta">
+                  {CADENCE_LABELS[selectedAgreement.cadence] || selectedAgreement.cadence}
+                  {' · '}
+                  Coverage: {fmtPeriodFE(selectedAgreement.period_start, selectedAgreement.period_end)}
+                  {' · '}
+                  {selectedAgreement.payment_status === 'paid_in_advance'
+                    ? 'Paid in Advance'
+                    : selectedAgreement.payment_status === 'failed'
+                      ? 'Payment Failed'
+                      : selectedAgreement.payment_status === 'overdue'
+                        ? 'Overdue'
+                        : 'Pending'}
+                </div>
+                {selectedAgreement.period_already_invoiced && (
+                  <div className="ib-agr-card-warn">
+                    This billing period has already been invoiced.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="ib-job-search-wrap">
+                  <Search size={14} className="ib-search-icon" />
+                  <input
+                    className="ib-job-input"
+                    type="text"
+                    placeholder="Search by client, agreement name, or service…"
+                    value={agreementQuery}
+                    onChange={e => handleAgreementQuery(e.target.value)}
+                  />
+                </div>
+                <div className="ib-job-list">
+                  {agreementsLoading ? (
+                    <div className="ib-state">Loading…</div>
+                  ) : agreementsError ? (
+                    <div className="ib-state ib-state--error">{agreementsError}</div>
+                  ) : eligibleAgreements.length === 0 ? (
+                    <div className="ib-empty">
+                      <p className="ib-empty-primary">No active agreements found.</p>
+                      <p className="ib-empty-secondary">Create a recurring agreement on the client record to invoice from here.</p>
+                    </div>
+                  ) : (
+                    eligibleAgreements.map(agr => (
+                      <button
+                        key={agr.id}
+                        className={`ib-job-row${agr.period_already_invoiced ? ' ib-job-row--dim' : ''}`}
+                        onClick={() => selectAgreement(agr)}
+                      >
+                        <div className="ib-job-top">
+                          <span className="ib-job-client">{agr.client_name}</span>
+                          <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="ib-job-service"><span>{agr.name}</span>{agr.service_type ? <span className="ib-job-service-type"> · {agr.service_type}</span> : null}</div>
+                        <div className="ib-job-meta">
+                          {CADENCE_LABELS[agr.cadence] || agr.cadence}
+                          {' · '}
+                          {fmtPeriodFE(agr.period_start, agr.period_end)}
+                          {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
+                          {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
                         </div>
                       </button>
                     ))
