@@ -1107,6 +1107,9 @@ body {
   height: 3px;
   background: var(--sand);
 }
+.stat-card--accent-red::before   { background: var(--red);   }
+.stat-card--accent-green::before { background: var(--green); }
+.stat-card--accent-blue::before  { background: var(--blue);  }
 .stat-label {
   display: block;
   font-family: 'DM Mono', monospace;
@@ -1149,6 +1152,47 @@ body {
 .filter-tab.active { background: var(--navy); border-color: var(--navy); color: var(--white); }
 .filter-count { background: rgba(255,255,255,.15); border-radius: 999px; padding: 0 7px; font-size: 11px; }
 .filter-tab:not(.active) .filter-count { background: var(--lightgray); color: var(--slate); }
+
+/* ── Invoices page ───────────────────────────────────────── */
+.inv-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.inv-section-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--navy);
+}
+.inv-section-count {
+  font-size: 11px;
+  color: var(--steel);
+}
+.inv-table-row:hover td { background: var(--off) !important; }
+.inv-state {
+  padding: 28px 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--steel);
+}
+.inv-state--error { color: var(--red); }
+.inv-empty { padding: 36px 0; }
+.inv-empty-primary {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--slate);
+  margin: 0 0 4px;
+}
+.inv-empty-secondary {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--steel);
+  margin: 0;
+}
 
 /* ── Table wrap ──────────────────────────────────────────── */
 .table-wrap {
