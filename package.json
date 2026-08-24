@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --testPathPatterns=src/tests --forceExit",
+    "test": "jest --testPathPatterns=src/tests --forceExit --runInBand",
     "test:watch": "jest --testPathPatterns=src/tests --watch"
   },
   "jest": {

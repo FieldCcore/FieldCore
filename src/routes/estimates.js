@@ -140,8 +140,11 @@ router.post('/sign/:token', async (req, res) => {
 router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT e.*, c.name AS client_name, c.email AS client_email
-       FROM estimates e JOIN clients c ON c.id = e.client_id
+      `SELECT e.*, c.name AS client_name, c.email AS client_email,
+              inv.invoice_number AS converted_invoice_number
+       FROM estimates e
+       JOIN clients c ON c.id = e.client_id
+       LEFT JOIN invoices inv ON inv.id = e.converted_invoice_id
        WHERE e.id = $1 AND e.account_id = $2`,
       [req.params.id, req.accountId]
     );

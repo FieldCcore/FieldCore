@@ -181,24 +181,25 @@ function computeTotals(lineItems, discountType, discountValue, taxRate) {
 // ─── POST /api/invoices ───────────────────────────────────────────────────────
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const {
-    source_type    = 'JOB',
+    source_type       = 'JOB',
     job_id,
-    client_id:     bodyClientId,
+    client_id:        bodyClientId,
+    source_estimate_id,
     subject,
-    line_items:    reqLineItems,
+    line_items:       reqLineItems,
     discount_type,
     discount_value,
-    payment_terms  = 'due_on_receipt',
+    payment_terms     = 'due_on_receipt',
     due_date,
     issued_date,
     client_message,
     internal_notes,
     terms,
-    status:        reqStatus,
+    status:           reqStatus,
   } = req.body;
 
-  if (!['JOB', 'MANUAL'].includes(source_type)) {
-    return res.status(400).json({ error: 'source_type must be JOB or MANUAL' });
+  if (!['JOB', 'MANUAL', 'ESTIMATE'].includes(source_type)) {
+    return res.status(400).json({ error: 'source_type must be JOB, MANUAL, or ESTIMATE' });
   }
 
   const status = ['draft', 'pending'].includes(reqStatus) ? reqStatus : 'draft';
@@ -213,9 +214,12 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     );
     const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
 
-    let finalClientId = null;
-    let finalJobId    = null;
-    let baseLineItems = [];
+    let finalClientId         = null;
+    let finalJobId            = null;
+    let finalSourceEstimateId = null;
+    let finalSubject          = subject || null;
+    let finalClientMessage    = client_message || null;
+    let baseLineItems         = [];
 
     if (source_type === 'JOB') {
       if (!job_id) {
@@ -254,6 +258,43 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
             unit_price: parseFloat(job.amount || 0),
             taxable:    taxRate > 0,
           }];
+
+    } else if (source_type === 'ESTIMATE') {
+      if (!source_estimate_id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'source_estimate_id is required for ESTIMATE source' });
+      }
+      const estRes = await client.query(
+        `SELECT * FROM estimates WHERE id = $1 AND account_id = $2`,
+        [source_estimate_id, req.accountId]
+      );
+      const est = estRes.rows[0];
+      if (!est) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Estimate not found' });
+      }
+      if (est.status !== 'signed') {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ error: 'Only signed estimates can be converted to invoices' });
+      }
+      if (est.converted_invoice_id) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'This estimate has already been invoiced' });
+      }
+      finalClientId         = est.client_id;
+      finalSourceEstimateId = source_estimate_id;
+      if (!finalSubject) finalSubject = est.title || null;
+      if (!finalClientMessage && est.notes) finalClientMessage = est.notes;
+      const estItems = Array.isArray(est.line_items) ? est.line_items : [];
+      baseLineItems = (Array.isArray(reqLineItems) && reqLineItems.length > 0)
+        ? reqLineItems
+        : estItems.map(item => ({
+            name:        item.description || item.name || 'Service',
+            description: '',
+            quantity:    parseFloat(item.quantity) || 1,
+            unit_price:  parseFloat(item.unit_price ?? item.amount) || 0,
+            taxable:     true,
+          }));
 
     } else {
       if (!bodyClientId) {
@@ -299,23 +340,30 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 
     const { rows } = await client.query(
       `INSERT INTO invoices (
-         account_id, job_id, client_id, source_type, invoice_number,
+         account_id, job_id, client_id, source_type, source_estimate_id, invoice_number,
          amount, tax_amount, subtotal, discount_type, discount_value, discount_amount,
          line_items, subject, issued_date, payment_terms, due_date,
          client_message, internal_notes, terms, status, created_by
        ) VALUES (
-         $1,$2,$3,$4,$5,
-         $6,$7,$8,$9,$10,$11,
-         $12,$13,$14,$15,$16,
-         $17,$18,$19,$20,$21
+         $1,$2,$3,$4,$5,$6,
+         $7,$8,$9,$10,$11,$12,
+         $13,$14,$15,$16,$17,
+         $18,$19,$20,$21,$22
        ) RETURNING *`,
       [
-        req.accountId, finalJobId, finalClientId, source_type, invoiceNumber,
+        req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, invoiceNumber,
         total, taxAmount, subtotal, discount_type || null, parseFloat(discount_value) || null, discountAmount || null,
-        JSON.stringify(validItems), subject || null, finalIssuedDate, payment_terms, finalDueDate,
-        client_message || null, internal_notes || null, terms || null, status, req.userId,
+        JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
+        finalClientMessage, internal_notes || null, terms || null, status, req.userId,
       ]
     );
+
+    if (source_type === 'ESTIMATE') {
+      await client.query(
+        `UPDATE estimates SET converted_invoice_id = $1 WHERE id = $2 AND account_id = $3`,
+        [rows[0].id, finalSourceEstimateId, req.accountId]
+      );
+    }
 
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
@@ -541,6 +589,42 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
     );
 
     res.json({ rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/invoices/eligible-estimates ────────────────────────────────────
+router.get('/eligible-estimates', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { q = '' } = req.query;
+    const params = [req.accountId];
+    const conds  = [`e.status = 'signed'`, `e.converted_invoice_id IS NULL`];
+
+    const term = q.trim();
+    if (term) {
+      params.push(`%${term}%`);
+      const p = params.length;
+      conds.push(
+        `(c.name ILIKE $${p} OR c.email ILIKE $${p} OR e.title ILIKE $${p} OR e.amount::text ILIKE $${p})`
+      );
+    }
+
+    const { rows } = await pool.query(
+      `SELECT e.id, e.title, e.amount, e.tax_amount, e.status, e.notes,
+              e.line_items, e.created_at, e.signed_at, e.converted_invoice_id,
+              c.id AS client_id, c.name AS client_name,
+              c.email AS client_email, c.address AS client_address
+       FROM estimates e
+       JOIN clients c ON c.id = e.client_id
+       WHERE e.account_id = $1
+         AND ${conds.join(' AND ')}
+       ORDER BY e.signed_at DESC NULLS LAST, e.created_at DESC
+       LIMIT 50`,
+      params
+    );
+
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

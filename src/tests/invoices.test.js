@@ -13,6 +13,7 @@ const jwt     = require('jsonwebtoken');
 const bcrypt  = require('bcryptjs');
 const app     = require('../app');
 const pool    = require('../db/pool');
+const { runMigrations } = require('../db/migrate');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -30,8 +31,11 @@ let clientId, techId;
 let pendingInvId, paidInvId, voidInvId, overdueInvId;
 // Extra jobs for eligible-jobs tests
 let eligibleJobId, incompleteJobId;
+// Estimates for eligible-estimates + ESTIMATE-source tests
+let signedEstimateId, draftEstimateId, alreadyConvertedEstimateId;
 
 beforeAll(async () => {
+  await runMigrations();
   const hash = await bcrypt.hash('pw', 10);
 
   // Primary account
@@ -147,6 +151,33 @@ beforeAll(async () => {
     [accountId, clientId, techId, TODAY + 'T16:00:00Z']
   );
   incompleteJobId = ij.id;
+
+  // Signed estimate — eligible for conversion
+  const { rows: [se] } = await pool.query(
+    `INSERT INTO estimates (account_id, client_id, title, line_items, amount, tax_amount, status, signed_at)
+     VALUES ($1,$2,'HVAC Proposal','[{"description":"HVAC Service","amount":500},{"description":"Parts","amount":150}]',650,0,'signed',NOW())
+     RETURNING id`,
+    [accountId, clientId]
+  );
+  signedEstimateId = se.id;
+
+  // Draft estimate — must NOT appear in eligible-estimates
+  const { rows: [de] } = await pool.query(
+    `INSERT INTO estimates (account_id, client_id, title, line_items, amount, status)
+     VALUES ($1,$2,'Draft Proposal','[{"description":"Draft Item","amount":100}]',100,'draft')
+     RETURNING id`,
+    [accountId, clientId]
+  );
+  draftEstimateId = de.id;
+
+  // Already-converted estimate — must NOT appear in eligible-estimates (409 on creation)
+  const { rows: [ce] } = await pool.query(
+    `INSERT INTO estimates (account_id, client_id, title, line_items, amount, status, signed_at, converted_invoice_id)
+     VALUES ($1,$2,'Already Converted','[{"description":"Prior Work","amount":200}]',200,'signed',NOW(),$3)
+     RETURNING id`,
+    [accountId, clientId, pendingInvId]
+  );
+  alreadyConvertedEstimateId = ce.id;
 });
 
 afterAll(async () => {
@@ -906,5 +937,190 @@ describe('POST /api/invoices — JOB source still works', () => {
       .expect(400);
 
     expect(res.body.error).toMatch(/source_type/i);
+  });
+});
+
+// ── GET /api/invoices/eligible-estimates ──────────────────────────────────────
+
+describe('GET /api/invoices/eligible-estimates — auth', () => {
+  it('returns 401 with no token', async () => {
+    const res = await request(app).get('/api/invoices/eligible-estimates');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 for tech role', async () => {
+    const techToken = makeToken(techId, accountId, 'tech');
+    const res = await request(app)
+      .get('/api/invoices/eligible-estimates')
+      .set('Authorization', `Bearer ${techToken}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/invoices/eligible-estimates — eligibility', () => {
+  it('returns only signed estimates with no converted_invoice_id', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-estimates')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    const ids = res.body.map(e => e.id);
+    expect(ids).toContain(signedEstimateId);
+    expect(ids).not.toContain(draftEstimateId);
+    expect(ids).not.toContain(alreadyConvertedEstimateId);
+  });
+
+  it('each row has required fields', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-estimates')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const row = res.body.find(e => e.id === signedEstimateId);
+    expect(row).toBeDefined();
+    expect(row).toHaveProperty('title');
+    expect(row).toHaveProperty('amount');
+    expect(row).toHaveProperty('client_id');
+    expect(row).toHaveProperty('client_name');
+    expect(row).toHaveProperty('line_items');
+    expect(row.status).toBe('signed');
+  });
+
+  it('search by title filters results', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-estimates?q=HVAC')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.some(e => e.id === signedEstimateId)).toBe(true);
+  });
+
+  it('tenant isolation — account B cannot see account A estimates', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-estimates')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(200);
+
+    const ids = res.body.map(e => e.id);
+    expect(ids).not.toContain(signedEstimateId);
+  });
+});
+
+// ── POST /api/invoices — ESTIMATE source ─────────────────────────────────────
+
+describe('POST /api/invoices — ESTIMATE source', () => {
+  let createdFromEstimateId;
+
+  it('creates invoice from signed estimate', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:        'ESTIMATE',
+        source_estimate_id: signedEstimateId,
+        payment_terms:      'net_30',
+      })
+      .expect(201);
+
+    createdFromEstimateId = res.body.id;
+    expect(res.body.source_type).toBe('ESTIMATE');
+    expect(res.body.source_estimate_id).toBe(signedEstimateId);
+    expect(res.body.client_id).toBe(clientId);
+    expect(res.body.subject).toBe('HVAC Proposal');
+    expect(res.body.status).toBe('draft');
+    expect(res.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    const li = Array.isArray(res.body.line_items) ? res.body.line_items : JSON.parse(res.body.line_items || '[]');
+    expect(Array.isArray(li)).toBe(true);
+    expect(li.length).toBe(2);
+  });
+
+  it('estimate is marked converted after invoice creation', async () => {
+    const { rows: [est] } = await pool.query(
+      `SELECT converted_invoice_id FROM estimates WHERE id = $1`, [signedEstimateId]
+    );
+    expect(est.converted_invoice_id).toBe(createdFromEstimateId);
+  });
+
+  it('totals reconcile with estimate line items', async () => {
+    const res = await request(app)
+      .get(`/api/invoices/${createdFromEstimateId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    // HVAC Service $500 + Parts $150 = $650 subtotal, no tax in test env
+    expect(parseFloat(res.body.subtotal)).toBeCloseTo(650, 1);
+  });
+
+  it('409 when estimate already has converted_invoice_id', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'ESTIMATE', source_estimate_id: signedEstimateId })
+      .expect(409);
+
+    expect(res.body.error).toMatch(/already been invoiced/i);
+  });
+
+  it('409 when estimate was pre-converted (alreadyConvertedEstimateId)', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'ESTIMATE', source_estimate_id: alreadyConvertedEstimateId })
+      .expect(409);
+
+    expect(res.body.error).toMatch(/already been invoiced/i);
+  });
+
+  it('422 when estimate status is not signed', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'ESTIMATE', source_estimate_id: draftEstimateId })
+      .expect(422);
+
+    expect(res.body.error).toMatch(/signed/i);
+  });
+
+  it('404 when estimate belongs to another account', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ source_type: 'ESTIMATE', source_estimate_id: signedEstimateId })
+      .expect(404);
+
+    expect(res.body.error).toMatch(/estimate/i);
+  });
+
+  it('400 when source_estimate_id is missing', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'ESTIMATE' })
+      .expect(400);
+
+    expect(res.body.error).toMatch(/source_estimate_id/i);
+  });
+
+  it('custom subject overrides estimate title', async () => {
+    // Create a fresh signed estimate for this test
+    const { rows: [freshEst] } = await pool.query(
+      `INSERT INTO estimates (account_id, client_id, title, line_items, amount, status, signed_at)
+       VALUES ($1,$2,'Original Title','[{"description":"Item","amount":50}]',50,'signed',NOW())
+       RETURNING id`,
+      [accountId, clientId]
+    );
+
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:        'ESTIMATE',
+        source_estimate_id: freshEst.id,
+        subject:            'Custom Subject',
+      })
+      .expect(201);
+
+    expect(res.body.subject).toBe('Custom Subject');
   });
 });

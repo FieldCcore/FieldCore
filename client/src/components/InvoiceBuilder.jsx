@@ -35,7 +35,7 @@ function lineTotal(item) {
 
 export default function InvoiceBuilder({ onClose, onCreated }) {
   // ── source ──────────────────────────────────────────────────────────────────
-  const [source, setSource] = useState('blank'); // 'blank' | 'job'
+  const [source, setSource] = useState('blank'); // 'blank' | 'job' | 'estimate'
 
   // ── settings (tax rate + preview invoice number) ─────────────────────────
   const [taxRate, setTaxRate]           = useState(0);
@@ -57,6 +57,14 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobsError, setJobsError]     = useState('');
   const jobDebounce = useRef(null);
+
+  // ── estimate selection (source = 'estimate') ─────────────────────────────
+  const [estimateQuery, setEstimateQuery]       = useState('');
+  const [eligibleEstimates, setEligibleEstimates] = useState([]);
+  const [estimatesLoading, setEstimatesLoading] = useState(false);
+  const [selectedEstimate, setSelectedEstimate] = useState(null);
+  const [estimatesError, setEstimatesError]     = useState('');
+  const estimateDebounce = useRef(null);
 
   // ── header fields ────────────────────────────────────────────────────────
   const [subject, setSubject]             = useState('For Services Rendered');
@@ -90,10 +98,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       .catch(() => {});
   }, []);
 
-  // ── on source change to 'job': load eligible jobs ─────────────────────────
+  // ── on source change: load eligible data ─────────────────────────────────
   useEffect(() => {
-    if (source !== 'job') return;
-    loadEligibleJobs('');
+    if (source === 'job') loadEligibleJobs('');
+    if (source === 'estimate') loadEligibleEstimates('');
   }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── close client dropdown on outside click ───────────────────────────────
@@ -139,6 +147,50 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setSelectedClient(null);
     setClientQuery('');
     setClientResults([]);
+  }
+
+  // ── eligible estimates ───────────────────────────────────────────────────
+  function loadEligibleEstimates(q = '') {
+    setEstimatesLoading(true);
+    setEstimatesError('');
+    const qs = new URLSearchParams();
+    if (q.trim()) qs.set('q', q.trim());
+    api.get(`/invoices/eligible-estimates?${qs}`)
+      .then(r => setEligibleEstimates(Array.isArray(r.data) ? r.data : []))
+      .catch(() => { setEstimatesError('Could not load eligible estimates.'); })
+      .finally(() => setEstimatesLoading(false));
+  }
+
+  function handleEstimateQuery(val) {
+    setEstimateQuery(val);
+    clearTimeout(estimateDebounce.current);
+    estimateDebounce.current = setTimeout(() => loadEligibleEstimates(val), 250);
+  }
+
+  function selectEstimate(est) {
+    setSelectedEstimate(est);
+    setSelectedClient({ id: est.client_id, name: est.client_name, email: est.client_email, address: est.client_address });
+    setClientQuery(est.client_name);
+    setSubject(est.title || 'For Services Rendered');
+    const estItems = Array.isArray(est.line_items) ? est.line_items : [];
+    setLineItems(estItems.length > 0
+      ? estItems.map((item, i) => ({
+          _id:        `est-line-${i}`,
+          name:       item.description || item.name || 'Service',
+          description:'',
+          quantity:   String(parseFloat(item.quantity) || 1),
+          unit_price: String(parseFloat(item.unit_price ?? item.amount) || 0),
+          taxable:    true,
+        }))
+      : [newLineItem()]
+    );
+    if (est.notes) setClientMessage(est.notes);
+  }
+
+  function clearEstimate() {
+    setSelectedEstimate(null);
+    setEstimateQuery('');
+    setEligibleEstimates([]);
   }
 
   // ── eligible jobs ────────────────────────────────────────────────────────
@@ -226,16 +278,22 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   async function handleSave(action) {
     setSaveError('');
 
+    if (source === 'job' && !selectedJob) {
+      setSaveError('Please select a completed job.');
+      return;
+    }
+    if (source === 'estimate' && !selectedEstimate) {
+      setSaveError('Please select a signed estimate.');
+      return;
+    }
     const clientId = source === 'job'
       ? (selectedJob?.client_id || selectedClient?.id)
-      : selectedClient?.id;
+      : source === 'estimate'
+        ? selectedEstimate?.client_id
+        : selectedClient?.id;
 
     if (!clientId) {
       setSaveError('Please select a client.');
-      return;
-    }
-    if (source === 'job' && !selectedJob) {
-      setSaveError('Please select a completed job.');
       return;
     }
     const validItems = lineItems.filter(i => i.name.trim() || parseFloat(i.unit_price) > 0);
@@ -247,8 +305,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setSaving(true);
     try {
       const payload = {
-        source_type:    source === 'job' ? 'JOB' : 'MANUAL',
-        ...(source === 'job' ? { job_id: selectedJob.id } : { client_id: clientId }),
+        source_type:    source === 'job' ? 'JOB' : source === 'estimate' ? 'ESTIMATE' : 'MANUAL',
+        ...(source === 'job'      ? { job_id: selectedJob.id } : {}),
+        ...(source === 'estimate' ? { source_estimate_id: selectedEstimate.id } : {}),
+        ...(source === 'blank'    ? { client_id: clientId } : {}),
         subject:        subject.trim() || 'For Services Rendered',
         issued_date:    issuedDate,
         payment_terms:  paymentTerms,
@@ -278,7 +338,11 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       onCreated(res.data);
     } catch (err) {
       const msg = (err.response?.data?.error || '').toLowerCase();
-      if (msg.includes('already') || msg.includes('duplicate')) {
+      if (msg.includes('already been invoiced')) {
+        setSaveError('This estimate has already been converted to an invoice.');
+      } else if (msg.includes('signed')) {
+        setSaveError('Only signed estimates can be converted to invoices.');
+      } else if (msg.includes('already') || msg.includes('duplicate')) {
         setSaveError('An invoice already exists for this job.');
       } else if (msg.includes('complete')) {
         setSaveError('Job must be completed before invoicing.');
@@ -295,7 +359,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const canSave = !saving && (
     source === 'job'
       ? (!!selectedJob && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
-      : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
+      : source === 'estimate'
+        ? (!!selectedEstimate && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
+        : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
   );
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -323,17 +389,20 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           <div className="ib-source-row">
             <button
               className={`ib-source-btn${source === 'blank' ? ' active' : ''}`}
-              onClick={() => { setSource('blank'); setSelectedJob(null); }}
+              onClick={() => { setSource('blank'); setSelectedJob(null); setSelectedEstimate(null); }}
             >
               Blank Invoice
             </button>
             <button
               className={`ib-source-btn${source === 'job' ? ' active' : ''}`}
-              onClick={() => setSource('job')}
+              onClick={() => { setSource('job'); setSelectedEstimate(null); clearEstimate(); }}
             >
               Completed Job
             </button>
-            <button className="ib-source-btn disabled" disabled title="Coming soon">
+            <button
+              className={`ib-source-btn${source === 'estimate' ? ' active' : ''}`}
+              onClick={() => { setSource('estimate'); setSelectedJob(null); }}
+            >
               Existing Estimate
             </button>
             <button className="ib-source-btn disabled" disabled title="Future release">
@@ -390,6 +459,77 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             )}
           </div>
         </div>
+
+        {/* Estimate picker — shown when source = 'estimate' */}
+        {source === 'estimate' && (
+          <div className="ib-section">
+            <p className="ib-section-label">Signed Estimate <span className="ib-required">*</span></p>
+            {selectedEstimate ? (
+              <div className="ib-est-card">
+                <div className="ib-est-card-top">
+                  <div>
+                    <div className="ib-est-card-title">{selectedEstimate.title}</div>
+                    <div className="ib-est-card-client">{selectedEstimate.client_name}</div>
+                  </div>
+                  <div className="ib-est-card-right">
+                    <span className="ib-est-card-amount">${parseFloat(selectedEstimate.amount || 0).toFixed(2)}</span>
+                    <button className="ib-client-clear" onClick={clearEstimate} aria-label="Change estimate">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+                {selectedEstimate.signed_at && (
+                  <div className="ib-est-card-meta">
+                    Signed {format(new Date(selectedEstimate.signed_at), 'MMM d, yyyy')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="ib-job-search-wrap">
+                  <Search size={14} className="ib-search-icon" />
+                  <input
+                    className="ib-job-input"
+                    type="text"
+                    placeholder="Search by client, title, or amount…"
+                    value={estimateQuery}
+                    onChange={e => handleEstimateQuery(e.target.value)}
+                  />
+                </div>
+                <div className="ib-job-list">
+                  {estimatesLoading ? (
+                    <div className="ib-state">Loading…</div>
+                  ) : estimatesError ? (
+                    <div className="ib-state ib-state--error">{estimatesError}</div>
+                  ) : eligibleEstimates.length === 0 ? (
+                    <div className="ib-empty">
+                      <p className="ib-empty-primary">No signed estimates are available.</p>
+                      <p className="ib-empty-secondary">Estimates become eligible after the client signs them and they have not yet been invoiced.</p>
+                    </div>
+                  ) : (
+                    eligibleEstimates.map(est => (
+                      <button
+                        key={est.id}
+                        className="ib-job-row"
+                        onClick={() => selectEstimate(est)}
+                      >
+                        <div className="ib-job-top">
+                          <span className="ib-job-client">{est.client_name}</span>
+                          <span className="ib-job-amount">${parseFloat(est.amount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="ib-job-service">{est.title}</div>
+                        <div className="ib-job-meta">
+                          Signed {est.signed_at ? format(new Date(est.signed_at), 'MMM d, yyyy') : format(new Date(est.created_at), 'MMM d, yyyy')}
+                          {est.client_address && <span className="ib-job-addr"> · {est.client_address}</span>}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Job picker — shown when source = 'job' */}
         {source === 'job' && (

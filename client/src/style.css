@@ -2042,6 +2042,20 @@ body {
   margin: 2px 0;
 }
 
+/* Estimate selected card */
+.ib-est-card {
+  border: 1.5px solid var(--sand);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fffdf9;
+}
+.ib-est-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ib-est-card-title { font-size: 0.85rem; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+.ib-est-card-client { font-size: 0.78rem; color: var(--slate); }
+.ib-est-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ib-est-card-amount { font-size: 0.9rem; font-weight: 700; color: var(--navy); font-family: 'DM Mono', monospace; }
+.ib-est-card-meta { font-size: 0.75rem; color: var(--steel); margin-top: 4px; }
+
 /* Textareas */
 .ib-textarea {
   width: 100%;

@@ -124,7 +124,9 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
   const [sending,      setSending]      = useState(false);
   const [copied,       setCopied]       = useState(false);
   const [converting,   setConverting]   = useState(false);
-  const [convertedJobId, setConvertedJobId] = useState(init.converted_job_id || null);
+  const [convertedJobId,     setConvertedJobId]     = useState(init.converted_job_id || null);
+  const [convertedInvoiceId, setConvertedInvoiceId] = useState(init.converted_invoice_id || null);
+  const [convertedInvoiceNum, setConvertedInvoiceNum] = useState(init.converted_invoice_number || null);
   const [convertError, setConvertError] = useState('');
 
   async function convertToJob() {
@@ -247,7 +249,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           {['draft','sent'].includes(estimate.status) && (
             <button className="btn-void" onClick={voidEst}>Expire</button>
           )}
-          {estimate.status === 'signed' && !convertedJobId && (
+          {estimate.status === 'signed' && !convertedJobId && !convertedInvoiceId && (
             <button className="btn-primary" onClick={convertToJob} disabled={converting}>
               {converting ? 'Converting…' : 'Convert to Job'}
             </button>
@@ -256,6 +258,14 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>✓ Converted to Job</span>
               <a href={`/jobs`} style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Jobs →</a>
+            </div>
+          )}
+          {convertedInvoiceId && (
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>
+                ✓ Converted to Invoice{convertedInvoiceNum ? ` #${convertedInvoiceNum}` : ''}
+              </span>
+              <a href={`/invoices`} style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Invoices →</a>
             </div>
           )}
           {convertError && (

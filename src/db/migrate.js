@@ -1849,6 +1849,12 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_inv_seq_account ON invoice_number_sequences(account_id)`,
 
+  // ── ESTIMATE → INVOICE CONVERSION V1 ─────────────────────────────────────
+  // Traceability: invoice records which estimate it was created from
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source_estimate_id UUID REFERENCES estimates(id) ON DELETE SET NULL`,
+  // Traceability: estimate records which invoice was created from it (prevents re-conversion)
+  `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL`,
+
   // ── CUSTOMERS V1 ANALYTICS ────────────────────────────────────────────────
   // Customer inactivity policy on business_profiles — drives At-Risk/Churn engine.
   // NULL = not configured (status card shown). INT = days before a repeat customer
