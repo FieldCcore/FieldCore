@@ -2069,6 +2069,36 @@ body {
 .ib-agr-invoiced { color: #b45309; font-weight: 600; }
 .ib-job-row--dim { opacity: 0.6; }
 
+/* Inline agreement creation form */
+.ib-inline-agr {
+  border: 1.5px solid var(--lightgray);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #f9f9f8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ib-inline-agr-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 2px;
+}
+.ib-inline-agr-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ib-inline-agr-row .ib-field { flex: 1; min-width: 160px; }
+.ib-field--grow { flex-grow: 1; }
+.ib-inline-agr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 /* ── Universal Autocomplete component ───────────────────── */
 .ac-wrap { position: relative; }
 .ac-input-row {

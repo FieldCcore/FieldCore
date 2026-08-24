@@ -14,7 +14,8 @@ const BILLING_CADENCE_VALUES = [
   'biweekly', // legacy alias
 ];
 const BILLING_TRIGGER_VALUES = ['every_service','first_scheduled','first_completed','first_day','specific_day'];
-const EXTRA_POLICY_VALUES    = ['all_included','max_n','rollover','manual_review'];
+const EXTRA_POLICY_VALUES         = ['all_included','max_n','rollover','manual_review'];
+const MISSED_SERVICE_POLICY_VALUES = ['no_adjustment','credit','rollover','manual_review'];
 const STATUS_VALUES          = ['active','paused','cancelled','expired'];
 const PAYMENT_VALUES         = ['paid_in_advance','pending','failed','overdue'];
 
@@ -63,6 +64,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     extra_occurrence_policy = 'all_included',
     service_interval_days = null,
     plan_price = 0, payment_status = 'pending',
+    missed_service_policy = 'no_adjustment',
     notes, line_items = [], started_at, next_billing_date,
   } = req.body;
 
@@ -76,6 +78,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     return res.status(400).json({ error: 'invalid billing_trigger' });
   if (!EXTRA_POLICY_VALUES.includes(extra_occurrence_policy))
     return res.status(400).json({ error: 'invalid extra_occurrence_policy' });
+  if (!MISSED_SERVICE_POLICY_VALUES.includes(missed_service_policy))
+    return res.status(400).json({ error: 'invalid missed_service_policy' });
   if (!PAYMENT_VALUES.includes(payment_status))
     return res.status(400).json({ error: 'invalid payment_status' });
   if (billing_trigger === 'specific_day') {
@@ -98,9 +102,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
          (account_id, client_id, name, service_type, service_address,
           cadence, billing_cadence, billing_trigger, billing_day,
           included_services_per_period, extra_occurrence_policy, service_interval_days,
-          plan_price, payment_status, notes, line_items,
+          missed_service_policy, plan_price, payment_status, notes, line_items,
           started_at, next_billing_date, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,COALESCE($17,CURRENT_DATE),$18,$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,COALESCE($18,CURRENT_DATE),$19,$20)
        RETURNING *`,
       [
         req.accountId, client_id, name.trim(), service_type || null, service_address || null,
@@ -109,6 +113,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         Math.max(1, parseInt(included_services_per_period, 10) || 1),
         extra_occurrence_policy,
         cadence === 'custom' ? parseInt(service_interval_days, 10) : null,
+        missed_service_policy,
         parseFloat(plan_price) || 0, payment_status,
         notes || null, JSON.stringify(Array.isArray(line_items) ? line_items : []),
         started_at || null, next_billing_date || null, req.userId,
@@ -145,6 +150,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     'name','service_type','service_address',
     'cadence','billing_cadence','billing_trigger','billing_day',
     'included_services_per_period','extra_occurrence_policy','service_interval_days',
+    'missed_service_policy',
     'plan_price','status','payment_status','notes','line_items',
     'started_at','next_billing_date',
   ];
@@ -160,6 +166,8 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     return res.status(400).json({ error: 'invalid billing_trigger' });
   if (req.body.extra_occurrence_policy && !EXTRA_POLICY_VALUES.includes(req.body.extra_occurrence_policy))
     return res.status(400).json({ error: 'invalid extra_occurrence_policy' });
+  if (req.body.missed_service_policy && !MISSED_SERVICE_POLICY_VALUES.includes(req.body.missed_service_policy))
+    return res.status(400).json({ error: 'invalid missed_service_policy' });
 
   for (const key of allowed) {
     if (key in req.body) {

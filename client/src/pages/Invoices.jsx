@@ -5,7 +5,6 @@ import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, C
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
 import InvoiceBuilder from '../components/InvoiceBuilder';
-import AgreementBuilder from '../components/AgreementBuilder';
 import StatusBadge from '../components/StatusBadge';
 
 const PAGE_SIZE = 50;
@@ -83,8 +82,6 @@ export default function Invoices() {
   const [total, setTotal]       = useState(0);
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew]   = useState(false);
-  const [showAgreement, setShowAgreement] = useState(false);
-  const [editingAgreement, setEditingAgreement] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [searchInput, setSearchInput] = useState('');
@@ -217,17 +214,9 @@ export default function Invoices() {
       {/* ── Page header ───────────────────────────────────────── */}
       <div className="page-header">
         <h1>Invoices</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-secondary"
-            onClick={() => { setEditingAgreement(null); setShowAgreement(true); }}
-          >
-            + New Agreement
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-            + New Invoice
-          </button>
-        </div>
+        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
+          + New Invoice
+        </button>
       </div>
 
       {/* ── Invoice Overview ──────────────────────────────────── */}
@@ -527,14 +516,6 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* ── Agreement Builder ─────────────────────────────────── */}
-      {showAgreement && (
-        <AgreementBuilder
-          existing={editingAgreement}
-          onClose={() => { setShowAgreement(false); setEditingAgreement(null); }}
-          onSaved={() => { setShowAgreement(false); setEditingAgreement(null); }}
-        />
-      )}
     </div>
   );
 }

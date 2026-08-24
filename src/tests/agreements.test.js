@@ -175,6 +175,41 @@ describe('Agreements — create', () => {
     expect(res.status).toBe(201);
     expect(res.body.extra_occurrence_policy).toBe('max_n');
   });
+
+  it('creates agreement with missed_service_policy = credit', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Credit Missed Agreement',
+        missed_service_policy: 'credit',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('credit');
+  });
+
+  it('creates agreement with missed_service_policy = rollover', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Rollover Missed Agreement',
+        missed_service_policy: 'rollover',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('rollover');
+  });
+
+  it('defaults missed_service_policy to no_adjustment', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Default Missed Policy', plan_price: 50 });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('no_adjustment');
+  });
 });
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -241,6 +276,15 @@ describe('Agreements — validation', () => {
       .send({ client_id: clientId, name: 'Test', extra_occurrence_policy: 'ignore', plan_price: 100 });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/extra_occurrence_policy/i);
+  });
+
+  it('rejects invalid missed_service_policy', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Test', missed_service_policy: 'delete', plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/missed_service_policy/i);
   });
 });
 

@@ -1998,6 +1998,12 @@ const MIGRATIONS = [
   // Interval in days for custom cadence values
   `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS service_interval_days INT`,
 
+  // What to do when a scheduled service is missed — does not automatically change billing
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS missed_service_policy TEXT NOT NULL DEFAULT 'no_adjustment'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_missed_service_policy_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_missed_service_policy_check
+     CHECK (missed_service_policy IN ('no_adjustment','credit','rollover','manual_review'))`,
+
   // Expand agreement_invoice_periods to track occurrence-level coverage
   `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS included_occurrence_count INT`,
   `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS used_occurrence_count INT NOT NULL DEFAULT 0`,

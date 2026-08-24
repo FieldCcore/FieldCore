@@ -798,9 +798,14 @@ router.get('/eligible-estimates', requireAuth, requireRole('owner', 'manager'), 
 // ─── GET /api/invoices/eligible-agreements ────────────────────────────────────
 router.get('/eligible-agreements', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const { q = '' } = req.query;
+    const { q = '', client_id = '' } = req.query;
     const params = [req.accountId];
     const conds  = [`a.status = 'active'`];
+
+    if (client_id.trim()) {
+      params.push(client_id.trim());
+      conds.push(`a.client_id = $${params.length}`);
+    }
 
     const term = q.trim();
     if (term) {

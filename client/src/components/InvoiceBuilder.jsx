@@ -1,3 +1,4 @@
+'use strict';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format, addDays } from 'date-fns';
 import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
@@ -20,12 +21,60 @@ const TERM_OPTIONS = [
 const TERM_DAYS = { net_7: 7, net_15: 15, net_30: 30, net_45: 45, net_60: 60, net_90: 90 };
 
 const CADENCE_LABELS = {
-  weekly:    'Every week',
-  biweekly:  'Every 2 weeks',
-  monthly:   'Monthly',
-  quarterly: 'Quarterly',
-  annual:    'Annually',
+  weekly:        'Every week',
+  every_2_weeks: 'Every 2 weeks',
+  every_3_weeks: 'Every 3 weeks',
+  every_4_weeks: 'Every 4 weeks',
+  biweekly:      'Every 2 weeks',
+  monthly:       'Monthly',
+  quarterly:     'Quarterly',
+  annual:        'Annually',
+  custom:        'Custom interval',
+  every_service: 'Every service',
 };
+
+const AGR_CADENCE_OPTIONS = [
+  { value: 'weekly',        label: 'Weekly' },
+  { value: 'every_2_weeks', label: 'Every 2 Weeks' },
+  { value: 'every_3_weeks', label: 'Every 3 Weeks' },
+  { value: 'every_4_weeks', label: 'Every 4 Weeks' },
+  { value: 'monthly',       label: 'Monthly' },
+  { value: 'quarterly',     label: 'Quarterly' },
+  { value: 'annual',        label: 'Annual' },
+  { value: 'custom',        label: 'Custom…' },
+];
+
+const AGR_BILLING_CADENCE_OPTIONS = [
+  { value: 'every_service', label: 'Every Service' },
+  { value: 'weekly',        label: 'Weekly' },
+  { value: 'every_2_weeks', label: 'Every 2 Weeks' },
+  { value: 'monthly',       label: 'Monthly' },
+  { value: 'quarterly',     label: 'Quarterly' },
+  { value: 'annual',        label: 'Annual' },
+  { value: 'custom',        label: 'Custom…' },
+];
+
+const AGR_BILLING_TRIGGER_OPTIONS = [
+  { value: 'first_day',       label: 'First day of billing period' },
+  { value: 'specific_day',    label: 'Specific day of month' },
+  { value: 'first_scheduled', label: 'First scheduled service' },
+  { value: 'first_completed', label: 'First completed service' },
+  { value: 'every_service',   label: 'Every service occurrence' },
+];
+
+const AGR_EXTRA_POLICY_OPTIONS = [
+  { value: 'all_included',  label: 'All scheduled visits included' },
+  { value: 'max_n',         label: 'Max N included — bill extras separately' },
+  { value: 'rollover',      label: 'Roll extra visit into next period' },
+  { value: 'manual_review', label: 'Flag for manual review' },
+];
+
+const AGR_MISSED_POLICY_OPTIONS = [
+  { value: 'no_adjustment', label: 'No adjustment' },
+  { value: 'credit',        label: 'Issue credit' },
+  { value: 'rollover',      label: 'Roll forward to next period' },
+  { value: 'manual_review', label: 'Flag for manual review' },
+];
 
 function newLineItem() {
   return {
@@ -101,7 +150,7 @@ function ServiceDropdown({ value, onChange, onServiceSelect }) {
 
   function handleKeyDown(e) {
     if (!open) return;
-    const total = results.length + 1; // +1 for custom item row
+    const total = results.length + 1;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActiveIdx(i => (i < total - 1 ? i + 1 : 0));
@@ -178,6 +227,182 @@ function ServiceDropdown({ value, onChange, onServiceSelect }) {
   );
 }
 
+// ── InlineAgreementForm — expands inside the agreement source section ──────────
+function InlineAgreementForm({ clientId, onSaved, onCancel }) {
+  const [agrName,           setAgrName]           = useState('');
+  const [agrServiceType,    setAgrServiceType]    = useState('');
+  const [agrCadence,        setAgrCadence]        = useState('monthly');
+  const [agrSvcIntervalDays,setAgrSvcIntervalDays]= useState('');
+  const [agrBillingCadence, setAgrBillingCadence] = useState('monthly');
+  const [agrBillingTrigger, setAgrBillingTrigger] = useState('first_day');
+  const [agrBillingDay,     setAgrBillingDay]     = useState('');
+  const [agrIncluded,       setAgrIncluded]       = useState('1');
+  const [agrExtraPolicy,    setAgrExtraPolicy]    = useState('all_included');
+  const [agrMissedPolicy,   setAgrMissedPolicy]   = useState('no_adjustment');
+  const [agrPlanPrice,      setAgrPlanPrice]      = useState('');
+  const [agrStartedAt,      setAgrStartedAt]      = useState(TODAY);
+  const [agrNotes,          setAgrNotes]          = useState('');
+  const [saving,            setSaving]            = useState(false);
+  const [error,             setError]             = useState('');
+
+  const canSave = !saving
+    && agrName.trim().length > 0
+    && parseFloat(agrPlanPrice) > 0
+    && (agrCadence !== 'custom' || parseInt(agrSvcIntervalDays, 10) > 0)
+    && (agrBillingTrigger !== 'specific_day'
+        || (parseInt(agrBillingDay, 10) >= 1 && parseInt(agrBillingDay, 10) <= 28));
+
+  async function handleCreate() {
+    if (!canSave) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api.post('/agreements', {
+        client_id:                    clientId,
+        name:                         agrName.trim(),
+        service_type:                 agrServiceType.trim() || null,
+        cadence:                      agrCadence,
+        billing_cadence:              agrBillingCadence,
+        billing_trigger:              agrBillingTrigger,
+        billing_day:                  agrBillingTrigger === 'specific_day' ? parseInt(agrBillingDay, 10) : null,
+        included_services_per_period: parseInt(agrIncluded, 10) || 1,
+        extra_occurrence_policy:      agrExtraPolicy,
+        missed_service_policy:        agrMissedPolicy,
+        service_interval_days:        agrCadence === 'custom' ? parseInt(agrSvcIntervalDays, 10) : null,
+        plan_price:                   parseFloat(agrPlanPrice) || 0,
+        notes:                        agrNotes.trim() || null,
+        started_at:                   agrStartedAt,
+      });
+      onSaved(res.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create agreement');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="ib-inline-agr">
+      <div className="ib-inline-agr-header">New Recurring Agreement</div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field ib-field--grow">
+          <label className="ib-label">Agreement Name *</label>
+          <input
+            className="ib-input"
+            value={agrName}
+            onChange={e => setAgrName(e.target.value)}
+            placeholder="e.g. Monthly AC Maintenance"
+            data-testid="agr-name"
+          />
+        </div>
+        <div className="ib-field">
+          <label className="ib-label">Service / Package</label>
+          <input
+            className="ib-input"
+            value={agrServiceType}
+            onChange={e => setAgrServiceType(e.target.value)}
+            placeholder="e.g. HVAC, Lawn Care"
+          />
+        </div>
+      </div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field">
+          <label className="ib-label">Service Cadence</label>
+          <select className="ib-select" value={agrCadence} onChange={e => setAgrCadence(e.target.value)} data-testid="agr-cadence">
+            {AGR_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        {agrCadence === 'custom' && (
+          <div className="ib-field">
+            <label className="ib-label">Every N days</label>
+            <input className="ib-input" type="number" min="1" value={agrSvcIntervalDays} onChange={e => setAgrSvcIntervalDays(e.target.value)} placeholder="10" />
+          </div>
+        )}
+        <div className="ib-field">
+          <label className="ib-label">Billing Cadence</label>
+          <select className="ib-select" value={agrBillingCadence} onChange={e => setAgrBillingCadence(e.target.value)} data-testid="agr-billing-cadence">
+            {AGR_BILLING_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field">
+          <label className="ib-label">Billing Trigger</label>
+          <select className="ib-select" value={agrBillingTrigger} onChange={e => setAgrBillingTrigger(e.target.value)} data-testid="agr-billing-trigger">
+            {AGR_BILLING_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        {agrBillingTrigger === 'specific_day' && (
+          <div className="ib-field">
+            <label className="ib-label">Day of month (1–28)</label>
+            <input className="ib-input" type="number" min="1" max="28" value={agrBillingDay} onChange={e => setAgrBillingDay(e.target.value)} placeholder="1–28" />
+          </div>
+        )}
+      </div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field">
+          <label className="ib-label">Plan Price *</label>
+          <div className="ib-price-wrap">
+            <span className="ib-price-sym">$</span>
+            <input
+              className="ib-input ib-input--price"
+              type="number" min="0" step="0.01"
+              value={agrPlanPrice}
+              onChange={e => setAgrPlanPrice(e.target.value)}
+              placeholder="0.00"
+              data-testid="agr-plan-price"
+            />
+          </div>
+        </div>
+        <div className="ib-field">
+          <label className="ib-label">Services per billing period</label>
+          <input className="ib-input" type="number" min="1" value={agrIncluded} onChange={e => setAgrIncluded(e.target.value)} placeholder="1" data-testid="agr-included" />
+        </div>
+      </div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field">
+          <label className="ib-label">If visits exceed included</label>
+          <select className="ib-select" value={agrExtraPolicy} onChange={e => setAgrExtraPolicy(e.target.value)} data-testid="agr-extra-policy">
+            {AGR_EXTRA_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div className="ib-field">
+          <label className="ib-label">If a service is missed</label>
+          <select className="ib-select" value={agrMissedPolicy} onChange={e => setAgrMissedPolicy(e.target.value)} data-testid="agr-missed-policy">
+            {AGR_MISSED_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="ib-inline-agr-row">
+        <div className="ib-field">
+          <label className="ib-label">Start Date</label>
+          <input className="ib-input" type="date" value={agrStartedAt} onChange={e => setAgrStartedAt(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="ib-field" style={{ marginTop: 8 }}>
+        <label className="ib-label">Internal Notes</label>
+        <textarea className="ib-textarea" rows={2} value={agrNotes} onChange={e => setAgrNotes(e.target.value)} placeholder="Notes visible to your team only…" />
+      </div>
+
+      {error && <p className="ib-save-error" style={{ marginTop: 8 }}>{error}</p>}
+
+      <div className="ib-inline-agr-actions">
+        <button className="btn btn-secondary" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button className="btn btn-primary" onClick={handleCreate} disabled={!canSave}>
+          {saving ? 'Creating…' : 'Create Agreement'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function InvoiceBuilder({ onClose, onCreated }) {
   // ── source ─────────────────────────────────────────────────────────────────
@@ -215,6 +440,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [agreementsLoading,   setAgreementsLoading]   = useState(false);
   const [selectedAgreement,   setSelectedAgreement]   = useState(null);
   const [agreementsError,     setAgreementsError]     = useState('');
+  const [showAgrForm,         setShowAgrForm]         = useState(false);
   const agreementDebounce = useRef(null);
 
   // ── header fields ───────────────────────────────────────────────────────────
@@ -255,7 +481,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       .then(r => {
         const d = r.data;
         setTaxRate(d.tax_rate || 0);
-        setPreviewNumber(d.next_number);
+        setPreviewNumber(d.next_number != null ? d.next_number : null);
         setAcceptCard(d.accept_card !== false);
         setAcceptAch(!!d.accept_ach);
         setAllowPartial(!!d.allow_partial_payments);
@@ -271,7 +497,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   useEffect(() => {
     if (source === 'job')       loadEligibleJobs('');
     if (source === 'estimate')  loadEligibleEstimates('');
-    if (source === 'agreement') loadEligibleAgreements('');
+    if (source === 'agreement' && selectedClient) {
+      loadEligibleAgreements('', selectedClient.id);
+    }
   }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── close save dropdown on outside click ────────────────────────────────────
@@ -294,10 +522,21 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   function selectClient(c) {
     setSelectedClient(c);
     if (source === 'job') loadEligibleJobs(jobQuery, c.id);
+    if (source === 'agreement') {
+      setSelectedAgreement(null);
+      setEligibleAgreements([]);
+      setShowAgrForm(false);
+      loadEligibleAgreements('', c.id);
+    }
   }
 
   function clearClient() {
     setSelectedClient(null);
+    if (source === 'agreement') {
+      setSelectedAgreement(null);
+      setEligibleAgreements([]);
+      setShowAgrForm(false);
+    }
   }
 
   // ── eligible estimates ───────────────────────────────────────────────────────
@@ -345,11 +584,12 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   }
 
   // ── eligible agreements ──────────────────────────────────────────────────────
-  function loadEligibleAgreements(q = '') {
+  function loadEligibleAgreements(q = '', clientId = '') {
     setAgreementsLoading(true);
     setAgreementsError('');
     const qs = new URLSearchParams();
     if (q.trim()) qs.set('q', q.trim());
+    if (clientId) qs.set('client_id', clientId);
     api.get(`/invoices/eligible-agreements?${qs}`)
       .then(r => setEligibleAgreements(Array.isArray(r.data) ? r.data : []))
       .catch(() => setAgreementsError('Could not load agreements.'))
@@ -359,7 +599,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   function handleAgreementQuery(val) {
     setAgreementQuery(val);
     clearTimeout(agreementDebounce.current);
-    agreementDebounce.current = setTimeout(() => loadEligibleAgreements(val), 275);
+    agreementDebounce.current = setTimeout(
+      () => loadEligibleAgreements(val, selectedClient?.id || ''),
+      275
+    );
   }
 
   function selectAgreement(agr) {
@@ -392,8 +635,25 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   function clearAgreement() {
     setSelectedAgreement(null);
     setAgreementQuery('');
-    setEligibleAgreements([]);
-    setSelectedClient(null);
+    setShowAgrForm(false);
+    // Keep selectedClient and eligibleAgreements — user stays on the same client's list
+  }
+
+  async function handleAgreementCreated(newAgr) {
+    setShowAgrForm(false);
+    setAgreementsLoading(true);
+    try {
+      const clientId = selectedClient?.id || '';
+      const res = await api.get(`/invoices/eligible-agreements?client_id=${encodeURIComponent(clientId)}`);
+      const agreements = Array.isArray(res.data) ? res.data : [];
+      setEligibleAgreements(agreements);
+      const found = agreements.find(a => a.id === newAgr.id);
+      if (found) selectAgreement(found);
+    } catch {
+      // List still shows; user can pick manually
+    } finally {
+      setAgreementsLoading(false);
+    }
   }
 
   // ── eligible jobs ─────────────────────────────────────────────────────────────
@@ -604,7 +864,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       <div className="ib-header">
         <div>
           <h2 className="ib-title">New Invoice</h2>
-          {previewNumber && <span className="ib-preview-num">Preview #{previewNumber}</span>}
+          {previewNumber != null && <span className="ib-preview-num">Preview #{previewNumber}</span>}
         </div>
         <button className="ib-close" onClick={onClose} aria-label="Close">
           <X size={18} />
@@ -619,25 +879,46 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           <div className="ib-source-row">
             <button
               className={`ib-source-btn${source === 'blank' ? ' active' : ''}`}
-              onClick={() => { setSource('blank'); setSelectedJob(null); setSelectedEstimate(null); }}
+              onClick={() => {
+                setSource('blank');
+                setSelectedJob(null);
+                setSelectedEstimate(null);
+                setSelectedAgreement(null);
+                setShowAgrForm(false);
+              }}
             >
               Blank Invoice
             </button>
             <button
               className={`ib-source-btn${source === 'job' ? ' active' : ''}`}
-              onClick={() => { setSource('job'); setSelectedEstimate(null); clearEstimate(); }}
+              onClick={() => {
+                setSource('job');
+                setSelectedEstimate(null);
+                clearEstimate();
+                setSelectedAgreement(null);
+                setShowAgrForm(false);
+              }}
             >
               Completed Job
             </button>
             <button
               className={`ib-source-btn${source === 'estimate' ? ' active' : ''}`}
-              onClick={() => { setSource('estimate'); setSelectedJob(null); clearAgreement(); }}
+              onClick={() => {
+                setSource('estimate');
+                setSelectedJob(null);
+                setSelectedAgreement(null);
+                setShowAgrForm(false);
+              }}
             >
               Existing Estimate
             </button>
             <button
               className={`ib-source-btn${source === 'agreement' ? ' active' : ''}`}
-              onClick={() => { setSource('agreement'); setSelectedJob(null); clearEstimate(); }}
+              onClick={() => {
+                setSource('agreement');
+                setSelectedJob(null);
+                setSelectedEstimate(null);
+              }}
             >
               Recurring Agreement
             </button>
@@ -752,16 +1033,21 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           </div>
         )}
 
-        {/* Agreement picker */}
+        {/* Agreement picker — client-first flow */}
         {source === 'agreement' && (
           <div className="ib-section">
             <p className="ib-section-label">Active Recurring Agreement <span className="ib-required">*</span></p>
-            {selectedAgreement ? (
+
+            {!selectedClient ? (
+              <p className="ib-empty-secondary" style={{ margin: 0 }}>
+                Select a client above to view their recurring agreements.
+              </p>
+            ) : selectedAgreement ? (
               <div className="ib-agr-card">
                 <div className="ib-agr-card-top">
                   <div>
                     <div className="ib-agr-card-title">{selectedAgreement.name}</div>
-                    <div className="ib-agr-card-client">{selectedAgreement.client_name}</div>
+                    <div className="ib-agr-card-client">{selectedAgreement.client_name || selectedClient.name}</div>
                   </div>
                   <div className="ib-agr-card-right">
                     <span className="ib-agr-card-amount">${parseFloat(selectedAgreement.plan_price || 0).toFixed(2)}</span>
@@ -783,51 +1069,75 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
               </div>
             ) : (
               <>
-                <div className="ib-job-search-wrap">
-                  <Search size={14} className="ib-search-icon" />
-                  <input
-                    className="ib-job-input"
-                    type="text"
-                    placeholder="Search by client, agreement name, or service…"
-                    value={agreementQuery}
-                    onChange={e => handleAgreementQuery(e.target.value)}
-                  />
-                </div>
-                <div className="ib-job-list">
-                  {agreementsLoading ? (
-                    <div className="ib-state">Loading…</div>
-                  ) : agreementsError ? (
-                    <div className="ib-state ib-state--error">{agreementsError}</div>
-                  ) : eligibleAgreements.length === 0 ? (
-                    <div className="ib-empty">
-                      <p className="ib-empty-primary">No active agreements found.</p>
-                      <p className="ib-empty-secondary">Create a recurring agreement on the client record to invoice from here.</p>
+                {!showAgrForm && (
+                  <>
+                    <div className="ib-job-search-wrap">
+                      <Search size={14} className="ib-search-icon" />
+                      <input
+                        className="ib-job-input"
+                        type="text"
+                        placeholder="Search agreements…"
+                        value={agreementQuery}
+                        onChange={e => handleAgreementQuery(e.target.value)}
+                      />
                     </div>
-                  ) : (
-                    eligibleAgreements.map(agr => (
-                      <button
-                        key={agr.id}
-                        className={`ib-job-row${agr.period_already_invoiced ? ' ib-job-row--dim' : ''}`}
-                        onClick={() => selectAgreement(agr)}
-                      >
-                        <div className="ib-job-top">
-                          <span className="ib-job-client">{agr.client_name}</span>
-                          <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
+                    <div className="ib-job-list">
+                      {agreementsLoading ? (
+                        <div className="ib-state">Loading…</div>
+                      ) : agreementsError ? (
+                        <div className="ib-state ib-state--error">{agreementsError}</div>
+                      ) : eligibleAgreements.length === 0 ? (
+                        <div className="ib-empty">
+                          <p className="ib-empty-primary">No active recurring agreements found.</p>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ marginTop: 8 }}
+                            onClick={() => setShowAgrForm(true)}
+                          >
+                            Create Recurring Agreement
+                          </button>
                         </div>
-                        <div className="ib-job-service">
-                          <span>{agr.name}</span>
-                          {agr.service_type ? <span className="ib-job-service-type"> · {agr.service_type}</span> : null}
-                        </div>
-                        <div className="ib-job-meta">
-                          {CADENCE_LABELS[agr.cadence] || agr.cadence}
-                          {' · '}{fmtPeriodFE(agr.period_start, agr.period_end)}
-                          {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
-                          {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
+                      ) : (
+                        <>
+                          {eligibleAgreements.map(agr => (
+                            <button
+                              key={agr.id}
+                              className={`ib-job-row${agr.period_already_invoiced ? ' ib-job-row--dim' : ''}`}
+                              onClick={() => selectAgreement(agr)}
+                            >
+                              <div className="ib-job-top">
+                                <span className="ib-job-client">{agr.name}</span>
+                                <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
+                              </div>
+                              <div className="ib-job-service">
+                                {agr.service_type && <span>{agr.service_type} · </span>}
+                                {CADENCE_LABELS[agr.cadence] || agr.cadence}
+                                {' · '}{fmtPeriodFE(agr.period_start, agr.period_end)}
+                                {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
+                                {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
+                              </div>
+                            </button>
+                          ))}
+                          <button
+                            className="ib-add-line"
+                            style={{ marginTop: 8 }}
+                            onClick={() => setShowAgrForm(true)}
+                          >
+                            <Plus size={14} /> Create new agreement
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {showAgrForm && (
+                  <InlineAgreementForm
+                    clientId={selectedClient.id}
+                    onSaved={handleAgreementCreated}
+                    onCancel={() => setShowAgrForm(false)}
+                  />
+                )}
               </>
             )}
           </div>
@@ -899,7 +1209,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
               <input
                 className="ib-input ib-input--readonly"
                 type="text"
-                value={previewNumber ? `#${previewNumber}` : 'Auto-assigned'}
+                value={previewNumber != null ? `#${previewNumber}` : 'Auto-assigned'}
                 readOnly
               />
             </div>

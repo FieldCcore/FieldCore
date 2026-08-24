@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import InvoiceBuilder from '../InvoiceBuilder';
 
 vi.mock('../../api', () => ({
@@ -111,6 +111,16 @@ function setup(onClose = vi.fn(), onCreated = vi.fn(), settingsOverride = MOCK_S
     return Promise.resolve({ data: [] });
   });
   return render(<InvoiceBuilder onClose={onClose} onCreated={onCreated} />);
+}
+
+// Shared helper: type a client name, wait for dropdown, select first result
+async function pickClient() {
+  const input = screen.getByPlaceholderText(/search by name, company/i);
+  fireEvent.change(input, { target: { value: 'Able' } });
+  await act(async () => { vi.advanceTimersByTime(300); });
+  await waitFor(() => expect(document.querySelector('.ac-drop-item')).not.toBeNull());
+  fireEvent.mouseDown(document.querySelector('.ac-drop-item'));
+  await waitFor(() => screen.getByDisplayValue('Able Corp'));
 }
 
 beforeEach(() => {
@@ -393,38 +403,60 @@ describe('InvoiceBuilder — agreement source picker', () => {
     expect(btn.className).toContain('active');
   });
 
-  it('clicking Recurring Agreement loads eligible agreements', async () => {
+  it('shows hint to select client when no client is selected', async () => {
     setup();
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByText(/select a client above/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does not call eligible-agreements API before client is selected', async () => {
+    setup();
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await act(async () => { vi.advanceTimersByTime(300); });
+    const agrCalls = api.get.mock.calls.filter(c => c[0].includes('/invoices/eligible-agreements'));
+    expect(agrCalls).toHaveLength(0);
+  });
+
+  it('loads agreements after client is selected', async () => {
+    setup();
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/invoices/eligible-agreements'));
     });
   });
 
-  it('shows agreement results after loading', async () => {
+  it('shows agreement results after client is selected', async () => {
     setup();
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => {
       expect(screen.getByText('Monthly AC Maintenance')).toBeInTheDocument();
     });
   });
 
-  it('shows empty state when no agreements available', async () => {
+  it('shows empty state with Create button when no agreements available', async () => {
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: [] });
     });
     render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => {
-      expect(screen.getByText(/no active agreements found/i)).toBeInTheDocument();
+      expect(screen.getByText(/no active recurring agreements found/i)).toBeInTheDocument();
+      expect(screen.getByText('Create Recurring Agreement')).toBeInTheDocument();
     });
   });
 
-  it('switching from agreement back to blank clears selection', async () => {
+  it('switching from agreement back to blank clears agreement list', async () => {
     setup();
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => screen.getByText('Monthly AC Maintenance'));
     fireEvent.click(screen.getByText('Blank Invoice'));
     expect(screen.queryByText('Monthly AC Maintenance')).toBeNull();
@@ -437,6 +469,7 @@ describe('InvoiceBuilder — select agreement', () => {
   async function openAndSelectAgr() {
     setup();
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => screen.getByText('Monthly AC Maintenance'));
     fireEvent.click(screen.getByText('Monthly AC Maintenance'));
   }
@@ -489,12 +522,14 @@ describe('InvoiceBuilder — save from agreement', () => {
     const onClose   = vi.fn();
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: MOCK_AGREEMENTS });
       return Promise.resolve({ data: [] });
     });
     api.post.mockResolvedValueOnce({ data: MOCK_CREATED_AGR_INVOICE });
     render(<InvoiceBuilder onClose={onClose} onCreated={onCreated} />);
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => screen.getByText('Monthly AC Maintenance'));
     fireEvent.click(screen.getByText('Monthly AC Maintenance'));
     await waitFor(() => document.querySelector('.ib-agr-card'));
@@ -536,6 +571,7 @@ describe('InvoiceBuilder — agreement error handling', () => {
   it('shows already-invoiced period error for 409', async () => {
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: MOCK_AGREEMENTS });
       return Promise.resolve({ data: [] });
     });
@@ -544,12 +580,124 @@ describe('InvoiceBuilder — agreement error handling', () => {
     });
     render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
     await waitFor(() => screen.getByText('Monthly AC Maintenance'));
     fireEvent.click(screen.getByText('Monthly AC Maintenance'));
     await waitFor(() => document.querySelector('.ib-agr-card'));
     fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
     await waitFor(() => {
       expect(screen.getByText(/billing period has already been invoiced/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Inline agreement form ─────────────────────────────────────────────────────
+
+describe('InvoiceBuilder — inline agreement form', () => {
+  async function openEmptyAgreementState() {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+  }
+
+  it('shows Create Recurring Agreement button in empty state', async () => {
+    await openEmptyAgreementState();
+    expect(screen.getByText('Create Recurring Agreement')).toBeInTheDocument();
+  });
+
+  it('clicking Create Recurring Agreement expands inline form', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByText('New Recurring Agreement')).toBeInTheDocument();
+    });
+  });
+
+  it('inline form has service cadence selector', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-cadence')).toBeInTheDocument();
+    });
+  });
+
+  it('inline form has billing cadence selector', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-billing-cadence')).toBeInTheDocument();
+    });
+  });
+
+  it('inline form has extra occurrence policy selector', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-extra-policy')).toBeInTheDocument();
+    });
+  });
+
+  it('inline form has missed service policy selector', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-missed-policy')).toBeInTheDocument();
+    });
+  });
+
+  it('saving inline form auto-selects newly created agreement', async () => {
+    const NEW_AGR = {
+      id: 'a-new',
+      name: 'Weekly Pool Service',
+      service_type: 'Pool',
+      cadence: 'weekly',
+      billing_cadence: 'monthly',
+      plan_price: '150.00',
+      status: 'active',
+      payment_status: 'pending',
+      period_start: '2026-08-01',
+      period_end: '2026-08-31',
+      period_already_invoiced: false,
+      line_items: [],
+      client_id: 'c-111',
+      client_name: 'Able Corp',
+      client_email: 'able@corp.com',
+      client_address: '1 Main St',
+    };
+
+    let agrCallCount = 0;
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/invoices/eligible-agreements')) {
+        agrCallCount++;
+        return Promise.resolve({ data: agrCallCount === 1 ? [] : [NEW_AGR] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    api.post.mockResolvedValueOnce({ data: NEW_AGR });
+
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+
+    await waitFor(() => screen.getByTestId('agr-name'));
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Weekly Pool Service' } });
+    fireEvent.change(screen.getByTestId('agr-plan-price'), { target: { value: '150' } });
+
+    fireEvent.click(screen.getByText('Create Agreement'));
+
+    await waitFor(() => {
+      expect(document.querySelector('.ib-agr-card')).not.toBeNull();
     });
   });
 });
