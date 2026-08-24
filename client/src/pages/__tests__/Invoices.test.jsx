@@ -15,9 +15,9 @@ vi.mock('../../components/InvoiceDetail', () => ({
   ),
 }));
 
-vi.mock('../../components/NewInvoiceModal', () => ({
+vi.mock('../../components/InvoiceBuilder', () => ({
   default: ({ onClose, onCreated }) => (
-    <div data-testid="new-invoice-modal">
+    <div data-testid="invoice-builder">
       <button data-testid="ni-close" onClick={onClose}>Cancel</button>
       <button data-testid="ni-create" onClick={() => onCreated({ id: 'new-inv-id' })}>Create Invoice</button>
     </div>
@@ -86,7 +86,7 @@ const MOCK_KPIS = {
   issuedCount:    2,
   issuedTotal:    600,
   averageInvoice: 300,
-  counts:         { all: 3, pending: 1, paid: 1, void: 1, past_due: 0 },
+  counts:         { all: 3, draft: 0, pending: 1, paid: 1, void: 1, past_due: 0 },
 };
 
 const MOCK_RESPONSE = {
@@ -100,7 +100,7 @@ const MOCK_RESPONSE = {
 const EMPTY_KPIS = {
   outstanding: 0, collected: 0, pastDue: 0, pastDueCount: 0, totalCount: 0,
   issuedCount: 0, issuedTotal: 0, averageInvoice: 0,
-  counts: { all: 0, pending: 0, paid: 0, void: 0, past_due: 0 },
+  counts: { all: 0, draft: 0, pending: 0, paid: 0, void: 0, past_due: 0 },
 };
 
 const EMPTY_RESPONSE = {
@@ -319,11 +319,11 @@ describe('Invoices — status filter dropdown', () => {
     expect(getStatusGroup().querySelector('.inv-filter-dropdown')).not.toBeNull();
   });
 
-  it('dropdown shows five status options', async () => {
+  it('dropdown shows six status options', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
-    expect(getStatusGroup().querySelectorAll('.inv-dropdown-item').length).toBe(5);
+    expect(getStatusGroup().querySelectorAll('.inv-dropdown-item').length).toBe(6);
   });
 
   it('dropdown shows counts from kpis.counts', async () => {
@@ -332,10 +332,11 @@ describe('Invoices — status filter dropdown', () => {
     fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
     const counts = getStatusGroup().querySelectorAll('.inv-dropdown-count');
     expect(counts[0].textContent).toBe('3'); // All
-    expect(counts[1].textContent).toBe('1'); // Pending
-    expect(counts[2].textContent).toBe('1'); // Paid
-    expect(counts[3].textContent).toBe('1'); // Void
-    expect(counts[4].textContent).toBe('0'); // Past Due
+    expect(counts[1].textContent).toBe('0'); // Draft
+    expect(counts[2].textContent).toBe('1'); // Pending
+    expect(counts[3].textContent).toBe('1'); // Paid
+    expect(counts[4].textContent).toBe('1'); // Void
+    expect(counts[5].textContent).toBe('0'); // Past Due
   });
 
   it('selecting Pending triggers API call with status=pending', async () => {
@@ -797,63 +798,63 @@ describe('Invoices — single-layer design', () => {
   });
 });
 
-// ── New Invoice modal ──────────────────────────────────────────────────────────
+// ── New Invoice builder ────────────────────────────────────────────────────────
 
-describe('Invoices — New Invoice modal', () => {
-  it('New Invoice button opens modal', async () => {
+describe('Invoices — New Invoice builder', () => {
+  it('New Invoice button opens builder', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
-    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-builder')).toBeInTheDocument();
   });
 
-  it('?new=1 URL param opens modal on mount', async () => {
+  it('?new=1 URL param opens builder on mount', async () => {
     setup(MOCK_RESPONSE, '/invoices?new=1');
-    await waitFor(() => screen.getByTestId('new-invoice-modal'));
-    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    await waitFor(() => screen.getByTestId('invoice-builder'));
+    expect(screen.getByTestId('invoice-builder')).toBeInTheDocument();
   });
 
-  it('closing modal via Cancel hides it', async () => {
+  it('closing builder via Cancel hides it', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
-    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-builder')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('ni-close'));
-    expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+    expect(screen.queryByTestId('invoice-builder')).toBeNull();
   });
 
-  it('clicking overlay closes modal', async () => {
+  it('clicking overlay closes builder', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
-    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
-    fireEvent.click(document.querySelector('.modal-overlay'));
-    expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+    expect(screen.getByTestId('invoice-builder')).toBeInTheDocument();
+    fireEvent.click(document.querySelector('.ib-overlay'));
+    expect(screen.queryByTestId('invoice-builder')).toBeNull();
   });
 
-  it('onCreated closes modal and triggers list refresh', async () => {
+  it('onCreated closes builder and triggers list refresh', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
 
     fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
-    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-builder')).toBeInTheDocument();
 
     api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
-    api.get.mockResolvedValueOnce({ data: { id: 'new-inv-id', client_name: 'New Client', amount: '100', status: 'pending' } });
+    api.get.mockResolvedValueOnce({ data: { id: 'new-inv-id', client_name: 'New Client', amount: '100', status: 'draft' } });
     fireEvent.click(screen.getByTestId('ni-create'));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+      expect(screen.queryByTestId('invoice-builder')).toBeNull();
       expect(api.get).toHaveBeenCalledTimes(2); // initial + refresh
     });
   });
 
-  it('second click on New Invoice does not open a second modal', async () => {
+  it('second click on New Invoice does not open a second builder', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const btn = screen.getByRole('button', { name: /\+ new invoice/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
-    expect(document.querySelectorAll('[data-testid="new-invoice-modal"]').length).toBe(1);
+    expect(document.querySelectorAll('[data-testid="invoice-builder"]').length).toBe(1);
   });
 });

@@ -78,19 +78,33 @@ beforeAll(async () => {
   );
   techId = t.id;
 
-  // Job (required for invoice FK)
-  const { rows: [j] } = await pool.query(
+  // Each invoice gets its own job (partial unique index enforces 1 invoice per job)
+  const { rows: [j1] } = await pool.query(
     `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
      VALUES ($1,$2,$3,'HVAC Repair','complete',50000,$4,60) RETURNING id`,
     [accountId, clientId, techId, TODAY + 'T10:00:00Z']
   );
-  const jobId = j.id;
+  const { rows: [j2] } = await pool.query(
+    `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+     VALUES ($1,$2,$3,'Plumbing','complete',30000,$4,60) RETURNING id`,
+    [accountId, clientId, techId, TODAY + 'T11:00:00Z']
+  );
+  const { rows: [j3] } = await pool.query(
+    `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+     VALUES ($1,$2,$3,'Electrical','complete',20000,$4,60) RETURNING id`,
+    [accountId, clientId, techId, TODAY + 'T12:00:00Z']
+  );
+  const { rows: [j4] } = await pool.query(
+    `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+     VALUES ($1,$2,$3,'Roofing','complete',15000,$4,60) RETURNING id`,
+    [accountId, clientId, techId, TODAY + 'T13:00:00Z']
+  );
 
   // Pending invoice
   const { rows: [p] } = await pool.query(
     `INSERT INTO invoices (account_id, job_id, client_id, amount, status)
      VALUES ($1,$2,$3,40000,'pending') RETURNING id`,
-    [accountId, jobId, clientId]
+    [accountId, j1.id, clientId]
   );
   pendingInvId = p.id;
 
@@ -98,7 +112,7 @@ beforeAll(async () => {
   const { rows: [pa] } = await pool.query(
     `INSERT INTO invoices (account_id, job_id, client_id, amount, status, paid_at)
      VALUES ($1,$2,$3,20000,'paid',NOW()) RETURNING id`,
-    [accountId, jobId, clientId]
+    [accountId, j2.id, clientId]
   );
   paidInvId = pa.id;
 
@@ -106,7 +120,7 @@ beforeAll(async () => {
   const { rows: [v] } = await pool.query(
     `INSERT INTO invoices (account_id, job_id, client_id, amount, status)
      VALUES ($1,$2,$3,10000,'void') RETURNING id`,
-    [accountId, jobId, clientId]
+    [accountId, j3.id, clientId]
   );
   voidInvId = v.id;
 
@@ -114,7 +128,7 @@ beforeAll(async () => {
   const { rows: [od] } = await pool.query(
     `INSERT INTO invoices (account_id, job_id, client_id, amount, status, due_date)
      VALUES ($1,$2,$3,15000,'pending',NOW() - INTERVAL '10 days') RETURNING id`,
-    [accountId, jobId, clientId]
+    [accountId, j4.id, clientId]
   );
   overdueInvId = od.id;
 
@@ -623,5 +637,274 @@ describe('GET /api/invoices/eligible-jobs — tenant isolation', () => {
       .expect(200);
 
     expect(res.body.rows.every(r => r.id !== eligibleJobId)).toBe(true);
+  });
+});
+
+describe('GET /api/invoices/eligible-jobs — client_id filter', () => {
+  it('?client_id= filters to only that client\'s jobs', async () => {
+    const res = await request(app)
+      .get(`/api/invoices/eligible-jobs?client_id=${clientId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.rows.every(r => r.client_id === clientId || r.client_name === 'Able Corp')).toBe(true);
+  });
+});
+
+describe('GET /api/invoices/settings', () => {
+  it('returns 401 with no token', async () => {
+    const res = await request(app).get('/api/invoices/settings');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns next_number and tax_rate', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body).toHaveProperty('next_number');
+    expect(res.body).toHaveProperty('tax_rate');
+    expect(typeof res.body.next_number).toBe('number');
+    expect(typeof res.body.tax_rate).toBe('number');
+    expect(res.body.next_number).toBeGreaterThanOrEqual(1001);
+  });
+});
+
+// ── Invoice Builder — POST /api/invoices extended tests ───────────────────────
+
+describe('POST /api/invoices — MANUAL (blank invoice)', () => {
+  it('returns 401 with no token', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .send({ source_type: 'MANUAL', client_id: clientId, line_items: [{ name: 'Test', quantity: 1, unit_price: 100 }] });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 for tech role', async () => {
+    const techToken = makeToken(techId, accountId, 'tech');
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ source_type: 'MANUAL', client_id: clientId, line_items: [{ name: 'Test', quantity: 1, unit_price: 100 }] });
+    expect(res.status).toBe(403);
+  });
+
+  it('creates a MANUAL invoice without job_id', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        subject:     'Test Blank Invoice',
+        payment_terms: 'net_30',
+        line_items: [
+          { name: 'Consultation', description: 'Initial consult', quantity: 1, unit_price: 250, taxable: false },
+          { name: 'Parts',        description: 'Materials',        quantity: 2, unit_price: 75,  taxable: true  },
+        ],
+        client_message:  'Thank you for your business.',
+        internal_notes:  'Internal ref: TEST-001',
+        status: 'draft',
+      })
+      .expect(201);
+
+    const inv = res.body;
+    expect(inv.source_type).toBe('MANUAL');
+    expect(inv.job_id).toBeNull();
+    expect(inv.client_id).toBe(clientId);
+    expect(inv.subject).toBe('Test Blank Invoice');
+    expect(inv.status).toBe('draft');
+    expect(inv.payment_terms).toBe('net_30');
+    expect(inv.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(parseFloat(inv.subtotal)).toBeCloseTo(400, 1); // 250 + 150
+    expect(parseFloat(inv.amount)).toBeGreaterThanOrEqual(400);
+    expect(inv.client_message).toBe('Thank you for your business.');
+    expect(inv.internal_notes).toBe('Internal ref: TEST-001');
+    const li = Array.isArray(inv.line_items) ? inv.line_items : JSON.parse(inv.line_items || '[]');
+    expect(Array.isArray(li)).toBe(true);
+  });
+
+  it('400 when client_id is missing for MANUAL', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'MANUAL', line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(400);
+
+    expect(res.body.error).toMatch(/client_id/i);
+  });
+
+  it('404 when client_id does not belong to this account', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ source_type: 'MANUAL', client_id: clientId, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(404);
+
+    expect(res.body.error).toMatch(/client/i);
+  });
+
+  it('400 when line_items is empty for MANUAL', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'MANUAL', client_id: clientId, line_items: [] })
+      .expect(400);
+
+    expect(res.body.error).toMatch(/line item/i);
+  });
+});
+
+describe('POST /api/invoices — invoice_number sequence', () => {
+  it('assigns sequential invoice numbers', async () => {
+    // First manual invoice (may have been created above)
+    const r1 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Seq Test 1', quantity: 1, unit_price: 10 }],
+      })
+      .expect(201);
+
+    const r2 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Seq Test 2', quantity: 1, unit_price: 10 }],
+      })
+      .expect(201);
+
+    expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
+  });
+
+  it('different accounts have independent sequences', async () => {
+    // Other account creates its first invoice — needs a client
+    const { rows: [otherClient] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'Other Client','oc@test.fc') RETURNING id`,
+      [otherAccountId]
+    );
+
+    const r = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   otherClient.id,
+        line_items:  [{ name: 'Other Co Item', quantity: 1, unit_price: 50 }],
+      })
+      .expect(201);
+
+    expect(r.body.invoice_number).toBeGreaterThanOrEqual(1001);
+  });
+});
+
+describe('POST /api/invoices — draft status', () => {
+  it('defaults to draft status when status not provided', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Draft Test', quantity: 1, unit_price: 99 }],
+      })
+      .expect(201);
+
+    expect(res.body.status).toBe('draft');
+  });
+
+  it('accepts status=pending at creation', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Pending Test', quantity: 1, unit_price: 49 }],
+        status:      'pending',
+      })
+      .expect(201);
+
+    expect(res.body.status).toBe('pending');
+  });
+});
+
+describe('POST /api/invoices — discount math', () => {
+  it('fixed discount reduces total correctly', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        line_items:    [{ name: 'Service', quantity: 1, unit_price: 200, taxable: false }],
+        discount_type:  'fixed',
+        discount_value: 25,
+      })
+      .expect(201);
+
+    expect(parseFloat(res.body.subtotal)).toBeCloseTo(200, 1);
+    expect(parseFloat(res.body.discount_amount)).toBeCloseTo(25, 1);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(175, 1);
+  });
+
+  it('percent discount reduces total correctly', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        line_items:    [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+        discount_type:  'percent',
+        discount_value: 10,
+      })
+      .expect(201);
+
+    expect(parseFloat(res.body.subtotal)).toBeCloseTo(100, 1);
+    expect(parseFloat(res.body.discount_amount)).toBeCloseTo(10, 1);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(90, 1);
+  });
+});
+
+describe('POST /api/invoices — JOB source still works', () => {
+  it('creates invoice from eligible job', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'JOB', job_id: eligibleJobId })
+      .expect(201);
+
+    expect(res.body.source_type).toBe('JOB');
+    expect(res.body.job_id).toBe(eligibleJobId);
+    expect(res.body.client_id).toBe(clientId);
+    expect(res.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(res.body.status).toBe('draft');
+  });
+
+  it('409 when job is already invoiced', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'JOB', job_id: eligibleJobId })
+      .expect(409);
+
+    expect(res.body.error).toMatch(/already/i);
+  });
+
+  it('400 when source_type is invalid', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'RECURRING', client_id: clientId })
+      .expect(400);
+
+    expect(res.body.error).toMatch(/source_type/i);
   });
 });

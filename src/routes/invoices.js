@@ -22,6 +22,9 @@ function generateInvoicePdfBuffer(inv) {
       : [{ description: inv.service_type || 'Service', amount: pretax }];
     const fmtAmt     = n => `$${parseFloat(n || 0).toFixed(2)}`;
     const fmtDt      = d => d ? new Date(d).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'N/A';
+    const invNumDisplay = inv.invoice_number
+      ? `#${inv.invoice_number}`
+      : inv.id.slice(0, 8).toUpperCase();
 
     // Header
     doc.font('Helvetica-Bold').fontSize(22).fillColor('#1C2333').text('FIELDCORE', { align: 'left' });
@@ -33,8 +36,9 @@ function generateInvoicePdfBuffer(inv) {
     doc.font('Helvetica-Bold').fontSize(16).fillColor('#1C2333').text('INVOICE');
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-    doc.text(`Invoice #: ${inv.id.slice(0, 8).toUpperCase()}`);
-    doc.text(`Date: ${fmtDt(inv.created_at)}`);
+    doc.text(`Invoice: ${invNumDisplay}`);
+    doc.text(`Date: ${fmtDt(inv.issued_date || inv.created_at)}`);
+    if (inv.due_date) doc.text(`Due: ${fmtDt(inv.due_date)}`);
     if (inv.paid_at) doc.text(`Paid: ${fmtDt(inv.paid_at)}`);
     doc.moveDown(1);
 
@@ -60,8 +64,10 @@ function generateInvoicePdfBuffer(inv) {
     doc.font('Helvetica').fontSize(11).fillColor('#1C2333');
     lineItems.forEach(item => {
       const y = doc.y;
-      doc.text(item.description || 'Service', 50, y, { width: 360 });
-      doc.text(fmtAmt(item.amount), 410, y, { width: 100, align: 'right' });
+      const desc = item.name || item.description || 'Service';
+      const amt  = item.line_total ?? item.amount;
+      doc.text(desc, 50, y, { width: 360 });
+      doc.text(fmtAmt(amt), 410, y, { width: 100, align: 'right' });
       doc.moveDown(0.6);
     });
     doc.moveDown(0.4);
@@ -69,11 +75,24 @@ function generateInvoicePdfBuffer(inv) {
     // Totals
     doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
     doc.moveDown(0.5);
-    if (tax > 0) {
+    const subtotal = parseFloat(inv.subtotal || pretax);
+    const discount = parseFloat(inv.discount_amount || 0);
+    if (discount > 0) {
       doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
       doc.text('Subtotal', 360, doc.y, { width: 100 });
-      doc.text(fmtAmt(pretax), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+      doc.text(fmtAmt(subtotal), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
       doc.moveDown(0.5);
+      doc.text('Discount', 360, doc.y, { width: 100 });
+      doc.text(`-${fmtAmt(discount)}`, 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+      doc.moveDown(0.5);
+    }
+    if (tax > 0) {
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
+      if (discount === 0) {
+        doc.text('Subtotal', 360, doc.y, { width: 100 });
+        doc.text(fmtAmt(subtotal), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+        doc.moveDown(0.5);
+      }
       doc.text('Tax', 360, doc.y, { width: 100 });
       doc.text(fmtAmt(tax), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
       doc.moveDown(0.5);
@@ -96,52 +115,247 @@ function generateInvoicePdfBuffer(inv) {
          .text(`Pay online: ${inv.payment_link}`, { align: 'center' });
     }
 
+    if (inv.client_message) {
+      doc.moveDown(1);
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280').text(inv.client_message, { align: 'left' });
+    }
+
     // Footer
     doc.moveDown(2);
     doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
     doc.moveDown(0.5);
     doc.font('Helvetica').fontSize(9).fillColor('#9ca3af')
-       .text('Thank you for your business.', { align: 'center' });
+       .text(inv.terms || 'Thank you for your business.', { align: 'center' });
 
     doc.end();
   });
 }
 
-// POST /api/invoices — generate invoice from completed job
-router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { job_id } = req.body;
-  if (!job_id) return res.status(400).json({ error: 'job_id is required' });
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
+function computeDueDate(paymentTerms, issuedDate) {
+  const termDays = { net_7: 7, net_15: 15, net_30: 30, net_45: 45, net_60: 60, net_90: 90 };
+  const days = termDays[paymentTerms];
+  if (!days) return null;
+  const base = issuedDate ? new Date(issuedDate) : new Date();
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+function computeTotals(lineItems, discountType, discountValue, taxRate) {
+  const validItems = lineItems.map(item => {
+    const qty      = Math.max(0, parseFloat(item.quantity) || 1);
+    const price    = Math.max(0, parseFloat(item.unit_price ?? item.amount) || 0);
+    const lineTotal = parseFloat((qty * price).toFixed(2));
+    return {
+      name:        item.name || item.description || 'Service',
+      description: item.description || '',
+      quantity:    qty,
+      unit_price:  price,
+      taxable:     item.taxable !== false,
+      line_total:  lineTotal,
+      amount:      lineTotal,
+    };
+  });
+
+  const subtotal = parseFloat(validItems.reduce((s, i) => s + i.line_total, 0).toFixed(2));
+
+  let discountAmount = 0;
+  if (discountType === 'fixed' && parseFloat(discountValue) > 0) {
+    discountAmount = parseFloat(Math.min(parseFloat(discountValue), subtotal).toFixed(2));
+  } else if (discountType === 'percent' && parseFloat(discountValue) > 0) {
+    discountAmount = parseFloat((subtotal * parseFloat(discountValue) / 100).toFixed(2));
+  }
+
+  const taxableSubtotal = parseFloat(
+    validItems.filter(i => i.taxable).reduce((s, i) => s + i.line_total, 0).toFixed(2)
+  );
+  const discountRatio        = subtotal > 0 ? discountAmount / subtotal : 0;
+  const taxableAfterDiscount = parseFloat((taxableSubtotal * (1 - discountRatio)).toFixed(2));
+  const taxAmount            = parseFloat((taxableAfterDiscount * parseFloat(taxRate || 0)).toFixed(2));
+  const total                = parseFloat((subtotal - discountAmount + taxAmount).toFixed(2));
+
+  return { validItems, subtotal, discountAmount, taxAmount, total };
+}
+
+// ─── POST /api/invoices ───────────────────────────────────────────────────────
+router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const {
+    source_type    = 'JOB',
+    job_id,
+    client_id:     bodyClientId,
+    subject,
+    line_items:    reqLineItems,
+    discount_type,
+    discount_value,
+    payment_terms  = 'due_on_receipt',
+    due_date,
+    issued_date,
+    client_message,
+    internal_notes,
+    terms,
+    status:        reqStatus,
+  } = req.body;
+
+  if (!['JOB', 'MANUAL'].includes(source_type)) {
+    return res.status(400).json({ error: 'source_type must be JOB or MANUAL' });
+  }
+
+  const status = ['draft', 'pending'].includes(reqStatus) ? reqStatus : 'draft';
+
+  const client = await pool.connect();
   try {
-    const [jobResult, settingsResult] = await Promise.all([
-      pool.query(`SELECT * FROM jobs WHERE id = $1 AND account_id = $2`, [job_id, req.accountId]),
-      pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
-    ]);
-    const job = jobResult.rows[0];
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-    if (job.status !== 'complete') {
-      return res.status(400).json({ error: 'Job must be complete before invoicing' });
+    await client.query('BEGIN');
+
+    const settingsRes = await client.query(
+      `SELECT COALESCE(tax_rate, 0) AS tax_rate FROM booking_settings WHERE account_id = $1`,
+      [req.accountId]
+    );
+    const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+
+    let finalClientId = null;
+    let finalJobId    = null;
+    let baseLineItems = [];
+
+    if (source_type === 'JOB') {
+      if (!job_id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'job_id is required for JOB source' });
+      }
+      const jobRes = await client.query(
+        `SELECT * FROM jobs WHERE id = $1 AND account_id = $2`,
+        [job_id, req.accountId]
+      );
+      const job = jobRes.rows[0];
+      if (!job) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      if (job.status !== 'complete') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Job must be complete before invoicing' });
+      }
+      const dupRes = await client.query(
+        `SELECT id FROM invoices WHERE job_id = $1 AND account_id = $2`,
+        [job_id, req.accountId]
+      );
+      if (dupRes.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'An invoice already exists for this job' });
+      }
+      finalClientId = job.client_id;
+      finalJobId    = job_id;
+      baseLineItems = Array.isArray(reqLineItems) && reqLineItems.length > 0
+        ? reqLineItems
+        : [{
+            name:       job.service_type || 'Service',
+            description:'',
+            quantity:   1,
+            unit_price: parseFloat(job.amount || 0),
+            taxable:    taxRate > 0,
+          }];
+
+    } else {
+      if (!bodyClientId) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'client_id is required for MANUAL invoice' });
+      }
+      const clientRes = await client.query(
+        `SELECT id FROM clients WHERE id = $1 AND account_id = $2`,
+        [bodyClientId, req.accountId]
+      );
+      if (!clientRes.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Client not found' });
+      }
+      finalClientId = bodyClientId;
+      baseLineItems = Array.isArray(reqLineItems) ? reqLineItems : [];
     }
 
-    const taxRate     = parseFloat(settingsResult.rows[0]?.tax_rate || 0);
-    const reqItems    = Array.isArray(req.body.line_items) ? req.body.line_items : null;
-    const lineItems   = reqItems || [{ description: job.service_type || 'Service', amount: parseFloat(job.amount || 0) }];
-    const subtotal    = lineItems.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const taxAmount   = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
-    const total       = parseFloat((subtotal + taxAmount).toFixed(2));
+    if (baseLineItems.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'At least one line item is required' });
+    }
 
-    const { rows } = await pool.query(
-      `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [req.accountId, job_id, job.client_id, total, taxAmount, JSON.stringify(lineItems)]
+    const { validItems, subtotal, discountAmount, taxAmount, total } =
+      computeTotals(baseLineItems, discount_type, discount_value, taxRate);
+
+    // Atomically claim the next invoice number for this account
+    const numRes = await client.query(
+      `INSERT INTO invoice_number_sequences (account_id, next_val)
+       VALUES ($1, 1001)
+       ON CONFLICT (account_id) DO UPDATE
+         SET next_val = invoice_number_sequences.next_val + 1
+       RETURNING next_val AS invoice_number`,
+      [req.accountId]
     );
+    const invoiceNumber = numRes.rows[0].invoice_number;
+
+    const finalIssuedDate = issued_date || new Date().toISOString().slice(0, 10);
+    const finalDueDate    = due_date
+      || (payment_terms !== 'due_on_receipt' && payment_terms !== 'custom'
+          ? computeDueDate(payment_terms, finalIssuedDate)
+          : null);
+
+    const { rows } = await client.query(
+      `INSERT INTO invoices (
+         account_id, job_id, client_id, source_type, invoice_number,
+         amount, tax_amount, subtotal, discount_type, discount_value, discount_amount,
+         line_items, subject, issued_date, payment_terms, due_date,
+         client_message, internal_notes, terms, status, created_by
+       ) VALUES (
+         $1,$2,$3,$4,$5,
+         $6,$7,$8,$9,$10,$11,
+         $12,$13,$14,$15,$16,
+         $17,$18,$19,$20,$21
+       ) RETURNING *`,
+      [
+        req.accountId, finalJobId, finalClientId, source_type, invoiceNumber,
+        total, taxAmount, subtotal, discount_type || null, parseFloat(discount_value) || null, discountAmount || null,
+        JSON.stringify(validItems), subject || null, finalIssuedDate, payment_terms, finalDueDate,
+        client_message || null, internal_notes || null, terms || null, status, req.userId,
+      ]
+    );
+
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An invoice already exists for this job' });
+    }
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── GET /api/invoices/settings ──────────────────────────────────────────────
+router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const [numRes, taxRes] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(
+           (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
+           1001
+         ) AS next_number`,
+        [req.accountId]
+      ),
+      pool.query(
+        `SELECT COALESCE(tax_rate, 0) AS tax_rate FROM booking_settings WHERE account_id = $1`,
+        [req.accountId]
+      ),
+    ]);
+    res.json({
+      next_number: numRes.rows[0]?.next_number || 1001,
+      tax_rate:    parseFloat(taxRes.rows[0]?.tax_rate || 0),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/invoices
+// ─── GET /api/invoices ────────────────────────────────────────────────────────
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const {
@@ -158,7 +372,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 
     const ALLOWED_SORTS = {
       client:         'c.name',
-      invoice_number: 'i.id',
+      invoice_number: 'COALESCE(i.invoice_number, 0)',
       due_date:       'i.due_date',
       status:         'i.status',
       amount:         'i.amount',
@@ -171,7 +385,6 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
     const ps      = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 50));
     const offset  = (pg - 1) * ps;
 
-    // KPI aggregates — always global (unfiltered by search/status)
     const kpiRes = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0)                                                             AS outstanding,
@@ -182,8 +395,9 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
          COUNT(CASE WHEN status = 'pending' THEN 1 END)::int                                                                               AS count_pending,
          COUNT(CASE WHEN status = 'paid'    THEN 1 END)::int                                                                               AS count_paid,
          COUNT(CASE WHEN status = 'void'    THEN 1 END)::int                                                                               AS count_void,
-         COUNT(CASE WHEN status != 'void'   THEN 1 END)::int                                                               AS issued_count,
-         COALESCE(SUM(CASE WHEN status != 'void' THEN amount ELSE 0 END), 0)                                               AS issued_total
+         COUNT(CASE WHEN status = 'draft'   THEN 1 END)::int                                                                               AS count_draft,
+         COUNT(CASE WHEN status != 'void'   THEN 1 END)::int                                                                               AS issued_count,
+         COALESCE(SUM(CASE WHEN status != 'void' THEN amount ELSE 0 END), 0)                                                               AS issued_total
        FROM invoices
        WHERE account_id = $1`,
       [req.accountId]
@@ -205,13 +419,13 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
         pending:  k.count_pending,
         paid:     k.count_paid,
         void:     k.count_void,
+        draft:    k.count_draft,
         past_due: k.past_due_count,
       },
     };
 
-    // Build parameterized filter conditions
-    const listParams  = [req.accountId];
-    const conditions  = [];
+    const listParams = [req.accountId];
+    const conditions = [];
 
     if (status === 'past_due') {
       conditions.push(`(i.status IN ('pending','failed') AND i.due_date IS NOT NULL AND i.due_date < NOW())`);
@@ -237,13 +451,14 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
       listParams.push(`%${term}%`);
       const p = listParams.length;
       conditions.push(`(
-        c.name          ILIKE $${p}
-        OR c.email      ILIKE $${p}
-        OR c.phone      ILIKE $${p}
-        OR c.address    ILIKE $${p}
-        OR j.service_type ILIKE $${p}
-        OR UPPER(LEFT(i.id::text, 8)) ILIKE $${p}
-        OR i.amount::text ILIKE $${p}
+        c.name                ILIKE $${p}
+        OR c.email            ILIKE $${p}
+        OR c.phone            ILIKE $${p}
+        OR c.address          ILIKE $${p}
+        OR COALESCE(j.service_type, '') ILIKE $${p}
+        OR COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text, 8))) ILIKE $${p}
+        OR i.amount::text     ILIKE $${p}
+        OR COALESCE(i.subject,'') ILIKE $${p}
       )`);
     }
 
@@ -251,7 +466,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
     const joins = `
       FROM invoices i
       JOIN clients c ON c.id = i.client_id
-      JOIN jobs    j ON j.id = i.job_id
+      LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.account_id = $1${whereExtra}`;
 
     const countParams = [...listParams];
@@ -262,7 +477,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
       pool.query(
         `SELECT
            i.*,
-           UPPER(LEFT(i.id::text, 8))  AS invoice_number,
+           COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text, 8))) AS invoice_number,
            CASE
              WHEN i.status IN ('pending','failed') THEN i.amount
              WHEN i.status = 'paid'                THEN 0
@@ -287,12 +502,17 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
   }
 });
 
-// GET /api/invoices/eligible-jobs — completed jobs not yet invoiced
+// ─── GET /api/invoices/eligible-jobs ─────────────────────────────────────────
 router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const { search = '' } = req.query;
+    const { search = '', client_id = '' } = req.query;
     const params = [req.accountId];
     const conds  = [];
+
+    if (client_id) {
+      params.push(client_id);
+      conds.push(`j.client_id = $${params.length}`);
+    }
 
     const term = search.trim();
     if (term) {
@@ -305,6 +525,7 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
 
     const { rows } = await pool.query(
       `SELECT j.id, j.service_type, j.amount, j.scheduled_at, j.service_address AS address,
+              j.client_id,
               c.name AS client_name, c.email AS client_email
        FROM jobs j
        JOIN clients c ON c.id = j.client_id
@@ -325,16 +546,19 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
   }
 });
 
-// GET /api/invoices/:id
+// ─── GET /api/invoices/:id ────────────────────────────────────────────────────
 router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT i.*, c.name AS client_name, c.email AS client_email, c.phone AS client_phone,
-              c.stripe_payment_method_id, c.card_on_file,
+      `SELECT i.*,
+              COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text, 8))) AS invoice_number_display,
+              c.name AS client_name, c.email AS client_email, c.phone AS client_phone,
+              c.address AS client_address, c.city AS client_city, c.state AS client_state,
+              c.zip AS client_zip, c.stripe_payment_method_id, c.card_on_file,
               j.service_type, j.scheduled_at, j.tech_id
        FROM invoices i
        JOIN clients c ON c.id = i.client_id
-       JOIN jobs j ON j.id = i.job_id
+       LEFT JOIN jobs j ON j.id = i.job_id
        WHERE i.id = $1 AND i.account_id = $2`,
       [req.params.id, req.accountId]
     );
@@ -345,7 +569,7 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
   }
 });
 
-// PATCH /api/invoices/:id/line-items — update line items on a pending invoice
+// ─── PATCH /api/invoices/:id/line-items ──────────────────────────────────────
 router.patch('/:id/line-items', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { line_items } = req.body;
   if (!Array.isArray(line_items) || line_items.length === 0) {
@@ -358,16 +582,20 @@ router.patch('/:id/line-items', requireAuth, requireRole('owner', 'manager'), as
     ]);
     const invoice = invoiceRes.rows[0];
     if (!invoice) return res.status(404).json({ error: 'Not found' });
-    if (invoice.status !== 'pending') return res.status(400).json({ error: 'Can only edit line items on pending invoices' });
+    if (!['pending', 'draft'].includes(invoice.status)) {
+      return res.status(400).json({ error: 'Can only edit line items on draft or pending invoices' });
+    }
 
-    const taxRate   = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-    const subtotal  = line_items.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const taxAmount = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
-    const total     = parseFloat((subtotal + taxAmount).toFixed(2));
+    const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+    const { validItems, subtotal, discountAmount, taxAmount, total } =
+      computeTotals(line_items, invoice.discount_type, invoice.discount_value, taxRate);
 
     const { rows } = await pool.query(
-      `UPDATE invoices SET line_items = $1, amount = $2, tax_amount = $3 WHERE id = $4 AND account_id = $5 RETURNING *`,
-      [JSON.stringify(line_items), total, taxAmount, req.params.id, req.accountId]
+      `UPDATE invoices
+       SET line_items = $1, amount = $2, tax_amount = $3, subtotal = $4,
+           updated_by = $5, updated_at = NOW()
+       WHERE id = $6 AND account_id = $7 RETURNING *`,
+      [JSON.stringify(validItems), total, taxAmount, subtotal, req.userId, req.params.id, req.accountId]
     );
     res.json(rows[0]);
   } catch (err) {
@@ -375,29 +603,32 @@ router.patch('/:id/line-items', requireAuth, requireRole('owner', 'manager'), as
   }
 });
 
-// POST /api/invoices/:id/send — email payment link to client + mark sent
+// ─── POST /api/invoices/:id/send ─────────────────────────────────────────────
 router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT i.*, c.name AS client_name, c.email AS client_email,
-              j.service_type, a.name AS business_name,
+              COALESCE(j.service_type, i.subject, 'Service') AS service_type,
+              a.name AS business_name,
               COALESCE(i.tax_amount, 0) AS tax_amount
        FROM invoices i
        JOIN clients  c ON c.id = i.client_id
-       JOIN jobs     j ON j.id = i.job_id
+       LEFT JOIN jobs j ON j.id = i.job_id
        JOIN accounts a ON a.id = i.account_id
        WHERE i.id = $1 AND i.account_id = $2`,
       [req.params.id, req.accountId]
     );
     const inv = rows[0];
     if (!inv) return res.status(404).json({ error: 'Not found' });
-    if (inv.status !== 'pending') return res.status(400).json({ error: 'Invoice is not pending.' });
+    if (!['pending', 'draft'].includes(inv.status)) {
+      return res.status(400).json({ error: 'Invoice is not in a sendable state.' });
+    }
 
     const appUrl  = process.env.APP_URL || 'http://localhost:5173';
     const payLink = `${appUrl}/pay/${inv.id}`;
 
     await pool.query(
-      `UPDATE invoices SET payment_link = $1, sent_at = NOW() WHERE id = $2`,
+      `UPDATE invoices SET payment_link = $1, sent_at = NOW(), status = 'pending' WHERE id = $2`,
       [payLink, inv.id]
     );
 
@@ -408,7 +639,7 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
           subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
           html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name, inv.tax_amount),
           attachments: [{
-            filename:    `invoice-${inv.id.slice(0, 8)}.pdf`,
+            filename:    `invoice-${inv.invoice_number || inv.id.slice(0, 8)}.pdf`,
             content:     pdfBuf,
             contentType: 'application/pdf',
           }],
@@ -428,15 +659,16 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
   }
 });
 
-// GET /api/invoices/:id/pdf — download invoice as PDF
+// ─── GET /api/invoices/:id/pdf ────────────────────────────────────────────────
 router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT i.*, c.name AS client_name, c.email AS client_email,
-              j.service_type, a.name AS business_name
+              COALESCE(j.service_type, i.subject, 'Service') AS service_type,
+              a.name AS business_name
        FROM invoices i
        JOIN clients  c ON c.id = i.client_id
-       JOIN jobs     j ON j.id = i.job_id
+       LEFT JOIN jobs j ON j.id = i.job_id
        JOIN accounts a ON a.id = i.account_id
        WHERE i.id = $1 AND i.account_id = $2`,
       [req.params.id, req.accountId]
@@ -445,7 +677,7 @@ router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req,
     const pdfBuf = await generateInvoicePdfBuffer(rows[0]);
     res.set({
       'Content-Type':        'application/pdf',
-      'Content-Disposition': `attachment; filename="invoice-${rows[0].id.slice(0, 8)}.pdf"`,
+      'Content-Disposition': `attachment; filename="invoice-${rows[0].invoice_number || rows[0].id.slice(0, 8)}.pdf"`,
     });
     res.send(pdfBuf);
   } catch (err) {
@@ -453,12 +685,13 @@ router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req,
   }
 });
 
-// PATCH /api/invoices/:id/void
+// ─── PATCH /api/invoices/:id/void ────────────────────────────────────────────
 router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `UPDATE invoices SET status = 'void' WHERE id = $1 AND account_id = $2 RETURNING *`,
-      [req.params.id, req.accountId]
+      `UPDATE invoices SET status = 'void', updated_by = $1, updated_at = NOW()
+       WHERE id = $2 AND account_id = $3 RETURNING *`,
+      [req.userId, req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);

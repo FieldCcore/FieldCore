@@ -4,19 +4,19 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } fro
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check } from 'lucide-react';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
-import NewInvoiceModal from '../components/NewInvoiceModal';
+import InvoiceBuilder from '../components/InvoiceBuilder';
 import StatusBadge from '../components/StatusBadge';
 
 const PAGE_SIZE = 50;
-const FILTERS      = ['all', 'pending', 'paid', 'void', 'past_due'];
-const FILTER_LABELS = { all: 'All', pending: 'Pending', paid: 'Paid', void: 'Void', past_due: 'Past Due' };
+const FILTERS      = ['all', 'draft', 'pending', 'paid', 'void', 'past_due'];
+const FILTER_LABELS = { all: 'All', draft: 'Draft', pending: 'Pending', paid: 'Paid', void: 'Void', past_due: 'Past Due' };
 const DATE_PRESETS = ['all', 'today', 'week', 'month', 'last30'];
 const DATE_LABELS  = { all: 'All time', today: 'Today', week: 'This week', month: 'This month', last30: 'Last 30 days' };
 
 const EMPTY_KPIS = {
   outstanding: 0, collected: 0, pastDue: 0, pastDueCount: 0, totalCount: 0,
   issuedCount: 0, issuedTotal: 0, averageInvoice: 0,
-  counts: { all: 0, pending: 0, paid: 0, void: 0, past_due: 0 },
+  counts: { all: 0, draft: 0, pending: 0, paid: 0, void: 0, past_due: 0 },
 };
 
 function fmtAmt(n) {
@@ -461,7 +461,7 @@ export default function Invoices() {
                     </td>
                     <td className="inv-num">#{inv.invoice_number}</td>
                     <td>{fmtDate(inv.due_date)}</td>
-                    <td>{inv.service_type || '—'}</td>
+                    <td>{inv.subject || inv.service_type || '—'}</td>
                     <td><StatusBadge status={inv.is_past_due ? 'past_due' : inv.status} /></td>
                     <td className="inv-td-r">{fmtAmt(inv.amount)}</td>
                     <td className="inv-td-r">{inv.balance == null ? '—' : fmtAmt(inv.balance)}</td>
@@ -506,15 +506,13 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* ── New Invoice Modal ─────────────────────────────────── */}
+      {/* ── Invoice Builder ───────────────────────────────────── */}
       {showNew && (
-        <div className="modal-overlay" onClick={() => setShowNew(false)}>
-          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
-            <NewInvoiceModal
-              onClose={() => setShowNew(false)}
-              onCreated={handleInvoiceCreated}
-            />
-          </div>
+        <div className="ib-overlay" onClick={() => setShowNew(false)}>
+          <InvoiceBuilder
+            onClose={() => setShowNew(false)}
+            onCreated={handleInvoiceCreated}
+          />
         </div>
       )}
     </div>

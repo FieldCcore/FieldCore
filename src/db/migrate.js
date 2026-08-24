@@ -1812,6 +1812,43 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_job_upsell_seller  ON job_upsell_attributions(account_id, sold_by_user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_upsell_type    ON job_upsell_attributions(account_id, attribution_type, sold_at DESC)`,
 
+  // ── INVOICE BUILDER V1 — extended invoice model ──────────────────────────────
+  // Make job_id optional — standalone (blank/manual) invoices don't require a job
+  `ALTER TABLE invoices ALTER COLUMN job_id DROP NOT NULL`,
+  // Replace table-level UNIQUE (job_id) with a partial index (NULL job_ids are allowed)
+  `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_job_id_key`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_job_unique
+     ON invoices(job_id) WHERE job_id IS NOT NULL`,
+  // Add 'draft' status — new invoices start as drafts; 'pending' means sent
+  `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
+  `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
+     CHECK (status IN ('draft','pending','paid','void','failed'))`,
+  // Audit / source tracking
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source_type    TEXT NOT NULL DEFAULT 'JOB'`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_by     UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_by     UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ`,
+  // Sequential human-readable invoice number (assigned at creation, per account)
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_number INT`,
+  // Header fields
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subject        TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issued_date    DATE`,
+  // Discount
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_type   TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_value  NUMERIC(10,2)`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2)`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal        NUMERIC(10,2)`,
+  // Client-visible and internal text
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_message TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS internal_notes TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS terms          TEXT`,
+  // Per-account sequential number tracker
+  `CREATE TABLE IF NOT EXISTS invoice_number_sequences (
+     account_id UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+     next_val   INT NOT NULL DEFAULT 1001
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_inv_seq_account ON invoice_number_sequences(account_id)`,
+
   // ── CUSTOMERS V1 ANALYTICS ────────────────────────────────────────────────
   // Customer inactivity policy on business_profiles — drives At-Risk/Churn engine.
   // NULL = not configured (status card shown). INT = days before a repeat customer
