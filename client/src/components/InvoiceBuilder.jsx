@@ -648,6 +648,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   // ── settings ────────────────────────────────────────────────────────────────
   const [taxRate,             setTaxRate]             = useState(0);
   const [previewNumber,       setPreviewNumber]       = useState(null);
+  const [previewNumErr,       setPreviewNumErr]       = useState(false);
   const [acceptCard,          setAcceptCard]          = useState(true);
   const [acceptAch,           setAcceptAch]           = useState(false);
   const [allowPartial,        setAllowPartial]        = useState(false);
@@ -727,7 +728,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         setPayOptPartial(!!d.allow_partial_payments);
         if (d.default_terms) setTerms(d.default_terms);
       })
-      .catch(() => {});
+      .catch(() => { setPreviewNumErr(true); });
   }, []);
 
   // ── on source change: load eligible data ────────────────────────────────────
@@ -1101,7 +1102,12 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       <div className="ib-header">
         <div>
           <h2 className="ib-title">New Invoice</h2>
-          {previewNumber != null && <span className="ib-preview-num">Preview #{previewNumber}</span>}
+          {previewNumErr
+            ? <span className="ib-preview-num">Preview # Unavailable</span>
+            : previewNumber != null
+              ? <span className="ib-preview-num">Preview #{previewNumber}</span>
+              : null
+          }
         </div>
         <button className="ib-close" onClick={onClose} aria-label="Close">
           <X size={18} />

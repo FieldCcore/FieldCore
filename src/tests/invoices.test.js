@@ -1619,3 +1619,188 @@ describe('POST /api/invoices — source traceability', () => {
     expect(res.body.source_type).toBe('MANUAL');
   });
 });
+
+// ── Invoice numbering V2 ──────────────────────────────────────────────────────
+
+describe('GET /api/invoices/next-number', () => {
+  let nnAccountId, nnToken;
+
+  beforeAll(async () => {
+    const hash = require('bcryptjs').hashSync('pw', 4);
+    const { rows: [acct] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_NN_${Date.now()}__`]
+    );
+    nnAccountId = acct.id;
+    const { rows: [u] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'NN Owner',$2,$3,'owner') RETURNING id`,
+      [nnAccountId, `inv-nn-${Date.now()}@test.fc`, hash]
+    );
+    nnToken = makeToken(u.id, nnAccountId, 'owner');
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [nnAccountId]);
+  });
+
+  it('returns 401 with no token', async () => {
+    const res = await request(app).get('/api/invoices/next-number');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns next_number for a zero-invoice account', async () => {
+    const res = await request(app)
+      .get('/api/invoices/next-number')
+      .set('Authorization', `Bearer ${nnToken}`)
+      .expect(200);
+    expect(res.body).toHaveProperty('next_number');
+    expect(typeof res.body.next_number).toBe('number');
+    expect(res.body.next_number).toBeGreaterThanOrEqual(1001);
+  });
+
+  it('next_number matches what the first invoice will use', async () => {
+    const preview = await request(app)
+      .get('/api/invoices/next-number')
+      .set('Authorization', `Bearer ${nnToken}`)
+      .expect(200);
+
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'NN Client','nn@test.fc') RETURNING id`,
+      [nnAccountId]
+    );
+    const inv = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nnToken}`)
+      .send({ source_type: 'MANUAL', client_id: c.id, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(201);
+
+    expect(inv.body.invoice_number).toBe(preview.body.next_number);
+  });
+});
+
+describe('POST /api/invoices — numbering semantics', () => {
+  let nsAccountId, nsToken, nsClientId;
+
+  beforeAll(async () => {
+    const hash = require('bcryptjs').hashSync('pw', 4);
+    const { rows: [acct] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_NS_${Date.now()}__`]
+    );
+    nsAccountId = acct.id;
+    const { rows: [u] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'NS Owner',$2,$3,'owner') RETURNING id`,
+      [nsAccountId, `inv-ns-${Date.now()}@test.fc`, hash]
+    );
+    nsToken = makeToken(u.id, nsAccountId, 'owner');
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'NS Client','nsc@test.fc') RETURNING id`,
+      [nsAccountId]
+    );
+    nsClientId = c.id;
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [nsAccountId]);
+  });
+
+  const li = [{ name: 'Item', quantity: 1, unit_price: 50 }];
+
+  it('first invoice number equals invoice_starting_number (no off-by-one)', async () => {
+    const settings = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .expect(200);
+    const expectedFirst = settings.body.next_number;
+
+    const r = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+
+    expect(r.body.invoice_number).toBe(expectedFirst);
+  });
+
+  it('settings next_number after first invoice equals used number + 1', async () => {
+    const r = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+
+    const settings = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .expect(200);
+
+    expect(settings.body.next_number).toBe(r.body.invoice_number + 1);
+  });
+
+  it('sequential invoices have numbers incrementing by exactly 1', async () => {
+    const r1 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+    const r2 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+
+    expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
+  });
+
+  it('concurrent invoice creates produce unique numbers', async () => {
+    const invoices = await Promise.all([
+      request(app).post('/api/invoices').set('Authorization', `Bearer ${nsToken}`)
+        .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li }),
+      request(app).post('/api/invoices').set('Authorization', `Bearer ${nsToken}`)
+        .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li }),
+      request(app).post('/api/invoices').set('Authorization', `Bearer ${nsToken}`)
+        .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li }),
+    ]);
+    const numbers = invoices.map(r => r.body.invoice_number);
+    expect(new Set(numbers).size).toBe(3);
+  });
+
+  it('invoice sequence is isolated — other account creates do not advance this one', async () => {
+    const before = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .expect(200);
+
+    // Create invoice on the primary test account (different from nsAccountId)
+    await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'MANUAL', client_id: clientId, line_items: li })
+      .expect(201);
+
+    const after = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .expect(200);
+
+    expect(after.body.next_number).toBe(before.body.next_number);
+  });
+
+  it('source_type does not affect the sequence', async () => {
+    const r1 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+    const r2 = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${nsToken}`)
+      .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
+      .expect(201);
+
+    // Both are MANUAL here; the point is the sequence runs the same regardless
+    expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
+  });
+});

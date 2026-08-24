@@ -1148,3 +1148,44 @@ describe('InvoiceBuilder V2 — source regression', () => {
     });
   });
 });
+
+// ── Invoice number preview ────────────────────────────────────────────────────
+
+describe('InvoiceBuilder — invoice number preview', () => {
+  it('shows preview number loaded from API (not hardcoded 1001)', async () => {
+    setup();
+    await waitFor(() => {
+      expect(screen.getByText(/Preview #1042/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Preview #1001/i)).not.toBeInTheDocument();
+  });
+
+  it('shows no preview number before API resolves', () => {
+    // API mock never resolves during this synchronous check
+    api.get.mockImplementation(() => new Promise(() => {}));
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    expect(screen.queryByText(/Preview #/i)).not.toBeInTheDocument();
+  });
+
+  it('shows "Unavailable" when settings API fails', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.reject(new Error('500'));
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Preview # Unavailable/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does not show a hardcoded fallback number when API returns null next_number', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings'))
+        return Promise.resolve({ data: { ...MOCK_SETTINGS, next_number: null } });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    await act(async () => { vi.advanceTimersByTime(100); });
+    expect(screen.queryByText(/Preview #/i)).not.toBeInTheDocument();
+  });
+});

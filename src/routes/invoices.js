@@ -444,18 +444,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       computeTotals(baseLineItems, discount_type, discount_value, taxRate);
 
     // Atomically claim the next invoice number for this account.
-    // On first invoice: seed from configured invoice_starting_number (default 1001).
-    // On subsequent invoices: increment the live sequence.
+    // next_val stores the NEXT available number (pre-incremented sentinel).
+    // First invoice: seed next_val = start_val + 1, return start_val.
+    // Subsequent: increment next_val, return previous next_val (the claimed number).
     const numRes = await client.query(
       `WITH cfg AS (
-         SELECT COALESCE(invoice_starting_number, 1001) AS start_val
-         FROM booking_settings WHERE account_id = $1
+         SELECT COALESCE(
+           (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
+           1001
+         ) AS start_val
        )
        INSERT INTO invoice_number_sequences (account_id, next_val, starting_number)
-       VALUES ($1, COALESCE((SELECT start_val FROM cfg), 1001), COALESCE((SELECT start_val FROM cfg), 1001))
+       SELECT $1, (SELECT start_val FROM cfg) + 1, (SELECT start_val FROM cfg)
        ON CONFLICT (account_id) DO UPDATE
          SET next_val = invoice_number_sequences.next_val + 1
-       RETURNING next_val AS invoice_number`,
+       RETURNING next_val - 1 AS invoice_number`,
       [req.accountId]
     );
     const invoiceNumber = numRes.rows[0].invoice_number;
@@ -518,6 +521,26 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// ─── GET /api/invoices/next-number ───────────────────────────────────────────
+// Lightweight preview endpoint — reads next_val without allocating a number.
+router.get('/next-number', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(
+         (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
+         COALESCE(
+           (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
+           1001
+         )
+       ) AS next_number`,
+      [req.accountId]
+    );
+    res.json({ next_number: parseInt(rows[0]?.next_number, 10) || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

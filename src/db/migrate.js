@@ -2020,6 +2020,12 @@ const MIGRATIONS = [
   `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS coverage_status TEXT NOT NULL DEFAULT 'open'`,
   `ALTER TABLE agreement_invoice_periods ADD CONSTRAINT agreement_invoice_periods_coverage_status_check
      CHECK (coverage_status IN ('open','covered','paid_in_advance','overage'))`,
+
+  // ── INVOICE NUMBERING V2 — semantic fix ───────────────────────────────────────
+  // next_val now stores the NEXT available number (not the last used).
+  // Migration flag makes this update idempotent across server restarts.
+  `ALTER TABLE invoice_number_sequences ADD COLUMN IF NOT EXISTS seq_v2_migrated BOOLEAN NOT NULL DEFAULT FALSE`,
+  `UPDATE invoice_number_sequences SET next_val = next_val + 1, seq_v2_migrated = TRUE WHERE NOT seq_v2_migrated`,
 ];
 
 async function runMigrations() {
