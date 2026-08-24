@@ -329,6 +329,161 @@ describe('Agreements — patch', () => {
   });
 });
 
+// ── End date ──────────────────────────────────────────────────────────────────
+
+describe('Agreements — end date', () => {
+  it('creates agreement with end_date', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Limited Term Agreement',
+        plan_price: 250,
+        started_at: '2026-09-01',
+        end_date: '2026-12-31',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_date).toMatch(/2026-12-31/);
+  });
+
+  it('creates agreement without end_date (open-ended)', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Open-Ended Agreement', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.end_date).toBeNull();
+  });
+
+  it('patches end_date onto an existing agreement', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch EndDate Agr', plan_price: 80 });
+    expect(create.status).toBe(201);
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ end_date: '2027-06-30' });
+    expect(res.status).toBe(200);
+    expect(res.body.end_date).toMatch(/2027-06-30/);
+  });
+});
+
+// ── Draft status ──────────────────────────────────────────────────────────────
+
+describe('Agreements — draft status', () => {
+  it('accepts status=draft on create', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Draft Agreement', plan_price: 50, payment_status: 'pending' });
+    expect(res.status).toBe(201);
+    // default status is active; patch it to draft
+    const patch = await request(app)
+      .patch(`/api/agreements/${res.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'draft' });
+    expect(patch.status).toBe(200);
+    expect(patch.body.status).toBe('draft');
+  });
+
+  it('accepts status transitions: draft → active', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Activate Agreement', plan_price: 50, payment_status: 'pending' });
+    await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'draft' });
+    const activate = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'active' });
+    expect(activate.status).toBe(200);
+    expect(activate.body.status).toBe('active');
+  });
+});
+
+// ── Schedule preview ──────────────────────────────────────────────────────────
+
+describe('Agreements — schedule preview', () => {
+  it('returns next 4 service dates for monthly cadence', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'monthly', started_at: '2026-01-01', count: 4 });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.services)).toBe(true);
+    expect(res.body.services.length).toBe(4);
+    res.body.services.forEach(d => expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it('all preview dates are in the future', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'monthly', started_at: '2020-01-15', count: 4 });
+    expect(res.status).toBe(200);
+    res.body.services.forEach(d => expect(d >= today).toBe(true));
+  });
+
+  it('returns weekly cadence dates 7 days apart', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'weekly', started_at: '2026-01-01', count: 3 });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    expect(dates.length).toBe(3);
+    const diff0 = (new Date(dates[1]) - new Date(dates[0])) / 86400000;
+    const diff1 = (new Date(dates[2]) - new Date(dates[1])) / 86400000;
+    expect(diff0).toBe(7);
+    expect(diff1).toBe(7);
+  });
+
+  it('returns every_2_weeks cadence dates exactly 14 days apart', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'every_2_weeks', started_at: '2026-01-01', count: 3 });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    expect(dates.length).toBe(3);
+    const diff = (new Date(dates[1]) - new Date(dates[0])) / 86400000;
+    expect(diff).toBe(14);
+  });
+
+  it('clamps count to 8 maximum', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'weekly', started_at: '2026-01-01', count: 20 });
+    expect(res.status).toBe(200);
+    expect(res.body.services.length).toBeLessThanOrEqual(8);
+  });
+
+  it('custom cadence uses service_interval_days', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'custom', started_at: '2026-01-01', service_interval_days: 10, count: 3 });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    const diff = (new Date(dates[1]) - new Date(dates[0])) / 86400000;
+    expect(diff).toBe(10);
+  });
+
+  it('preview requires auth', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .send({ cadence: 'monthly', started_at: '2026-01-01' });
+    expect(res.status).toBe(401);
+  });
+});
+
 // ── Tenant isolation ──────────────────────────────────────────────────────────
 
 describe('Agreements — tenant isolation', () => {

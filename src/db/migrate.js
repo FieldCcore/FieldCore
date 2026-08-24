@@ -2004,6 +2004,14 @@ const MIGRATIONS = [
   `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_missed_service_policy_check
      CHECK (missed_service_policy IN ('no_adjustment','credit','rollover','manual_review'))`,
 
+  // Optional end date — agreement stops generating periods/occurrences on or after this date
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS end_date DATE`,
+
+  // Expand status to include draft (agreements can be configured before activation)
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_status_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_status_check
+     CHECK (status IN ('draft','active','paused','cancelled','expired'))`,
+
   // Expand agreement_invoice_periods to track occurrence-level coverage
   `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS included_occurrence_count INT`,
   `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS used_occurrence_count INT NOT NULL DEFAULT 0`,

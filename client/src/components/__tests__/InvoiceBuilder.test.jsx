@@ -652,6 +652,105 @@ describe('InvoiceBuilder — inline agreement form', () => {
     });
   });
 
+  it('service type autocomplete field is present in inline form', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-service-type')).toBeInTheDocument();
+    });
+  });
+
+  it('service type search shows catalog results', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByTestId('agr-service-type'));
+    const svcInput = screen.getByTestId('agr-service-type');
+    fireEvent.focus(svcInput);
+    fireEvent.change(svcInput, { target: { value: 'Lawn' } });
+    act(() => { vi.advanceTimersByTime(300); });
+    await waitFor(() => {
+      expect(screen.getByText('Premium Mobile Detail')).toBeInTheDocument();
+    });
+  });
+
+  it('selecting a catalog service pre-fills plan price when price is empty', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByTestId('agr-service-type'));
+    const svcInput = screen.getByTestId('agr-service-type');
+    fireEvent.focus(svcInput);
+    fireEvent.change(svcInput, { target: { value: '' } });
+    act(() => { vi.advanceTimersByTime(300); });
+    await waitFor(() => screen.getByText('Premium Mobile Detail'));
+    fireEvent.mouseDown(screen.getByText('Premium Mobile Detail'));
+    await waitFor(() => {
+      const priceInput = screen.getByTestId('agr-plan-price');
+      expect(priceInput.value).toBe('200.00');
+    });
+  });
+
+  it('end date toggle shows end date field when checked', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByText('Set end date'));
+    fireEvent.click(screen.getByLabelText(/set end date/i));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-end-date')).toBeInTheDocument();
+    });
+  });
+
+  it('end date field hides again when checkbox is unchecked', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByText('Set end date'));
+    fireEvent.click(screen.getByLabelText(/set end date/i));
+    await waitFor(() => screen.getByTestId('agr-end-date'));
+    fireEvent.click(screen.getByLabelText(/set end date/i));
+    await waitFor(() => {
+      expect(screen.queryByTestId('agr-end-date')).toBeNull();
+    });
+  });
+
+  it('schedule preview appears when start date is set', async () => {
+    await openEmptyAgreementState();
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByTestId('agr-cadence'));
+    // Start date defaults to TODAY so preview should appear immediately
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-schedule-preview')).toBeInTheDocument();
+    });
+  });
+
   it('saving inline form auto-selects newly created agreement', async () => {
     const NEW_AGR = {
       id: 'a-new',

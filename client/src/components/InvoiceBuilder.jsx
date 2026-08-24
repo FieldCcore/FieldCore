@@ -1,5 +1,5 @@
 'use strict';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format, addDays } from 'date-fns';
 import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import api from '../api';
@@ -104,6 +104,54 @@ function fmtPeriodFE(start, end) {
   const s = new Date(start + 'T00:00:00');
   const e = new Date(end   + 'T00:00:00');
   return `${format(s, 'MMM d')}–${format(e, 'MMM d, yyyy')}`;
+}
+
+// ── computeNextOccurrences — pure date math, mirrors backend nextOccurrences ──
+function computeNextOccurrences(cadence, startedAt, intervalDays, count) {
+  if (!startedAt) return [];
+  const n     = Math.max(1, count || 4);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(startedAt + 'T00:00:00');
+  const c     = cadence === 'biweekly' ? 'every_2_weeks' : (cadence || 'monthly');
+  const out   = [];
+
+  if (c === 'monthly') {
+    const dom = start.getDate();
+    let d = new Date(start.getFullYear(), start.getMonth(), dom);
+    while (d < today) {
+      const nm = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      nm.setDate(Math.min(dom, new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate()));
+      d = nm;
+    }
+    while (out.length < n) {
+      out.push(d.toISOString().slice(0, 10));
+      const nm = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      nm.setDate(Math.min(dom, new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate()));
+      d = nm;
+    }
+  } else if (c === 'quarterly') {
+    let d = new Date(start);
+    while (d < today) d.setDate(d.getDate() + 91);
+    while (out.length < n) { out.push(d.toISOString().slice(0, 10)); d = new Date(d); d.setDate(d.getDate() + 91); }
+  } else if (c === 'annual') {
+    let d = new Date(start);
+    while (d < today) d.setFullYear(d.getFullYear() + 1);
+    while (out.length < n) { out.push(d.toISOString().slice(0, 10)); d = new Date(d); d.setFullYear(d.getFullYear() + 1); }
+  } else {
+    const days = c === 'weekly' ? 7 : c === 'every_2_weeks' ? 14 : c === 'every_3_weeks' ? 21
+               : c === 'every_4_weeks' ? 28 : (parseInt(intervalDays, 10) || 7);
+    const diff = Math.floor((today - start) / 86400000);
+    const wins = diff >= 0 ? Math.floor(diff / days) : 0;
+    let d = new Date(start);
+    d.setDate(d.getDate() + wins * days);
+    if (d < today) d.setDate(d.getDate() + days);
+    while (out.length < n) {
+      out.push(d.toISOString().slice(0, 10));
+      d = new Date(d); d.setDate(d.getDate() + days);
+    }
+  }
+  return out;
 }
 
 // ── ServiceDropdown — per-line-item service catalog picker ────────────────────
@@ -227,23 +275,102 @@ function ServiceDropdown({ value, onChange, onServiceSelect }) {
   );
 }
 
+// ── AgreementServiceSearch — service-catalog autocomplete for agreement form ───
+function AgreementServiceSearch({ value, onChange, onSelect }) {
+  const [open,    setOpen]    = useState(false);
+  const [results, setResults] = useState([]);
+  const debRef  = useRef(null);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    function h(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  function fetchSvcs(q) {
+    api.get(`/services/search?q=${encodeURIComponent(q)}`)
+      .then(r => setResults(r.data || []))
+      .catch(() => setResults([]));
+  }
+
+  function handleChange(e) {
+    const val = e.target.value;
+    onChange(val);
+    setOpen(true);
+    clearTimeout(debRef.current);
+    debRef.current = setTimeout(() => fetchSvcs(val), 275);
+  }
+
+  function handleFocus() { setOpen(true); fetchSvcs(value || ''); }
+
+  function select(svc) { setOpen(false); onSelect(svc); }
+
+  return (
+    <div style={{ position: 'relative' }} ref={wrapRef}>
+      <input
+        className="ib-input"
+        value={value}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        placeholder="e.g. Lawn Mowing, Fleet Detail"
+        data-testid="agr-service-type"
+      />
+      {open && results.length > 0 && (
+        <div className="svc-drop" role="listbox">
+          {results.map(svc => (
+            <div key={svc.id} className="svc-drop-item" role="option" onMouseDown={() => select(svc)}>
+              <span className="svc-drop-name">{svc.name}</span>
+              {svc.price != null && <span className="svc-drop-price">${parseFloat(svc.price).toFixed(2)}</span>}
+            </div>
+          ))}
+          <div className="svc-drop-item svc-drop-custom" role="option" onMouseDown={() => setOpen(false)}>
+            <Plus size={12} /> Custom service type
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── InlineAgreementForm — expands inside the agreement source section ──────────
 function InlineAgreementForm({ clientId, onSaved, onCancel }) {
+  // Basics
   const [agrName,           setAgrName]           = useState('');
   const [agrServiceType,    setAgrServiceType]    = useState('');
+  // Service schedule
   const [agrCadence,        setAgrCadence]        = useState('monthly');
   const [agrSvcIntervalDays,setAgrSvcIntervalDays]= useState('');
+  const [agrStartedAt,      setAgrStartedAt]      = useState(TODAY);
+  const [agrHasEndDate,     setAgrHasEndDate]     = useState(false);
+  const [agrEndDate,        setAgrEndDate]        = useState('');
+  // Billing
   const [agrBillingCadence, setAgrBillingCadence] = useState('monthly');
   const [agrBillingTrigger, setAgrBillingTrigger] = useState('first_day');
   const [agrBillingDay,     setAgrBillingDay]     = useState('');
+  const [agrPlanPrice,      setAgrPlanPrice]      = useState('');
   const [agrIncluded,       setAgrIncluded]       = useState('1');
+  // Exceptions
   const [agrExtraPolicy,    setAgrExtraPolicy]    = useState('all_included');
   const [agrMissedPolicy,   setAgrMissedPolicy]   = useState('no_adjustment');
-  const [agrPlanPrice,      setAgrPlanPrice]      = useState('');
-  const [agrStartedAt,      setAgrStartedAt]      = useState(TODAY);
+  // Meta
   const [agrNotes,          setAgrNotes]          = useState('');
   const [saving,            setSaving]            = useState(false);
   const [error,             setError]             = useState('');
+
+  // Schedule preview: next 4 service dates derived from current cadence + start
+  const previewDates = useMemo(
+    () => computeNextOccurrences(agrCadence, agrStartedAt, parseInt(agrSvcIntervalDays, 10) || null, 4),
+    [agrCadence, agrStartedAt, agrSvcIntervalDays]
+  );
+
+  // When user picks a catalog service: populate service type and optionally price
+  function handleServiceSelect(svc) {
+    setAgrServiceType(svc.name);
+    if (!agrPlanPrice || parseFloat(agrPlanPrice) === 0) {
+      setAgrPlanPrice(String(parseFloat(svc.price || 0).toFixed(2)));
+    }
+  }
 
   const canSave = !saving
     && agrName.trim().length > 0
@@ -272,6 +399,7 @@ function InlineAgreementForm({ clientId, onSaved, onCancel }) {
         plan_price:                   parseFloat(agrPlanPrice) || 0,
         notes:                        agrNotes.trim() || null,
         started_at:                   agrStartedAt,
+        end_date:                     agrHasEndDate && agrEndDate ? agrEndDate : null,
       });
       onSaved(res.data);
     } catch (err) {
@@ -285,110 +413,159 @@ function InlineAgreementForm({ clientId, onSaved, onCancel }) {
     <div className="ib-inline-agr">
       <div className="ib-inline-agr-header">New Recurring Agreement</div>
 
-      <div className="ib-inline-agr-row">
-        <div className="ib-field ib-field--grow">
-          <label className="ib-label">Agreement Name *</label>
-          <input
-            className="ib-input"
-            value={agrName}
-            onChange={e => setAgrName(e.target.value)}
-            placeholder="e.g. Monthly AC Maintenance"
-            data-testid="agr-name"
-          />
-        </div>
-        <div className="ib-field">
-          <label className="ib-label">Service / Package</label>
-          <input
-            className="ib-input"
-            value={agrServiceType}
-            onChange={e => setAgrServiceType(e.target.value)}
-            placeholder="e.g. HVAC, Lawn Care"
-          />
-        </div>
-      </div>
-
-      <div className="ib-inline-agr-row">
-        <div className="ib-field">
-          <label className="ib-label">Service Cadence</label>
-          <select className="ib-select" value={agrCadence} onChange={e => setAgrCadence(e.target.value)} data-testid="agr-cadence">
-            {AGR_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        {agrCadence === 'custom' && (
-          <div className="ib-field">
-            <label className="ib-label">Every N days</label>
-            <input className="ib-input" type="number" min="1" value={agrSvcIntervalDays} onChange={e => setAgrSvcIntervalDays(e.target.value)} placeholder="10" />
-          </div>
-        )}
-        <div className="ib-field">
-          <label className="ib-label">Billing Cadence</label>
-          <select className="ib-select" value={agrBillingCadence} onChange={e => setAgrBillingCadence(e.target.value)} data-testid="agr-billing-cadence">
-            {AGR_BILLING_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="ib-inline-agr-row">
-        <div className="ib-field">
-          <label className="ib-label">Billing Trigger</label>
-          <select className="ib-select" value={agrBillingTrigger} onChange={e => setAgrBillingTrigger(e.target.value)} data-testid="agr-billing-trigger">
-            {AGR_BILLING_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        {agrBillingTrigger === 'specific_day' && (
-          <div className="ib-field">
-            <label className="ib-label">Day of month (1–28)</label>
-            <input className="ib-input" type="number" min="1" max="28" value={agrBillingDay} onChange={e => setAgrBillingDay(e.target.value)} placeholder="1–28" />
-          </div>
-        )}
-      </div>
-
-      <div className="ib-inline-agr-row">
-        <div className="ib-field">
-          <label className="ib-label">Plan Price *</label>
-          <div className="ib-price-wrap">
-            <span className="ib-price-sym">$</span>
+      {/* ── Agreement Basics ──────────────────────────────────────────────── */}
+      <div className="ib-inline-agr-section">
+        <div className="ib-inline-agr-section-label">Agreement Basics</div>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field ib-field--grow">
+            <label className="ib-label">Agreement Name *</label>
             <input
-              className="ib-input ib-input--price"
-              type="number" min="0" step="0.01"
-              value={agrPlanPrice}
-              onChange={e => setAgrPlanPrice(e.target.value)}
-              placeholder="0.00"
-              data-testid="agr-plan-price"
+              className="ib-input"
+              value={agrName}
+              onChange={e => setAgrName(e.target.value)}
+              placeholder="e.g. Monthly AC Maintenance"
+              data-testid="agr-name"
             />
           </div>
         </div>
-        <div className="ib-field">
-          <label className="ib-label">Services per billing period</label>
-          <input className="ib-input" type="number" min="1" value={agrIncluded} onChange={e => setAgrIncluded(e.target.value)} placeholder="1" data-testid="agr-included" />
+        <div className="ib-inline-agr-row">
+          <div className="ib-field ib-field--grow">
+            <label className="ib-label">Service / Package</label>
+            <AgreementServiceSearch
+              value={agrServiceType}
+              onChange={setAgrServiceType}
+              onSelect={handleServiceSelect}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="ib-inline-agr-row">
-        <div className="ib-field">
-          <label className="ib-label">If visits exceed included</label>
-          <select className="ib-select" value={agrExtraPolicy} onChange={e => setAgrExtraPolicy(e.target.value)} data-testid="agr-extra-policy">
-            {AGR_EXTRA_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+      {/* ── Service Schedule ──────────────────────────────────────────────── */}
+      <div className="ib-inline-agr-section">
+        <div className="ib-inline-agr-section-label">Service Schedule</div>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Cadence</label>
+            <select className="ib-select" value={agrCadence} onChange={e => setAgrCadence(e.target.value)} data-testid="agr-cadence">
+              {AGR_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {agrCadence === 'custom' && (
+            <div className="ib-field">
+              <label className="ib-label">Every N days</label>
+              <input className="ib-input" type="number" min="1" value={agrSvcIntervalDays}
+                onChange={e => setAgrSvcIntervalDays(e.target.value)} placeholder="10" />
+            </div>
+          )}
+          <div className="ib-field">
+            <label className="ib-label">Start Date</label>
+            <input className="ib-input" type="date" value={agrStartedAt} onChange={e => setAgrStartedAt(e.target.value)} />
+          </div>
         </div>
-        <div className="ib-field">
-          <label className="ib-label">If a service is missed</label>
-          <select className="ib-select" value={agrMissedPolicy} onChange={e => setAgrMissedPolicy(e.target.value)} data-testid="agr-missed-policy">
-            {AGR_MISSED_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 }}>
+            <input
+              type="checkbox" id="agr-has-end-date"
+              checked={agrHasEndDate}
+              onChange={e => { setAgrHasEndDate(e.target.checked); if (!e.target.checked) setAgrEndDate(''); }}
+            />
+            <label htmlFor="agr-has-end-date" className="ib-label" style={{ margin: 0, cursor: 'pointer' }}>Set end date</label>
+          </div>
+          {agrHasEndDate && (
+            <div className="ib-field">
+              <label className="ib-label">End Date</label>
+              <input className="ib-input" type="date" value={agrEndDate}
+                onChange={e => setAgrEndDate(e.target.value)} data-testid="agr-end-date" min={agrStartedAt} />
+            </div>
+          )}
+        </div>
+
+        {/* Schedule preview */}
+        {previewDates.length > 0 && (
+          <div className="ib-agr-preview" data-testid="agr-schedule-preview">
+            <span className="ib-agr-preview-label">Next services:</span>
+            <div className="ib-agr-preview-dates">
+              {previewDates.map(d => (
+                <span key={d} className="ib-agr-preview-date">
+                  {format(new Date(d + 'T00:00:00'), 'MMM d, yyyy')}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Billing ───────────────────────────────────────────────────────── */}
+      <div className="ib-inline-agr-section">
+        <div className="ib-inline-agr-section-label">Billing</div>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Billing Cadence</label>
+            <select className="ib-select" value={agrBillingCadence} onChange={e => setAgrBillingCadence(e.target.value)} data-testid="agr-billing-cadence">
+              {AGR_BILLING_CADENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="ib-field">
+            <label className="ib-label">Billing Trigger</label>
+            <select className="ib-select" value={agrBillingTrigger} onChange={e => setAgrBillingTrigger(e.target.value)} data-testid="agr-billing-trigger">
+              {AGR_BILLING_TRIGGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {agrBillingTrigger === 'specific_day' && (
+            <div className="ib-field">
+              <label className="ib-label">Day of month (1–28)</label>
+              <input className="ib-input" type="number" min="1" max="28" value={agrBillingDay}
+                onChange={e => setAgrBillingDay(e.target.value)} placeholder="1–28" />
+            </div>
+          )}
+        </div>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Plan Price *</label>
+            <div className="ib-price-wrap">
+              <span className="ib-price-sym">$</span>
+              <input
+                className="ib-input ib-input--price"
+                type="number" min="0" step="0.01"
+                value={agrPlanPrice}
+                onChange={e => setAgrPlanPrice(e.target.value)}
+                placeholder="0.00"
+                data-testid="agr-plan-price"
+              />
+            </div>
+          </div>
+          <div className="ib-field">
+            <label className="ib-label">Services per period</label>
+            <input className="ib-input" type="number" min="1" value={agrIncluded}
+              onChange={e => setAgrIncluded(e.target.value)} placeholder="1" data-testid="agr-included" />
+          </div>
         </div>
       </div>
 
-      <div className="ib-inline-agr-row">
-        <div className="ib-field">
-          <label className="ib-label">Start Date</label>
-          <input className="ib-input" type="date" value={agrStartedAt} onChange={e => setAgrStartedAt(e.target.value)} />
+      {/* ── Exceptions ────────────────────────────────────────────────────── */}
+      <div className="ib-inline-agr-section">
+        <div className="ib-inline-agr-section-label">Exceptions</div>
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">If visits exceed included</label>
+            <select className="ib-select" value={agrExtraPolicy} onChange={e => setAgrExtraPolicy(e.target.value)} data-testid="agr-extra-policy">
+              {AGR_EXTRA_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="ib-field">
+            <label className="ib-label">If a service is missed</label>
+            <select className="ib-select" value={agrMissedPolicy} onChange={e => setAgrMissedPolicy(e.target.value)} data-testid="agr-missed-policy">
+              {AGR_MISSED_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
-      <div className="ib-field" style={{ marginTop: 8 }}>
+      {/* ── Notes ─────────────────────────────────────────────────────────── */}
+      <div className="ib-field" style={{ marginTop: 4 }}>
         <label className="ib-label">Internal Notes</label>
-        <textarea className="ib-textarea" rows={2} value={agrNotes} onChange={e => setAgrNotes(e.target.value)} placeholder="Notes visible to your team only…" />
+        <textarea className="ib-textarea" rows={2} value={agrNotes}
+          onChange={e => setAgrNotes(e.target.value)} placeholder="Notes visible to your team only…" />
       </div>
 
       {error && <p className="ib-save-error" style={{ marginTop: 8 }}>{error}</p>}

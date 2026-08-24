@@ -2098,6 +2098,51 @@ body {
   gap: 8px;
   margin-top: 4px;
 }
+.ib-inline-agr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--lightgray);
+}
+.ib-inline-agr-section:first-child { border-top: none; padding-top: 0; }
+.ib-inline-agr-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+.ib-agr-preview {
+  background: var(--blue-lt);
+  border: 1px solid #BBDEFB;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ib-agr-preview-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+.ib-agr-preview-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ib-agr-preview-date {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--blue);
+  background: #fff;
+  border: 1px solid #BBDEFB;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
 
 /* ── Universal Autocomplete component ───────────────────── */
 .ac-wrap { position: relative; }

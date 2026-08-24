@@ -16,8 +16,59 @@ const BILLING_CADENCE_VALUES = [
 const BILLING_TRIGGER_VALUES = ['every_service','first_scheduled','first_completed','first_day','specific_day'];
 const EXTRA_POLICY_VALUES         = ['all_included','max_n','rollover','manual_review'];
 const MISSED_SERVICE_POLICY_VALUES = ['no_adjustment','credit','rollover','manual_review'];
-const STATUS_VALUES          = ['active','paused','cancelled','expired'];
+const STATUS_VALUES          = ['draft','active','paused','cancelled','expired'];
 const PAYMENT_VALUES         = ['paid_in_advance','pending','failed','overdue'];
+
+// Generates the next N future service occurrence dates from a cadence anchor.
+// interval-based cadences (weekly, every_N_weeks, custom) use startedAt as the
+// epoch so "every 2 weeks" means exactly 14 days, never month-boundary drift.
+function nextOccurrences(cadence, startedAt, intervalDays, count) {
+  const n   = Math.max(1, parseInt(count, 10) || 4);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = startedAt ? new Date(startedAt + 'T00:00:00') : new Date(today);
+  const c = cadence === 'biweekly' ? 'every_2_weeks' : (cadence || 'monthly');
+  const results = [];
+
+  if (c === 'monthly') {
+    const dom = start.getDate();
+    let d = new Date(start.getFullYear(), start.getMonth(), dom);
+    while (d < today) {
+      const nm = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      const mx = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      nm.setDate(Math.min(dom, mx));
+      d = nm;
+    }
+    while (results.length < n) {
+      results.push(d.toISOString().slice(0, 10));
+      const nm = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      const mx = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      nm.setDate(Math.min(dom, mx));
+      d = nm;
+    }
+  } else if (c === 'quarterly') {
+    let d = new Date(start);
+    while (d < today) d.setDate(d.getDate() + 91);
+    while (results.length < n) { results.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 91); }
+  } else if (c === 'annual') {
+    let d = new Date(start);
+    while (d < today) d.setFullYear(d.getFullYear() + 1);
+    while (results.length < n) { results.push(d.toISOString().slice(0, 10)); d.setFullYear(d.getFullYear() + 1); }
+  } else {
+    const days = c === 'weekly' ? 7 : c === 'every_2_weeks' ? 14 : c === 'every_3_weeks' ? 21
+               : c === 'every_4_weeks' ? 28 : (parseInt(intervalDays, 10) || 7);
+    const diff = Math.floor((today - start) / 86400000);
+    const wins = diff >= 0 ? Math.floor(diff / days) : 0;
+    let d = new Date(start);
+    d.setDate(d.getDate() + wins * days);
+    if (d < today) d.setDate(d.getDate() + days);
+    while (results.length < n) {
+      results.push(d.toISOString().slice(0, 10));
+      d = new Date(d); d.setDate(d.getDate() + days);
+    }
+  }
+  return results;
+}
 
 // ─── GET /api/agreements ──────────────────────────────────────────────────────
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -65,7 +116,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     service_interval_days = null,
     plan_price = 0, payment_status = 'pending',
     missed_service_policy = 'no_adjustment',
-    notes, line_items = [], started_at, next_billing_date,
+    notes, line_items = [], started_at, next_billing_date, end_date = null,
   } = req.body;
 
   if (!client_id) return res.status(400).json({ error: 'client_id is required' });
@@ -103,8 +154,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
           cadence, billing_cadence, billing_trigger, billing_day,
           included_services_per_period, extra_occurrence_policy, service_interval_days,
           missed_service_policy, plan_price, payment_status, notes, line_items,
-          started_at, next_billing_date, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,COALESCE($18,CURRENT_DATE),$19,$20)
+          started_at, next_billing_date, end_date, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,COALESCE($18,CURRENT_DATE),$19,$20,$21)
        RETURNING *`,
       [
         req.accountId, client_id, name.trim(), service_type || null, service_address || null,
@@ -116,7 +167,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         missed_service_policy,
         parseFloat(plan_price) || 0, payment_status,
         notes || null, JSON.stringify(Array.isArray(line_items) ? line_items : []),
-        started_at || null, next_billing_date || null, req.userId,
+        started_at || null, next_billing_date || null, end_date || null, req.userId,
       ]
     );
     res.status(201).json(rows[0]);
@@ -144,6 +195,23 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
   }
 });
 
+// ─── POST /api/agreements/preview ────────────────────────────────────────────
+// Must be before /:id to prevent 'preview' being matched as a UUID param
+router.post('/preview', requireAuth, async (req, res) => {
+  const {
+    cadence = 'monthly',
+    started_at,
+    service_interval_days,
+    count = 4,
+  } = req.body;
+  try {
+    const services = nextOccurrences(cadence, started_at, service_interval_days, Math.min(parseInt(count, 10) || 4, 8));
+    res.json({ services });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── PATCH /api/agreements/:id ────────────────────────────────────────────────
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const allowed = [
@@ -152,7 +220,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     'included_services_per_period','extra_occurrence_policy','service_interval_days',
     'missed_service_policy',
     'plan_price','status','payment_status','notes','line_items',
-    'started_at','next_billing_date',
+    'started_at','next_billing_date','end_date',
   ];
   const updates = [];
   const params  = [req.params.id, req.accountId];
