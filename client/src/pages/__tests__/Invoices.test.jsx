@@ -4,13 +4,22 @@ import { MemoryRouter } from 'react-router-dom';
 import Invoices from '../Invoices';
 
 vi.mock('../../api', () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() },
 }));
 
 vi.mock('../../components/InvoiceDetail', () => ({
   default: ({ onClose }) => (
     <div data-testid="invoice-detail">
       <button onClick={onClose}>Close</button>
+    </div>
+  ),
+}));
+
+vi.mock('../../components/NewInvoiceModal', () => ({
+  default: ({ onClose, onCreated }) => (
+    <div data-testid="new-invoice-modal">
+      <button data-testid="ni-close" onClick={onClose}>Cancel</button>
+      <button data-testid="ni-create" onClick={() => onCreated({ id: 'new-inv-id' })}>Create Invoice</button>
     </div>
   ),
 }));
@@ -98,9 +107,13 @@ const EMPTY_RESPONSE = {
   rows: [], total: 0, page: 1, pageSize: 50, kpis: EMPTY_KPIS,
 };
 
-function setup(response = MOCK_RESPONSE) {
+function setup(response = MOCK_RESPONSE, url = '/invoices') {
   api.get.mockResolvedValueOnce({ data: response });
-  return render(<MemoryRouter><Invoices /></MemoryRouter>);
+  return render(
+    <MemoryRouter initialEntries={[url]}>
+      <Invoices />
+    </MemoryRouter>
+  );
 }
 
 // Helper to get the status filter group (first .inv-filter-group)
@@ -781,5 +794,66 @@ describe('Invoices — single-layer design', () => {
     const table = screen.getByRole('table');
     expect(table.closest('.card')).toBeNull();
     expect(table.closest('[class*="panel"]')).toBeNull();
+  });
+});
+
+// ── New Invoice modal ──────────────────────────────────────────────────────────
+
+describe('Invoices — New Invoice modal', () => {
+  it('New Invoice button opens modal', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
+    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+  });
+
+  it('?new=1 URL param opens modal on mount', async () => {
+    setup(MOCK_RESPONSE, '/invoices?new=1');
+    await waitFor(() => screen.getByTestId('new-invoice-modal'));
+    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+  });
+
+  it('closing modal via Cancel hides it', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
+    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('ni-close'));
+    expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+  });
+
+  it('clicking overlay closes modal', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
+    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+    fireEvent.click(document.querySelector('.modal-overlay'));
+    expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+  });
+
+  it('onCreated closes modal and triggers list refresh', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }));
+    expect(screen.getByTestId('new-invoice-modal')).toBeInTheDocument();
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    api.get.mockResolvedValueOnce({ data: { id: 'new-inv-id', client_name: 'New Client', amount: '100', status: 'pending' } });
+    fireEvent.click(screen.getByTestId('ni-create'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('new-invoice-modal')).toBeNull();
+      expect(api.get).toHaveBeenCalledTimes(2); // initial + refresh
+    });
+  });
+
+  it('second click on New Invoice does not open a second modal', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const btn = screen.getByRole('button', { name: /\+ new invoice/i });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(document.querySelectorAll('[data-testid="new-invoice-modal"]').length).toBe(1);
   });
 });

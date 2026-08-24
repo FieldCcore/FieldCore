@@ -287,6 +287,44 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
   }
 });
 
+// GET /api/invoices/eligible-jobs — completed jobs not yet invoiced
+router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { search = '' } = req.query;
+    const params = [req.accountId];
+    const conds  = [];
+
+    const term = search.trim();
+    if (term) {
+      params.push(`%${term}%`);
+      const p = params.length;
+      conds.push(`(c.name ILIKE $${p} OR j.service_type ILIKE $${p} OR j.service_address ILIKE $${p})`);
+    }
+
+    const whereExtra = conds.length ? ' AND ' + conds.join(' AND ') : '';
+
+    const { rows } = await pool.query(
+      `SELECT j.id, j.service_type, j.amount, j.scheduled_at, j.service_address AS address,
+              c.name AS client_name, c.email AS client_email
+       FROM jobs j
+       JOIN clients c ON c.id = j.client_id
+       WHERE j.account_id = $1
+         AND j.status = 'complete'
+         AND NOT EXISTS (
+           SELECT 1 FROM invoices inv
+           WHERE inv.job_id = j.id AND inv.account_id = $1
+         )${whereExtra}
+       ORDER BY j.scheduled_at DESC
+       LIMIT 100`,
+      params
+    );
+
+    res.json({ rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/invoices/:id
 router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {

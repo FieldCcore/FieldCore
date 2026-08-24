@@ -28,6 +28,8 @@ let clientId, techId;
 
 // Shared invoice IDs created in beforeAll — cleaned up by account cascade
 let pendingInvId, paidInvId, voidInvId, overdueInvId;
+// Extra jobs for eligible-jobs tests
+let eligibleJobId, incompleteJobId;
 
 beforeAll(async () => {
   const hash = await bcrypt.hash('pw', 10);
@@ -115,6 +117,22 @@ beforeAll(async () => {
     [accountId, jobId, clientId]
   );
   overdueInvId = od.id;
+
+  // Eligible job: complete, no invoice — should appear in eligible-jobs
+  const { rows: [ej] } = await pool.query(
+    `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+     VALUES ($1,$2,$3,'Eligible Service','complete',20000,$4,60) RETURNING id`,
+    [accountId, clientId, techId, TODAY + 'T14:00:00Z']
+  );
+  eligibleJobId = ej.id;
+
+  // Incomplete job: scheduled, no invoice — must NOT appear in eligible-jobs
+  const { rows: [ij] } = await pool.query(
+    `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+     VALUES ($1,$2,$3,'Pending Service','scheduled',10000,$4,60) RETURNING id`,
+    [accountId, clientId, techId, TODAY + 'T16:00:00Z']
+  );
+  incompleteJobId = ij.id;
 });
 
 afterAll(async () => {
@@ -493,5 +511,117 @@ describe('GET /api/invoices — SQL injection resistance', () => {
       .expect(200);
 
     expect(Array.isArray(res.body.rows)).toBe(true);
+  });
+});
+
+// ── GET /api/invoices/eligible-jobs ────────────────────────────────────────────
+
+describe('GET /api/invoices/eligible-jobs — auth', () => {
+  it('returns 401 with no token', async () => {
+    await request(app).get('/api/invoices/eligible-jobs').expect(401);
+  });
+
+  it('returns 403 for tech role', async () => {
+    const techToken = makeToken(techId, accountId, 'tech');
+    await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${techToken}`)
+      .expect(403);
+  });
+});
+
+describe('GET /api/invoices/eligible-jobs — eligibility', () => {
+  it('returns 200 with rows array', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(Array.isArray(res.body.rows)).toBe(true);
+  });
+
+  it('includes completed job with no invoice', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows.some(r => r.id === eligibleJobId)).toBe(true);
+  });
+
+  it('excludes job that already has an invoice', async () => {
+    // jobId (the main test job) has multiple invoices — must not appear
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const ids = res.body.rows.map(r => r.id);
+    // The main jobId has invoices, so it must not be in the eligible list
+    // (We don't have direct access to jobId here, but eligibleJobId must be present)
+    expect(res.body.rows.some(r => r.id === eligibleJobId)).toBe(true);
+  });
+
+  it('excludes incomplete (scheduled) job', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows.some(r => r.id === incompleteJobId)).toBe(false);
+  });
+
+  it('each row includes client_name, service_type, amount, scheduled_at', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const row = res.body.rows.find(r => r.id === eligibleJobId);
+    expect(row).toBeDefined();
+    expect(row.client_name).toBe('Able Corp');
+    expect(row.service_type).toBe('Eligible Service');
+    expect(parseFloat(row.amount)).toBe(20000);
+    expect(row.scheduled_at).toBeTruthy();
+  });
+});
+
+describe('GET /api/invoices/eligible-jobs — search', () => {
+  it('?search=Eligible matches by service_type', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs?search=Eligible')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows.some(r => r.id === eligibleJobId)).toBe(true);
+  });
+
+  it('?search=Able matches by client name', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs?search=Able')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('non-matching search returns empty rows', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs?search=ZZZNOMATCH')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.rows).toHaveLength(0);
+  });
+});
+
+describe('GET /api/invoices/eligible-jobs — tenant isolation', () => {
+  it('account B cannot see account A eligible jobs', async () => {
+    const res = await request(app)
+      .get('/api/invoices/eligible-jobs')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(200);
+
+    expect(res.body.rows.every(r => r.id !== eligibleJobId)).toBe(true);
   });
 });

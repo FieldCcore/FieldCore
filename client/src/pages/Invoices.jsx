@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check } from 'lucide-react';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
+import NewInvoiceModal from '../components/NewInvoiceModal';
 import StatusBadge from '../components/StatusBadge';
 
 const PAGE_SIZE = 50;
@@ -74,11 +75,13 @@ function SortTh({ label, col, currentSort, currentOrder, onSort, extraClass }) {
 
 export default function Invoices() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [invoices, setInvoices] = useState([]);
   const [kpis, setKpis]         = useState(EMPTY_KPIS);
   const [total, setTotal]       = useState(0);
   const [selected, setSelected] = useState(null);
+  const [showNew, setShowNew]   = useState(false);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [searchInput, setSearchInput] = useState('');
@@ -144,6 +147,24 @@ export default function Invoices() {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, [params]);
 
+  // Consume ?new=1 from global create menu — open modal + clean URL
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setShowNew(true);
+      setSearchParams(prev => {
+        const p = new URLSearchParams(prev);
+        p.delete('new');
+        return p;
+      }, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleInvoiceCreated(newInvoice) {
+    setShowNew(false);
+    doFetch(params);                              // refresh list + KPIs
+    setSelected({ id: newInvoice.id, ...newInvoice }); // open detail
+  }
+
   function handleFilterChange(f) {
     setParams(p => ({ ...p, status: f, page: 1 }));
   }
@@ -193,7 +214,7 @@ export default function Invoices() {
       {/* ── Page header ───────────────────────────────────────── */}
       <div className="page-header">
         <h1>Invoices</h1>
-        <button className="btn btn-primary" onClick={() => navigate('/invoices?new=1')}>
+        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
           + New Invoice
         </button>
       </div>
@@ -480,6 +501,18 @@ export default function Invoices() {
               invoice={selected}
               onClose={() => setSelected(null)}
               onUpdate={handleUpdate}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── New Invoice Modal ─────────────────────────────────── */}
+      {showNew && (
+        <div className="modal-overlay" onClick={() => setShowNew(false)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <NewInvoiceModal
+              onClose={() => setShowNew(false)}
+              onCreated={handleInvoiceCreated}
             />
           </div>
         </div>
