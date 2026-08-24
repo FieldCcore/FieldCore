@@ -39,20 +39,28 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
   }
 });
 
-// GET /api/clients/search?q= — lightweight search for dialer and quick pickers
+// GET /api/clients/search?q= — autocomplete for invoice builder and quick pickers
 router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
-  if (q.length < 2) return res.json([]);
-  const like = `%${q.toLowerCase()}%`;
+  if (q.length < 1) return res.json([]);
+  const like = `%${q}%`;
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, phone, email, tier
+      `SELECT id, name, phone, email, address, city, state, zip, tier
        FROM clients
        WHERE account_id = $1
-         AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(email,'')) LIKE $2 OR phone LIKE $3)
-       ORDER BY name
-       LIMIT 8`,
-      [req.accountId, like, `%${q}%`]
+         AND (
+           name                  ILIKE $2
+           OR COALESCE(email,'') ILIKE $2
+           OR COALESCE(phone,'') ILIKE $2
+           OR COALESCE(address,'') ILIKE $2
+           OR COALESCE(city,'')  ILIKE $2
+         )
+       ORDER BY
+         CASE WHEN LOWER(name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+         name ASC
+       LIMIT 10`,
+      [req.accountId, like, `${q}%`]
     );
     res.json(rows);
   } catch (err) {

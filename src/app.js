@@ -55,6 +55,7 @@ const systemRouter             = require('./routes/system');
 const revenueRouter            = require('./routes/revenue');
 const operationsRouter         = require('./routes/operations');
 const agreementsRouter         = require('./routes/agreements');
+const servicesRouter           = require('./routes/services');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -223,6 +224,7 @@ app.use('/api/operations',                     generalLimiter, operationsRouter)
 app.use('/api/integrations',                   generalLimiter, integrationsRouter);
 app.use('/api/integrations/banking',           generalLimiter, bankingRouter);
 app.use('/api/agreements',                     generalLimiter, agreementsRouter);
+app.use('/api/services',                       generalLimiter, servicesRouter);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', async (req, res) => {

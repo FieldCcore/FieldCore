@@ -2069,6 +2069,122 @@ body {
 .ib-agr-invoiced { color: #b45309; font-weight: 600; }
 .ib-job-row--dim { opacity: 0.6; }
 
+/* ── Universal Autocomplete component ───────────────────── */
+.ac-wrap { position: relative; }
+.ac-input-row {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--lightgray); border-radius: 6px;
+  padding: 0 10px; background: var(--white);
+  transition: border-color .15s;
+}
+.ac-input-row:focus-within { border-color: var(--navy); }
+.ac-search-icon { color: var(--steel); flex-shrink: 0; }
+.ac-input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-size: 0.85rem; color: var(--navy); padding: 9px 0;
+  min-width: 0;
+}
+.ac-input--locked { color: var(--navy); font-weight: 500; cursor: default; }
+.ac-input::placeholder { color: var(--steel); }
+.ac-clear-btn {
+  background: none; border: none; cursor: pointer; color: var(--steel);
+  display: flex; align-items: center; padding: 2px; border-radius: 3px;
+  transition: color .15s;
+}
+.ac-clear-btn:hover { color: var(--navy); }
+.ac-selected-card { margin-top: 8px; }
+.ac-drop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(28,35,51,.10);
+  z-index: 200; max-height: 260px; overflow-y: auto; list-style: none;
+  padding: 4px 0;
+}
+.ac-drop-item {
+  padding: 8px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+  transition: background .1s; font-size: 0.83rem;
+}
+.ac-drop-item:hover, .ac-drop-item--active { background: var(--offwhite); }
+.ac-drop-item--append {
+  border-top: 1px solid var(--lightgray); color: var(--slate);
+  font-size: 0.8rem; padding-top: 8px; margin-top: 2px;
+}
+.ac-drop-state {
+  padding: 10px 12px; font-size: 0.82rem; color: var(--steel); list-style: none;
+}
+.ac-drop-empty { color: var(--slate); font-style: italic; }
+.ac-drop-error { color: var(--red); }
+.ac-hl { background: #fef9c3; color: inherit; font-style: normal; border-radius: 2px; }
+.ac-client-item { display: flex; flex-direction: column; gap: 1px; }
+.ac-client-name { font-weight: 600; color: var(--navy); font-size: 0.84rem; }
+.ac-client-meta { font-size: 0.78rem; color: var(--slate); }
+
+/* ── Service catalog dropdown (line-item picker) ─────────── */
+.svc-picker-wrap { position: relative; }
+.svc-name-input { width: 100%; }
+.svc-drop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 2px);
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(28,35,51,.10);
+  z-index: 300; max-height: 220px; overflow-y: auto;
+}
+.svc-drop-state { padding: 8px 12px; font-size: 0.82rem; color: var(--steel); }
+.svc-drop-item {
+  padding: 8px 12px; cursor: pointer; display: grid;
+  grid-template-columns: 1fr auto; grid-template-rows: auto auto;
+  gap: 1px 8px; transition: background .1s; font-size: 0.82rem;
+}
+.svc-drop-item:hover, .svc-drop-item--active { background: var(--offwhite); }
+.svc-drop-name { font-weight: 600; color: var(--navy); grid-column: 1; grid-row: 1; }
+.svc-drop-category { font-size: 0.74rem; color: var(--steel); grid-column: 1; grid-row: 2; }
+.svc-drop-desc { font-size: 0.74rem; color: var(--slate); grid-column: 1; grid-row: 2; }
+.svc-drop-price { font-weight: 700; color: var(--navy); grid-column: 2; grid-row: 1 / 3; align-self: center; font-family: 'DM Mono', monospace; font-size: 0.82rem; }
+.svc-drop-custom {
+  display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid var(--lightgray); color: var(--slate);
+  font-size: 0.8rem; padding: 8px 12px; margin-top: 2px;
+}
+
+/* ── Save split-button & dropdown ────────────────────────── */
+.ib-save-split { position: relative; display: flex; }
+.ib-save-primary { border-radius: 6px 0 0 6px !important; }
+.ib-save-arrow {
+  border-radius: 0 6px 6px 0 !important;
+  border-left: 1px solid rgba(255,255,255,.25) !important;
+  padding: 0 10px !important; min-width: unset !important;
+}
+.ib-save-drop {
+  position: absolute; bottom: calc(100% + 6px); right: 0;
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(28,35,51,.12);
+  z-index: 400; min-width: 200px; overflow: hidden;
+}
+.ib-save-drop-item {
+  display: block; width: 100%; padding: 10px 14px; text-align: left;
+  background: none; border: none; cursor: pointer;
+  font-size: 0.84rem; color: var(--navy); transition: background .12s;
+}
+.ib-save-drop-item:hover { background: var(--offwhite); }
+
+/* ── Payment options ─────────────────────────────────────── */
+.ib-payment-opts { display: flex; flex-direction: column; gap: 8px; }
+.ib-payopt-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.84rem; color: var(--navy); cursor: pointer;
+}
+.ib-payopt-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--navy); }
+
+/* ── Discount label input ─────────────────────────────────── */
+.ib-discount-label-input {
+  flex: 1; min-width: 120px; max-width: 200px;
+  font-size: 0.82rem;
+}
+
+/* ── Totals: tax not configured + balance rows ───────────── */
+.ib-totals-row--muted { opacity: 0.6; }
+.ib-tax-unconfigured { font-size: 0.78rem; color: var(--steel); font-style: italic; }
+.ib-totals-row:has(.ib-tax-unconfigured) { font-size: 0.82rem; }
+
 /* Textareas */
 .ib-textarea {
   width: 100%;

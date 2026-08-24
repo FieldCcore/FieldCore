@@ -1930,6 +1930,27 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_csa_account_client  ON client_segment_assignments(account_id, client_id)`,
   `CREATE INDEX IF NOT EXISTS idx_csa_segment         ON client_segment_assignments(segment_id)`,
+
+  // ── INVOICE V2 ────────────────────────────────────────────────────────────────
+
+  // Service catalog: category + SKU for richer autocomplete
+  `ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS category TEXT`,
+  `ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS sku      TEXT`,
+
+  // Business-level payment capability flags (all inherit to invoices)
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS accept_card             BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS accept_ach              BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS allow_partial_payments  BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS default_terms           TEXT`,
+
+  // Invoice-level: named discount + per-invoice payment option overrides
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_label  TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_options JSONB NOT NULL DEFAULT '{}'`,
+
+  // Expand invoice status to include partially_paid
+  `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
+  `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check
+     CHECK (status IN ('draft','pending','paid','partially_paid','void','failed'))`,
 ];
 
 async function runMigrations() {

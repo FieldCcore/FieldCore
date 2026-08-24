@@ -239,12 +239,14 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     line_items:       reqLineItems,
     discount_type,
     discount_value,
+    discount_label,
     payment_terms     = 'due_on_receipt',
     due_date,
     issued_date,
     client_message,
     internal_notes,
     terms,
+    payment_options,
     status:           reqStatus,
   } = req.body;
 
@@ -252,7 +254,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     return res.status(400).json({ error: 'source_type must be JOB, MANUAL, ESTIMATE, or AGREEMENT' });
   }
 
-  const status = ['draft', 'pending'].includes(reqStatus) ? reqStatus : 'draft';
+  const status = ['draft', 'pending', 'partially_paid'].includes(reqStatus) ? reqStatus : 'draft';
 
   const client = await pool.connect();
   try {
@@ -450,22 +452,25 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       `INSERT INTO invoices (
          account_id, job_id, client_id, source_type, source_estimate_id, source_agreement_id,
          invoice_number,
-         amount, tax_amount, subtotal, discount_type, discount_value, discount_amount,
+         amount, tax_amount, subtotal, discount_type, discount_value, discount_amount, discount_label,
          line_items, subject, issued_date, payment_terms, due_date,
-         client_message, internal_notes, terms, status, created_by
+         client_message, internal_notes, terms, payment_options, status, created_by
        ) VALUES (
          $1,$2,$3,$4,$5,$6,
          $7,
-         $8,$9,$10,$11,$12,$13,
-         $14,$15,$16,$17,$18,
-         $19,$20,$21,$22,$23
+         $8,$9,$10,$11,$12,$13,$14,
+         $15,$16,$17,$18,$19,
+         $20,$21,$22,$23,$24,$25
        ) RETURNING *`,
       [
         req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, finalSourceAgreementId,
         invoiceNumber,
-        total, taxAmount, subtotal, discount_type || null, parseFloat(discount_value) || null, discountAmount || null,
+        total, taxAmount, subtotal,
+        discount_type || null, parseFloat(discount_value) || null, discountAmount || null, discount_label || null,
         JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
-        finalClientMessage, internal_notes || null, terms || null, status, req.userId,
+        finalClientMessage, internal_notes || null, terms || null,
+        payment_options ? JSON.stringify(payment_options) : '{}',
+        status, req.userId,
       ]
     );
 
@@ -501,7 +506,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 // ─── GET /api/invoices/settings ──────────────────────────────────────────────
 router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const [numRes, taxRes] = await Promise.all([
+    const [numRes, bkRes] = await Promise.all([
       pool.query(
         `SELECT COALESCE(
            (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
@@ -510,13 +515,24 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
         [req.accountId]
       ),
       pool.query(
-        `SELECT COALESCE(tax_rate, 0) AS tax_rate FROM booking_settings WHERE account_id = $1`,
+        `SELECT COALESCE(tax_rate, 0)                 AS tax_rate,
+                COALESCE(accept_card, TRUE)            AS accept_card,
+                COALESCE(accept_ach, FALSE)            AS accept_ach,
+                COALESCE(allow_partial_payments, FALSE) AS allow_partial_payments,
+                default_terms
+         FROM booking_settings
+         WHERE account_id = $1`,
         [req.accountId]
       ),
     ]);
+    const bs = bkRes.rows[0] || {};
     res.json({
-      next_number: numRes.rows[0]?.next_number || 1001,
-      tax_rate:    parseFloat(taxRes.rows[0]?.tax_rate || 0),
+      next_number:            numRes.rows[0]?.next_number || 1001,
+      tax_rate:               parseFloat(bs.tax_rate || 0),
+      accept_card:            bs.accept_card !== false,
+      accept_ach:             !!bs.accept_ach,
+      allow_partial_payments: !!bs.allow_partial_payments,
+      default_terms:          bs.default_terms || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -8,7 +8,21 @@ vi.mock('../../api', () => ({
 
 import api from '../../api';
 
-const MOCK_SETTINGS = { next_number: 1042, tax_rate: 0 };
+const MOCK_SETTINGS = {
+  next_number: 1042,
+  tax_rate: 0,
+  accept_card: true,
+  accept_ach: false,
+  allow_partial_payments: false,
+  default_terms: null,
+};
+
+const MOCK_SETTINGS_WITH_TAX = { ...MOCK_SETTINGS, tax_rate: 0.08 };
+
+const MOCK_SERVICES = [
+  { id: 'svc-1', name: 'Premium Mobile Detail', description: 'Exterior + Interior', price: '200.00', category: 'Detailing', sku: 'PMD-001', duration_minutes: 120 },
+  { id: 'svc-2', name: 'Basic Wash', description: 'Exterior only', price: '50.00', category: null, sku: null, duration_minutes: 30 },
+];
 
 const MOCK_CLIENTS = [
   { id: 'c-111', name: 'Able Corp', email: 'able@corp.com', phone: '555-0001', address: '1 Main St' },
@@ -86,10 +100,11 @@ const MOCK_CREATED_AGR_INVOICE = {
   amount: '200.00',
 };
 
-function setup(onClose = vi.fn(), onCreated = vi.fn()) {
+function setup(onClose = vi.fn(), onCreated = vi.fn(), settingsOverride = MOCK_SETTINGS) {
   api.get.mockImplementation(url => {
-    if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+    if (url.includes('/invoices/settings')) return Promise.resolve({ data: settingsOverride });
     if (url.includes('/clients/search'))   return Promise.resolve({ data: MOCK_CLIENTS });
+    if (url.includes('/services/search'))  return Promise.resolve({ data: MOCK_SERVICES });
     if (url.includes('/invoices/eligible-estimates'))  return Promise.resolve({ data: MOCK_ESTIMATES });
     if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: MOCK_AGREEMENTS });
     if (url.includes('/invoices/eligible-jobs'))       return Promise.resolve({ data: { rows: MOCK_JOBS } });
@@ -535,6 +550,354 @@ describe('InvoiceBuilder — agreement error handling', () => {
     fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
     await waitFor(() => {
       expect(screen.getByText(/billing period has already been invoiced/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── V2: Client autocomplete ───────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — client autocomplete', () => {
+  it('shows client search input with correct placeholder', async () => {
+    setup();
+    expect(screen.getByPlaceholderText(/search by name, company/i)).toBeInTheDocument();
+  });
+
+  it('typing triggers client search API call after debounce', async () => {
+    setup();
+    const input = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(input, { target: { value: 'Able' } });
+    act(() => { vi.advanceTimersByTime(300); });
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining('/clients/search?q=Able'),
+        expect.any(Object)
+      );
+    });
+  });
+
+  it('shows client result in dropdown', async () => {
+    setup();
+    const input = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(input, { target: { value: 'Able' } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await waitFor(() => {
+      const item = document.querySelector('.ac-drop-item');
+      expect(item).not.toBeNull();
+      expect(item.textContent).toMatch(/able corp/i);
+    });
+  });
+
+  it('clicking a client result selects the client', async () => {
+    setup();
+    const input = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(input, { target: { value: 'Able' } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await waitFor(() => expect(document.querySelector('.ac-drop-item')).not.toBeNull());
+    fireEvent.mouseDown(document.querySelector('.ac-drop-item'));
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Able Corp')).toBeInTheDocument();
+    });
+  });
+
+  it('shows client card after selection', async () => {
+    setup();
+    const input = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(input, { target: { value: 'Able' } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await waitFor(() => expect(document.querySelector('.ac-drop-item')).not.toBeNull());
+    fireEvent.mouseDown(document.querySelector('.ac-drop-item'));
+    await waitFor(() => {
+      expect(document.querySelector('.ib-client-card')).not.toBeNull();
+    });
+  });
+
+  it('clear button removes selected client', async () => {
+    setup();
+    const input = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(input, { target: { value: 'Able' } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await waitFor(() => expect(document.querySelector('.ac-drop-item')).not.toBeNull());
+    fireEvent.mouseDown(document.querySelector('.ac-drop-item'));
+    await waitFor(() => screen.getByDisplayValue('Able Corp'));
+    fireEvent.click(screen.getByRole('button', { name: /clear selection/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.ib-client-card')).toBeNull();
+    });
+  });
+});
+
+// ── V2: Service catalog in line items ─────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — service catalog', () => {
+  it('focusing line item name input fetches services', async () => {
+    setup();
+    const nameInput = screen.getByPlaceholderText('Service name');
+    fireEvent.focus(nameInput);
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining('/services/search'),
+        expect.any(Object)
+      );
+    });
+  });
+
+  it('shows service results dropdown when focused', async () => {
+    setup();
+    const nameInput = screen.getByPlaceholderText('Service name');
+    fireEvent.focus(nameInput);
+    await waitFor(() => {
+      expect(screen.getByText('Premium Mobile Detail')).toBeInTheDocument();
+    });
+  });
+
+  it('selecting a service populates name and price', async () => {
+    setup();
+    const nameInput = screen.getByPlaceholderText('Service name');
+    fireEvent.focus(nameInput);
+    await waitFor(() => screen.getByText('Premium Mobile Detail'));
+    fireEvent.mouseDown(screen.getByText('Premium Mobile Detail'));
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Premium Mobile Detail')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "+ Custom line item" option in dropdown', async () => {
+    setup();
+    const nameInput = screen.getByPlaceholderText('Service name');
+    fireEvent.focus(nameInput);
+    await waitFor(() => {
+      expect(screen.getByText(/custom line item/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── V2: Discount label ────────────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — discount label', () => {
+  it('discount label input not shown when no discount', async () => {
+    setup();
+    expect(screen.queryByPlaceholderText(/discount reason/i)).toBeNull();
+  });
+
+  it('discount label input appears when discount type is fixed', async () => {
+    setup();
+    const select = screen.getByDisplayValue('No discount');
+    fireEvent.change(select, { target: { value: 'fixed' } });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/discount reason/i)).toBeInTheDocument();
+    });
+  });
+
+  it('discount label appears when discount type is percent', async () => {
+    setup();
+    const select = screen.getByDisplayValue('No discount');
+    fireEvent.change(select, { target: { value: 'percent' } });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/discount reason/i)).toBeInTheDocument();
+    });
+  });
+
+  it('discount label value is included in save payload', async () => {
+    const onCreated = vi.fn();
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search')) return Promise.resolve({ data: MOCK_CLIENTS });
+      return Promise.resolve({ data: [] });
+    });
+    api.post.mockResolvedValueOnce({ data: { id: 'inv-1', status: 'draft' } });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={onCreated} />);
+
+    // Select client
+    const clientInput = screen.getByPlaceholderText(/search by name, company/i);
+    fireEvent.change(clientInput, { target: { value: 'Able' } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await waitFor(() => expect(document.querySelector('.ac-drop-item')).not.toBeNull());
+    fireEvent.mouseDown(document.querySelector('.ac-drop-item'));
+    await waitFor(() => screen.getByDisplayValue('Able Corp'));
+
+    // Add a line item
+    const nameInput = screen.getByPlaceholderText('Service name');
+    fireEvent.change(nameInput, { target: { value: 'Test Service' } });
+    const priceInput = screen.getAllByPlaceholderText('0.00')[0];
+    fireEvent.change(priceInput, { target: { value: '100' } });
+
+    // Add discount with label
+    const discountSelect = screen.getByDisplayValue('No discount');
+    fireEvent.change(discountSelect, { target: { value: 'percent' } });
+    const labelInput = screen.getByPlaceholderText(/discount reason/i);
+    fireEvent.change(labelInput, { target: { value: 'New Client Discount' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/invoices', expect.objectContaining({
+        discount_label: 'New Client Discount',
+        discount_type: 'percent',
+      }));
+    });
+  });
+});
+
+// ── V2: Payment options ───────────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — payment options', () => {
+  it('shows payment options section when accept_card is true', async () => {
+    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
+    await waitFor(() => {
+      expect(screen.getByText('Payment Options')).toBeInTheDocument();
+    });
+  });
+
+  it('payment options section not shown when all are false', async () => {
+    setup(vi.fn(), vi.fn(), {
+      ...MOCK_SETTINGS,
+      accept_card: false,
+      accept_ach: false,
+      allow_partial_payments: false,
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Payment Options')).toBeNull();
+    });
+  });
+
+  it('Accept Card checkbox is visible when configured', async () => {
+    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
+    await waitFor(() => {
+      expect(screen.getByText('Accept Card')).toBeInTheDocument();
+    });
+  });
+
+  it('ACH option only shows when business has it configured', async () => {
+    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true, accept_ach: true });
+    await waitFor(() => {
+      expect(screen.getByText(/accept ach/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── V2: Tax state ─────────────────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — tax display', () => {
+  it('shows "Not configured" when tax_rate is 0', async () => {
+    setup();
+    await waitFor(() => {
+      expect(screen.getByText('Not configured')).toBeInTheDocument();
+    });
+  });
+
+  it('shows tax rate when configured', async () => {
+    setup(vi.fn(), vi.fn(), MOCK_SETTINGS_WITH_TAX);
+    await waitFor(() => {
+      expect(screen.getByText(/tax \(8\.0%\)/i)).toBeInTheDocument();
+    });
+  });
+});
+
+// ── V2: Save actions dropdown ─────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — save actions', () => {
+  it('renders the dropdown arrow button when accept_card is true', async () => {
+    setup();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /more save options/i })).toBeInTheDocument();
+    });
+  });
+
+  it('clicking dropdown arrow opens save options', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('button', { name: /more save options/i }));
+    fireEvent.click(screen.getByRole('button', { name: /more save options/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/save & collect payment/i)).toBeInTheDocument();
+    });
+  });
+
+  it('dropdown arrow not shown when no payment methods configured', async () => {
+    setup(vi.fn(), vi.fn(), {
+      ...MOCK_SETTINGS,
+      accept_card: false,
+      accept_ach: false,
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /more save options/i })).toBeNull();
+    });
+  });
+});
+
+// ── V2: Invoice totals ────────────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — totals panel', () => {
+  it('shows Payments Applied row', async () => {
+    setup();
+    expect(screen.getByText('Payments Applied')).toBeInTheDocument();
+  });
+
+  it('shows Balance Due row', async () => {
+    setup();
+    expect(screen.getByText('Balance Due')).toBeInTheDocument();
+  });
+
+  it('shows Subtotal row', async () => {
+    setup();
+    expect(screen.getByText('Subtotal')).toBeInTheDocument();
+  });
+});
+
+// ── V2: Multiple line items ───────────────────────────────────────────────────
+
+describe('InvoiceBuilder V2 — multiple line items', () => {
+  it('Add Line Item button adds a new row', async () => {
+    setup();
+    expect(screen.getAllByPlaceholderText('Service name')).toHaveLength(1);
+    fireEvent.click(screen.getByText(/add line item/i));
+    expect(screen.getAllByPlaceholderText('Service name')).toHaveLength(2);
+  });
+
+  it('remove button is disabled when only one row', async () => {
+    setup();
+    const removeBtn = screen.getByRole('button', { name: /remove line/i });
+    expect(removeBtn).toBeDisabled();
+  });
+
+  it('remove button removes a row when multiple exist', async () => {
+    setup();
+    fireEvent.click(screen.getByText(/add line item/i));
+    expect(screen.getAllByPlaceholderText('Service name')).toHaveLength(2);
+    const removeBtns = screen.getAllByRole('button', { name: /remove line/i });
+    fireEvent.click(removeBtns[0]);
+    expect(screen.getAllByPlaceholderText('Service name')).toHaveLength(1);
+  });
+});
+
+// ── V2: Source regression — all four sources still work ───────────────────────
+
+describe('InvoiceBuilder V2 — source regression', () => {
+  it('Blank Invoice source still works', async () => {
+    setup();
+    expect(screen.getByText('Blank Invoice').className).toContain('active');
+    expect(screen.getByPlaceholderText(/search by name, company/i)).toBeInTheDocument();
+  });
+
+  it('Completed Job source still works', async () => {
+    setup();
+    fireEvent.click(screen.getByText('Completed Job'));
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/invoices/eligible-jobs'));
+    });
+  });
+
+  it('Existing Estimate source still works', async () => {
+    setup();
+    fireEvent.click(screen.getByText('Existing Estimate'));
+    await waitFor(() => {
+      expect(screen.getByText('Signed Estimate')).toBeInTheDocument();
+    });
+  });
+
+  it('Recurring Agreement source still works', async () => {
+    setup();
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await waitFor(() => {
+      expect(screen.getByText(/active recurring agreement/i)).toBeInTheDocument();
     });
   });
 });

@@ -1337,3 +1337,235 @@ describe('POST /api/invoices — AGREEMENT source', () => {
     expect(li[0].unit_price).toBe(300);
   });
 });
+
+// ── INVOICE V2: Settings endpoint ─────────────────────────────────────────────
+
+describe('GET /api/invoices/settings — V2 payment capabilities', () => {
+  it('returns accept_card field', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(typeof res.body.accept_card).toBe('boolean');
+  });
+
+  it('returns accept_ach field', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(typeof res.body.accept_ach).toBe('boolean');
+  });
+
+  it('returns allow_partial_payments field', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(typeof res.body.allow_partial_payments).toBe('boolean');
+  });
+
+  it('returns default_terms field (null if not set)', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.body).toHaveProperty('default_terms');
+  });
+
+  it('returns 401 without token', async () => {
+    await request(app).get('/api/invoices/settings').expect(401);
+  });
+});
+
+// ── INVOICE V2: Discount label ────────────────────────────────────────────────
+
+describe('POST /api/invoices — discount_label', () => {
+  it('stores discount_label when provided', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:    'MANUAL',
+        client_id:      clientId,
+        subject:        'Test with Discount Label',
+        line_items:     [{ name: 'Service', quantity: 1, unit_price: 200, taxable: false }],
+        discount_type:  'percent',
+        discount_value: 10,
+        discount_label: 'New Client Discount',
+      })
+      .expect(201);
+    expect(res.body.discount_label).toBe('New Client Discount');
+  });
+
+  it('discount_label is null when not provided', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+      })
+      .expect(201);
+    expect(res.body.discount_label ?? null).toBeNull();
+  });
+});
+
+// ── INVOICE V2: Payment options ───────────────────────────────────────────────
+
+describe('POST /api/invoices — payment_options', () => {
+  it('stores payment_options when provided', async () => {
+    const opts = { accept_card: true, accept_ach: false, allow_partial_payments: false };
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:     'MANUAL',
+        client_id:       clientId,
+        line_items:      [{ name: 'Service', quantity: 1, unit_price: 150, taxable: false }],
+        payment_options: opts,
+      })
+      .expect(201);
+    const stored = typeof res.body.payment_options === 'string'
+      ? JSON.parse(res.body.payment_options)
+      : res.body.payment_options;
+    expect(stored.accept_card).toBe(true);
+  });
+
+  it('payment_options defaults to empty object when not provided', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Service', quantity: 1, unit_price: 75, taxable: false }],
+      })
+      .expect(201);
+    expect(res.body.payment_options).toBeDefined();
+  });
+});
+
+// ── INVOICE V2: Server-authoritative totals ───────────────────────────────────
+
+describe('POST /api/invoices — server totals', () => {
+  it('server recalculates totals from line_items (ignores browser total)', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [
+          { name: 'Item A', quantity: 2, unit_price: 50, taxable: false },
+          { name: 'Item B', quantity: 1, unit_price: 100, taxable: false },
+        ],
+      })
+      .expect(201);
+    expect(parseFloat(res.body.amount)).toBe(200);
+    expect(parseFloat(res.body.subtotal)).toBe(200);
+  });
+
+  it('applies percentage discount server-side', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:    'MANUAL',
+        client_id:      clientId,
+        line_items:     [{ name: 'Service', quantity: 1, unit_price: 200, taxable: false }],
+        discount_type:  'percent',
+        discount_value: 10,
+      })
+      .expect(201);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(180, 1);
+    expect(parseFloat(res.body.discount_amount)).toBeCloseTo(20, 1);
+  });
+
+  it('applies fixed discount server-side', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:    'MANUAL',
+        client_id:      clientId,
+        line_items:     [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+        discount_type:  'fixed',
+        discount_value: 25,
+      })
+      .expect(201);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(75, 1);
+  });
+});
+
+// ── INVOICE V2: Internal notes privacy ────────────────────────────────────────
+
+describe('POST /api/invoices — internal notes privacy', () => {
+  it('stores internal_notes separate from client_message', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:    'MANUAL',
+        client_id:      clientId,
+        line_items:     [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+        client_message: 'Thank you for your business.',
+        internal_notes: 'Do not share with client.',
+      })
+      .expect(201);
+    expect(res.body.client_message).toBe('Thank you for your business.');
+    expect(res.body.internal_notes).toBe('Do not share with client.');
+  });
+});
+
+// ── INVOICE V2: Due date calculation ──────────────────────────────────────────
+
+describe('POST /api/invoices — due date calculation', () => {
+  it('auto-calculates due_date for net_30', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        line_items:    [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+        payment_terms: 'net_30',
+        issued_date:   '2026-08-01',
+      })
+      .expect(201);
+    expect(res.body.due_date).toBeTruthy();
+    expect(res.body.due_date.slice(0, 10)).toBe('2026-08-31');
+  });
+
+  it('no due_date for due_on_receipt', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        line_items:    [{ name: 'Service', quantity: 1, unit_price: 100, taxable: false }],
+        payment_terms: 'due_on_receipt',
+      })
+      .expect(201);
+    expect(res.body.due_date ?? null).toBeNull();
+  });
+});
+
+// ── INVOICE V2: Source traceability ──────────────────────────────────────────
+
+describe('POST /api/invoices — source traceability', () => {
+  it('MANUAL invoice has source_type = MANUAL', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items:  [{ name: 'Custom Service', quantity: 1, unit_price: 50, taxable: false }],
+      })
+      .expect(201);
+    expect(res.body.source_type).toBe('MANUAL');
+  });
+});

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format, addDays } from 'date-fns';
 import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import api from '../api';
+import Autocomplete, { highlight } from './Autocomplete';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -18,8 +19,24 @@ const TERM_OPTIONS = [
 
 const TERM_DAYS = { net_7: 7, net_15: 15, net_30: 30, net_45: 45, net_60: 60, net_90: 90 };
 
+const CADENCE_LABELS = {
+  weekly:    'Every week',
+  biweekly:  'Every 2 weeks',
+  monthly:   'Monthly',
+  quarterly: 'Quarterly',
+  annual:    'Annually',
+};
+
 function newLineItem() {
-  return { _id: Math.random().toString(36).slice(2), name: '', description: '', quantity: '1', unit_price: '', taxable: true };
+  return {
+    _id:        Math.random().toString(36).slice(2),
+    service_id: null,
+    name:       '',
+    description:'',
+    quantity:   '1',
+    unit_price: '',
+    taxable:    true,
+  };
 }
 
 function fmt(n) {
@@ -33,22 +50,6 @@ function lineTotal(item) {
   return q * p;
 }
 
-const CADENCE_LABELS = {
-  weekly:    'Every week',
-  biweekly:  'Every 2 weeks',
-  monthly:   'Monthly',
-  quarterly: 'Quarterly',
-  annual:    'Annually',
-};
-
-const BILLING_LABELS = {
-  weekly:    '$x/week',
-  biweekly:  '$x/2 weeks',
-  monthly:   '$x/month',
-  quarterly: '$x/quarter',
-  annual:    '$x/year',
-};
-
 function fmtPeriodFE(start, end) {
   if (!start || !end) return '';
   const s = new Date(start + 'T00:00:00');
@@ -56,132 +57,250 @@ function fmtPeriodFE(start, end) {
   return `${format(s, 'MMM d')}–${format(e, 'MMM d, yyyy')}`;
 }
 
+// ── ServiceDropdown — per-line-item service catalog picker ────────────────────
+function ServiceDropdown({ value, onChange, onServiceSelect }) {
+  const [open,      setOpen]      = useState(false);
+  const [results,   setResults]   = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const debounceRef = useRef(null);
+  const abortRef    = useRef(null);
+  const wrapRef     = useRef(null);
+
+  const fetchSvcs = useCallback((q) => {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    api.get(`/services/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+      .then(r => { if (!ctrl.signal.aborted) { setResults(r.data || []); setActiveIdx(-1); } })
+      .catch(() => { if (!ctrl.signal.aborted) setResults([]); })
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    function handler(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  function handleFocus() {
+    setOpen(true);
+    fetchSvcs(value || '');
+  }
+
+  function handleChange(e) {
+    const val = e.target.value;
+    onChange(val);
+    setOpen(true);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSvcs(val), 275);
+  }
+
+  function handleKeyDown(e) {
+    if (!open) return;
+    const total = results.length + 1; // +1 for custom item row
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx(i => (i < total - 1 ? i + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx(i => (i > 0 ? i - 1 : total - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && activeIdx < results.length) {
+        select(results[activeIdx]);
+      } else {
+        setOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      setActiveIdx(-1);
+    }
+  }
+
+  function select(svc) {
+    setOpen(false);
+    onServiceSelect(svc);
+  }
+
+  const showDrop = open && (loading || results.length > 0);
+
+  return (
+    <div className="svc-picker-wrap ib-col-name" ref={wrapRef}>
+      <input
+        className="ib-input svc-name-input"
+        type="text"
+        placeholder="Service name"
+        value={value}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+      />
+      {showDrop && (
+        <div className="svc-drop" role="listbox">
+          {loading ? (
+            <div className="svc-drop-state">Searching…</div>
+          ) : (
+            <>
+              {results.map((svc, i) => (
+                <div
+                  key={svc.id}
+                  className={`svc-drop-item${i === activeIdx ? ' svc-drop-item--active' : ''}`}
+                  role="option"
+                  aria-selected={i === activeIdx}
+                  onMouseDown={() => select(svc)}
+                  onMouseEnter={() => setActiveIdx(i)}
+                >
+                  <span className="svc-drop-name">{svc.name}</span>
+                  {svc.category && <span className="svc-drop-category">{svc.category}</span>}
+                  {svc.description && <span className="svc-drop-desc">{svc.description}</span>}
+                  {svc.price != null && (
+                    <span className="svc-drop-price">${parseFloat(svc.price).toFixed(2)}</span>
+                  )}
+                </div>
+              ))}
+              <div
+                className={`svc-drop-item svc-drop-custom${activeIdx === results.length ? ' svc-drop-item--active' : ''}`}
+                role="option"
+                onMouseDown={() => setOpen(false)}
+                onMouseEnter={() => setActiveIdx(results.length)}
+              >
+                <Plus size={12} /> Custom line item
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function InvoiceBuilder({ onClose, onCreated }) {
-  // ── source ──────────────────────────────────────────────────────────────────
-  const [source, setSource] = useState('blank'); // 'blank' | 'job' | 'estimate' | 'agreement'
+  // ── source ─────────────────────────────────────────────────────────────────
+  const [source, setSource] = useState('blank');
 
-  // ── settings (tax rate + preview invoice number) ─────────────────────────
-  const [taxRate, setTaxRate]           = useState(0);
-  const [previewNumber, setPreviewNumber] = useState(null);
+  // ── settings ────────────────────────────────────────────────────────────────
+  const [taxRate,             setTaxRate]             = useState(0);
+  const [previewNumber,       setPreviewNumber]       = useState(null);
+  const [acceptCard,          setAcceptCard]          = useState(true);
+  const [acceptAch,           setAcceptAch]           = useState(false);
+  const [allowPartial,        setAllowPartial]        = useState(false);
 
-  // ── client selection ─────────────────────────────────────────────────────
-  const [clientQuery, setClientQuery]     = useState('');
-  const [clientResults, setClientResults] = useState([]);
-  const [clientLoading, setClientLoading] = useState(false);
+  // ── client selection ────────────────────────────────────────────────────────
   const [selectedClient, setSelectedClient] = useState(null);
-  const [showClientDrop, setShowClientDrop] = useState(false);
-  const clientDebounce = useRef(null);
-  const clientRef      = useRef(null);
 
-  // ── job selection (source = 'job') ───────────────────────────────────────
-  const [jobQuery, setJobQuery]       = useState('');
-  const [eligibleJobs, setEligibleJobs] = useState([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [jobsError, setJobsError]     = useState('');
+  // ── job selection ───────────────────────────────────────────────────────────
+  const [jobQuery,      setJobQuery]      = useState('');
+  const [eligibleJobs,  setEligibleJobs]  = useState([]);
+  const [jobsLoading,   setJobsLoading]   = useState(false);
+  const [selectedJob,   setSelectedJob]   = useState(null);
+  const [jobsError,     setJobsError]     = useState('');
   const jobDebounce = useRef(null);
 
-  // ── estimate selection (source = 'estimate') ─────────────────────────────
-  const [estimateQuery, setEstimateQuery]       = useState('');
-  const [eligibleEstimates, setEligibleEstimates] = useState([]);
-  const [estimatesLoading, setEstimatesLoading] = useState(false);
-  const [selectedEstimate, setSelectedEstimate] = useState(null);
-  const [estimatesError, setEstimatesError]     = useState('');
+  // ── estimate selection ──────────────────────────────────────────────────────
+  const [estimateQuery,      setEstimateQuery]      = useState('');
+  const [eligibleEstimates,  setEligibleEstimates]  = useState([]);
+  const [estimatesLoading,   setEstimatesLoading]   = useState(false);
+  const [selectedEstimate,   setSelectedEstimate]   = useState(null);
+  const [estimatesError,     setEstimatesError]     = useState('');
   const estimateDebounce = useRef(null);
 
-  // ── agreement selection (source = 'agreement') ───────────────────────────
-  const [agreementQuery, setAgreementQuery]         = useState('');
-  const [eligibleAgreements, setEligibleAgreements] = useState([]);
-  const [agreementsLoading, setAgreementsLoading]   = useState(false);
-  const [selectedAgreement, setSelectedAgreement]   = useState(null);
-  const [agreementsError, setAgreementsError]       = useState('');
+  // ── agreement selection ─────────────────────────────────────────────────────
+  const [agreementQuery,      setAgreementQuery]      = useState('');
+  const [eligibleAgreements,  setEligibleAgreements]  = useState([]);
+  const [agreementsLoading,   setAgreementsLoading]   = useState(false);
+  const [selectedAgreement,   setSelectedAgreement]   = useState(null);
+  const [agreementsError,     setAgreementsError]     = useState('');
   const agreementDebounce = useRef(null);
 
-  // ── header fields ────────────────────────────────────────────────────────
-  const [subject, setSubject]             = useState('For Services Rendered');
-  const [issuedDate, setIssuedDate]       = useState(TODAY);
-  const [paymentTerms, setPaymentTerms]   = useState('due_on_receipt');
-  const [dueDate, setDueDate]             = useState('');
+  // ── header fields ───────────────────────────────────────────────────────────
+  const [subject,       setSubject]       = useState('For Services Rendered');
+  const [issuedDate,    setIssuedDate]    = useState(TODAY);
+  const [paymentTerms,  setPaymentTerms]  = useState('due_on_receipt');
+  const [dueDate,       setDueDate]       = useState('');
 
-  // ── line items ───────────────────────────────────────────────────────────
+  // ── line items ──────────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([newLineItem()]);
 
-  // ── discount ─────────────────────────────────────────────────────────────
-  const [discountType, setDiscountType]   = useState('none');
+  // ── discount ────────────────────────────────────────────────────────────────
+  const [discountType,  setDiscountType]  = useState('none');
   const [discountValue, setDiscountValue] = useState('');
+  const [discountLabel, setDiscountLabel] = useState('');
 
-  // ── notes ────────────────────────────────────────────────────────────────
-  const [clientMessage, setClientMessage]   = useState('');
-  const [terms, setTerms]                   = useState('');
-  const [internalNotes, setInternalNotes]   = useState('');
+  // ── payment options (inherits from business settings, overridable) ──────────
+  const [payOptCard,    setPayOptCard]    = useState(true);
+  const [payOptAch,     setPayOptAch]     = useState(false);
+  const [payOptPartial, setPayOptPartial] = useState(false);
 
-  // ── submission ───────────────────────────────────────────────────────────
-  const [saving, setSaving]     = useState(false);
+  // ── notes ───────────────────────────────────────────────────────────────────
+  const [clientMessage, setClientMessage] = useState('');
+  const [terms,         setTerms]         = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
+
+  // ── save dropdown ───────────────────────────────────────────────────────────
+  const [saveDropOpen, setSaveDropOpen] = useState(false);
+  const saveDropRef = useRef(null);
+
+  // ── submission ──────────────────────────────────────────────────────────────
+  const [saving,    setSaving]    = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // ── on mount: load settings ──────────────────────────────────────────────
+  // ── on mount: load settings ─────────────────────────────────────────────────
   useEffect(() => {
     api.get('/invoices/settings')
       .then(r => {
-        setTaxRate(r.data.tax_rate || 0);
-        setPreviewNumber(r.data.next_number || 1001);
+        const d = r.data;
+        setTaxRate(d.tax_rate || 0);
+        setPreviewNumber(d.next_number || 1001);
+        setAcceptCard(d.accept_card !== false);
+        setAcceptAch(!!d.accept_ach);
+        setAllowPartial(!!d.allow_partial_payments);
+        setPayOptCard(d.accept_card !== false);
+        setPayOptAch(!!d.accept_ach);
+        setPayOptPartial(!!d.allow_partial_payments);
+        if (d.default_terms) setTerms(d.default_terms);
       })
       .catch(() => {});
   }, []);
 
-  // ── on source change: load eligible data ─────────────────────────────────
+  // ── on source change: load eligible data ────────────────────────────────────
   useEffect(() => {
     if (source === 'job')       loadEligibleJobs('');
     if (source === 'estimate')  loadEligibleEstimates('');
     if (source === 'agreement') loadEligibleAgreements('');
   }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── close client dropdown on outside click ───────────────────────────────
+  // ── close save dropdown on outside click ────────────────────────────────────
   useEffect(() => {
-    function handle(e) {
-      if (clientRef.current && !clientRef.current.contains(e.target)) {
-        setShowClientDrop(false);
+    function handler(e) {
+      if (saveDropRef.current && !saveDropRef.current.contains(e.target)) {
+        setSaveDropOpen(false);
       }
     }
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ── client search ────────────────────────────────────────────────────────
-  function handleClientQuery(val) {
-    setClientQuery(val);
-    setShowClientDrop(true);
-    clearTimeout(clientDebounce.current);
-    if (val.trim().length < 1) {
-      setClientResults([]);
-      return;
-    }
-    setClientLoading(true);
-    clientDebounce.current = setTimeout(() => {
-      api.get(`/clients/search?q=${encodeURIComponent(val.trim())}`)
-        .then(r => setClientResults(r.data || []))
-        .catch(() => setClientResults([]))
-        .finally(() => setClientLoading(false));
-    }, 250);
-  }
+  // ── client autocomplete callbacks ────────────────────────────────────────────
+  const fetchClients = useCallback(async (query, signal) => {
+    const r = await api.get(`/clients/search?q=${encodeURIComponent(query)}`, { signal });
+    return r.data || [];
+  }, []);
 
   function selectClient(c) {
     setSelectedClient(c);
-    setClientQuery(c.name);
-    setShowClientDrop(false);
-    setClientResults([]);
-    if (source === 'job') {
-      loadEligibleJobs(jobQuery, c.id);
-    }
+    if (source === 'job') loadEligibleJobs(jobQuery, c.id);
   }
 
   function clearClient() {
     setSelectedClient(null);
-    setClientQuery('');
-    setClientResults([]);
   }
 
-  // ── eligible estimates ───────────────────────────────────────────────────
+  // ── eligible estimates ───────────────────────────────────────────────────────
   function loadEligibleEstimates(q = '') {
     setEstimatesLoading(true);
     setEstimatesError('');
@@ -189,25 +308,25 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     if (q.trim()) qs.set('q', q.trim());
     api.get(`/invoices/eligible-estimates?${qs}`)
       .then(r => setEligibleEstimates(Array.isArray(r.data) ? r.data : []))
-      .catch(() => { setEstimatesError('Could not load eligible estimates.'); })
+      .catch(() => setEstimatesError('Could not load eligible estimates.'))
       .finally(() => setEstimatesLoading(false));
   }
 
   function handleEstimateQuery(val) {
     setEstimateQuery(val);
     clearTimeout(estimateDebounce.current);
-    estimateDebounce.current = setTimeout(() => loadEligibleEstimates(val), 250);
+    estimateDebounce.current = setTimeout(() => loadEligibleEstimates(val), 275);
   }
 
   function selectEstimate(est) {
     setSelectedEstimate(est);
     setSelectedClient({ id: est.client_id, name: est.client_name, email: est.client_email, address: est.client_address });
-    setClientQuery(est.client_name);
     setSubject(est.title || 'For Services Rendered');
     const estItems = Array.isArray(est.line_items) ? est.line_items : [];
     setLineItems(estItems.length > 0
       ? estItems.map((item, i) => ({
           _id:        `est-line-${i}`,
+          service_id: null,
           name:       item.description || item.name || 'Service',
           description:'',
           quantity:   String(parseFloat(item.quantity) || 1),
@@ -225,7 +344,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setEligibleEstimates([]);
   }
 
-  // ── eligible agreements ──────────────────────────────────────────────────
+  // ── eligible agreements ──────────────────────────────────────────────────────
   function loadEligibleAgreements(q = '') {
     setAgreementsLoading(true);
     setAgreementsError('');
@@ -240,19 +359,18 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   function handleAgreementQuery(val) {
     setAgreementQuery(val);
     clearTimeout(agreementDebounce.current);
-    agreementDebounce.current = setTimeout(() => loadEligibleAgreements(val), 250);
+    agreementDebounce.current = setTimeout(() => loadEligibleAgreements(val), 275);
   }
 
   function selectAgreement(agr) {
     setSelectedAgreement(agr);
     setSelectedClient({ id: agr.client_id, name: agr.client_name, email: agr.client_email, address: agr.client_address });
-    setClientQuery(agr.client_name);
-    const subj = `${agr.name} — ${fmtPeriodFE(agr.period_start, agr.period_end)}`;
-    setSubject(subj);
+    setSubject(`${agr.name} — ${fmtPeriodFE(agr.period_start, agr.period_end)}`);
     const agrItems = Array.isArray(agr.line_items) ? agr.line_items : [];
     setLineItems(agrItems.length > 0
       ? agrItems.map((item, i) => ({
           _id:        `agr-line-${i}`,
+          service_id: null,
           name:       item.description || item.name || agr.name || 'Service',
           description:'',
           quantity:   String(parseFloat(item.quantity) || 1),
@@ -261,6 +379,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         }))
       : [{
           _id:        'agr-line-0',
+          service_id: null,
           name:       agr.name || 'Recurring Service',
           description:`Coverage: ${fmtPeriodFE(agr.period_start, agr.period_end)}`,
           quantity:   '1',
@@ -275,10 +394,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setAgreementQuery('');
     setEligibleAgreements([]);
     setSelectedClient(null);
-    setClientQuery('');
   }
 
-  // ── eligible jobs ────────────────────────────────────────────────────────
+  // ── eligible jobs ─────────────────────────────────────────────────────────────
   function loadEligibleJobs(q = '', clientId = selectedClient?.id) {
     setJobsLoading(true);
     setJobsError('');
@@ -287,7 +405,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     if (clientId) qs.set('client_id', clientId);
     api.get(`/invoices/eligible-jobs?${qs}`)
       .then(r => setEligibleJobs(r.data.rows || []))
-      .catch(() => { setJobsError('Could not load eligible jobs.'); })
+      .catch(() => setJobsError('Could not load eligible jobs.'))
       .finally(() => setJobsLoading(false));
   }
 
@@ -299,15 +417,13 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
 
   function selectJob(j) {
     setSelectedJob(j);
-    // prefill client and subject from the job
     if (!selectedClient) {
       setSelectedClient({ id: j.client_id, name: j.client_name, email: j.client_email });
-      setClientQuery(j.client_name);
     }
     setSubject(j.service_type || 'For Services Rendered');
-    // prefill single line item
     setLineItems([{
       _id:        'job-line',
+      service_id: null,
       name:       j.service_type || 'Service',
       description:'',
       quantity:   '1',
@@ -316,23 +432,35 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     }]);
   }
 
-  // ── payment terms → due date ─────────────────────────────────────────────
+  // ── payment terms → due date ──────────────────────────────────────────────────
   useEffect(() => {
-    if (paymentTerms === 'due_on_receipt' || paymentTerms === 'custom') {
-      if (paymentTerms === 'due_on_receipt') setDueDate('');
-      return;
-    }
+    if (paymentTerms === 'due_on_receipt') { setDueDate(''); return; }
+    if (paymentTerms === 'custom') return;
     const days = TERM_DAYS[paymentTerms];
     if (!days) return;
     const base = issuedDate ? new Date(issuedDate) : new Date();
     setDueDate(format(addDays(base, days), 'yyyy-MM-dd'));
   }, [paymentTerms, issuedDate]);
 
-  // ── line item helpers ────────────────────────────────────────────────────
+  // ── line item helpers ─────────────────────────────────────────────────────────
   function updateLineItem(index, field, value) {
     setLineItems(prev => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  }
+
+  function selectService(index, svc) {
+    setLineItems(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        service_id:  svc.id,
+        name:        svc.name,
+        description: svc.description || '',
+        unit_price:  String(parseFloat(svc.price || 0).toFixed(2)),
+      };
       return next;
     });
   }
@@ -345,7 +473,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     setLineItems(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
   }
 
-  // ── computed totals ──────────────────────────────────────────────────────
+  // ── computed totals ───────────────────────────────────────────────────────────
   const subtotal = lineItems.reduce((s, item) => s + lineTotal(item), 0);
 
   const discountAmount = (() => {
@@ -354,27 +482,20 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
     return 0;
   })();
 
-  const taxableSubtotal = lineItems.filter(i => i.taxable).reduce((s, i) => s + lineTotal(i), 0);
-  const discountRatio   = subtotal > 0 ? discountAmount / subtotal : 0;
-  const taxAmount       = taxableSubtotal * (1 - discountRatio) * taxRate;
-  const total           = subtotal - discountAmount + taxAmount;
+  const taxableSubtotal  = lineItems.filter(i => i.taxable).reduce((s, i) => s + lineTotal(i), 0);
+  const discountRatio    = subtotal > 0 ? discountAmount / subtotal : 0;
+  const taxAmount        = taxableSubtotal * (1 - discountRatio) * taxRate;
+  const total            = subtotal - discountAmount + taxAmount;
 
-  // ── save ─────────────────────────────────────────────────────────────────
+  // ── save ──────────────────────────────────────────────────────────────────────
   async function handleSave(action) {
     setSaveError('');
+    setSaveDropOpen(false);
 
-    if (source === 'job' && !selectedJob) {
-      setSaveError('Please select a completed job.');
-      return;
-    }
-    if (source === 'estimate' && !selectedEstimate) {
-      setSaveError('Please select a signed estimate.');
-      return;
-    }
-    if (source === 'agreement' && !selectedAgreement) {
-      setSaveError('Please select a recurring agreement.');
-      return;
-    }
+    if (source === 'job' && !selectedJob)             { setSaveError('Please select a completed job.'); return; }
+    if (source === 'estimate' && !selectedEstimate)   { setSaveError('Please select a signed estimate.'); return; }
+    if (source === 'agreement' && !selectedAgreement) { setSaveError('Please select a recurring agreement.'); return; }
+
     const clientId = source === 'job'
       ? (selectedJob?.client_id || selectedClient?.id)
       : source === 'estimate'
@@ -383,18 +504,15 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           ? selectedAgreement?.client_id
           : selectedClient?.id;
 
-    if (!clientId) {
-      setSaveError('Please select a client.');
-      return;
-    }
+    if (!clientId) { setSaveError('Please select a client.'); return; }
+
     const validItems = lineItems.filter(i => i.name.trim() || parseFloat(i.unit_price) > 0);
-    if (validItems.length === 0) {
-      setSaveError('Add at least one line item with a name and price.');
-      return;
-    }
+    if (validItems.length === 0) { setSaveError('Add at least one line item with a name and price.'); return; }
 
     setSaving(true);
     try {
+      const invoiceStatus = action === 'send' || action === 'collect' ? 'pending' : 'draft';
+
       const payload = {
         source_type: source === 'job' ? 'JOB'
           : source === 'estimate' ? 'ESTIMATE'
@@ -407,12 +525,13 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           period_start:        selectedAgreement.period_start,
           period_end:          selectedAgreement.period_end,
         } : {}),
-        ...(source === 'blank'    ? { client_id: clientId } : {}),
+        ...(source === 'blank' ? { client_id: clientId } : {}),
         subject:        subject.trim() || 'For Services Rendered',
         issued_date:    issuedDate,
         payment_terms:  paymentTerms,
         due_date:       dueDate || undefined,
         line_items:     lineItems.map(item => ({
+          service_id:  item.service_id || null,
           name:        item.name.trim(),
           description: item.description.trim(),
           quantity:    parseFloat(item.quantity) || 1,
@@ -422,10 +541,16 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         })),
         discount_type:  discountType !== 'none' ? discountType : null,
         discount_value: discountType !== 'none' ? parseFloat(discountValue) || 0 : null,
+        discount_label: discountLabel.trim() || null,
         client_message: clientMessage.trim() || null,
         terms:          terms.trim() || null,
         internal_notes: internalNotes.trim() || null,
-        status:         action === 'send' ? 'pending' : 'draft',
+        payment_options: {
+          accept_card:            payOptCard,
+          accept_ach:             payOptAch,
+          allow_partial_payments: payOptPartial,
+        },
+        status: invoiceStatus,
       };
 
       const res = await api.post('/invoices', payload);
@@ -467,7 +592,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           : (!!selectedClient && lineItems.some(i => i.name || parseFloat(i.unit_price) > 0))
   );
 
-  // ── render ────────────────────────────────────────────────────────────────
+  const showCollect = acceptCard || acceptAch;
+
+  // ── render ────────────────────────────────────────────────────────────────────
   return (
     <div className="ib-sheet" onClick={e => e.stopPropagation()}>
 
@@ -475,9 +602,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       <div className="ib-header">
         <div>
           <h2 className="ib-title">New Invoice</h2>
-          {previewNumber && (
-            <span className="ib-preview-num">Preview #{previewNumber}</span>
-          )}
+          {previewNumber && <span className="ib-preview-num">Preview #{previewNumber}</span>}
         </div>
         <button className="ib-close" onClick={onClose} aria-label="Close">
           <X size={18} />
@@ -517,56 +642,48 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           </div>
         </div>
 
-        {/* Client selection */}
+        {/* Client selection — universal Autocomplete */}
         <div className="ib-section">
           <p className="ib-section-label">Client <span className="ib-required">*</span></p>
-          <div className="ib-client-wrap" ref={clientRef}>
-            <div className="ib-client-search-row">
-              <Search size={14} className="ib-search-icon" />
-              <input
-                className="ib-client-input"
-                type="text"
-                placeholder="Search by name, email, or phone…"
-                value={clientQuery}
-                onChange={e => handleClientQuery(e.target.value)}
-                onFocus={() => { if (clientQuery.length >= 1) setShowClientDrop(true); }}
-                autoComplete="off"
-              />
-              {selectedClient && (
-                <button className="ib-client-clear" onClick={clearClient} aria-label="Clear">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            {showClientDrop && (clientLoading || clientResults.length > 0) && (
-              <div className="ib-client-drop">
-                {clientLoading ? (
-                  <div className="ib-drop-loading">Searching…</div>
-                ) : (
-                  clientResults.map(c => (
-                    <button key={c.id} className="ib-drop-row" onMouseDown={() => selectClient(c)}>
-                      <span className="ib-drop-name">{c.name}</span>
-                      {c.email && <span className="ib-drop-meta">{c.email}</span>}
-                      {c.phone && <span className="ib-drop-meta">{c.phone}</span>}
-                    </button>
-                  ))
+          <Autocomplete
+            fetchResults={fetchClients}
+            onSelect={selectClient}
+            onClear={clearClient}
+            selected={selectedClient}
+            getKey={c => c.id}
+            getDisplayValue={c => c.name}
+            placeholder="Search by name, company, email, or address…"
+            label="Client search"
+            inputId="ib-client-search"
+            emptyText="No clients found."
+            renderItem={(c, q) => (
+              <div className="ac-client-item">
+                <span className="ac-client-name">{highlight(c.name, q)}</span>
+                {c.email && <span className="ac-client-meta">{highlight(c.email, q)}</span>}
+                {c.phone && <span className="ac-client-meta">{c.phone}</span>}
+                {(c.address || c.city) && (
+                  <span className="ac-client-meta">
+                    {[c.address, c.city, c.state].filter(Boolean).join(', ')}
+                  </span>
                 )}
               </div>
             )}
-
-            {selectedClient && (
+            renderSelectedCard={c => (
               <div className="ib-client-card">
-                <div className="ib-client-card-name">{selectedClient.name}</div>
-                {selectedClient.email && <div className="ib-client-card-detail">{selectedClient.email}</div>}
-                {selectedClient.phone && <div className="ib-client-card-detail">{selectedClient.phone}</div>}
-                {selectedClient.address && <div className="ib-client-card-detail">{selectedClient.address}{selectedClient.city ? `, ${selectedClient.city}` : ''}{selectedClient.state ? `, ${selectedClient.state}` : ''}{selectedClient.zip ? ` ${selectedClient.zip}` : ''}</div>}
+                <div className="ib-client-card-name">{c.name}</div>
+                {c.email   && <div className="ib-client-card-detail">{c.email}</div>}
+                {c.phone   && <div className="ib-client-card-detail">{c.phone}</div>}
+                {(c.address || c.city) && (
+                  <div className="ib-client-card-detail">
+                    {[c.address, c.city, c.state, c.zip].filter(Boolean).join(', ')}
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          />
         </div>
 
-        {/* Estimate picker — shown when source = 'estimate' */}
+        {/* Estimate picker */}
         {source === 'estimate' && (
           <div className="ib-section">
             <p className="ib-section-label">Signed Estimate <span className="ib-required">*</span></p>
@@ -614,11 +731,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     </div>
                   ) : (
                     eligibleEstimates.map(est => (
-                      <button
-                        key={est.id}
-                        className="ib-job-row"
-                        onClick={() => selectEstimate(est)}
-                      >
+                      <button key={est.id} className="ib-job-row" onClick={() => selectEstimate(est)}>
                         <div className="ib-job-top">
                           <span className="ib-job-client">{est.client_name}</span>
                           <span className="ib-job-amount">${parseFloat(est.amount || 0).toFixed(2)}</span>
@@ -637,7 +750,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           </div>
         )}
 
-        {/* Agreement picker — shown when source = 'agreement' */}
+        {/* Agreement picker */}
         {source === 'agreement' && (
           <div className="ib-section">
             <p className="ib-section-label">Active Recurring Agreement <span className="ib-required">*</span></p>
@@ -657,21 +770,13 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                 </div>
                 <div className="ib-agr-card-meta">
                   {CADENCE_LABELS[selectedAgreement.cadence] || selectedAgreement.cadence}
-                  {' · '}
-                  Coverage: {fmtPeriodFE(selectedAgreement.period_start, selectedAgreement.period_end)}
-                  {' · '}
-                  {selectedAgreement.payment_status === 'paid_in_advance'
-                    ? 'Paid in Advance'
-                    : selectedAgreement.payment_status === 'failed'
-                      ? 'Payment Failed'
-                      : selectedAgreement.payment_status === 'overdue'
-                        ? 'Overdue'
-                        : 'Pending'}
+                  {' · '}Coverage: {fmtPeriodFE(selectedAgreement.period_start, selectedAgreement.period_end)}
+                  {' · '}{selectedAgreement.payment_status === 'paid_in_advance' ? 'Paid in Advance'
+                    : selectedAgreement.payment_status === 'failed' ? 'Payment Failed'
+                    : selectedAgreement.payment_status === 'overdue' ? 'Overdue' : 'Pending'}
                 </div>
                 {selectedAgreement.period_already_invoiced && (
-                  <div className="ib-agr-card-warn">
-                    This billing period has already been invoiced.
-                  </div>
+                  <div className="ib-agr-card-warn">This billing period has already been invoiced.</div>
                 )}
               </div>
             ) : (
@@ -707,11 +812,13 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                           <span className="ib-job-client">{agr.client_name}</span>
                           <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
                         </div>
-                        <div className="ib-job-service"><span>{agr.name}</span>{agr.service_type ? <span className="ib-job-service-type"> · {agr.service_type}</span> : null}</div>
+                        <div className="ib-job-service">
+                          <span>{agr.name}</span>
+                          {agr.service_type ? <span className="ib-job-service-type"> · {agr.service_type}</span> : null}
+                        </div>
                         <div className="ib-job-meta">
                           {CADENCE_LABELS[agr.cadence] || agr.cadence}
-                          {' · '}
-                          {fmtPeriodFE(agr.period_start, agr.period_end)}
+                          {' · '}{fmtPeriodFE(agr.period_start, agr.period_end)}
                           {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
                           {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
                         </div>
@@ -724,7 +831,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           </div>
         )}
 
-        {/* Job picker — shown when source = 'job' */}
+        {/* Job picker */}
         {source === 'job' && (
           <div className="ib-section">
             <p className="ib-section-label">Completed Job <span className="ib-required">*</span></p>
@@ -771,7 +878,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           </div>
         )}
 
-        {/* Invoice header */}
+        {/* Invoice details */}
         <div className="ib-section">
           <p className="ib-section-label">Invoice Details</p>
           <div className="ib-header-grid">
@@ -818,25 +925,26 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                 <ChevronDown size={14} className="ib-select-icon" />
               </div>
             </div>
-            <div className="ib-field">
-              <label className="ib-label">Due Date</label>
-              <input
-                className="ib-input"
-                type="date"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                placeholder={paymentTerms === 'due_on_receipt' ? 'Due on receipt' : ''}
-              />
-            </div>
+            {paymentTerms !== 'due_on_receipt' && (
+              <div className="ib-field">
+                <label className="ib-label">Due Date</label>
+                <input
+                  className="ib-input"
+                  type="date"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Line items */}
+        {/* Line items with service catalog */}
         <div className="ib-section">
           <p className="ib-section-label">Line Items</p>
           <div className="ib-items-table">
             <div className="ib-items-head">
-              <span className="ib-col-name">Name</span>
+              <span className="ib-col-name">Product / Service</span>
               <span className="ib-col-desc">Description</span>
               <span className="ib-col-qty">Qty</span>
               <span className="ib-col-price">Unit Price</span>
@@ -846,12 +954,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             </div>
             {lineItems.map((item, idx) => (
               <div key={item._id} className="ib-items-row">
-                <input
-                  className="ib-input ib-col-name"
-                  type="text"
-                  placeholder="Service name"
+                <ServiceDropdown
                   value={item.name}
-                  onChange={e => updateLineItem(idx, 'name', e.target.value)}
+                  onChange={val => updateLineItem(idx, 'name', val)}
+                  onServiceSelect={svc => selectService(idx, svc)}
                 />
                 <input
                   className="ib-input ib-col-desc"
@@ -884,11 +990,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     checked={item.taxable}
                     onChange={e => updateLineItem(idx, 'taxable', e.target.checked)}
                     title="Taxable"
+                    aria-label="Taxable"
                   />
                 </div>
-                <span className="ib-col-total ib-line-total">
-                  {fmt(lineTotal(item))}
-                </span>
+                <span className="ib-col-total ib-line-total">{fmt(lineTotal(item))}</span>
                 <button
                   className="ib-col-del ib-del-btn"
                   onClick={() => removeLineItem(idx)}
@@ -914,7 +1019,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                 <select
                   className="ib-select ib-discount-select"
                   value={discountType}
-                  onChange={e => { setDiscountType(e.target.value); setDiscountValue(''); }}
+                  onChange={e => { setDiscountType(e.target.value); setDiscountValue(''); setDiscountLabel(''); }}
                 >
                   <option value="none">No discount</option>
                   <option value="fixed">Fixed amount ($)</option>
@@ -923,15 +1028,25 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                 <ChevronDown size={14} className="ib-select-icon" />
               </div>
               {discountType !== 'none' && (
-                <input
-                  className="ib-input ib-discount-val"
-                  type="number"
-                  min="0"
-                  step={discountType === 'percent' ? '0.1' : '0.01'}
-                  placeholder={discountType === 'percent' ? '10' : '25.00'}
-                  value={discountValue}
-                  onChange={e => setDiscountValue(e.target.value)}
-                />
+                <>
+                  <input
+                    className="ib-input ib-discount-label-input"
+                    type="text"
+                    placeholder="Discount reason (e.g. New Client)"
+                    value={discountLabel}
+                    onChange={e => setDiscountLabel(e.target.value)}
+                    aria-label="Discount label"
+                  />
+                  <input
+                    className="ib-input ib-discount-val"
+                    type="number"
+                    min="0"
+                    step={discountType === 'percent' ? '0.1' : '0.01'}
+                    placeholder={discountType === 'percent' ? '10' : '25.00'}
+                    value={discountValue}
+                    onChange={e => setDiscountValue(e.target.value)}
+                  />
+                </>
               )}
             </div>
           </div>
@@ -943,20 +1058,32 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             </div>
             {discountAmount > 0 && (
               <div className="ib-totals-row ib-totals-row--discount">
-                <span>Discount {discountType === 'percent' ? `(${discountValue}%)` : ''}</span>
+                <span>
+                  {discountLabel || 'Discount'}
+                  {discountType === 'percent' && discountValue ? ` (${discountValue}%)` : ''}
+                </span>
                 <span>-{fmt(discountAmount)}</span>
               </div>
             )}
-            {taxRate > 0 && (
+            {taxRate > 0 ? (
               <div className="ib-totals-row">
                 <span>Tax ({(taxRate * 100).toFixed(1)}%)</span>
                 <span>{fmt(taxAmount)}</span>
+              </div>
+            ) : (
+              <div className="ib-totals-row ib-totals-row--muted">
+                <span>Tax</span>
+                <span className="ib-tax-unconfigured">Not configured</span>
               </div>
             )}
             <div className="ib-totals-divider" />
             <div className="ib-totals-row ib-totals-row--total">
               <span>Total</span>
               <span>{fmt(total)}</span>
+            </div>
+            <div className="ib-totals-row">
+              <span>Payments Applied</span>
+              <span>$0.00</span>
             </div>
             <div className="ib-totals-row ib-totals-row--balance">
               <span>Balance Due</span>
@@ -983,7 +1110,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           <textarea
             className="ib-textarea"
             rows={2}
-            placeholder="Payment is due according to the terms above. Please contact us with any questions."
+            placeholder="Payment is due according to the terms above."
             value={terms}
             onChange={e => setTerms(e.target.value)}
           />
@@ -1001,6 +1128,45 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           />
         </div>
 
+        {/* Payment options */}
+        {(acceptCard || acceptAch || allowPartial) && (
+          <div className="ib-section">
+            <p className="ib-section-label">Payment Options</p>
+            <div className="ib-payment-opts">
+              {acceptCard && (
+                <label className="ib-payopt-row">
+                  <input
+                    type="checkbox"
+                    checked={payOptCard}
+                    onChange={e => setPayOptCard(e.target.checked)}
+                  />
+                  <span>Accept Card</span>
+                </label>
+              )}
+              {acceptAch && (
+                <label className="ib-payopt-row">
+                  <input
+                    type="checkbox"
+                    checked={payOptAch}
+                    onChange={e => setPayOptAch(e.target.checked)}
+                  />
+                  <span>Accept ACH / Bank Transfer</span>
+                </label>
+              )}
+              {allowPartial && (
+                <label className="ib-payopt-row">
+                  <input
+                    type="checkbox"
+                    checked={payOptPartial}
+                    onChange={e => setPayOptPartial(e.target.checked)}
+                  />
+                  <span>Allow Partial Payments</span>
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>{/* end .ib-body */}
 
       {/* Footer */}
@@ -1017,13 +1183,38 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           >
             {saving ? 'Saving…' : 'Save Draft'}
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => handleSave('send')}
-            disabled={!canSave}
-          >
-            {saving ? 'Saving…' : 'Save & Send'}
-          </button>
+          <div className="ib-save-split" ref={saveDropRef}>
+            <button
+              className="btn btn-primary ib-save-primary"
+              onClick={() => handleSave('send')}
+              disabled={!canSave}
+            >
+              {saving ? 'Saving…' : 'Save & Send'}
+            </button>
+            {showCollect && (
+              <>
+                <button
+                  className="btn btn-primary ib-save-arrow"
+                  onClick={() => setSaveDropOpen(v => !v)}
+                  aria-label="More save options"
+                  aria-expanded={saveDropOpen}
+                >
+                  <ChevronDown size={14} />
+                </button>
+                {saveDropOpen && (
+                  <div className="ib-save-drop">
+                    <button
+                      className="ib-save-drop-item"
+                      onClick={() => handleSave('collect')}
+                      disabled={!canSave}
+                    >
+                      Save &amp; Collect Payment
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
