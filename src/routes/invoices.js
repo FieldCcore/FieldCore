@@ -145,12 +145,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const {
-      search   = '',
-      status   = 'all',
-      sort     = 'created_at',
-      order    = 'DESC',
-      page     = '1',
-      pageSize = '50',
+      search     = '',
+      status     = 'all',
+      sort       = 'created_at',
+      order      = 'DESC',
+      page       = '1',
+      pageSize   = '50',
+      start      = '',
+      end        = '',
+      balanceGt0 = '',
     } = req.query;
 
     const ALLOWED_SORTS = {
@@ -178,18 +181,25 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
          COUNT(*)::int                                                                                                                      AS total_count,
          COUNT(CASE WHEN status = 'pending' THEN 1 END)::int                                                                               AS count_pending,
          COUNT(CASE WHEN status = 'paid'    THEN 1 END)::int                                                                               AS count_paid,
-         COUNT(CASE WHEN status = 'void'    THEN 1 END)::int                                                                               AS count_void
+         COUNT(CASE WHEN status = 'void'    THEN 1 END)::int                                                                               AS count_void,
+         COUNT(CASE WHEN status != 'void'   THEN 1 END)::int                                                               AS issued_count,
+         COALESCE(SUM(CASE WHEN status != 'void' THEN amount ELSE 0 END), 0)                                               AS issued_total
        FROM invoices
        WHERE account_id = $1`,
       [req.accountId]
     );
     const k = kpiRes.rows[0];
+    const issuedCount = k.issued_count;
+    const issuedTotal = parseFloat(k.issued_total);
     const kpis = {
-      outstanding:  parseFloat(k.outstanding),
-      collected:    parseFloat(k.collected),
-      pastDue:      parseFloat(k.past_due),
-      pastDueCount: k.past_due_count,
-      totalCount:   k.total_count,
+      outstanding:    parseFloat(k.outstanding),
+      collected:      parseFloat(k.collected),
+      pastDue:        parseFloat(k.past_due),
+      pastDueCount:   k.past_due_count,
+      totalCount:     k.total_count,
+      issuedCount,
+      issuedTotal,
+      averageInvoice: issuedCount > 0 ? issuedTotal / issuedCount : 0,
       counts: {
         all:      k.total_count,
         pending:  k.count_pending,
@@ -208,6 +218,18 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
     } else if (status !== 'all') {
       listParams.push(status);
       conditions.push(`i.status = $${listParams.length}`);
+    }
+
+    if (start) {
+      listParams.push(start);
+      conditions.push(`i.created_at::date >= $${listParams.length}::date`);
+    }
+    if (end) {
+      listParams.push(end);
+      conditions.push(`i.created_at::date <= $${listParams.length}::date`);
+    }
+    if (balanceGt0 === 'true') {
+      conditions.push(`(i.status IN ('pending','failed') AND i.amount > 0)`);
     }
 
     const term = search.trim();

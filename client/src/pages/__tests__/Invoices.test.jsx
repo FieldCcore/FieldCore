@@ -67,13 +67,17 @@ const MOCK_INVOICES = [
   },
 ];
 
+// pending(400) + paid(200) = issued; void excluded
 const MOCK_KPIS = {
-  outstanding:  400,
-  collected:    200,
-  pastDue:      0,
-  pastDueCount: 0,
-  totalCount:   3,
-  counts:       { all: 3, pending: 1, paid: 1, void: 1, past_due: 0 },
+  outstanding:    400,
+  collected:      200,
+  pastDue:        0,
+  pastDueCount:   0,
+  totalCount:     3,
+  issuedCount:    2,
+  issuedTotal:    600,
+  averageInvoice: 300,
+  counts:         { all: 3, pending: 1, paid: 1, void: 1, past_due: 0 },
 };
 
 const MOCK_RESPONSE = {
@@ -84,17 +88,24 @@ const MOCK_RESPONSE = {
   kpis:     MOCK_KPIS,
 };
 
+const EMPTY_KPIS = {
+  outstanding: 0, collected: 0, pastDue: 0, pastDueCount: 0, totalCount: 0,
+  issuedCount: 0, issuedTotal: 0, averageInvoice: 0,
+  counts: { all: 0, pending: 0, paid: 0, void: 0, past_due: 0 },
+};
+
 const EMPTY_RESPONSE = {
-  rows:     [],
-  total:    0,
-  page:     1,
-  pageSize: 50,
-  kpis:     { outstanding: 0, collected: 0, pastDue: 0, pastDueCount: 0, totalCount: 0, counts: { all: 0, pending: 0, paid: 0, void: 0, past_due: 0 } },
+  rows: [], total: 0, page: 1, pageSize: 50, kpis: EMPTY_KPIS,
 };
 
 function setup(response = MOCK_RESPONSE) {
   api.get.mockResolvedValueOnce({ data: response });
   return render(<MemoryRouter><Invoices /></MemoryRouter>);
+}
+
+// Helper to get the status filter group (first .inv-filter-group)
+function getStatusGroup() {
+  return document.querySelectorAll('.inv-filter-group')[0];
 }
 
 beforeEach(() => {
@@ -139,16 +150,16 @@ describe('Invoices — page structure', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Invoices');
   });
 
-  it('renders section heading above table', async () => {
+  it('renders "All Invoices" workspace title', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText('Invoices', { selector: '.inv-section-title' })).toBeInTheDocument();
+    expect(screen.getByText('All Invoices', { selector: '.inv-workspace-title' })).toBeInTheDocument();
   });
 
-  it('shows invoice count in section heading from total field', async () => {
+  it('shows result count from total field', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText(/3 invoices/i)).toBeInTheDocument();
+    expect(document.querySelector('.inv-workspace-count').textContent).toMatch(/3 results/i);
   });
 
   it('renders New Invoice button', async () => {
@@ -164,126 +175,181 @@ describe('Invoices — page structure', () => {
   });
 });
 
-// ── KPI cards ──────────────────────────────────────────────────────────────────
+// ── Invoice Overview ───────────────────────────────────────────────────────────
 
-describe('Invoices — KPI cards', () => {
-  it('renders Outstanding KPI with correct value', async () => {
+describe('Invoices — overview metrics', () => {
+  function getMetrics() {
+    return document.querySelectorAll('.inv-metric:not(.inv-metric--sep)');
+  }
+
+  it('renders Invoice Overview section', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText('Outstanding')).toBeInTheDocument();
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[0].querySelector('.stat-value').textContent).toBe('$400.00');
+    expect(document.querySelector('.inv-overview')).not.toBeNull();
+    expect(document.querySelector('.inv-overview-title').textContent).toBe('Invoice Overview');
   });
 
-  it('renders Collected KPI with correct value', async () => {
+  it('renders four metric groups', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText('Collected')).toBeInTheDocument();
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[1].querySelector('.stat-value').textContent).toBe('$200.00');
+    expect(getMetrics().length).toBe(4);
   });
 
-  it('renders Past Due KPI with correct value', async () => {
+  it('Past Due metric shows correct value', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[2].querySelector('.stat-label').textContent).toBe('Past Due');
-    expect(cards[2].querySelector('.stat-value').textContent).toBe('$0.00');
+    const m = getMetrics();
+    expect(m[0].querySelector('.inv-metric-label').textContent).toBe('Past Due');
+    expect(m[0].querySelector('.inv-metric-value').textContent).toBe('$0.00');
   });
 
-  it('renders Total Invoices KPI with correct count', async () => {
+  it('Outstanding metric shows correct value', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText('Total Invoices')).toBeInTheDocument();
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[3].querySelector('.stat-value').textContent).toBe('3');
+    const m = getMetrics();
+    expect(m[1].querySelector('.inv-metric-label').textContent).toBe('Outstanding');
+    expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$400.00');
   });
 
-  it('Outstanding card has accent-red class', async () => {
+  it('Issued metric shows total and count', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[0].classList.contains('stat-card--accent-red')).toBe(true);
+    const m = getMetrics();
+    expect(m[2].querySelector('.inv-metric-label').textContent).toBe('Issued');
+    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$600.00');
+    expect(m[2].querySelector('.inv-metric-sub').textContent).toBe('2 invoices');
   });
 
-  it('Collected card has accent-green class', async () => {
+  it('Avg Invoice metric shows correct value', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[1].classList.contains('stat-card--accent-green')).toBe(true);
+    const m = getMetrics();
+    expect(m[3].querySelector('.inv-metric-label').textContent).toBe('Avg Invoice');
+    expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$300.00');
   });
 
-  it('Past Due card has accent-amber class', async () => {
+  it('Past Due value has --red modifier when > 0', async () => {
+    const kpisWithPastDue = { ...MOCK_KPIS, pastDue: 150, pastDueCount: 1 };
+    setup({ ...MOCK_RESPONSE, kpis: kpisWithPastDue });
+    await waitFor(() => screen.getByRole('table'));
+    const m = getMetrics();
+    expect(m[0].querySelector('.inv-metric-value').classList.contains('inv-metric-value--red')).toBe(true);
+  });
+
+  it('Past Due has no --red modifier when 0', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[2].classList.contains('stat-card--accent-amber')).toBe(true);
+    const m = getMetrics();
+    expect(m[0].querySelector('.inv-metric-value').classList.contains('inv-metric-value--red')).toBe(false);
   });
 
-  it('Total Invoices card has accent-blue class', async () => {
+  it('Outstanding has --amber modifier when > 0', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[3].classList.contains('stat-card--accent-blue')).toBe(true);
+    const m = getMetrics();
+    expect(m[1].querySelector('.inv-metric-value').classList.contains('inv-metric-value--amber')).toBe(true);
   });
 
-  it('KPI values are zero when no invoices', async () => {
+  it('Past Due shows invoice count sub-label when > 0', async () => {
+    const kpisWithPastDue = { ...MOCK_KPIS, pastDue: 150, pastDueCount: 2 };
+    setup({ ...MOCK_RESPONSE, kpis: kpisWithPastDue });
+    await waitFor(() => screen.getByRole('table'));
+    const m = getMetrics();
+    expect(m[0].querySelector('.inv-metric-sub').textContent).toBe('2 invoices');
+  });
+
+  it('overview metrics show zeroes when no invoices', async () => {
     setup(EMPTY_RESPONSE);
-    await waitFor(() => screen.getByText('Outstanding'));
-    const statValues = document.querySelectorAll('.stat-value');
-    expect(statValues[0].textContent).toBe('$0.00');
-    expect(statValues[1].textContent).toBe('$0.00');
-    expect(statValues[2].textContent).toBe('$0.00');
-    expect(statValues[3].textContent).toBe('0');
+    await waitFor(() => screen.getByText(/no invoices yet/i));
+    const m = getMetrics();
+    expect(m[0].querySelector('.inv-metric-value').textContent).toBe('$0.00');
+    expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$0.00');
+    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$0.00');
+    expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$0.00');
   });
 
-  it('Outstanding value has no inline color style', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[0].querySelector('.stat-value').style.color).toBe('');
-  });
-});
-
-// ── Filters ────────────────────────────────────────────────────────────────────
-
-describe('Invoices — status filters', () => {
-  it('renders five filter buttons (All, Pending, Paid, Void, Past Due)', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByRole('button', { name: /^all/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^pending/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^paid/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^void/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^past due/i })).toBeInTheDocument();
-  });
-
-  it('All filter is active by default', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByRole('button', { name: /^all/i }).classList.contains('active')).toBe(true);
-  });
-
-  it('filter counts come from kpis.counts', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    const counts = document.querySelectorAll('.filter-count');
-    // All=3, Pending=1, Paid=1, Void=1, Past Due=0
-    expect(counts[0].textContent).toBe('3');
-    expect(counts[1].textContent).toBe('1');
-    expect(counts[2].textContent).toBe('1');
-    expect(counts[3].textContent).toBe('1');
-    expect(counts[4].textContent).toBe('0');
-  });
-
-  it('filters to pending invoices (server-side)', async () => {
+  it('kpi values do not change when filter is changed (kpis are global)', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
 
     api.get.mockResolvedValueOnce({ data: {
-      ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1,
+      ...MOCK_RESPONSE, rows: [MOCK_INVOICES[1]], total: 1, kpis: MOCK_KPIS,
     }});
-    fireEvent.click(screen.getByRole('button', { name: /^pending/i }));
+    const statusGroup = getStatusGroup();
+    fireEvent.click(statusGroup.querySelector('.inv-filter-trigger'));
+    const paidItem = Array.from(statusGroup.querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Paid'));
+    fireEvent.click(paidItem);
+    await waitFor(() => screen.getByText('Baker LLC'));
+
+    const m = getMetrics();
+    expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$400.00');
+    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$600.00');
+  });
+});
+
+// ── Status filter dropdown ─────────────────────────────────────────────────────
+
+describe('Invoices — status filter dropdown', () => {
+  it('renders Status trigger with "All" by default', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const trigger = getStatusGroup().querySelector('.inv-filter-trigger');
+    expect(trigger.textContent).toContain('Status');
+    expect(trigger.textContent).toContain('All');
+  });
+
+  it('clicking Status trigger opens dropdown', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    expect(getStatusGroup().querySelector('.inv-filter-dropdown')).not.toBeNull();
+  });
+
+  it('dropdown shows five status options', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    expect(getStatusGroup().querySelectorAll('.inv-dropdown-item').length).toBe(5);
+  });
+
+  it('dropdown shows counts from kpis.counts', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const counts = getStatusGroup().querySelectorAll('.inv-dropdown-count');
+    expect(counts[0].textContent).toBe('3'); // All
+    expect(counts[1].textContent).toBe('1'); // Pending
+    expect(counts[2].textContent).toBe('1'); // Paid
+    expect(counts[3].textContent).toBe('1'); // Void
+    expect(counts[4].textContent).toBe('0'); // Past Due
+  });
+
+  it('selecting Pending triggers API call with status=pending', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const pendingItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Pending'));
+    fireEvent.click(pendingItem);
+
+    await waitFor(() => {
+      expect(api.get.mock.calls[1][0]).toContain('status=pending');
+    });
+  });
+
+  it('selecting Pending shows only pending invoices', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const pendingItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Pending'));
+    fireEvent.click(pendingItem);
+
     await waitFor(() => {
       expect(screen.getByText('Able Corp')).toBeInTheDocument();
       expect(screen.queryByText('Baker LLC')).toBeNull();
@@ -291,45 +357,184 @@ describe('Invoices — status filters', () => {
     });
   });
 
-  it('filters to paid invoices (server-side)', async () => {
+  it('selecting Paid shows only paid invoices', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
 
-    api.get.mockResolvedValueOnce({ data: {
-      ...MOCK_RESPONSE, rows: [MOCK_INVOICES[1]], total: 1,
-    }});
-    fireEvent.click(screen.getByRole('button', { name: /^paid/i }));
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[1]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const paidItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Paid'));
+    fireEvent.click(paidItem);
+
     await waitFor(() => {
       expect(screen.getByText('Baker LLC')).toBeInTheDocument();
       expect(screen.queryByText('Able Corp')).toBeNull();
     });
   });
 
-  it('filters to void invoices (server-side)', async () => {
+  it('active filter shows chip with status name', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
 
-    api.get.mockResolvedValueOnce({ data: {
-      ...MOCK_RESPONSE, rows: [MOCK_INVOICES[2]], total: 1,
-    }});
-    fireEvent.click(screen.getByRole('button', { name: /^void/i }));
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const pendingItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Pending'));
+    fireEvent.click(pendingItem);
+
     await waitFor(() => {
-      expect(screen.getByText('Charlie Inc')).toBeInTheDocument();
-      expect(screen.queryByText('Able Corp')).toBeNull();
+      const chip = document.querySelector('.inv-chip');
+      expect(chip).not.toBeNull();
+      expect(chip.textContent).toContain('Status: Pending');
     });
   });
 
-  it('section count updates when filter changes', async () => {
+  it('removing status chip via X resets to all', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText(/3 invoices/i)).toBeInTheDocument();
 
-    api.get.mockResolvedValueOnce({ data: {
-      ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1,
-    }});
-    fireEvent.click(screen.getByRole('button', { name: /^pending/i }));
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const pendingItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Pending'));
+    fireEvent.click(pendingItem);
+    await waitFor(() => screen.getByText('Able Corp'));
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    fireEvent.click(document.querySelector('.inv-chip-remove'));
+
     await waitFor(() => {
-      expect(screen.getByText(/1 invoice\b/i)).toBeInTheDocument();
+      expect(api.get.mock.calls[2][0]).toContain('status=all');
+    });
+  });
+
+  it('result count updates when filter changes', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    expect(document.querySelector('.inv-workspace-count').textContent).toMatch(/3 results/i);
+
+    api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [MOCK_INVOICES[0]], total: 1 } });
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const pendingItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Pending'));
+    fireEvent.click(pendingItem);
+
+    await waitFor(() => {
+      expect(document.querySelector('.inv-workspace-count').textContent).toMatch(/1 result/i);
+    });
+  });
+
+  it('no chips shown when status is All (default)', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    expect(document.querySelector('.inv-filter-chips')).toBeNull();
+  });
+});
+
+// ── Date filter dropdown ───────────────────────────────────────────────────────
+
+describe('Invoices — date filter dropdown', () => {
+  function getDateGroup() {
+    return document.querySelectorAll('.inv-filter-group')[1];
+  }
+
+  it('renders Date trigger with "All time" by default', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const trigger = getDateGroup().querySelector('.inv-filter-trigger');
+    expect(trigger.textContent).toContain('Date');
+    expect(trigger.textContent).toContain('All time');
+  });
+
+  it('clicking Date trigger opens dropdown with 5 options', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(getDateGroup().querySelector('.inv-filter-trigger'));
+    expect(getDateGroup().querySelectorAll('.inv-dropdown-item').length).toBe(5);
+  });
+
+  it('selecting This month sends start+end params', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    fireEvent.click(getDateGroup().querySelector('.inv-filter-trigger'));
+    const monthItem = Array.from(getDateGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('This month'));
+    fireEvent.click(monthItem);
+
+    await waitFor(() => {
+      const url = api.get.mock.calls[1][0];
+      expect(url).toContain('start=');
+      expect(url).toContain('end=');
+    });
+  });
+
+  it('selecting date preset shows chip', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    fireEvent.click(getDateGroup().querySelector('.inv-filter-trigger'));
+    const monthItem = Array.from(getDateGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('This month'));
+    fireEvent.click(monthItem);
+
+    await waitFor(() => {
+      const chip = document.querySelector('.inv-chip');
+      expect(chip).not.toBeNull();
+      expect(chip.textContent).toContain('Date: This month');
+    });
+  });
+});
+
+// ── Filters dropdown ───────────────────────────────────────────────────────────
+
+describe('Invoices — quick filters dropdown', () => {
+  function getFiltersGroup() {
+    return document.querySelectorAll('.inv-filter-group')[2];
+  }
+
+  it('renders Filters trigger button', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const trigger = getFiltersGroup().querySelector('.inv-filter-trigger');
+    expect(trigger.textContent).toContain('Filters');
+  });
+
+  it('clicking Filters opens dropdown with Balance > $0 option', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
+    const items = getFiltersGroup().querySelectorAll('.inv-dropdown-item');
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    expect(items[0].textContent).toContain('Balance');
+  });
+
+  it('enabling Balance > $0 sends balanceGt0=true', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
+    fireEvent.click(getFiltersGroup().querySelector('.inv-dropdown-item'));
+
+    await waitFor(() => {
+      expect(api.get.mock.calls[1][0]).toContain('balanceGt0=true');
+    });
+  });
+
+  it('enabling Balance > $0 shows badge on Filters button', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+
+    api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
+    fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
+    fireEvent.click(getFiltersGroup().querySelector('.inv-dropdown-item'));
+
+    await waitFor(() => {
+      expect(getFiltersGroup().querySelector('.inv-filter-badge')).not.toBeNull();
     });
   });
 });
@@ -348,13 +553,15 @@ describe('Invoices — table', () => {
   it('renders column headers: Client, Invoice #, Due Date, Subject, Status, Total, Balance', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(screen.getByText('Client')).toBeInTheDocument();
-    expect(screen.getByText('Invoice #')).toBeInTheDocument();
-    expect(screen.getByText('Due Date')).toBeInTheDocument();
-    expect(screen.getByText('Subject')).toBeInTheDocument();
-    expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.getByText('Total')).toBeInTheDocument();
-    expect(screen.getByText('Balance')).toBeInTheDocument();
+    const ths = Array.from(document.querySelectorAll('th'));
+    const thText = ths.map(th => th.textContent.trim());
+    expect(thText.some(t => t.startsWith('Client'))).toBe(true);
+    expect(thText.some(t => t.startsWith('Invoice #'))).toBe(true);
+    expect(thText.some(t => t.startsWith('Due Date'))).toBe(true);
+    expect(thText.some(t => t === 'Subject')).toBe(true);
+    expect(thText.some(t => t.startsWith('Status'))).toBe(true);
+    expect(thText.some(t => t.startsWith('Total'))).toBe(true);
+    expect(thText.some(t => t.startsWith('Balance'))).toBe(true);
   });
 
   it('shows invoice numbers prefixed with #', async () => {
@@ -374,7 +581,6 @@ describe('Invoices — table', () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const rows = document.querySelectorAll('.inv-table-row');
-    // Baker LLC has no due_date → should show —
     const bakerRow = Array.from(rows).find(r => r.textContent.includes('Baker LLC'));
     expect(bakerRow.querySelectorAll('td')[2].textContent).toBe('—');
   });
@@ -401,11 +607,27 @@ describe('Invoices — table', () => {
     expect(charlieRow.querySelectorAll('td')[6].textContent).toBe('—');
   });
 
-  it('rows have inv-table-row class', async () => {
+  it('client cell shows secondary address line', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const rows = document.querySelectorAll('.inv-table-row');
-    expect(rows.length).toBe(3);
+    const ableRow = Array.from(rows).find(r => r.textContent.includes('Able Corp'));
+    expect(ableRow.querySelector('.inv-client-sub').textContent).toBe('1 Main St');
+  });
+
+  it('Total and Balance columns have right-align class', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const rows = document.querySelectorAll('.inv-table-row');
+    const ableRow = Array.from(rows).find(r => r.textContent.includes('Able Corp'));
+    expect(ableRow.querySelectorAll('td')[5].classList.contains('inv-td-r')).toBe(true);
+    expect(ableRow.querySelectorAll('td')[6].classList.contains('inv-td-r')).toBe(true);
+  });
+
+  it('rows have inv-table-row class', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    expect(document.querySelectorAll('.inv-table-row').length).toBe(3);
   });
 
   it('clicking a row opens InvoiceDetail', async () => {
@@ -463,7 +685,6 @@ describe('Invoices — table', () => {
     const findClientTh = () =>
       Array.from(document.querySelectorAll('.inv-th-sortable')).find(th => th.textContent.includes('Client'));
     fireEvent.click(findClientTh());
-    // Wait for loading to complete so the th is back in the DOM
     await waitFor(() => screen.getByRole('table'));
 
     api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
@@ -480,23 +701,27 @@ describe('Invoices — table', () => {
 describe('Invoices — empty state', () => {
   it('renders empty state when no invoices', async () => {
     setup(EMPTY_RESPONSE);
-    await waitFor(() => screen.getByText(/no invoices found/i));
+    await waitFor(() => screen.getByText(/no invoices yet/i));
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('renders secondary empty message for All filter', async () => {
+  it('renders secondary message to create first invoice', async () => {
     setup(EMPTY_RESPONSE);
-    await waitFor(() => screen.getByText(/invoices will appear here/i));
+    await waitFor(() => screen.getByText(/create your first invoice/i));
   });
 
-  it('renders empty state with no table when filter yields zero results', async () => {
+  it('renders "no invoices match these filters" when filter active and zero results', async () => {
     setup({ ...MOCK_RESPONSE, rows: [MOCK_INVOICES[1]], total: 1 });
     await waitFor(() => screen.getByRole('table'));
 
     api.get.mockResolvedValueOnce({ data: { ...MOCK_RESPONSE, rows: [], total: 0 } });
-    fireEvent.click(screen.getByRole('button', { name: /^void/i }));
+    fireEvent.click(getStatusGroup().querySelector('.inv-filter-trigger'));
+    const voidItem = Array.from(getStatusGroup().querySelectorAll('.inv-dropdown-item'))
+      .find(el => el.textContent.includes('Void'));
+    fireEvent.click(voidItem);
+
     await waitFor(() => {
-      expect(screen.getByText(/no invoices found/i)).toBeInTheDocument();
+      expect(screen.getByText(/no invoices match these filters/i)).toBeInTheDocument();
       expect(screen.queryByRole('table')).toBeNull();
     });
   });
@@ -541,15 +766,13 @@ describe('Invoices — pagination', () => {
 
 // ── Single-layer design ────────────────────────────────────────────────────────
 
-describe('Invoices — single-layer design (no nested outer card)', () => {
-  it('KPI cards are not wrapped inside an extra card element', async () => {
+describe('Invoices — single-layer design', () => {
+  it('overview section is not wrapped inside an extra card element', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    cards.forEach(card => {
-      expect(card.closest('.card')).toBeNull();
-      expect(card.closest('[class*="outer"]')).toBeNull();
-    });
+    const overview = document.querySelector('.inv-overview');
+    expect(overview.closest('.card')).toBeNull();
+    expect(overview.closest('[class*="outer"]')).toBeNull();
   });
 
   it('table is not wrapped inside a card element', async () => {
@@ -558,48 +781,5 @@ describe('Invoices — single-layer design (no nested outer card)', () => {
     const table = screen.getByRole('table');
     expect(table.closest('.card')).toBeNull();
     expect(table.closest('[class*="panel"]')).toBeNull();
-  });
-});
-
-// ── Calculation correctness ────────────────────────────────────────────────────
-
-describe('Invoices — calculation correctness', () => {
-  it('outstanding sums only pending amounts (from kpis)', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[0].querySelector('.stat-value').textContent).toBe('$400.00');
-  });
-
-  it('collected sums only paid amounts (from kpis)', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[1].querySelector('.stat-value').textContent).toBe('$200.00');
-  });
-
-  it('total invoices counts all statuses (from kpis)', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[3].querySelector('.stat-value').textContent).toBe('3');
-  });
-
-  it('kpi values do not change when filter is changed (kpis are global)', async () => {
-    setup();
-    await waitFor(() => screen.getByRole('table'));
-
-    api.get.mockResolvedValueOnce({ data: {
-      ...MOCK_RESPONSE,
-      rows:  [MOCK_INVOICES[1]],
-      total: 1,
-      kpis:  MOCK_KPIS, // same global kpis
-    }});
-    fireEvent.click(screen.getByRole('button', { name: /^paid/i }));
-    await waitFor(() => screen.getByText('Baker LLC'));
-
-    const cards = document.querySelectorAll('.stat-card');
-    expect(cards[0].querySelector('.stat-value').textContent).toBe('$400.00');
-    expect(cards[3].querySelector('.stat-value').textContent).toBe('3');
   });
 });
