@@ -448,7 +448,7 @@ describe('InvoiceBuilder — agreement source picker', () => {
     fireEvent.click(screen.getByText('Recurring Agreement'));
     await pickClient();
     await waitFor(() => {
-      expect(screen.getByText(/no active recurring agreements found/i)).toBeInTheDocument();
+      expect(screen.getByText(/no active recurring agreements/i)).toBeInTheDocument();
       expect(screen.getByText('Create Recurring Agreement')).toBeInTheDocument();
     });
   });

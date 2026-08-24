@@ -334,7 +334,35 @@ function AgreementServiceSearch({ value, onChange, onSelect }) {
 }
 
 // ── InlineAgreementForm — expands inside the agreement source section ──────────
-function InlineAgreementForm({ clientId, onSaved, onCancel }) {
+function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
+  // Client — may be pre-set from parent or chosen within the form
+  const [resolvedClientId, setResolvedClientId]   = useState(initialClientId || null);
+  const [formClientName,   setFormClientName]      = useState('');
+  const [clientSearchQ,    setClientSearchQ]       = useState('');
+  const [clientResults,    setClientResults]       = useState([]);
+  const clientDebRef = useRef(null);
+
+  useEffect(() => {
+    if (initialClientId) setResolvedClientId(initialClientId);
+  }, [initialClientId]);
+
+  function searchClients(q) {
+    clearTimeout(clientDebRef.current);
+    clientDebRef.current = setTimeout(() => {
+      if (!q.trim()) { setClientResults([]); return; }
+      api.get(`/clients/search?q=${encodeURIComponent(q)}`)
+        .then(r => setClientResults(r.data || []))
+        .catch(() => setClientResults([]));
+    }, 275);
+  }
+
+  function pickFormClient(c) {
+    setResolvedClientId(c.id);
+    setFormClientName(c.name);
+    setClientSearchQ(c.name);
+    setClientResults([]);
+  }
+
   // Basics
   const [agrName,           setAgrName]           = useState('');
   const [agrServiceType,    setAgrServiceType]    = useState('');
@@ -373,6 +401,7 @@ function InlineAgreementForm({ clientId, onSaved, onCancel }) {
   }
 
   const canSave = !saving
+    && !!resolvedClientId
     && agrName.trim().length > 0
     && parseFloat(agrPlanPrice) > 0
     && (agrCadence !== 'custom' || parseInt(agrSvcIntervalDays, 10) > 0)
@@ -385,7 +414,7 @@ function InlineAgreementForm({ clientId, onSaved, onCancel }) {
     setError('');
     try {
       const res = await api.post('/agreements', {
-        client_id:                    clientId,
+        client_id:                    resolvedClientId,
         name:                         agrName.trim(),
         service_type:                 agrServiceType.trim() || null,
         cadence:                      agrCadence,
@@ -412,6 +441,37 @@ function InlineAgreementForm({ clientId, onSaved, onCancel }) {
   return (
     <div className="ib-inline-agr">
       <div className="ib-inline-agr-header">New Recurring Agreement</div>
+
+      {/* ── Client — shown when no client was pre-selected ─────────────────── */}
+      {!initialClientId && (
+        <div className="ib-inline-agr-section" style={{ paddingTop: 0, borderTop: 'none' }}>
+          <div className="ib-inline-agr-section-label">Client *</div>
+          <div style={{ position: 'relative' }}>
+            <input
+              className="ib-input"
+              value={clientSearchQ}
+              onChange={e => { setClientSearchQ(e.target.value); searchClients(e.target.value); setResolvedClientId(null); setFormClientName(''); }}
+              placeholder="Search by name, company, email…"
+              data-testid="agr-client-search"
+            />
+            {clientResults.length > 0 && (
+              <div className="svc-drop" role="listbox">
+                {clientResults.map(c => (
+                  <div key={c.id} className="svc-drop-item" role="option" onMouseDown={() => pickFormClient(c)}>
+                    <span className="svc-drop-name">{c.name}</span>
+                    {c.email && <span className="svc-drop-price" style={{ color: 'var(--slate)', fontSize: '0.75rem' }}>{c.email}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {resolvedClientId && formClientName && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--green)', marginTop: 4 }}>
+              Client: <strong>{formClientName}</strong>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Agreement Basics ──────────────────────────────────────────────── */}
       <div className="ib-inline-agr-section">
@@ -1213,18 +1273,34 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         {/* Agreement picker — client-first flow */}
         {source === 'agreement' && (
           <div className="ib-section">
-            <p className="ib-section-label">Active Recurring Agreement <span className="ib-required">*</span></p>
-
-            {!selectedClient ? (
-              <p className="ib-empty-secondary" style={{ margin: 0 }}>
-                Select a client above to view their recurring agreements.
+            <div className="ib-agr-section-header">
+              <p className="ib-section-label" style={{ margin: 0 }}>
+                Active Recurring Agreement <span className="ib-required">*</span>
               </p>
-            ) : selectedAgreement ? (
+              {/* Create button always visible unless form is open or agreement is selected */}
+              {!showAgrForm && !selectedAgreement && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    if (!selectedClient) {
+                      document.getElementById('ib-client-search')?.focus();
+                    } else {
+                      setShowAgrForm(true);
+                    }
+                  }}
+                >
+                  <Plus size={12} style={{ marginRight: 4 }} />
+                  New Agreement
+                </button>
+              )}
+            </div>
+
+            {selectedAgreement ? (
               <div className="ib-agr-card">
                 <div className="ib-agr-card-top">
                   <div>
                     <div className="ib-agr-card-title">{selectedAgreement.name}</div>
-                    <div className="ib-agr-card-client">{selectedAgreement.client_name || selectedClient.name}</div>
+                    <div className="ib-agr-card-client">{selectedAgreement.client_name || selectedClient?.name}</div>
                   </div>
                   <div className="ib-agr-card-right">
                     <span className="ib-agr-card-amount">${parseFloat(selectedAgreement.plan_price || 0).toFixed(2)}</span>
@@ -1244,77 +1320,69 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                   <div className="ib-agr-card-warn">This billing period has already been invoiced.</div>
                 )}
               </div>
+            ) : showAgrForm ? (
+              <InlineAgreementForm
+                clientId={selectedClient?.id}
+                onSaved={handleAgreementCreated}
+                onCancel={() => setShowAgrForm(false)}
+              />
+            ) : !selectedClient ? (
+              <p className="ib-empty-secondary" style={{ margin: 0 }}>
+                Select a client above to view their recurring agreements, or click <strong>New Agreement</strong> to create one.
+              </p>
             ) : (
               <>
-                {!showAgrForm && (
-                  <>
-                    <div className="ib-job-search-wrap">
-                      <Search size={14} className="ib-search-icon" />
-                      <input
-                        className="ib-job-input"
-                        type="text"
-                        placeholder="Search agreements…"
-                        value={agreementQuery}
-                        onChange={e => handleAgreementQuery(e.target.value)}
-                      />
-                    </div>
-                    <div className="ib-job-list">
-                      {agreementsLoading ? (
-                        <div className="ib-state">Loading…</div>
-                      ) : agreementsError ? (
-                        <div className="ib-state ib-state--error">{agreementsError}</div>
-                      ) : eligibleAgreements.length === 0 ? (
-                        <div className="ib-empty">
-                          <p className="ib-empty-primary">No active recurring agreements found.</p>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ marginTop: 8 }}
-                            onClick={() => setShowAgrForm(true)}
-                          >
-                            Create Recurring Agreement
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          {eligibleAgreements.map(agr => (
-                            <button
-                              key={agr.id}
-                              className={`ib-job-row${agr.period_already_invoiced ? ' ib-job-row--dim' : ''}`}
-                              onClick={() => selectAgreement(agr)}
-                            >
-                              <div className="ib-job-top">
-                                <span className="ib-job-client">{agr.name}</span>
-                                <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
-                              </div>
-                              <div className="ib-job-service">
-                                {agr.service_type && <span>{agr.service_type} · </span>}
-                                {CADENCE_LABELS[agr.cadence] || agr.cadence}
-                                {' · '}{fmtPeriodFE(agr.period_start, agr.period_end)}
-                                {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
-                                {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
-                              </div>
-                            </button>
-                          ))}
-                          <button
-                            className="ib-add-line"
-                            style={{ marginTop: 8 }}
-                            onClick={() => setShowAgrForm(true)}
-                          >
-                            <Plus size={14} /> Create new agreement
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {showAgrForm && (
-                  <InlineAgreementForm
-                    clientId={selectedClient.id}
-                    onSaved={handleAgreementCreated}
-                    onCancel={() => setShowAgrForm(false)}
+                <div className="ib-job-search-wrap">
+                  <Search size={14} className="ib-search-icon" />
+                  <input
+                    className="ib-job-input"
+                    type="text"
+                    placeholder="Search agreements…"
+                    value={agreementQuery}
+                    onChange={e => handleAgreementQuery(e.target.value)}
                   />
-                )}
+                </div>
+                <div className="ib-job-list">
+                  {agreementsLoading ? (
+                    <div className="ib-state">Loading…</div>
+                  ) : agreementsError ? (
+                    <div className="ib-state ib-state--error">{agreementsError}</div>
+                  ) : eligibleAgreements.length === 0 ? (
+                    <div className="ib-empty">
+                      <p className="ib-empty-primary">No active recurring agreements for this client.</p>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ marginTop: 8 }}
+                        onClick={() => setShowAgrForm(true)}
+                      >
+                        <Plus size={13} style={{ marginRight: 4 }} />
+                        Create Recurring Agreement
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {eligibleAgreements.map(agr => (
+                        <button
+                          key={agr.id}
+                          className={`ib-job-row${agr.period_already_invoiced ? ' ib-job-row--dim' : ''}`}
+                          onClick={() => selectAgreement(agr)}
+                        >
+                          <div className="ib-job-top">
+                            <span className="ib-job-client">{agr.name}</span>
+                            <span className="ib-job-amount">${parseFloat(agr.plan_price || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="ib-job-service">
+                            {agr.service_type && <span>{agr.service_type} · </span>}
+                            {CADENCE_LABELS[agr.cadence] || agr.cadence}
+                            {' · '}{fmtPeriodFE(agr.period_start, agr.period_end)}
+                            {agr.payment_status === 'paid_in_advance' && <span className="ib-agr-paid"> · Paid in Advance</span>}
+                            {agr.period_already_invoiced && <span className="ib-agr-invoiced"> · Already Invoiced</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>
