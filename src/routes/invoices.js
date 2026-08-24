@@ -144,15 +144,122 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 // GET /api/invoices
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT i.*, c.name AS client_name
-       FROM invoices i
-       JOIN clients c ON c.id = i.client_id
-       WHERE i.account_id = $1
-       ORDER BY i.created_at DESC`,
+    const {
+      search   = '',
+      status   = 'all',
+      sort     = 'created_at',
+      order    = 'DESC',
+      page     = '1',
+      pageSize = '50',
+    } = req.query;
+
+    const ALLOWED_SORTS = {
+      client:         'c.name',
+      invoice_number: 'i.id',
+      due_date:       'i.due_date',
+      status:         'i.status',
+      amount:         'i.amount',
+      balance:        `CASE WHEN i.status IN ('pending','failed') THEN i.amount::numeric WHEN i.status = 'paid' THEN 0 ELSE NULL END`,
+      created_at:     'i.created_at',
+    };
+    const sortCol = ALLOWED_SORTS[sort] || ALLOWED_SORTS.created_at;
+    const sortDir = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const pg      = Math.max(1, parseInt(page, 10) || 1);
+    const ps      = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 50));
+    const offset  = (pg - 1) * ps;
+
+    // KPI aggregates — always global (unfiltered by search/status)
+    const kpiRes = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0)                                                             AS outstanding,
+         COALESCE(SUM(CASE WHEN status = 'paid'    THEN amount ELSE 0 END), 0)                                                             AS collected,
+         COALESCE(SUM(CASE WHEN status IN ('pending','failed') AND due_date IS NOT NULL AND due_date < NOW() THEN amount ELSE 0 END), 0)    AS past_due,
+         COUNT(CASE WHEN status IN ('pending','failed') AND due_date IS NOT NULL AND due_date < NOW() THEN 1 END)::int                      AS past_due_count,
+         COUNT(*)::int                                                                                                                      AS total_count,
+         COUNT(CASE WHEN status = 'pending' THEN 1 END)::int                                                                               AS count_pending,
+         COUNT(CASE WHEN status = 'paid'    THEN 1 END)::int                                                                               AS count_paid,
+         COUNT(CASE WHEN status = 'void'    THEN 1 END)::int                                                                               AS count_void
+       FROM invoices
+       WHERE account_id = $1`,
       [req.accountId]
     );
-    res.json(rows);
+    const k = kpiRes.rows[0];
+    const kpis = {
+      outstanding:  parseFloat(k.outstanding),
+      collected:    parseFloat(k.collected),
+      pastDue:      parseFloat(k.past_due),
+      pastDueCount: k.past_due_count,
+      totalCount:   k.total_count,
+      counts: {
+        all:      k.total_count,
+        pending:  k.count_pending,
+        paid:     k.count_paid,
+        void:     k.count_void,
+        past_due: k.past_due_count,
+      },
+    };
+
+    // Build parameterized filter conditions
+    const listParams  = [req.accountId];
+    const conditions  = [];
+
+    if (status === 'past_due') {
+      conditions.push(`(i.status IN ('pending','failed') AND i.due_date IS NOT NULL AND i.due_date < NOW())`);
+    } else if (status !== 'all') {
+      listParams.push(status);
+      conditions.push(`i.status = $${listParams.length}`);
+    }
+
+    const term = search.trim();
+    if (term) {
+      listParams.push(`%${term}%`);
+      const p = listParams.length;
+      conditions.push(`(
+        c.name          ILIKE $${p}
+        OR c.email      ILIKE $${p}
+        OR c.phone      ILIKE $${p}
+        OR c.address    ILIKE $${p}
+        OR j.service_type ILIKE $${p}
+        OR UPPER(LEFT(i.id::text, 8)) ILIKE $${p}
+        OR i.amount::text ILIKE $${p}
+      )`);
+    }
+
+    const whereExtra = conditions.length ? ' AND ' + conditions.join(' AND ') : '';
+    const joins = `
+      FROM invoices i
+      JOIN clients c ON c.id = i.client_id
+      JOIN jobs    j ON j.id = i.job_id
+      WHERE i.account_id = $1${whereExtra}`;
+
+    const countParams = [...listParams];
+    const rowParams   = [...listParams, ps, offset];
+
+    const [countRes, rowsRes] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS total ${joins}`, countParams),
+      pool.query(
+        `SELECT
+           i.*,
+           UPPER(LEFT(i.id::text, 8))  AS invoice_number,
+           CASE
+             WHEN i.status IN ('pending','failed') THEN i.amount
+             WHEN i.status = 'paid'                THEN 0
+             ELSE NULL
+           END                          AS balance,
+           (i.status IN ('pending','failed') AND i.due_date IS NOT NULL AND i.due_date < NOW()) AS is_past_due,
+           c.name    AS client_name,
+           c.email   AS client_email,
+           c.phone   AS client_phone,
+           c.address AS client_address,
+           j.service_type
+         ${joins}
+         ORDER BY ${sortCol} ${sortDir} NULLS LAST
+         LIMIT $${rowParams.length - 1} OFFSET $${rowParams.length}`,
+        rowParams
+      ),
+    ]);
+
+    res.json({ rows: rowsRes.rows, total: countRes.rows[0].total, page: pg, pageSize: ps, kpis });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
