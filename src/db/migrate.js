@@ -2163,6 +2163,22 @@ const MIGRATIONS = [
 
   // Invoice traceability: link invoices to agreement billing periods
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS agreement_period_id UUID REFERENCES agreement_invoice_periods(id) ON DELETE SET NULL`,
+
+  // ── RECURRING AGREEMENT V3 — END CONDITIONS ───────────────────────────────────
+
+  // Explicit end-condition type (never inferred — always set on create/patch)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS end_condition_type TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_end_condition_type_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_end_condition_type_check
+     CHECK (end_condition_type IN ('none','date','service_count','billing_period_count'))`,
+
+  // Expand status to include 'completed' (distinct from 'expired' which is legacy)
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_status_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_status_check
+     CHECK (status IN ('draft','active','paused','cancelled','expired','completed'))`,
+
+  `CREATE INDEX IF NOT EXISTS idx_recurring_agreements_end_condition
+     ON recurring_agreements(end_condition_type) WHERE status = 'active'`,
 ];
 
 async function runMigrations() {

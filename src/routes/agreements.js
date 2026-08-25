@@ -26,10 +26,11 @@ const MISSED_SERVICE_POLICY_VALUES = [
   'no_adjustment','reschedule','carry_forward','credit','forfeited','manual_review',
   'rollover', // legacy alias
 ];
-const STATUS_VALUES        = ['draft','active','paused','cancelled','expired'];
+const STATUS_VALUES        = ['draft','active','paused','cancelled','expired','completed'];
 const PAYMENT_VALUES       = ['paid_in_advance','pending','failed','overdue'];
 const PAYMENT_BEHAVIOR_VALUES = ['send_invoice','create_only','auto_charge_card','auto_charge_ach'];
 const DISCOUNT_TYPE_VALUES = ['none','percent','fixed'];
+const END_CONDITION_VALUES = ['none','date','service_count','billing_period_count'];
 
 // Generates the next N future service occurrence dates from a cadence anchor.
 // interval-based cadences (weekly, every_N_weeks, custom) use startedAt as the
@@ -170,6 +171,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     discount_type = 'none', discount_value = null, discount_name = null,
     taxable = false,
     days_before_service = null,
+    end_condition_type = 'none',
     end_after_occurrences = null, end_after_periods = null,
     notes, line_items = [], started_at, next_billing_date,
     end_date = null, status = 'active',
@@ -193,6 +195,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     return res.status(400).json({ error: 'invalid payment_behavior' });
   if (!DISCOUNT_TYPE_VALUES.includes(discount_type))
     return res.status(400).json({ error: 'invalid discount_type' });
+  if (!END_CONDITION_VALUES.includes(end_condition_type))
+    return res.status(400).json({ error: 'invalid end_condition_type' });
   if (!STATUS_VALUES.includes(status))
     return res.status(400).json({ error: 'invalid status' });
 
@@ -222,8 +226,19 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     if (isNaN(d) || d < 1 || d > 31)
       return res.status(400).json({ error: 'service_day_of_month must be 1–31' });
   }
-  if (end_date && started_at && end_date < started_at)
-    return res.status(400).json({ error: 'end_date must be after started_at' });
+  if (end_condition_type === 'date') {
+    if (!end_date) return res.status(400).json({ error: 'end_date is required when end_condition_type is date' });
+    if (started_at && end_date < started_at)
+      return res.status(400).json({ error: 'end_date must be on or after started_at' });
+  }
+  if (end_condition_type === 'service_count') {
+    const n = parseInt(end_after_occurrences, 10);
+    if (!n || n < 1) return res.status(400).json({ error: 'end_after_occurrences must be >= 1 when end_condition_type is service_count' });
+  }
+  if (end_condition_type === 'billing_period_count') {
+    const n = parseInt(end_after_periods, 10);
+    if (!n || n < 1) return res.status(400).json({ error: 'end_after_periods must be >= 1 when end_condition_type is billing_period_count' });
+  }
   if (parseFloat(plan_price) < 0)
     return res.status(400).json({ error: 'plan_price must be >= 0' });
 
@@ -242,9 +257,9 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
           included_services_per_period, extra_occurrence_policy, service_interval_days,
           missed_service_policy, plan_price, payment_status, payment_behavior, notes, line_items,
           additional_service_price, discount_type, discount_value, discount_name, taxable,
-          days_before_service, end_after_occurrences, end_after_periods,
+          days_before_service, end_condition_type, end_after_occurrences, end_after_periods,
           started_at, next_billing_date, end_date, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,COALESCE($31,CURRENT_DATE),$32,$33,$34,$35)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,COALESCE($32,CURRENT_DATE),$33,$34,$35,$36)
        RETURNING *`,
       [
         req.accountId, client_id, name.trim(), service_type || null, service_address || null,
@@ -264,9 +279,11 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         discount_type, discount_value != null ? parseFloat(discount_value) : null,
         discount_name || null, taxable === true || taxable === 'true',
         billing_trigger === 'days_before_first_service' ? parseInt(days_before_service, 10) : null,
-        end_after_occurrences ? parseInt(end_after_occurrences, 10) : null,
-        end_after_periods ? parseInt(end_after_periods, 10) : null,
-        started_at || null, next_billing_date || null, end_date || null,
+        end_condition_type,
+        end_condition_type === 'service_count' ? parseInt(end_after_occurrences, 10) : null,
+        end_condition_type === 'billing_period_count' ? parseInt(end_after_periods, 10) : null,
+        started_at || null, next_billing_date || null,
+        end_condition_type === 'date' ? (end_date || null) : null,
         STATUS_VALUES.includes(status) ? status : 'active',
         req.userId,
       ]
@@ -305,15 +322,29 @@ router.post('/preview', requireAuth, async (req, res) => {
     service_interval_days,
     preferred_weekday = null,
     service_day_of_month = null,
+    end_condition_type = 'none',
+    end_date = null,
+    end_after_occurrences = null,
     count = 4,
   } = req.body;
   try {
-    const services = nextOccurrences(
+    const maxCount = Math.min(parseInt(count, 10) || 4, 8);
+    let services = nextOccurrences(
       cadence, started_at, service_interval_days,
-      Math.min(parseInt(count, 10) || 4, 8),
+      maxCount,
       preferred_weekday != null ? parseInt(preferred_weekday, 10) : null,
       service_day_of_month != null ? parseInt(service_day_of_month, 10) : null,
     );
+
+    // Apply end condition cutoffs to the preview
+    if (end_condition_type === 'date' && end_date) {
+      services = services.filter(d => d <= end_date);
+    } else if (end_condition_type === 'service_count' && end_after_occurrences != null) {
+      const limit = parseInt(end_after_occurrences, 10) || 0;
+      if (limit > 0) services = services.slice(0, limit);
+    }
+    // 'billing_period_count' and 'none' show all preview dates untruncated
+
     res.json({ services });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -329,7 +360,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     'included_services_per_period','extra_occurrence_policy','service_interval_days',
     'missed_service_policy','additional_service_price',
     'discount_type','discount_value','discount_name','taxable',
-    'days_before_service','end_after_occurrences','end_after_periods',
+    'days_before_service','end_condition_type','end_after_occurrences','end_after_periods',
     'plan_price','status','payment_status','payment_behavior','notes','line_items',
     'started_at','next_billing_date','end_date',
   ];
@@ -351,6 +382,8 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     return res.status(400).json({ error: 'invalid payment_behavior' });
   if (b.discount_type      && !DISCOUNT_TYPE_VALUES.includes(b.discount_type))
     return res.status(400).json({ error: 'invalid discount_type' });
+  if (b.end_condition_type && !END_CONDITION_VALUES.includes(b.end_condition_type))
+    return res.status(400).json({ error: 'invalid end_condition_type' });
   if (b.status             && !STATUS_VALUES.includes(b.status))
     return res.status(400).json({ error: 'invalid status' });
 

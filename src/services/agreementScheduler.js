@@ -306,29 +306,29 @@ function computeBillingAmount(agreement) {
 // ---------------------------------------------------------------------------
 
 /**
- * Checks if the agreement has hit an end condition and marks it expired if so.
+ * Checks if the agreement has hit its end condition and marks it 'completed' if so.
+ * Uses end_condition_type to determine which check to run — only one check is canonical.
+ * Historical jobs and invoices are preserved; only future generation stops.
  */
 async function checkEndConditions(agreement, client) {
   const today    = new Date();
   today.setHours(0, 0, 0, 0);
-  let shouldExpire = false;
-  let reason       = '';
+  let shouldComplete = false;
+  let reason         = '';
 
-  // end_date check
-  if (agreement.end_date) {
+  const condType = agreement.end_condition_type || 'none';
+
+  if (condType === 'date' && agreement.end_date) {
     const endDate = fromDateStr(
       typeof agreement.end_date === 'string'
         ? agreement.end_date.slice(0, 10)
         : toDateStr(new Date(agreement.end_date))
     );
     if (today > endDate) {
-      shouldExpire = true;
-      reason       = `end_date ${toDateStr(endDate)} passed`;
+      shouldComplete = true;
+      reason         = `end date ${toDateStr(endDate)} has passed`;
     }
-  }
-
-  // end_after_occurrences check
-  if (!shouldExpire && agreement.end_after_occurrences != null) {
+  } else if (condType === 'service_count' && agreement.end_after_occurrences != null) {
     const res = await client.query(
       `SELECT COUNT(*) AS cnt FROM jobs
        WHERE agreement_id = $1 AND status = 'complete'`,
@@ -336,13 +336,10 @@ async function checkEndConditions(agreement, client) {
     );
     const cnt = parseInt(res.rows[0].cnt, 10);
     if (cnt >= agreement.end_after_occurrences) {
-      shouldExpire = true;
-      reason       = `end_after_occurrences (${cnt}/${agreement.end_after_occurrences}) reached`;
+      shouldComplete = true;
+      reason         = `service count reached (${cnt} of ${agreement.end_after_occurrences})`;
     }
-  }
-
-  // end_after_periods check
-  if (!shouldExpire && agreement.end_after_periods != null) {
+  } else if (condType === 'billing_period_count' && agreement.end_after_periods != null) {
     const res = await client.query(
       `SELECT COUNT(*) AS cnt FROM agreement_invoice_periods
        WHERE agreement_id = $1 AND invoice_id IS NOT NULL`,
@@ -350,18 +347,19 @@ async function checkEndConditions(agreement, client) {
     );
     const cnt = parseInt(res.rows[0].cnt, 10);
     if (cnt >= agreement.end_after_periods) {
-      shouldExpire = true;
-      reason       = `end_after_periods (${cnt}/${agreement.end_after_periods}) reached`;
+      shouldComplete = true;
+      reason         = `billing period count reached (${cnt} of ${agreement.end_after_periods})`;
     }
   }
+  // condType === 'none': no end condition — agreement runs until manually stopped
 
-  if (shouldExpire) {
-    console.log(`${TAG} Agreement ${agreement.id} (${agreement.name}) expiring: ${reason}`);
+  if (shouldComplete) {
+    console.log(`${TAG} Agreement ${agreement.id} (${agreement.name}) completing: ${reason}`);
     await client.query(
-      `UPDATE recurring_agreements SET status = 'expired', updated_at = NOW() WHERE id = $1`,
+      `UPDATE recurring_agreements SET status = 'completed', updated_at = NOW() WHERE id = $1`,
       [agreement.id]
     );
-    agreement.status = 'expired'; // mutate in-memory so callers can check
+    agreement.status = 'completed'; // mutate in-memory so callers skip further processing
   }
 }
 
@@ -386,8 +384,16 @@ async function generateUpcomingJobs(agreement, client) {
 
   const upcomingDates = getUpcomingServiceDates(agreement, approxCount, toDateStr(today));
 
-  // Filter to only dates within the 45-day horizon
-  const datesToProcess = upcomingDates.filter(d => d <= horizonStr);
+  // Filter to only dates within the 45-day horizon, respecting end conditions
+  let datesToProcess = upcomingDates.filter(d => d <= horizonStr);
+
+  // Cutoff: do not schedule jobs beyond the specific end date
+  if (agreement.end_condition_type === 'date' && agreement.end_date) {
+    const endStr = typeof agreement.end_date === 'string'
+      ? agreement.end_date.slice(0, 10)
+      : toDateStr(new Date(agreement.end_date));
+    datesToProcess = datesToProcess.filter(d => d <= endStr);
+  }
 
   let created = 0;
   for (const dateStr of datesToProcess) {

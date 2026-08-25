@@ -27,18 +27,20 @@ const BILLING_CADENCE_OPTIONS = [
 ];
 
 const BILLING_TRIGGER_OPTIONS = [
-  { value: 'every_service',    label: 'Every service occurrence' },
-  { value: 'first_scheduled',  label: 'First scheduled service of period' },
-  { value: 'first_completed',  label: 'First completed service of period' },
-  { value: 'first_day',        label: 'First day of billing period' },
-  { value: 'specific_day',     label: 'Specific day of month…' },
+  { value: 'every_service',    label: 'Every Service Occurrence' },
+  { value: 'first_scheduled',  label: 'First Scheduled Service of Period' },
+  { value: 'first_completed',  label: 'First Completed Service of Period' },
+  { value: 'first_day',        label: 'First Day of Billing Period' },
+  { value: 'specific_day',     label: 'Specific Day of Month' },
 ];
 
 const EXTRA_OCCURRENCE_OPTIONS = [
-  { value: 'all_included',   label: 'All scheduled visits included' },
-  { value: 'max_n',          label: 'Max N included — additional visits billed separately' },
-  { value: 'rollover',       label: 'Roll extra visit into next period' },
-  { value: 'manual_review',  label: 'Flag for manual review' },
+  { value: 'all_included',          label: 'All Scheduled Visits Included' },
+  { value: 'charge_per_additional', label: 'Charge Per Additional Visit' },
+  { value: 'approval_required',     label: 'Require Approval for Extra Visits' },
+  { value: 'no_additional',         label: 'No Additional Visits Allowed' },
+  { value: 'rollover',              label: 'Roll Extra Visit Into Next Period' },
+  { value: 'manual_review',         label: 'Flag for Manual Review' },
 ];
 
 function newLineItem() {
@@ -237,7 +239,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
               </div>
               {cadence === 'custom' && (
                 <div className="ab-field">
-                  <label className="ab-label">Every N days</label>
+                  <label className="ab-label">Interval (Days)</label>
                   <input
                     className="ib-input"
                     type="number"
@@ -282,17 +284,17 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             </div>
             {billingTrigger === 'specific_day' && (
               <div className="ab-field ab-field--sm">
-                <label className="ab-label">Charge on day of month</label>
+                <label className="ab-label">Day of Month</label>
                 <input
                   className="ib-input"
                   type="number"
                   min="1"
-                  max="28"
+                  max="31"
                   value={billingDay}
                   onChange={e => setBillingDay(e.target.value)}
-                  placeholder="1–28"
+                  placeholder="1–31"
                 />
-                <p className="ab-hint">Months with fewer days will charge on the last day.</p>
+                <p className="ab-hint">Months with fewer days use the last day of that month.</p>
               </div>
             )}
           </section>
@@ -302,7 +304,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             <p className="ib-section-label">Service Coverage</p>
             <div className="ab-row ab-row--gap">
               <div className="ab-field">
-                <label className="ab-label">Services included per billing period</label>
+                <label className="ab-label">Included Services per Billing Period</label>
                 <input
                   className="ib-input"
                   type="number"
@@ -313,7 +315,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                 />
               </div>
               <div className="ab-field ab-field--grow">
-                <label className="ab-label">If visits exceed included count</label>
+                <label className="ab-label">If Services Exceed Included Limit</label>
                 <select
                   className="ib-select"
                   value={extraOccurrencePolicy}
@@ -338,12 +340,12 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             </div>
           </section>
 
-          {/* PLAN PRICE */}
+          {/* BILLING AMOUNT */}
           <section className="ab-section">
-            <p className="ib-section-label">Plan Price</p>
+            <p className="ib-section-label">Billing Amount</p>
             <div className="ab-row ab-row--gap">
               <div className="ab-field">
-                <label className="ab-label">Plan price per billing period *</label>
+                <label className="ab-label">Amount per billing period *</label>
                 <div className="ib-price-wrap">
                   <span className="ib-price-sym">$</span>
                   <input

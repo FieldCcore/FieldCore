@@ -55,44 +55,44 @@ const AGR_BILLING_CADENCE_OPTIONS = [
 ];
 
 const AGR_BILLING_TRIGGER_OPTIONS = [
-  { value: 'first_day',               label: 'First day of billing period' },
-  { value: 'specific_day',            label: 'Specific day of month' },
-  { value: 'first_scheduled',         label: 'First scheduled service' },
-  { value: 'first_completed',         label: 'First completed service' },
-  { value: 'every_service',           label: 'Every service occurrence' },
-  { value: 'days_before_first_service', label: 'N days before first service' },
+  { value: 'first_day',                 label: 'First Day of Billing Period' },
+  { value: 'specific_day',              label: 'Specific Day of Month' },
+  { value: 'first_scheduled',           label: 'First Scheduled Service' },
+  { value: 'first_completed',           label: 'First Completed Service' },
+  { value: 'every_service',             label: 'Every Service Occurrence' },
+  { value: 'days_before_first_service', label: 'Days Before First Service' },
 ];
 
 const AGR_EXTRA_POLICY_OPTIONS = [
-  { value: 'all_included',        label: 'All scheduled visits included' },
-  { value: 'charge_per_additional', label: 'Charge per additional visit' },
-  { value: 'approval_required',   label: 'Require approval for extras' },
-  { value: 'no_additional',       label: 'No additional visits allowed' },
-  { value: 'rollover',            label: 'Roll extra visit into next period' },
-  { value: 'manual_review',       label: 'Flag for manual review' },
+  { value: 'all_included',          label: 'All Scheduled Visits Included' },
+  { value: 'charge_per_additional', label: 'Charge Per Additional Visit' },
+  { value: 'approval_required',     label: 'Require Approval for Extra Visits' },
+  { value: 'no_additional',         label: 'No Additional Visits Allowed' },
+  { value: 'rollover',              label: 'Roll Extra Visit Into Next Period' },
+  { value: 'manual_review',         label: 'Flag for Manual Review' },
 ];
 
 const AGR_MISSED_POLICY_OPTIONS = [
-  { value: 'no_adjustment', label: 'No adjustment — full price retained' },
-  { value: 'reschedule',    label: 'Reschedule to another date' },
-  { value: 'carry_forward', label: 'Carry forward to next period' },
-  { value: 'forfeited',     label: 'Service forfeited' },
-  { value: 'credit',        label: 'Issue credit' },
-  { value: 'rollover',      label: 'Roll forward to next period' },
-  { value: 'manual_review', label: 'Flag for manual review' },
+  { value: 'no_adjustment', label: 'No Adjustment — Full Price Retained' },
+  { value: 'reschedule',    label: 'Reschedule to Another Date' },
+  { value: 'carry_forward', label: 'Carry Forward to Next Period' },
+  { value: 'forfeited',     label: 'Service Forfeited' },
+  { value: 'credit',        label: 'Issue Credit' },
+  { value: 'rollover',      label: 'Roll Forward to Next Period' },
+  { value: 'manual_review', label: 'Flag for Manual Review' },
 ];
 
 const AGR_PAYMENT_BEHAVIOR_OPTIONS = [
-  { value: 'send_invoice',      label: 'Send invoice to client' },
-  { value: 'create_only',       label: 'Create draft (no email)' },
-  { value: 'auto_charge_card',  label: 'Auto-charge card on file' },
-  { value: 'auto_charge_ach',   label: 'Auto-charge ACH on file' },
+  { value: 'send_invoice',     label: 'Send Invoice to Client' },
+  { value: 'create_only',      label: 'Create Draft — No Email' },
+  { value: 'auto_charge_card', label: 'Auto-Charge Card on File' },
+  { value: 'auto_charge_ach',  label: 'Auto-Charge ACH on File' },
 ];
 
 const AGR_DISCOUNT_TYPE_OPTIONS = [
-  { value: 'none',    label: 'No discount' },
-  { value: 'percent', label: 'Percent off' },
-  { value: 'fixed',   label: 'Fixed amount off' },
+  { value: 'none',    label: 'No Discount' },
+  { value: 'percent', label: 'Percent Off' },
+  { value: 'fixed',   label: 'Fixed Amount Off' },
 ];
 
 const AGR_WEEKDAY_OPTIONS = [
@@ -136,7 +136,7 @@ function fmtPeriodFE(start, end) {
 }
 
 // ── computeNextOccurrences — pure date math, mirrors backend nextOccurrences ──
-function computeNextOccurrences(cadence, startedAt, intervalDays, count, preferredWeekday, serviceDayOfMonth) {
+function computeNextOccurrences(cadence, startedAt, intervalDays, count, preferredWeekday, serviceDayOfMonth, endConditionType, endDate, endAfterOccurrences) {
   if (!startedAt) return [];
   const n     = Math.max(1, count || 4);
   const today = new Date();
@@ -190,6 +190,13 @@ function computeNextOccurrences(cadence, startedAt, intervalDays, count, preferr
       out.push(d.toISOString().slice(0, 10));
       d = new Date(d); d.setDate(d.getDate() + days);
     }
+  }
+  // Apply end condition cutoffs to the preview
+  if (endConditionType === 'date' && endDate) {
+    return out.filter(d => d <= endDate);
+  }
+  if (endConditionType === 'service_count' && endAfterOccurrences != null && endAfterOccurrences > 0) {
+    return out.slice(0, endAfterOccurrences);
   }
   return out;
 }
@@ -445,10 +452,17 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
   const previewWeekday = agrPreferredWeekday !== '' ? parseInt(agrPreferredWeekday, 10) : null;
   const previewDom     = agrServiceDayOfMonth !== '' ? parseInt(agrServiceDayOfMonth, 10) : null;
 
-  // Schedule preview: next 4 service dates derived from current cadence + start
+  // Schedule preview: next 4 service dates, respecting end condition
+  const previewEndOccurrences = agrEndCondition === 'occurrences' && agrEndAfterOccurrences !== ''
+    ? parseInt(agrEndAfterOccurrences, 10) : null;
   const previewDates = useMemo(
-    () => computeNextOccurrences(agrCadence, agrStartedAt, parseInt(agrSvcIntervalDays, 10) || null, 4, previewWeekday, previewDom),
-    [agrCadence, agrStartedAt, agrSvcIntervalDays, previewWeekday, previewDom]
+    () => computeNextOccurrences(
+      agrCadence, agrStartedAt, parseInt(agrSvcIntervalDays, 10) || null, 4,
+      previewWeekday, previewDom,
+      agrEndCondition, agrEndDate, previewEndOccurrences,
+    ),
+    [agrCadence, agrStartedAt, agrSvcIntervalDays, previewWeekday, previewDom,
+     agrEndCondition, agrEndDate, previewEndOccurrences]
   );
 
   // When user picks a catalog service: populate service type and optionally price
@@ -459,6 +473,12 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
     }
   }
 
+  // Map local end condition selector to canonical backend type
+  const backendEndConditionType =
+    agrEndCondition === 'date'        ? 'date' :
+    agrEndCondition === 'occurrences' ? 'service_count' :
+    agrEndCondition === 'periods'     ? 'billing_period_count' : 'none';
+
   const canSave = !saving
     && !!resolvedClientId
     && agrName.trim().length > 0
@@ -468,6 +488,9 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
         || (parseInt(agrBillingDay, 10) >= 1 && parseInt(agrBillingDay, 10) <= 31))
     && (agrBillingTrigger !== 'days_before_first_service'
         || parseInt(agrDaysBeforeService, 10) > 0)
+    && (agrEndCondition !== 'date' || !!agrEndDate)
+    && (agrEndCondition !== 'occurrences' || parseInt(agrEndAfterOccurrences, 10) > 0)
+    && (agrEndCondition !== 'periods' || parseInt(agrEndAfterPeriods, 10) > 0)
     && (agrDiscountType === 'none' || (parseFloat(agrDiscountValue) > 0))
     && (agrExtraPolicy !== 'charge_per_additional' || parseFloat(agrAdditionalServicePrice) > 0);
 
@@ -485,6 +508,7 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
         preferred_weekday:            agrPreferredWeekday !== '' ? parseInt(agrPreferredWeekday, 10) : null,
         service_day_of_month:         agrServiceDayOfMonth !== '' ? parseInt(agrServiceDayOfMonth, 10) : null,
         started_at:                   agrStartedAt,
+        end_condition_type:           backendEndConditionType,
         end_date:                     agrEndCondition === 'date' && agrEndDate ? agrEndDate : null,
         end_after_occurrences:        agrEndCondition === 'occurrences' ? parseInt(agrEndAfterOccurrences, 10) || null : null,
         end_after_periods:            agrEndCondition === 'periods' ? parseInt(agrEndAfterPeriods, 10) || null : null,
@@ -727,7 +751,7 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
             </div>
           </div>
           <div className="ib-field">
-            <label className="ib-label">Included services / period</label>
+            <label className="ib-label">Included Services per Period</label>
             <input className="ib-input" type="number" min="1" value={agrIncluded}
               onChange={e => setAgrIncluded(e.target.value)} placeholder="1" data-testid="agr-included" />
           </div>
@@ -739,7 +763,7 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
         <div className="ib-inline-agr-section-label">Payment Behavior</div>
         <div className="ib-inline-agr-row">
           <div className="ib-field ib-field--grow">
-            <label className="ib-label">When a billing period invoice is generated</label>
+            <label className="ib-label">When an invoice is generated for this agreement</label>
             <select className="ib-select" value={agrPaymentBehavior}
               onChange={e => setAgrPaymentBehavior(e.target.value)} data-testid="agr-payment-behavior">
               {AGR_PAYMENT_BEHAVIOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -802,18 +826,18 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
         </div>
       </div>
 
-      {/* ── Exceptions ────────────────────────────────────────────────────── */}
+      {/* ── Exception Policies ────────────────────────────────────────────── */}
       <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Exceptions</div>
+        <div className="ib-inline-agr-section-label">Exception Policies</div>
         <div className="ib-inline-agr-row">
           <div className="ib-field">
-            <label className="ib-label">If visits exceed included</label>
+            <label className="ib-label">If Services Exceed Included Limit</label>
             <select className="ib-select" value={agrExtraPolicy} onChange={e => setAgrExtraPolicy(e.target.value)} data-testid="agr-extra-policy">
               {AGR_EXTRA_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div className="ib-field">
-            <label className="ib-label">If a service is missed</label>
+            <label className="ib-label">If a Service Is Missed</label>
             <select className="ib-select" value={agrMissedPolicy} onChange={e => setAgrMissedPolicy(e.target.value)} data-testid="agr-missed-policy">
               {AGR_MISSED_POLICY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>

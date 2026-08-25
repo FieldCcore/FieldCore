@@ -332,7 +332,7 @@ describe('Agreements — patch', () => {
 // ── End date ──────────────────────────────────────────────────────────────────
 
 describe('Agreements — end date', () => {
-  it('creates agreement with end_date', async () => {
+  it('creates agreement with end_condition_type=date and end_date', async () => {
     const res = await request(app)
       .post('/api/agreements')
       .set('Authorization', `Bearer ${token}`)
@@ -340,6 +340,7 @@ describe('Agreements — end date', () => {
         client_id: clientId, name: 'Limited Term Agreement',
         plan_price: 250,
         started_at: '2026-09-01',
+        end_condition_type: 'date',
         end_date: '2026-12-31',
       });
     expect(res.status).toBe(201);
@@ -355,7 +356,7 @@ describe('Agreements — end date', () => {
     expect(res.body.end_date).toBeNull();
   });
 
-  it('patches end_date onto an existing agreement', async () => {
+  it('patches end_condition_type=date and end_date onto an existing agreement', async () => {
     const create = await request(app)
       .post('/api/agreements')
       .set('Authorization', `Bearer ${token}`)
@@ -364,7 +365,7 @@ describe('Agreements — end date', () => {
     const res = await request(app)
       .patch(`/api/agreements/${create.body.id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ end_date: '2027-06-30' });
+      .send({ end_condition_type: 'date', end_date: '2027-06-30' });
     expect(res.status).toBe(200);
     expect(res.body.end_date).toMatch(/2027-06-30/);
   });
@@ -674,24 +675,26 @@ describe('Agreements V2 — scheduling controls', () => {
 // ── V2: end conditions ────────────────────────────────────────────────────────
 
 describe('Agreements V2 — end conditions', () => {
-  it('stores end_after_occurrences', async () => {
+  it('stores end_after_occurrences when end_condition_type=service_count', async () => {
     const res = await request(app)
       .post('/api/agreements')
       .set('Authorization', `Bearer ${token}`)
       .send({
         client_id: clientId, name: 'After 12 Services',
+        end_condition_type: 'service_count',
         end_after_occurrences: 12, plan_price: 100,
       });
     expect(res.status).toBe(201);
     expect(res.body.end_after_occurrences).toBe(12);
   });
 
-  it('stores end_after_periods', async () => {
+  it('stores end_after_periods when end_condition_type=billing_period_count', async () => {
     const res = await request(app)
       .post('/api/agreements')
       .set('Authorization', `Bearer ${token}`)
       .send({
         client_id: clientId, name: 'After 6 Periods',
+        end_condition_type: 'billing_period_count',
         end_after_periods: 6, plan_price: 100,
       });
     expect(res.status).toBe(201);
@@ -985,5 +988,306 @@ describe('Agreements — service catalog search', () => {
   it('requires auth on service catalog search', async () => {
     const res = await request(app).get('/api/agreements/services?q=test');
     expect(res.status).toBe(401);
+  });
+});
+
+// ── V6: end_condition_type ────────────────────────────────────────────────────
+
+describe('Agreements V6 — end_condition_type', () => {
+  it('defaults end_condition_type to none', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'No End Condition', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('none');
+    expect(res.body.end_date).toBeNull();
+    expect(res.body.end_after_occurrences).toBeNull();
+    expect(res.body.end_after_periods).toBeNull();
+  });
+
+  it('rejects invalid end_condition_type', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad End Cond', end_condition_type: 'forever', plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_condition_type/i);
+  });
+
+  it('creates with end_condition_type=date and stores end_date', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'End By Date',
+        end_condition_type: 'date',
+        started_at: '2026-09-01',
+        end_date: '2026-12-31',
+        plan_price: 200,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('date');
+    expect(res.body.end_date).toMatch(/2026-12-31/);
+    expect(res.body.end_after_occurrences).toBeNull();
+    expect(res.body.end_after_periods).toBeNull();
+  });
+
+  it('rejects end_condition_type=date without end_date', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Missing End Date',
+        end_condition_type: 'date',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_date/i);
+  });
+
+  it('rejects end_condition_type=date when end_date precedes started_at', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Inverted Date Range',
+        end_condition_type: 'date',
+        started_at: '2026-10-01',
+        end_date: '2026-09-01',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_date/i);
+  });
+
+  it('creates with end_condition_type=service_count and stores end_after_occurrences', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 1 Service',
+        end_condition_type: 'service_count',
+        end_after_occurrences: 1,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('service_count');
+    expect(res.body.end_after_occurrences).toBe(1);
+    expect(res.body.end_date).toBeNull();
+    expect(res.body.end_after_periods).toBeNull();
+  });
+
+  it('creates with end_condition_type=service_count, multiple occurrences', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 5 Services',
+        end_condition_type: 'service_count',
+        end_after_occurrences: 5,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('service_count');
+    expect(res.body.end_after_occurrences).toBe(5);
+  });
+
+  it('rejects end_condition_type=service_count without end_after_occurrences', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Missing Occurrences',
+        end_condition_type: 'service_count',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_after_occurrences/i);
+  });
+
+  it('rejects end_condition_type=service_count with end_after_occurrences=0', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Zero Occurrences',
+        end_condition_type: 'service_count',
+        end_after_occurrences: 0,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_after_occurrences/i);
+  });
+
+  it('creates with end_condition_type=billing_period_count after 1 period', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 1 Period',
+        end_condition_type: 'billing_period_count',
+        end_after_periods: 1,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('billing_period_count');
+    expect(res.body.end_after_periods).toBe(1);
+    expect(res.body.end_date).toBeNull();
+    expect(res.body.end_after_occurrences).toBeNull();
+  });
+
+  it('creates with end_condition_type=billing_period_count, multiple periods', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 12 Periods',
+        end_condition_type: 'billing_period_count',
+        end_after_periods: 12,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_condition_type).toBe('billing_period_count');
+    expect(res.body.end_after_periods).toBe(12);
+  });
+
+  it('rejects end_condition_type=billing_period_count without end_after_periods', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Missing Periods',
+        end_condition_type: 'billing_period_count',
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_after_periods/i);
+  });
+
+  it('rejects end_condition_type=billing_period_count with end_after_periods=0', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Zero Periods',
+        end_condition_type: 'billing_period_count',
+        end_after_periods: 0,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_after_periods/i);
+  });
+
+  it('patches end_condition_type from none to service_count', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch End Cond', plan_price: 100 });
+    expect(create.status).toBe(201);
+    expect(create.body.end_condition_type).toBe('none');
+
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ end_condition_type: 'service_count', end_after_occurrences: 3 });
+    expect(res.status).toBe(200);
+    expect(res.body.end_condition_type).toBe('service_count');
+  });
+
+  it('accepts status=completed on PATCH', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Complete Me', plan_price: 100 });
+    expect(create.status).toBe(201);
+
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'completed' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('completed');
+  });
+
+  it('rejects invalid end_condition_type on PATCH', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch Bad End Cond', plan_price: 100 });
+    expect(create.status).toBe(201);
+
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ end_condition_type: 'never' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/end_condition_type/i);
+  });
+});
+
+// ── V6: preview end condition cutoffs ─────────────────────────────────────────
+
+describe('Agreements V6 — preview end condition cutoffs', () => {
+  it('end_condition_type=date filters preview dates after end_date', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cadence: 'monthly',
+        started_at: '2026-09-01',
+        count: 6,
+        end_condition_type: 'date',
+        end_date: '2026-11-30',
+      });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    expect(Array.isArray(dates)).toBe(true);
+    dates.forEach(d => expect(d <= '2026-11-30').toBe(true));
+    expect(dates.length).toBeLessThanOrEqual(3);
+  });
+
+  it('end_condition_type=service_count limits preview to N dates', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cadence: 'weekly',
+        started_at: '2026-01-01',
+        count: 8,
+        end_condition_type: 'service_count',
+        end_after_occurrences: 3,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.services.length).toBe(3);
+  });
+
+  it('end_condition_type=none does not truncate preview', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cadence: 'weekly',
+        started_at: '2026-01-01',
+        count: 6,
+        end_condition_type: 'none',
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.services.length).toBe(6);
+  });
+
+  it('end_condition_type=billing_period_count does not truncate preview', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        cadence: 'monthly',
+        started_at: '2026-01-01',
+        count: 4,
+        end_condition_type: 'billing_period_count',
+        end_after_periods: 2,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.services.length).toBe(4);
   });
 });
