@@ -2026,6 +2026,30 @@ const MIGRATIONS = [
   // Migration flag makes this update idempotent across server restarts.
   `ALTER TABLE invoice_number_sequences ADD COLUMN IF NOT EXISTS seq_v2_migrated BOOLEAN NOT NULL DEFAULT FALSE`,
   `UPDATE invoice_number_sequences SET next_val = next_val + 1, seq_v2_migrated = TRUE WHERE NOT seq_v2_migrated`,
+
+  // ── INVOICE NUMBERING V3 — canonical seed + uniqueness ───────────────────────
+  // For accounts that have numbered invoices but no sequence row yet,
+  // seed next_val from MAX(invoice_number)+1 so no number is ever reused.
+  `INSERT INTO invoice_number_sequences (account_id, next_val, starting_number, seq_v2_migrated)
+   SELECT
+     i.account_id,
+     MAX(i.invoice_number) + 1,
+     COALESCE(
+       (SELECT bs.invoice_starting_number
+          FROM booking_settings bs
+         WHERE bs.account_id = i.account_id),
+       1001
+     ),
+     TRUE
+   FROM invoices i
+   WHERE i.invoice_number IS NOT NULL
+   GROUP BY i.account_id
+   ON CONFLICT (account_id) DO NOTHING`,
+
+  // Prevent duplicate customer-facing numbers per account.
+  `CREATE UNIQUE INDEX IF NOT EXISTS uniq_invoice_number_per_account
+     ON invoices (account_id, invoice_number)
+     WHERE invoice_number IS NOT NULL`,
 ];
 
 async function runMigrations() {

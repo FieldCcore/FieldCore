@@ -445,17 +445,28 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 
     // Atomically claim the next invoice number for this account.
     // next_val stores the NEXT available number (pre-incremented sentinel).
-    // First invoice: seed next_val = start_val + 1, return start_val.
-    // Subsequent: increment next_val, return previous next_val (the claimed number).
+    // Seed priority: existing MAX(invoice_number) → configured starting_number → 1001.
+    // Subsequent creates just increment next_val; the seed path never re-runs.
     const numRes = await client.query(
-      `WITH cfg AS (
+      `WITH seed AS (
          SELECT COALESCE(
+           (SELECT MAX(inv.invoice_number) + 1
+              FROM invoices inv
+             WHERE inv.account_id = $1 AND inv.invoice_number IS NOT NULL),
+           COALESCE(
+             (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
+             1001
+           )
+         ) AS first_val,
+         COALESCE(
            (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
            1001
-         ) AS start_val
+         ) AS cfg_start
        )
        INSERT INTO invoice_number_sequences (account_id, next_val, starting_number)
-       SELECT $1, (SELECT start_val FROM cfg) + 1, (SELECT start_val FROM cfg)
+       SELECT $1,
+              (SELECT first_val FROM seed) + 1,
+              (SELECT cfg_start FROM seed)
        ON CONFLICT (account_id) DO UPDATE
          SET next_val = invoice_number_sequences.next_val + 1
        RETURNING next_val - 1 AS invoice_number`,
@@ -525,20 +536,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 });
 
 // ─── GET /api/invoices/next-number ───────────────────────────────────────────
-// Lightweight preview endpoint — reads next_val without allocating a number.
+// Lightweight preview — returns the next invoice number without allocating it.
+// Chain: live sequence → max-existing+1 → configured start → null (no fallback 1001).
 router.get('/next-number', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT COALESCE(
          (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
-         COALESCE(
-           (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
-           1001
-         )
+         (SELECT MAX(invoice_number) + 1 FROM invoices
+           WHERE account_id = $1 AND invoice_number IS NOT NULL),
+         (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1)
        ) AS next_number`,
       [req.accountId]
     );
-    res.json({ next_number: parseInt(rows[0]?.next_number, 10) || null });
+    const n = rows[0]?.next_number;
+    res.json({ next_number: n != null ? parseInt(n, 10) : null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -549,14 +561,13 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
   try {
     const [numRes, bkRes] = await Promise.all([
       pool.query(
-        // Use the live sequence when it exists; otherwise fall back to the
-        // account's configured starting number (default 1001).
+        // Chain: live sequence → max existing+1 → configured start → null.
+        // No hardcoded 1001 fallback; value is always authoritative.
         `SELECT COALESCE(
            (SELECT next_val FROM invoice_number_sequences WHERE account_id = $1),
-           COALESCE(
-             (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
-             1001
-           )
+           (SELECT MAX(invoice_number) + 1 FROM invoices
+             WHERE account_id = $1 AND invoice_number IS NOT NULL),
+           (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1)
          ) AS next_number`,
         [req.accountId]
       ),

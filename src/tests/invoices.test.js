@@ -1623,7 +1623,7 @@ describe('POST /api/invoices — source traceability', () => {
 // ── Invoice numbering V2 ──────────────────────────────────────────────────────
 
 describe('GET /api/invoices/next-number', () => {
-  let nnAccountId, nnToken;
+  let nnAccountId, nnToken, nnClientId;
 
   beforeAll(async () => {
     const hash = require('bcryptjs').hashSync('pw', 4);
@@ -1638,6 +1638,17 @@ describe('GET /api/invoices/next-number', () => {
       [nnAccountId, `inv-nn-${Date.now()}@test.fc`, hash]
     );
     nnToken = makeToken(u.id, nnAccountId, 'owner');
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'NN Client','nn@test.fc') RETURNING id`,
+      [nnAccountId]
+    );
+    nnClientId = c.id;
+    // Configure invoice_starting_number = 500 to verify live configuration controls the value.
+    await pool.query(
+      `INSERT INTO booking_settings (account_id, invoice_starting_number) VALUES ($1, 500)
+       ON CONFLICT (account_id) DO UPDATE SET invoice_starting_number = 500`,
+      [nnAccountId]
+    );
   });
 
   afterAll(async () => {
@@ -1649,14 +1660,33 @@ describe('GET /api/invoices/next-number', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns next_number for a zero-invoice account', async () => {
+  it('returns configured invoice_starting_number for a zero-invoice account', async () => {
     const res = await request(app)
       .get('/api/invoices/next-number')
       .set('Authorization', `Bearer ${nnToken}`)
       .expect(200);
     expect(res.body).toHaveProperty('next_number');
-    expect(typeof res.body.next_number).toBe('number');
-    expect(res.body.next_number).toBeGreaterThanOrEqual(1001);
+    expect(res.body.next_number).toBe(500);
+  });
+
+  it('returns null for account with no booking_settings and no invoices', async () => {
+    // A truly unconfigured account returns null — no hardcoded assumption.
+    const { rows: [bare] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_BARE_${Date.now()}__`]
+    );
+    const { rows: [bu] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'Bare Owner',$2,$3,'owner') RETURNING id`,
+      [bare.id, `bare-${Date.now()}@test.fc`, require('bcryptjs').hashSync('pw', 4)]
+    );
+    const bareToken = makeToken(bu.id, bare.id, 'owner');
+    const res = await request(app)
+      .get('/api/invoices/next-number')
+      .set('Authorization', `Bearer ${bareToken}`)
+      .expect(200);
+    expect(res.body.next_number).toBeNull();
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [bare.id]);
   });
 
   it('next_number matches what the first invoice will use', async () => {
@@ -1665,17 +1695,85 @@ describe('GET /api/invoices/next-number', () => {
       .set('Authorization', `Bearer ${nnToken}`)
       .expect(200);
 
-    const { rows: [c] } = await pool.query(
-      `INSERT INTO clients (account_id, name, email) VALUES ($1,'NN Client','nn@test.fc') RETURNING id`,
-      [nnAccountId]
-    );
     const inv = await request(app)
       .post('/api/invoices')
       .set('Authorization', `Bearer ${nnToken}`)
-      .send({ source_type: 'MANUAL', client_id: c.id, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .send({ source_type: 'MANUAL', client_id: nnClientId, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
       .expect(201);
 
     expect(inv.body.invoice_number).toBe(preview.body.next_number);
+  });
+
+  it('configured start = 0 uses 0 as the first invoice number', async () => {
+    const { rows: [za] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_ZERO_${Date.now()}__`]
+    );
+    const { rows: [zu] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'Zero Owner',$2,$3,'owner') RETURNING id`,
+      [za.id, `zero-${Date.now()}@test.fc`, require('bcryptjs').hashSync('pw', 4)]
+    );
+    const { rows: [zc] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'Zero Client','zc@test.fc') RETURNING id`,
+      [za.id]
+    );
+    await pool.query(
+      `INSERT INTO booking_settings (account_id, invoice_starting_number) VALUES ($1, 0)`,
+      [za.id]
+    );
+    const zToken = makeToken(zu.id, za.id, 'owner');
+
+    const preview = await request(app)
+      .get('/api/invoices/next-number')
+      .set('Authorization', `Bearer ${zToken}`)
+      .expect(200);
+    expect(preview.body.next_number).toBe(0);
+
+    const inv = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${zToken}`)
+      .send({ source_type: 'MANUAL', client_id: zc.id, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(201);
+    expect(inv.body.invoice_number).toBe(0);
+
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [za.id]);
+  });
+
+  it('configured start = 1 uses 1 as the first invoice number', async () => {
+    const { rows: [oa] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_ONE_${Date.now()}__`]
+    );
+    const { rows: [ou] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'One Owner',$2,$3,'owner') RETURNING id`,
+      [oa.id, `one-${Date.now()}@test.fc`, require('bcryptjs').hashSync('pw', 4)]
+    );
+    const { rows: [oc] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'One Client','oc@test.fc') RETURNING id`,
+      [oa.id]
+    );
+    await pool.query(
+      `INSERT INTO booking_settings (account_id, invoice_starting_number) VALUES ($1, 1)`,
+      [oa.id]
+    );
+    const oToken = makeToken(ou.id, oa.id, 'owner');
+
+    const preview = await request(app)
+      .get('/api/invoices/next-number')
+      .set('Authorization', `Bearer ${oToken}`)
+      .expect(200);
+    expect(preview.body.next_number).toBe(1);
+
+    const inv = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${oToken}`)
+      .send({ source_type: 'MANUAL', client_id: oc.id, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(201);
+    expect(inv.body.invoice_number).toBe(1);
+
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [oa.id]);
   });
 });
 
@@ -1700,6 +1798,12 @@ describe('POST /api/invoices — numbering semantics', () => {
       [nsAccountId]
     );
     nsClientId = c.id;
+    // Use a distinctive starting number so tests verify live configuration, not any default.
+    await pool.query(
+      `INSERT INTO booking_settings (account_id, invoice_starting_number) VALUES ($1, 2000)
+       ON CONFLICT (account_id) DO UPDATE SET invoice_starting_number = 2000`,
+      [nsAccountId]
+    );
   });
 
   afterAll(async () => {
@@ -1708,12 +1812,13 @@ describe('POST /api/invoices — numbering semantics', () => {
 
   const li = [{ name: 'Item', quantity: 1, unit_price: 50 }];
 
-  it('first invoice number equals invoice_starting_number (no off-by-one)', async () => {
+  it('first invoice number equals configured invoice_starting_number (no off-by-one)', async () => {
     const settings = await request(app)
       .get('/api/invoices/settings')
       .set('Authorization', `Bearer ${nsToken}`)
       .expect(200);
-    const expectedFirst = settings.body.next_number;
+    // With invoice_starting_number = 2000 and no prior invoices, next_number must be 2000.
+    expect(settings.body.next_number).toBe(2000);
 
     const r = await request(app)
       .post('/api/invoices')
@@ -1721,7 +1826,7 @@ describe('POST /api/invoices — numbering semantics', () => {
       .send({ source_type: 'MANUAL', client_id: nsClientId, line_items: li })
       .expect(201);
 
-    expect(r.body.invoice_number).toBe(expectedFirst);
+    expect(r.body.invoice_number).toBe(2000);
   });
 
   it('settings next_number after first invoice equals used number + 1', async () => {
