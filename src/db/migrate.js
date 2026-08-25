@@ -2066,6 +2066,103 @@ const MIGRATIONS = [
      AND account_id NOT IN (
        SELECT DISTINCT account_id FROM invoices WHERE invoice_number IS NOT NULL
      )`,
+
+  // ── RECURRING AGREEMENT V2 — COMPLETION PASS ─────────────────────────────────
+
+  // Preferred weekday for weekly/biweekly recurrence (0=Sun … 6=Sat)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS preferred_weekday INT`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_preferred_weekday_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_preferred_weekday_check
+     CHECK (preferred_weekday IS NULL OR preferred_weekday BETWEEN 0 AND 6)`,
+
+  // Day of month for monthly recurrence (1–31; short months use last day)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS service_day_of_month INT`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_service_dom_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_service_dom_check
+     CHECK (service_day_of_month IS NULL OR service_day_of_month BETWEEN 1 AND 31)`,
+
+  // End conditions beyond simple end_date
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS end_after_occurrences INT`,
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS end_after_periods INT`,
+
+  // How billing is collected
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS payment_behavior TEXT NOT NULL DEFAULT 'send_invoice'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_payment_behavior_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_payment_behavior_check
+     CHECK (payment_behavior IN ('send_invoice','create_only','auto_charge_card','auto_charge_ach'))`,
+
+  // Price per extra visit beyond included_services_per_period
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS additional_service_price NUMERIC(10,2)`,
+
+  // Agreement-level discount
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_discount_type_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_discount_type_check
+     CHECK (discount_type IN ('none','percent','fixed'))`,
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS discount_value NUMERIC(10,2)`,
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS discount_name TEXT`,
+
+  // Taxability (inherits account tax rate from booking_settings)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS taxable BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  // Days-before-first-service billing trigger
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS days_before_service INT`,
+
+  // Service catalog link (nullable — custom services have no service_id)
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES service_templates(id) ON DELETE SET NULL`,
+
+  // Custom billing cadence interval in months
+  `ALTER TABLE recurring_agreements ADD COLUMN IF NOT EXISTS billing_interval_months INT`,
+
+  // Expand billing_trigger to include days_before_first_service
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_billing_trigger_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_billing_trigger_check
+     CHECK (billing_trigger IN ('every_service','first_scheduled','first_completed',
+                                'first_day','specific_day','days_before_first_service'))`,
+
+  // Expand billing_day range to 1–31 (short months use last day of month)
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_billing_day_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_billing_day_check
+     CHECK (billing_day IS NULL OR billing_day BETWEEN 1 AND 31)`,
+
+  // Expand extra_occurrence_policy with new values (max_n kept as legacy alias)
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_extra_occurrence_policy_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_extra_occurrence_policy_check
+     CHECK (extra_occurrence_policy IN
+       ('all_included','charge_per_additional','approval_required','no_additional','rollover','manual_review','max_n'))`,
+
+  // Expand missed_service_policy with new values (rollover kept as legacy alias)
+  `ALTER TABLE recurring_agreements DROP CONSTRAINT IF EXISTS recurring_agreements_missed_service_policy_check`,
+  `ALTER TABLE recurring_agreements ADD CONSTRAINT recurring_agreements_missed_service_policy_check
+     CHECK (missed_service_policy IN
+       ('no_adjustment','reschedule','carry_forward','credit','forfeited','manual_review','rollover'))`,
+
+  // Decouple period creation from invoice generation: make invoice_id nullable
+  `ALTER TABLE agreement_invoice_periods ALTER COLUMN invoice_id DROP NOT NULL`,
+
+  // Enhanced period tracking columns
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS billing_amount_snapshot NUMERIC(10,2)`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS discount_amount_snapshot NUMERIC(10,2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS tax_amount_snapshot NUMERIC(10,2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending'`,
+  `ALTER TABLE agreement_invoice_periods DROP CONSTRAINT IF EXISTS agreement_invoice_periods_payment_status_check`,
+  `ALTER TABLE agreement_invoice_periods ADD CONSTRAINT agreement_invoice_periods_payment_status_check
+     CHECK (payment_status IN ('pending','invoiced','paid','failed','waived'))`,
+  `ALTER TABLE agreement_invoice_periods ADD COLUMN IF NOT EXISTS extra_service_count INT NOT NULL DEFAULT 0`,
+
+  // Job-level agreement traceability
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS agreement_id UUID REFERENCES recurring_agreements(id) ON DELETE SET NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS agreement_period_id UUID REFERENCES agreement_invoice_periods(id) ON DELETE SET NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS agreement_coverage_status TEXT`,
+  `ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_agreement_coverage_status_check`,
+  `ALTER TABLE jobs ADD CONSTRAINT jobs_agreement_coverage_status_check
+     CHECK (agreement_coverage_status IS NULL OR
+            agreement_coverage_status IN ('covered','extra','pending_coverage'))`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_agreement ON jobs(agreement_id) WHERE agreement_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_agreement_period ON jobs(agreement_period_id) WHERE agreement_period_id IS NOT NULL`,
+
+  // Invoice traceability: link invoices to agreement billing periods
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS agreement_period_id UUID REFERENCES agreement_invoice_periods(id) ON DELETE SET NULL`,
 ];
 
 async function runMigrations() {

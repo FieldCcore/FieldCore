@@ -719,23 +719,23 @@ describe('InvoiceBuilder — inline agreement form', () => {
     });
   });
 
-  it('end date toggle shows end date field when checked', async () => {
+  it('end date toggle shows end date field when "Specific end date" selected', async () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
-    await waitFor(() => screen.getByText('Set end date'));
-    fireEvent.click(screen.getByLabelText(/set end date/i));
+    await waitFor(() => screen.getByTestId('agr-end-condition'));
+    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'date' } });
     await waitFor(() => {
       expect(screen.getByTestId('agr-end-date')).toBeInTheDocument();
     });
   });
 
-  it('end date field hides again when checkbox is unchecked', async () => {
+  it('end date field hides again when condition switched back to "No end date"', async () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
-    await waitFor(() => screen.getByText('Set end date'));
-    fireEvent.click(screen.getByLabelText(/set end date/i));
+    await waitFor(() => screen.getByTestId('agr-end-condition'));
+    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'date' } });
     await waitFor(() => screen.getByTestId('agr-end-date'));
-    fireEvent.click(screen.getByLabelText(/set end date/i));
+    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'none' } });
     await waitFor(() => {
       expect(screen.queryByTestId('agr-end-date')).toBeNull();
     });

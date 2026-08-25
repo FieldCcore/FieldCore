@@ -513,3 +513,477 @@ describe('Agreements — tenant isolation', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── V2: new extra_occurrence_policy values ────────────────────────────────────
+
+describe('Agreements V2 — extra_occurrence_policy expansion', () => {
+  it('creates with extra_occurrence_policy = charge_per_additional + additional_service_price', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Charge Per Additional',
+        extra_occurrence_policy: 'charge_per_additional',
+        additional_service_price: 49.99,
+        plan_price: 200,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.extra_occurrence_policy).toBe('charge_per_additional');
+    expect(parseFloat(res.body.additional_service_price)).toBeCloseTo(49.99);
+  });
+
+  it('rejects charge_per_additional without additional_service_price', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Missing Price',
+        extra_occurrence_policy: 'charge_per_additional',
+        plan_price: 200,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/additional_service_price/i);
+  });
+
+  it('creates with extra_occurrence_policy = approval_required', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Approval Required', extra_occurrence_policy: 'approval_required', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.extra_occurrence_policy).toBe('approval_required');
+  });
+
+  it('creates with extra_occurrence_policy = no_additional', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'No Additional', extra_occurrence_policy: 'no_additional', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.extra_occurrence_policy).toBe('no_additional');
+  });
+});
+
+// ── V2: new missed_service_policy values ──────────────────────────────────────
+
+describe('Agreements V2 — missed_service_policy expansion', () => {
+  it('creates with missed_service_policy = reschedule', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Reschedule Missed', missed_service_policy: 'reschedule', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('reschedule');
+  });
+
+  it('creates with missed_service_policy = carry_forward', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Carry Forward Missed', missed_service_policy: 'carry_forward', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('carry_forward');
+  });
+
+  it('creates with missed_service_policy = forfeited', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Forfeited Missed', missed_service_policy: 'forfeited', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.missed_service_policy).toBe('forfeited');
+  });
+});
+
+// ── V2: scheduling controls ───────────────────────────────────────────────────
+
+describe('Agreements V2 — scheduling controls', () => {
+  it('stores preferred_weekday for weekly cadence', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Monday Weekly',
+        cadence: 'weekly', preferred_weekday: 1, plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.preferred_weekday).toBe(1);
+  });
+
+  it('stores preferred_weekday = 0 (Sunday)', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Sunday Weekly',
+        cadence: 'every_2_weeks', preferred_weekday: 0, plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.preferred_weekday).toBe(0);
+  });
+
+  it('rejects preferred_weekday out of range (7)', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad Weekday', preferred_weekday: 7, plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/preferred_weekday/i);
+  });
+
+  it('rejects preferred_weekday out of range (-1)', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad Weekday Neg', preferred_weekday: -1, plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/preferred_weekday/i);
+  });
+
+  it('stores service_day_of_month for monthly cadence', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: '15th Monthly',
+        cadence: 'monthly', service_day_of_month: 15, plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.service_day_of_month).toBe(15);
+  });
+
+  it('rejects service_day_of_month = 0', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad DOM', service_day_of_month: 0, plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/service_day_of_month/i);
+  });
+
+  it('rejects service_day_of_month = 32', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad DOM High', service_day_of_month: 32, plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/service_day_of_month/i);
+  });
+});
+
+// ── V2: end conditions ────────────────────────────────────────────────────────
+
+describe('Agreements V2 — end conditions', () => {
+  it('stores end_after_occurrences', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 12 Services',
+        end_after_occurrences: 12, plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_after_occurrences).toBe(12);
+  });
+
+  it('stores end_after_periods', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'After 6 Periods',
+        end_after_periods: 6, plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.end_after_periods).toBe(6);
+  });
+
+  it('end_after_occurrences and end_after_periods default to null', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'No End Conditions', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.end_after_occurrences).toBeNull();
+    expect(res.body.end_after_periods).toBeNull();
+  });
+});
+
+// ── V2: billing trigger — days_before_first_service ──────────────────────────
+
+describe('Agreements V2 — days_before_first_service trigger', () => {
+  it('creates with days_before_first_service trigger + days_before_service', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Bill 7 Days Before',
+        billing_trigger: 'days_before_first_service',
+        days_before_service: 7,
+        plan_price: 200,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_trigger).toBe('days_before_first_service');
+    expect(res.body.days_before_service).toBe(7);
+  });
+
+  it('rejects days_before_first_service trigger without days_before_service', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Missing Days Before',
+        billing_trigger: 'days_before_first_service',
+        plan_price: 200,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/days_before_service/i);
+  });
+});
+
+// ── V2: billing_day accepts 29–31 ─────────────────────────────────────────────
+
+describe('Agreements V2 — billing_day extended range', () => {
+  it('accepts billing_day = 29', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Day 29', billing_trigger: 'specific_day', billing_day: 29, plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_day).toBe(29);
+  });
+
+  it('accepts billing_day = 31', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Day 31', billing_trigger: 'specific_day', billing_day: 31, plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_day).toBe(31);
+  });
+
+  it('rejects billing_day = 32', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Day 32', billing_trigger: 'specific_day', billing_day: 32, plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/billing_day/i);
+  });
+});
+
+// ── V2: payment_behavior ──────────────────────────────────────────────────────
+
+describe('Agreements V2 — payment_behavior', () => {
+  it('defaults payment_behavior to send_invoice', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Default Payment Behavior', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_behavior).toBe('send_invoice');
+  });
+
+  it('creates with payment_behavior = create_only', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Draft Only', payment_behavior: 'create_only', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_behavior).toBe('create_only');
+  });
+
+  it('creates with payment_behavior = auto_charge_card', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Auto Charge Card', payment_behavior: 'auto_charge_card', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_behavior).toBe('auto_charge_card');
+  });
+
+  it('creates with payment_behavior = auto_charge_ach', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Auto Charge ACH', payment_behavior: 'auto_charge_ach', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_behavior).toBe('auto_charge_ach');
+  });
+
+  it('rejects invalid payment_behavior', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad Behavior', payment_behavior: 'wire_transfer', plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/payment_behavior/i);
+  });
+
+  it('patches payment_behavior to auto_charge_card', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch Payment Behavior', plan_price: 100 });
+    expect(create.status).toBe(201);
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ payment_behavior: 'auto_charge_card' });
+    expect(res.status).toBe(200);
+    expect(res.body.payment_behavior).toBe('auto_charge_card');
+  });
+});
+
+// ── V2: discounts ─────────────────────────────────────────────────────────────
+
+describe('Agreements V2 — discounts', () => {
+  it('defaults discount_type to none', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'No Discount', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.discount_type).toBe('none');
+  });
+
+  it('creates with percent discount', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Percent Discount',
+        discount_type: 'percent', discount_value: 10, discount_name: 'Loyalty 10%',
+        plan_price: 200,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.discount_type).toBe('percent');
+    expect(parseFloat(res.body.discount_value)).toBeCloseTo(10);
+    expect(res.body.discount_name).toBe('Loyalty 10%');
+  });
+
+  it('creates with fixed discount', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Fixed Discount',
+        discount_type: 'fixed', discount_value: 25.00, discount_name: 'First month off',
+        plan_price: 200,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.discount_type).toBe('fixed');
+    expect(parseFloat(res.body.discount_value)).toBeCloseTo(25);
+    expect(res.body.discount_name).toBe('First month off');
+  });
+
+  it('rejects invalid discount_type', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Bad Discount', discount_type: 'coupon', plan_price: 100 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/discount_type/i);
+  });
+
+  it('patches discount_type and discount_value', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch Discount', plan_price: 200 });
+    expect(create.status).toBe(201);
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ discount_type: 'percent', discount_value: 15, discount_name: 'Spring sale' });
+    expect(res.status).toBe(200);
+    expect(res.body.discount_type).toBe('percent');
+    expect(parseFloat(res.body.discount_value)).toBeCloseTo(15);
+    expect(res.body.discount_name).toBe('Spring sale');
+  });
+});
+
+// ── V2: taxability ────────────────────────────────────────────────────────────
+
+describe('Agreements V2 — taxability', () => {
+  it('defaults taxable to false', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Default Taxable', plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.taxable).toBe(false);
+  });
+
+  it('creates with taxable = true', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Taxable Agreement', taxable: true, plan_price: 100 });
+    expect(res.status).toBe(201);
+    expect(res.body.taxable).toBe(true);
+  });
+
+  it('patches taxable to true', async () => {
+    const create = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ client_id: clientId, name: 'Patch Taxable', plan_price: 100 });
+    expect(create.status).toBe(201);
+    const res = await request(app)
+      .patch(`/api/agreements/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ taxable: true });
+    expect(res.status).toBe(200);
+    expect(res.body.taxable).toBe(true);
+  });
+});
+
+// ── V2: preview with preferredWeekday and serviceDayOfMonth ──────────────────
+
+describe('Agreements V2 — preview scheduling controls', () => {
+  it('preview with preferred_weekday snaps all dates to that weekday', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'weekly', started_at: '2026-01-01', preferred_weekday: 1, count: 4 });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    expect(dates.length).toBe(4);
+    dates.forEach(d => {
+      const day = new Date(d + 'T00:00:00').getDay();
+      expect(day).toBe(1); // Monday
+    });
+  });
+
+  it('preview with service_day_of_month uses that day for monthly', async () => {
+    const res = await request(app)
+      .post('/api/agreements/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cadence: 'monthly', started_at: '2026-01-01', service_day_of_month: 15, count: 3 });
+    expect(res.status).toBe(200);
+    const dates = res.body.services;
+    expect(dates.length).toBe(3);
+    dates.forEach(d => {
+      const dom = parseInt(d.slice(8, 10), 10);
+      expect(dom).toBe(15);
+    });
+  });
+});
+
+// ── V2: service catalog search ────────────────────────────────────────────────
+
+describe('Agreements — service catalog search', () => {
+  it('returns 200 from GET /api/agreements/services', async () => {
+    const res = await request(app)
+      .get('/api/agreements/services?q=')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('requires auth on service catalog search', async () => {
+    const res = await request(app).get('/api/agreements/services?q=test');
+    expect(res.status).toBe(401);
+  });
+});

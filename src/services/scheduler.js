@@ -653,6 +653,22 @@ function startAccountingSyncJob() {
   console.log('[Scheduler] Accounting sync scheduled (hourly at :45)');
 }
 
+// ── 11b. Recurring agreement automation — runs nightly at 02:00 ─────────────
+function startAgreementSchedulerJob() {
+  const { processAllAgreements } = require('./agreementScheduler');
+
+  cron.schedule('0 2 * * *', async () => {
+    console.log('[Scheduler] Processing recurring agreements...');
+    try {
+      await processAllAgreements();
+    } catch (err) {
+      console.error('[Scheduler] Agreement scheduler error:', err.message);
+    }
+  });
+
+  console.log('[Scheduler] Agreement scheduler scheduled (nightly 02:00)');
+}
+
 // ── 12. Expired token cleanup — runs daily at 03:00 ─────────────────────────
 function startExpiredTokenCleanup() {
   cron.schedule('0 3 * * *', async () => {
@@ -688,6 +704,7 @@ function startReminderJobs() {
   startReviewRequestJob();
   startGoogleReviewSyncJob();
   startAccountingSyncJob();
+  startAgreementSchedulerJob();
   startExpiredTokenCleanup();
 }
 
