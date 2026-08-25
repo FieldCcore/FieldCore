@@ -2050,6 +2050,22 @@ const MIGRATIONS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS uniq_invoice_number_per_account
      ON invoices (account_id, invoice_number)
      WHERE invoice_number IS NOT NULL`,
+
+  // ── INVOICE STARTING NUMBER — default 0 ──────────────────────────────────────
+  // New entities should start at #0, not #1001 (an arbitrary hardcoded assumption).
+  `ALTER TABLE booking_settings ALTER COLUMN invoice_starting_number SET DEFAULT 0`,
+  `ALTER TABLE invoice_number_sequences ALTER COLUMN starting_number SET DEFAULT 0`,
+
+  // Reset entities that have the old default (1001) and have never used the sequence.
+  // Entities with real invoice sequences are left untouched (ON CONFLICT protects them
+  // indirectly; they have sequence rows or numbered invoices, excluded below).
+  `UPDATE booking_settings
+   SET invoice_starting_number = 0
+   WHERE invoice_starting_number = 1001
+     AND account_id NOT IN (SELECT account_id FROM invoice_number_sequences)
+     AND account_id NOT IN (
+       SELECT DISTINCT account_id FROM invoices WHERE invoice_number IS NOT NULL
+     )`,
 ];
 
 async function runMigrations() {

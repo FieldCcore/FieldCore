@@ -276,29 +276,46 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 
 // PUT /api/booking-settings — update operator's booking config
 router.put('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee } = req.body;
+  const { services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee, invoice_starting_number } = req.body;
+
+  if (invoice_starting_number !== undefined) {
+    const n = Number(invoice_starting_number);
+    if (!Number.isInteger(n) || n < 0) {
+      return res.status(400).json({ error: 'invoice_starting_number must be an integer >= 0' });
+    }
+  }
+
   try {
+    const startingNum = invoice_starting_number !== undefined
+      ? parseInt(invoice_starting_number, 10)
+      : null;
+
     const { rows } = await pool.query(
-      `INSERT INTO booking_settings (account_id, services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO booking_settings (account_id, services, deposit_amount, deposit_rules, agreement_text, business_name, tax_rate, travel_fee, invoice_starting_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9, 0))
        ON CONFLICT (account_id) DO UPDATE SET
-         services       = EXCLUDED.services,
-         deposit_amount = EXCLUDED.deposit_amount,
-         deposit_rules  = EXCLUDED.deposit_rules,
-         agreement_text = EXCLUDED.agreement_text,
-         business_name  = EXCLUDED.business_name,
-         tax_rate       = EXCLUDED.tax_rate,
-         travel_fee     = EXCLUDED.travel_fee
+         services               = EXCLUDED.services,
+         deposit_amount         = EXCLUDED.deposit_amount,
+         deposit_rules          = EXCLUDED.deposit_rules,
+         agreement_text         = EXCLUDED.agreement_text,
+         business_name          = EXCLUDED.business_name,
+         tax_rate               = EXCLUDED.tax_rate,
+         travel_fee             = EXCLUDED.travel_fee,
+         invoice_starting_number = CASE
+           WHEN $9 IS NOT NULL THEN $9::int
+           ELSE booking_settings.invoice_starting_number
+         END
        RETURNING *`,
       [
         req.accountId,
-        JSON.stringify(services),
+        services != null ? JSON.stringify(services) : '[]',
         deposit_amount ?? 0,
-        JSON.stringify(deposit_rules ?? []),
-        agreement_text,
-        business_name,
+        deposit_rules != null ? JSON.stringify(deposit_rules) : '[]',
+        agreement_text ?? null,
+        business_name ?? null,
         tax_rate ?? 0,
         travel_fee ?? 0,
+        startingNum,
       ]
     );
     res.json(rows[0]);

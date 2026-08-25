@@ -21,10 +21,11 @@ export default function BookingSettings() {
       const d = r.data;
       setSettings({
         ...d,
-        services:      Array.isArray(d.services)      ? d.services      : [],
-        deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
-        tax_rate:      d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
-        travel_fee:    d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
+        services:               Array.isArray(d.services)      ? d.services      : [],
+        deposit_rules:          Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
+        tax_rate:               d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
+        travel_fee:             d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
+        invoice_starting_number: d.invoice_starting_number != null ? parseInt(d.invoice_starting_number, 10) : 0,
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -61,15 +62,20 @@ export default function BookingSettings() {
     setSaving(true);
     setSaved(false);
     try {
-      const payload = { ...settings, tax_rate: parseFloat(settings.tax_rate || 0) / 100 };
+      const payload = {
+        ...settings,
+        tax_rate: parseFloat(settings.tax_rate || 0) / 100,
+        invoice_starting_number: parseInt(settings.invoice_starting_number ?? '0', 10),
+      };
       const res = await api.put('/booking-settings', payload);
       const d = res.data;
       setSettings({
         ...d,
-        services:      Array.isArray(d.services)      ? d.services      : [],
-        deposit_rules: Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
-        tax_rate:      d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
-        travel_fee:    d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
+        services:               Array.isArray(d.services)      ? d.services      : [],
+        deposit_rules:          Array.isArray(d.deposit_rules) ? d.deposit_rules : [],
+        tax_rate:               d.tax_rate   != null ? (parseFloat(d.tax_rate)   * 100).toFixed(2) : '0',
+        travel_fee:             d.travel_fee != null ? parseFloat(d.travel_fee).toFixed(2) : '0',
+        invoice_starting_number: d.invoice_starting_number != null ? parseInt(d.invoice_starting_number, 10) : 0,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -171,9 +177,15 @@ export default function BookingSettings() {
                   <input type="number" step="0.1" min="0" max="100" value={settings.tax_rate ?? '0'} onChange={set('tax_rate')} placeholder="0.00" />
                 </div>
               </div>
-              <div className="form-group">
-                <label>Travel Fee ($)</label>
-                <input type="number" step="0.01" min="0" value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Travel Fee ($)</label>
+                  <input type="number" step="0.01" min="0" value={settings.travel_fee ?? '0'} onChange={set('travel_fee')} placeholder="0.00" />
+                </div>
+                <div className="form-group">
+                  <label>Starting Invoice #</label>
+                  <input type="number" step="1" min="0" value={settings.invoice_starting_number ?? '0'} onChange={set('invoice_starting_number')} placeholder="0" />
+                </div>
               </div>
               <div className="form-group">
                 <label>Agreement / Terms Text</label>

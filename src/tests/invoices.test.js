@@ -743,7 +743,7 @@ describe('GET /api/invoices/settings', () => {
       .expect(200);
     expect(res.body).toHaveProperty('invoice_starting_number');
     expect(typeof res.body.invoice_starting_number).toBe('number');
-    expect(res.body.invoice_starting_number).toBeGreaterThanOrEqual(1);
+    expect(res.body.invoice_starting_number).toBeGreaterThanOrEqual(0);
   });
 
   it('invoice numbers increment by 1 on sequential creates', async () => {
@@ -771,7 +771,7 @@ describe('GET /api/invoices/settings', () => {
       .send({ source_type: 'MANUAL', client_id: c.id, line_items: li }).expect(201);
 
     expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
-    expect(r1.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(r1.body.invoice_number).toBeGreaterThanOrEqual(0);
 
     await pool.query(`DELETE FROM accounts WHERE id = $1`, [acct.id]);
   });
@@ -822,7 +822,7 @@ describe('POST /api/invoices — MANUAL (blank invoice)', () => {
     expect(inv.subject).toBe('Test Blank Invoice');
     expect(inv.status).toBe('draft');
     expect(inv.payment_terms).toBe('net_30');
-    expect(inv.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(inv.invoice_number).toBeGreaterThanOrEqual(0);
     expect(parseFloat(inv.subtotal)).toBeCloseTo(400, 1); // 250 + 150
     expect(parseFloat(inv.amount)).toBeGreaterThanOrEqual(400);
     expect(inv.client_message).toBe('Thank you for your business.');
@@ -905,7 +905,7 @@ describe('POST /api/invoices — invoice_number sequence', () => {
       })
       .expect(201);
 
-    expect(r.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(r.body.invoice_number).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -989,7 +989,7 @@ describe('POST /api/invoices — JOB source still works', () => {
     expect(res.body.source_type).toBe('JOB');
     expect(res.body.job_id).toBe(eligibleJobId);
     expect(res.body.client_id).toBe(clientId);
-    expect(res.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(res.body.invoice_number).toBeGreaterThanOrEqual(0);
     expect(res.body.status).toBe('draft');
   });
 
@@ -1103,7 +1103,7 @@ describe('POST /api/invoices — ESTIMATE source', () => {
     expect(res.body.client_id).toBe(clientId);
     expect(res.body.subject).toBe('HVAC Proposal');
     expect(res.body.status).toBe('draft');
-    expect(res.body.invoice_number).toBeGreaterThanOrEqual(1001);
+    expect(res.body.invoice_number).toBeGreaterThanOrEqual(0);
     const li = Array.isArray(res.body.line_items) ? res.body.line_items : JSON.parse(res.body.line_items || '[]');
     expect(Array.isArray(li)).toBe(true);
     expect(li.length).toBe(2);
@@ -1907,5 +1907,95 @@ describe('POST /api/invoices — numbering semantics', () => {
 
     // Both are MANUAL here; the point is the sequence runs the same regardless
     expect(r2.body.invoice_number).toBe(r1.body.invoice_number + 1);
+  });
+});
+
+// ── PUT /api/booking-settings — invoice_starting_number ───────────────────────
+
+describe('PUT /api/booking-settings — invoice_starting_number', () => {
+  let bsAccountId, bsToken, bsClientId;
+
+  beforeAll(async () => {
+    const hash = require('bcryptjs').hashSync('pw', 4);
+    const { rows: [acct] } = await pool.query(
+      `INSERT INTO accounts (name, plan) VALUES ($1, 'pro') RETURNING id`,
+      [`__TEST_INV_BS_${Date.now()}__`]
+    );
+    bsAccountId = acct.id;
+    const { rows: [u] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'BS Owner',$2,$3,'owner') RETURNING id`,
+      [bsAccountId, `inv-bs-${Date.now()}@test.fc`, hash]
+    );
+    bsToken = makeToken(u.id, bsAccountId, 'owner');
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clients (account_id, name, email) VALUES ($1,'BS Client','bsc@test.fc') RETURNING id`,
+      [bsAccountId]
+    );
+    bsClientId = c.id;
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM accounts WHERE id = $1`, [bsAccountId]);
+  });
+
+  it('new account has invoice_starting_number defaulting to 0', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .expect(200);
+    // No booking_settings row exists yet — next_number may be null, and starting number defaults to 0
+    expect(res.body.invoice_starting_number === 0 || res.body.invoice_starting_number == null).toBe(true);
+  });
+
+  it('PUT accepts invoice_starting_number = 0', async () => {
+    const res = await request(app)
+      .put('/api/booking-settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ invoice_starting_number: 0 })
+      .expect(200);
+    expect(res.body.invoice_starting_number).toBe(0);
+  });
+
+  it('PUT accepts invoice_starting_number = 500', async () => {
+    const res = await request(app)
+      .put('/api/booking-settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ invoice_starting_number: 500 })
+      .expect(200);
+    expect(res.body.invoice_starting_number).toBe(500);
+  });
+
+  it('PUT rejects invoice_starting_number = -1', async () => {
+    const res = await request(app)
+      .put('/api/booking-settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ invoice_starting_number: -1 })
+      .expect(400);
+    expect(res.body.error).toMatch(/integer/i);
+  });
+
+  it('PUT rejects non-integer invoice_starting_number', async () => {
+    const res = await request(app)
+      .put('/api/booking-settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ invoice_starting_number: 1.5 })
+      .expect(400);
+    expect(res.body.error).toMatch(/integer/i);
+  });
+
+  it('configured invoice_starting_number controls the first invoice number', async () => {
+    await request(app)
+      .put('/api/booking-settings')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ invoice_starting_number: 750 })
+      .expect(200);
+
+    const inv = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${bsToken}`)
+      .send({ source_type: 'MANUAL', client_id: bsClientId, line_items: [{ name: 'X', quantity: 1, unit_price: 10 }] })
+      .expect(201);
+    expect(inv.body.invoice_number).toBe(750);
   });
 });

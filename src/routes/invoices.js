@@ -445,7 +445,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 
     // Atomically claim the next invoice number for this account.
     // next_val stores the NEXT available number (pre-incremented sentinel).
-    // Seed priority: existing MAX(invoice_number) → configured starting_number → 1001.
+    // Seed priority: existing MAX(invoice_number) → configured starting_number → 0.
     // Subsequent creates just increment next_val; the seed path never re-runs.
     const numRes = await client.query(
       `WITH seed AS (
@@ -455,12 +455,12 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
              WHERE inv.account_id = $1 AND inv.invoice_number IS NOT NULL),
            COALESCE(
              (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
-             1001
+             0
            )
          ) AS first_val,
          COALESCE(
            (SELECT invoice_starting_number FROM booking_settings WHERE account_id = $1),
-           1001
+           0
          ) AS cfg_start
        )
        INSERT INTO invoice_number_sequences (account_id, next_val, starting_number)
@@ -576,7 +576,7 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
                 COALESCE(accept_card, TRUE)               AS accept_card,
                 COALESCE(accept_ach, FALSE)               AS accept_ach,
                 COALESCE(allow_partial_payments, FALSE)   AS allow_partial_payments,
-                COALESCE(invoice_starting_number, 1001)   AS invoice_starting_number,
+                COALESCE(invoice_starting_number, 0)      AS invoice_starting_number,
                 default_terms
          FROM booking_settings
          WHERE account_id = $1`,
@@ -586,7 +586,7 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
     const bs = bkRes.rows[0] || {};
     res.json({
       next_number:             numRes.rows[0]?.next_number ?? null,
-      invoice_starting_number: parseInt(bs.invoice_starting_number || 1001, 10),
+      invoice_starting_number: bs.invoice_starting_number != null ? parseInt(bs.invoice_starting_number, 10) : 0,
       tax_rate:                parseFloat(bs.tax_rate || 0),
       accept_card:             bs.accept_card !== false,
       accept_ach:              !!bs.accept_ach,
