@@ -2044,3 +2044,120 @@ describe('Regression INV-001 — line item name field round-trip', () => {
     expect(li[0].description).toBeDefined();
   });
 });
+
+// ── Regression: INV-004 — net_7 payment terms label and due date ──────────────
+
+describe('Regression INV-004 — net_7 payment terms persisted and due date calculated', () => {
+  it('accepts payment_terms=net_7 and persists it', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        payment_terms: 'net_7',
+        line_items:    [{ name: 'Quick Service', quantity: 1, unit_price: 100 }],
+      })
+      .expect(201);
+
+    expect(res.body.payment_terms).toBe('net_7');
+  });
+
+  it('computes due_date as issued_date + 7 days for net_7', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        payment_terms: 'net_7',
+        line_items:    [{ name: 'Quick Service', quantity: 1, unit_price: 100 }],
+      })
+      .expect(201);
+
+    expect(res.body.due_date).not.toBeNull();
+    const due = new Date(res.body.due_date);
+    const issued = new Date(today);
+    const diffDays = Math.round((due - issued) / 86400000);
+    expect(diffDays).toBe(7);
+  });
+
+  it('net_7 is returned by GET /api/invoices/:id', async () => {
+    const create = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        payment_terms: 'net_7',
+        line_items:    [{ name: 'Quick Service', quantity: 1, unit_price: 100 }],
+      })
+      .expect(201);
+
+    const get = await request(app)
+      .get(`/api/invoices/${create.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(get.body.payment_terms).toBe('net_7');
+  });
+});
+
+// ── Regression: INV-006 — subtotal, discount, and tax accounting ──────────────
+
+describe('Regression INV-006 — canonical subtotal/discount/tax stored correctly', () => {
+  it('stores subtotal = sum of line items pre-discount', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        discount_type: 'fixed',
+        discount_value: 50,
+        line_items:    [{ name: 'Service A', quantity: 1, unit_price: 300, taxable: false }],
+      })
+      .expect(201);
+
+    expect(parseFloat(res.body.subtotal)).toBeCloseTo(300, 2);
+    expect(parseFloat(res.body.discount_amount)).toBeCloseTo(50, 2);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(250, 2);
+  });
+
+  it('stores subtotal = sum of line items for percent discount', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        discount_type: 'percent',
+        discount_value: 10,
+        line_items:    [{ name: 'Service B', quantity: 2, unit_price: 100, taxable: false }],
+      })
+      .expect(201);
+
+    expect(parseFloat(res.body.subtotal)).toBeCloseTo(200, 2);
+    expect(parseFloat(res.body.discount_amount)).toBeCloseTo(20, 2);
+    expect(parseFloat(res.body.amount)).toBeCloseTo(180, 2);
+  });
+
+  it('amount = subtotal - discount + tax (never derives subtotal backward)', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type:   'MANUAL',
+        client_id:     clientId,
+        line_items:    [{ name: 'Service C', quantity: 1, unit_price: 400, taxable: false }],
+      })
+      .expect(201);
+
+    const subtotal = parseFloat(res.body.subtotal);
+    const discount = parseFloat(res.body.discount_amount || 0);
+    const tax      = parseFloat(res.body.tax_amount || 0);
+    const amount   = parseFloat(res.body.amount);
+    expect(amount).toBeCloseTo(subtotal - discount + tax, 2);
+  });
+});

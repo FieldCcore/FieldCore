@@ -202,10 +202,10 @@ describe('Invoices — overview metrics', () => {
     expect(document.querySelector('.inv-overview-title').textContent).toBe('Invoice Overview');
   });
 
-  it('renders four metric groups', async () => {
+  it('renders five metric groups', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
-    expect(getMetrics().length).toBe(4);
+    expect(getMetrics().length).toBe(5);
   });
 
   it('Past Due metric shows correct value', async () => {
@@ -224,21 +224,29 @@ describe('Invoices — overview metrics', () => {
     expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$400.00');
   });
 
+  it('Collected metric shows correct value', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const m = getMetrics();
+    expect(m[2].querySelector('.inv-metric-label').textContent).toBe('Collected');
+    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$200.00');
+  });
+
   it('Issued metric shows total and count', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const m = getMetrics();
-    expect(m[2].querySelector('.inv-metric-label').textContent).toBe('Issued');
-    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$600.00');
-    expect(m[2].querySelector('.inv-metric-sub').textContent).toBe('2 invoices');
+    expect(m[3].querySelector('.inv-metric-label').textContent).toBe('Issued');
+    expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$600.00');
+    expect(m[3].querySelector('.inv-metric-sub').textContent).toBe('2 invoices');
   });
 
   it('Avg Invoice metric shows correct value', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const m = getMetrics();
-    expect(m[3].querySelector('.inv-metric-label').textContent).toBe('Avg Invoice');
-    expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$300.00');
+    expect(m[4].querySelector('.inv-metric-label').textContent).toBe('Avg Invoice');
+    expect(m[4].querySelector('.inv-metric-value').textContent).toBe('$300.00');
   });
 
   it('Past Due value has --red modifier when > 0', async () => {
@@ -279,6 +287,7 @@ describe('Invoices — overview metrics', () => {
     expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$0.00');
     expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$0.00');
     expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$0.00');
+    expect(m[4].querySelector('.inv-metric-value').textContent).toBe('$0.00');
   });
 
   it('kpi values do not change when filter is changed (kpis are global)', async () => {
@@ -297,7 +306,7 @@ describe('Invoices — overview metrics', () => {
 
     const m = getMetrics();
     expect(m[1].querySelector('.inv-metric-value').textContent).toBe('$400.00');
-    expect(m[2].querySelector('.inv-metric-value').textContent).toBe('$600.00');
+    expect(m[3].querySelector('.inv-metric-value').textContent).toBe('$600.00');
   });
 });
 
@@ -668,12 +677,20 @@ describe('Invoices — table', () => {
     expect(sortableThs.length).toBeGreaterThanOrEqual(6);
   });
 
-  it('sortable columns have aria-sort="none" by default', async () => {
+  it('sortable columns have aria-sort="none" by default for inactive columns', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     const clientTh = Array.from(document.querySelectorAll('.inv-th-sortable'))
       .find(th => th.textContent.includes('Client'));
     expect(clientTh.getAttribute('aria-sort')).toBe('none');
+  });
+
+  it('Invoice # column has aria-sort descending by default (INV-008)', async () => {
+    setup();
+    await waitFor(() => screen.getByRole('table'));
+    const invNumTh = Array.from(document.querySelectorAll('.inv-th-sortable'))
+      .find(th => th.textContent.includes('Invoice #'));
+    expect(invNumTh.getAttribute('aria-sort')).toBe('descending');
   });
 
   it('clicking a sort column triggers a new API call', async () => {

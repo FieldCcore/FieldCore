@@ -91,7 +91,7 @@ export default function Invoices() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [params, setParams] = useState({
-    page: 1, status: 'all', sort: 'created_at', order: 'DESC',
+    page: 1, status: 'all', sort: 'invoice_number', order: 'DESC',
     search: '', start: '', end: '', balanceGt0: false,
   });
 
@@ -240,6 +240,12 @@ export default function Invoices() {
             <span className={`inv-metric-value${kpis.outstanding > 0 ? ' inv-metric-value--amber' : ''}`}>
               {fmtAmt(kpis.outstanding)}
             </span>
+          </div>
+          <div className="inv-metric inv-metric--sep" />
+          {/* INV-005: render kpis.collected — collected from paid invoices */}
+          <div className="inv-metric">
+            <span className="inv-metric-label">Collected</span>
+            <span className="inv-metric-value">{fmtAmt(kpis.collected)}</span>
           </div>
           <div className="inv-metric inv-metric--sep" />
           <div className="inv-metric">

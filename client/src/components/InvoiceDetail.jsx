@@ -9,6 +9,17 @@ import StatusBadge from './StatusBadge';
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
+const PAYMENT_TERMS_LABELS = {
+  due_on_receipt: 'Due on Receipt',
+  net_7:  'Net 7',
+  net_15: 'Net 15',
+  net_30: 'Net 30',
+  net_45: 'Net 45',
+  net_60: 'Net 60',
+  net_90: 'Net 90',
+  custom: 'Custom',
+};
+
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
   const [invoice, setInvoice]             = useState(initialInvoice);
   const [loading, setLoading]             = useState(false);
@@ -16,18 +27,17 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const [copied,  setCopied]              = useState(false);
   const [showCardSetup, setShowCardSetup] = useState(false);
   const [error,   setError]               = useState('');
-  const [lineItems, setLineItems]         = useState(null); // null = not yet loaded
-  const [newDesc,  setNewDesc]            = useState('');
+  const [lineItems, setLineItems]         = useState(null);
+  const [newName,  setNewName]            = useState('');
   const [newAmt,   setNewAmt]             = useState('');
   const [savingLines, setSavingLines]     = useState(false);
 
-  // Load full invoice detail (includes card_on_file, payment_method_id, line_items)
   useEffect(() => {
     api.get(`/invoices/${initialInvoice.id}`).then(r => {
       setInvoice(r.data);
       const items = Array.isArray(r.data.line_items) && r.data.line_items.length > 0
         ? r.data.line_items
-        : [{ description: r.data.service_type || 'Service', amount: parseFloat(r.data.amount) - parseFloat(r.data.tax_amount || 0) }];
+        : [{ name: r.data.service_type || 'Service', amount: parseFloat(r.data.subtotal ?? r.data.amount) }];
       setLineItems(items);
     }).catch(() => {});
   }, [initialInvoice.id]);
@@ -46,16 +56,16 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   }
 
   function addLineItem() {
-    if (!newDesc.trim() || !newAmt) return;
-    const updated = [...(lineItems || []), { description: newDesc.trim(), amount: parseFloat(newAmt) }];
+    if (!newName.trim() || !newAmt) return;
+    const updated = [...(lineItems || []), { name: newName.trim(), amount: parseFloat(newAmt) }];
     setLineItems(updated);
-    setNewDesc('');
+    setNewName('');
     setNewAmt('');
     saveLineItems(updated);
   }
 
   function removeLineItem(idx) {
-    if ((lineItems || []).length <= 1) return; // must keep at least one
+    if ((lineItems || []).length <= 1) return;
     const updated = lineItems.filter((_, i) => i !== idx);
     setLineItems(updated);
     saveLineItems(updated);
@@ -116,17 +126,25 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
 
   function handleCardSaved() {
     setShowCardSetup(false);
-    // Reload invoice to pick up updated card_on_file
     api.get(`/invoices/${invoice.id}`).then(r => setInvoice(r.data));
   }
 
   const isPending = invoice.status === 'pending';
 
+  // INV-006: Use canonical stored values — never derive subtotal backward from amount
+  const subtotal      = parseFloat(invoice.subtotal ?? invoice.amount ?? 0);
+  const discountAmt   = parseFloat(invoice.discount_amount || 0);
+  const taxAmt        = parseFloat(invoice.tax_amount || 0);
+  const showBreakdown = discountAmt > 0 || taxAmt > 0;
+
+  const invoiceNum = invoice.invoice_number_display || invoice.invoice_number;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div className="modal-header">
         <div>
-          <h2>Invoice</h2>
+          {/* INV-007: Include invoice number to distinguish from page heading */}
+          <h2>Invoice #{invoiceNum}</h2>
           <StatusBadge status={invoice.status} />
         </div>
         <button className="btn-close" onClick={onClose}>×</button>
@@ -144,11 +162,10 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         {invoice.payment_terms && (
           <div className="detail-row">
             <label>Terms</label>
-            <span style={{ textTransform: 'none' }}>{{
-              due_on_receipt: 'Due on Receipt',
-              net_15: 'Net 15', net_30: 'Net 30', net_45: 'Net 45',
-              net_60: 'Net 60', net_90: 'Net 90', custom: 'Custom',
-            }[invoice.payment_terms] || invoice.payment_terms}</span>
+            {/* INV-004: net_7 added to label map */}
+            <span style={{ textTransform: 'none' }}>
+              {PAYMENT_TERMS_LABELS[invoice.payment_terms] || invoice.payment_terms}
+            </span>
           </div>
         )}
         {invoice.due_date && (
@@ -174,10 +191,11 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         {/* Add line item — only on pending invoices */}
         {isPending && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, marginBottom: 10 }}>
+            {/* INV-009: placeholder matches canonical field name */}
             <input
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              placeholder="Description"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Item name"
               style={{ flex: 1, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
               onKeyDown={e => e.key === 'Enter' && addLineItem()}
             />
@@ -191,23 +209,32 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
               style={{ width: 80, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
               onKeyDown={e => e.key === 'Enter' && addLineItem()}
             />
-            <button onClick={addLineItem} disabled={!newDesc.trim() || !newAmt || savingLines} className="btn-secondary" style={{ padding: '5px 10px', fontSize: 12 }}>
-              {savingLines ? '…' : '+ Add'}
+            {/* INV-010: descriptive action label */}
+            <button onClick={addLineItem} disabled={!newName.trim() || !newAmt || savingLines} className="btn-secondary" style={{ padding: '5px 10px', fontSize: 12 }}>
+              {savingLines ? 'Adding…' : 'Add Line Item'}
             </button>
           </div>
         )}
 
-        {/* Totals */}
-        {parseFloat(invoice.tax_amount) > 0 && (
+        {/* INV-006: Canonical totals breakdown using stored subtotal/discount_amount/tax_amount */}
+        {showBreakdown && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: 8, marginBottom: 4 }}>
               <span>Subtotal</span>
-              <span>${(parseFloat(invoice.amount) - parseFloat(invoice.tax_amount)).toFixed(2)}</span>
+              <span>${subtotal.toFixed(2)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
-              <span>Tax</span>
-              <span>${parseFloat(invoice.tax_amount).toFixed(2)}</span>
-            </div>
+            {discountAmt > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+                <span>{invoice.discount_name || 'Discount'}</span>
+                <span>−${discountAmt.toFixed(2)}</span>
+              </div>
+            )}
+            {taxAmt > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+                <span>Tax</span>
+                <span>${taxAmt.toFixed(2)}</span>
+              </div>
+            )}
           </>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
@@ -233,7 +260,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
               <button className="btn-primary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
               <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
               <button className="btn-secondary" onClick={handleSend} disabled={sending}>
-                {sending ? '…' : 'Resend'}
+                {sending ? 'Resending…' : 'Resend'}
               </button>
             </>
           ) : (
