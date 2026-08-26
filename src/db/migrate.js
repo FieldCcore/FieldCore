@@ -2164,6 +2164,15 @@ const MIGRATIONS = [
   // Invoice traceability: link invoices to agreement billing periods
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS agreement_period_id UUID REFERENCES agreement_invoice_periods(id) ON DELETE SET NULL`,
 
+  // Manual payment recording on invoices
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_method   TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_note  TEXT`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at       TIMESTAMPTZ`,
+
+  // Client saved payment method display fields (brand/last4 for UI — token stored separately)
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_method_brand TEXT`,
+  `ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_method_last4 TEXT`,
+
   // ── RECURRING AGREEMENT V3 — END CONDITIONS ───────────────────────────────────
 
   // Explicit end-condition type (never inferred — always set on create/patch)

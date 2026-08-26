@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check } from 'lucide-react';
@@ -12,6 +12,20 @@ const FILTERS      = ['all', 'draft', 'pending', 'paid', 'void', 'past_due'];
 const FILTER_LABELS = { all: 'All', draft: 'Draft', pending: 'Pending', paid: 'Paid', void: 'Void', past_due: 'Past Due' };
 const DATE_PRESETS = ['all', 'today', 'week', 'month', 'last30'];
 const DATE_LABELS  = { all: 'All time', today: 'Today', week: 'This week', month: 'This month', last30: 'Last 30 days' };
+
+const SOURCE_OPTIONS = [
+  { value: 'manual',    label: 'Blank / Standard' },
+  { value: 'job',       label: 'Completed Job' },
+  { value: 'estimate',  label: 'Existing Estimate' },
+  { value: 'recurring', label: 'Recurring Agreement' },
+];
+
+const BALANCE_OPTIONS = [
+  { value: '',    label: 'All balances' },
+  { value: 'gt0', label: 'Balance > $0' },
+  { value: 'eq0', label: 'Balance = $0' },
+  { value: 'range', label: 'Custom range' },
+];
 
 const EMPTY_KPIS = {
   outstanding: 0, collected: 0, pastDue: 0, pastDueCount: 0, totalCount: 0,
@@ -56,6 +70,30 @@ function getDateRange(preset) {
   return { start: '', end: '' };
 }
 
+// Read initial filter state from URL search params
+function initFromUrl(sp) {
+  return {
+    page:        parseInt(sp.get('page') || '1', 10) || 1,
+    status:      sp.get('status')    || 'all',
+    sort:        sp.get('sort')      || 'invoice_number',
+    order:       sp.get('order')     || 'DESC',
+    search:      sp.get('search')    || '',
+    start:       sp.get('start')     || '',
+    end:         sp.get('end')       || '',
+    balance:     sp.get('balance')   || '',    // gt0 | eq0 | range | ''
+    balanceMin:  sp.get('balanceMin') || '',
+    balanceMax:  sp.get('balanceMax') || '',
+    clientId:    sp.get('clientId')  || '',
+    clientName:  sp.get('clientName') || '',
+    source:      sp.get('source')    || '',
+    amountMin:   sp.get('amountMin') || '',
+    amountMax:   sp.get('amountMax') || '',
+    dueStart:    sp.get('dueStart')  || '',
+    dueEnd:      sp.get('dueEnd')    || '',
+    service:     sp.get('service')   || '',
+  };
+}
+
 function SortTh({ label, col, currentSort, currentOrder, onSort, extraClass }) {
   const active = currentSort === col;
   const Icon = active
@@ -90,10 +128,12 @@ export default function Invoices() {
   const [dateOpen, setDateOpen]       = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [params, setParams] = useState({
-    page: 1, status: 'all', sort: 'invoice_number', order: 'DESC',
-    search: '', start: '', end: '', balanceGt0: false,
-  });
+  const [params, setParams] = useState(() => initFromUrl(searchParams));
+
+  // Client search state within the filters panel
+  const [clientQuery,   setClientQuery]   = useState('');
+  const [clientResults, setClientResults] = useState([]);
+  const clientDebRef = useRef(null);
 
   const abortRef    = useRef(null);
   const debounceRef = useRef(null);
@@ -111,24 +151,37 @@ export default function Invoices() {
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [statusOpen, dateOpen, filtersOpen]);
 
-  function doFetch(p) {
-    if (abortRef.current) abortRef.current.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-
+  function buildQs(p) {
     const qs = new URLSearchParams({
       page: p.page, pageSize: PAGE_SIZE, status: p.status,
       sort: p.sort, order: p.order,
     });
-    if (p.search.trim()) qs.set('search', p.search.trim());
-    if (p.start)         qs.set('start', p.start);
-    if (p.end)           qs.set('end', p.end);
-    if (p.balanceGt0)    qs.set('balanceGt0', 'true');
+    if (p.search.trim())   qs.set('search', p.search.trim());
+    if (p.start)           qs.set('start', p.start);
+    if (p.end)             qs.set('end', p.end);
+    if (p.balance === 'gt0')   qs.set('balanceGt0', 'true');
+    if (p.balance === 'eq0')   qs.set('balanceEq0', 'true');
+    if (p.balance === 'range') {
+      if (p.balanceMin) qs.set('balanceMin', p.balanceMin);
+      if (p.balanceMax) qs.set('balanceMax', p.balanceMax);
+    }
+    if (p.clientId)        qs.set('client_id', p.clientId);
+    if (p.source)          qs.set('source', p.source);
+    if (p.amountMin)       qs.set('amount_min', p.amountMin);
+    if (p.amountMax)       qs.set('amount_max', p.amountMax);
+    if (p.dueStart)        qs.set('due_start', p.dueStart);
+    if (p.dueEnd)          qs.set('due_end', p.dueEnd);
+    if (p.service.trim())  qs.set('service', p.service.trim());
+    return qs;
+  }
 
+  function doFetch(p) {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
     setError(null);
-
-    api.get(`/invoices?${qs}`, { signal: ctrl.signal })
+    api.get(`/invoices?${buildQs(p)}`, { signal: ctrl.signal })
       .then(r => {
         setInvoices(r.data.rows);
         setKpis(r.data.kpis);
@@ -144,10 +197,29 @@ export default function Invoices() {
 
   useEffect(() => {
     doFetch(params);
+    // Sync to URL
+    const sp = new URLSearchParams();
+    if (params.status !== 'all')  sp.set('status', params.status);
+    if (params.start)             sp.set('start', params.start);
+    if (params.end)               sp.set('end', params.end);
+    if (params.balance)           sp.set('balance', params.balance);
+    if (params.balanceMin)        sp.set('balanceMin', params.balanceMin);
+    if (params.balanceMax)        sp.set('balanceMax', params.balanceMax);
+    if (params.clientId)          { sp.set('clientId', params.clientId); sp.set('clientName', params.clientName); }
+    if (params.source)            sp.set('source', params.source);
+    if (params.amountMin)         sp.set('amountMin', params.amountMin);
+    if (params.amountMax)         sp.set('amountMax', params.amountMax);
+    if (params.dueStart)          sp.set('dueStart', params.dueStart);
+    if (params.dueEnd)            sp.set('dueEnd', params.dueEnd);
+    if (params.service)           sp.set('service', params.service);
+    if (params.search)            sp.set('search', params.search);
+    if (params.sort !== 'invoice_number') sp.set('sort', params.sort);
+    if (params.order !== 'DESC')          sp.set('order', params.order);
+    setSearchParams(sp, { replace: true });
     return () => { if (abortRef.current) abortRef.current.abort(); };
-  }, [params]);
+  }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Consume ?new=1 from global create menu — open modal + clean URL
+  // Consume ?new=1 from global create menu
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setShowNew(true);
@@ -159,10 +231,22 @@ export default function Invoices() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Restore search input from URL
+  useEffect(() => {
+    if (params.search) setSearchInput(params.search);
+    if (params.start || params.end) {
+      // Restore datePreset from start/end (best effort — 'custom' if no preset matches)
+      const today = new Date();
+      const todayStr = format(today, 'yyyy-MM-dd');
+      if (params.start === todayStr && params.end === todayStr) setDatePreset('today');
+      else setDatePreset('custom');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleInvoiceCreated(newInvoice) {
     setShowNew(false);
-    doFetch(params);                              // refresh list + KPIs
-    setSelected({ id: newInvoice.id, ...newInvoice }); // open detail
+    doFetch(params);
+    setSelected({ id: newInvoice.id, ...newInvoice });
   }
 
   function handleFilterChange(f) {
@@ -173,10 +257,6 @@ export default function Invoices() {
     setDatePreset(preset);
     const { start, end } = getDateRange(preset);
     setParams(p => ({ ...p, start, end, page: 1 }));
-  }
-
-  function handleBalanceGt0(val) {
-    setParams(p => ({ ...p, balanceGt0: val, page: 1 }));
   }
 
   function handleSortChange(col) {
@@ -205,9 +285,92 @@ export default function Invoices() {
     setSelected(prev => prev ? { ...prev, ...updated } : null);
   }
 
-  const totalPages       = Math.ceil(total / PAGE_SIZE);
-  const activeFilterCount = params.balanceGt0 ? 1 : 0;
-  const hasActiveFilters  = params.status !== 'all' || datePreset !== 'all' || params.balanceGt0;
+  // ── Filters panel handlers ─────────────────────────────────────────────────
+
+  function handleBalanceChange(val) {
+    setParams(p => ({ ...p, balance: val, balanceMin: '', balanceMax: '', page: 1 }));
+  }
+
+  function handleClientSelect(c) {
+    setParams(p => ({ ...p, clientId: c.id, clientName: c.name, page: 1 }));
+    setClientQuery(c.name);
+    setClientResults([]);
+  }
+
+  function handleClientClear() {
+    setParams(p => ({ ...p, clientId: '', clientName: '', page: 1 }));
+    setClientQuery('');
+    setClientResults([]);
+  }
+
+  function searchClients(q) {
+    clearTimeout(clientDebRef.current);
+    if (!q.trim()) { setClientResults([]); return; }
+    clientDebRef.current = setTimeout(() => {
+      api.get(`/clients/search?q=${encodeURIComponent(q)}`)
+        .then(r => setClientResults(r.data || []))
+        .catch(() => setClientResults([]));
+    }, 275);
+  }
+
+  function clearAllFilters() {
+    setParams(p => ({
+      ...p,
+      status: 'all', start: '', end: '',
+      balance: '', balanceMin: '', balanceMax: '',
+      clientId: '', clientName: '',
+      source: '', amountMin: '', amountMax: '',
+      dueStart: '', dueEnd: '', service: '',
+      page: 1,
+    }));
+    setDatePreset('all');
+    setClientQuery('');
+    setClientResults([]);
+  }
+
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const activeAdvancedFilters = [
+    params.balance !== '',
+    params.clientId !== '',
+    params.source !== '',
+    (params.amountMin !== '' || params.amountMax !== ''),
+    (params.dueStart !== '' || params.dueEnd !== ''),
+    params.service !== '',
+  ].filter(Boolean).length;
+
+  const hasActiveFilters = params.status !== 'all' || datePreset !== 'all' || activeAdvancedFilters > 0;
+
+  // Chip helpers
+  function balanceChipLabel() {
+    if (params.balance === 'gt0') return 'Balance > $0';
+    if (params.balance === 'eq0') return 'Balance = $0';
+    if (params.balance === 'range') {
+      const parts = [];
+      if (params.balanceMin) parts.push(`≥ $${params.balanceMin}`);
+      if (params.balanceMax) parts.push(`≤ $${params.balanceMax}`);
+      return `Balance ${parts.join(' ')}` || 'Balance range';
+    }
+    return '';
+  }
+
+  function amountChipLabel() {
+    const parts = [];
+    if (params.amountMin) parts.push(`≥ $${params.amountMin}`);
+    if (params.amountMax) parts.push(`≤ $${params.amountMax}`);
+    return `Amount ${parts.join(' ')}`;
+  }
+
+  function dueDateChipLabel() {
+    if (params.dueStart && params.dueEnd) return `Due ${fmtDate(params.dueStart)}–${fmtDate(params.dueEnd)}`;
+    if (params.dueStart) return `Due from ${fmtDate(params.dueStart)}`;
+    if (params.dueEnd)   return `Due until ${fmtDate(params.dueEnd)}`;
+    return '';
+  }
+
+  const sourceLabel = SOURCE_OPTIONS.find(o => o.value === params.source)?.label || '';
 
   return (
     <div>
@@ -242,7 +405,6 @@ export default function Invoices() {
             </span>
           </div>
           <div className="inv-metric inv-metric--sep" />
-          {/* INV-005: render kpis.collected — collected from paid invoices */}
           <div className="inv-metric">
             <span className="inv-metric-label">Collected</span>
             <span className="inv-metric-value">{fmtAmt(kpis.collected)}</span>
@@ -313,7 +475,7 @@ export default function Invoices() {
             >
               <span className="inv-filter-trigger-key">Date</span>
               <span className="inv-filter-trigger-sep">|</span>
-              <span className="inv-filter-trigger-val">{DATE_LABELS[datePreset]}</span>
+              <span className="inv-filter-trigger-val">{DATE_LABELS[datePreset] || 'Custom'}</span>
               <ChevronDown size={12} />
             </button>
             {dateOpen && (
@@ -330,34 +492,243 @@ export default function Invoices() {
                     <span>{DATE_LABELS[p]}</span>
                   </button>
                 ))}
+                <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0', padding: '8px 12px 4px' }}>
+                  <span style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Custom range</span>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <input
+                      type="date"
+                      className="inv-filter-date-input"
+                      value={params.start}
+                      onChange={e => { setDatePreset('custom'); setParams(p => ({ ...p, start: e.target.value, page: 1 })); }}
+                    />
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>–</span>
+                    <input
+                      type="date"
+                      className="inv-filter-date-input"
+                      value={params.end}
+                      onChange={e => { setDatePreset('custom'); setParams(p => ({ ...p, end: e.target.value, page: 1 })); }}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Filters dropdown */}
+          {/* Filters panel */}
           <div className="inv-filter-group" ref={filtersRef}>
             <button
-              className={`inv-filter-trigger${params.balanceGt0 ? ' inv-filter-trigger--active' : ''}`}
+              className={`inv-filter-trigger${activeAdvancedFilters > 0 ? ' inv-filter-trigger--active' : ''}`}
               onClick={() => { setFiltersOpen(o => !o); setStatusOpen(false); setDateOpen(false); }}
+              aria-expanded={filtersOpen}
             >
               <SlidersHorizontal size={13} />
               <span>Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="inv-filter-badge">{activeFilterCount}</span>
+              {activeAdvancedFilters > 0 && (
+                <span className="inv-filter-badge">{activeAdvancedFilters}</span>
               )}
             </button>
+
             {filtersOpen && (
-              <div className="inv-filter-dropdown inv-filter-dropdown--wide">
-                <span className="inv-dropdown-section-label">Quick Filters</span>
-                <button
-                  className={`inv-dropdown-item${params.balanceGt0 ? ' active' : ''}`}
-                  onClick={() => { handleBalanceGt0(!params.balanceGt0); setFiltersOpen(false); }}
-                >
-                  <span className="inv-filter-check">
-                    {params.balanceGt0 ? <Check size={12} /> : null}
-                  </span>
-                  <span>Balance &gt; $0</span>
-                </button>
+              <div className="inv-filter-panel" role="dialog" aria-label="Advanced filters">
+
+                {/* Balance */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Balance</span>
+                  {BALANCE_OPTIONS.map(opt => (
+                    <label key={opt.value} className="inv-fpanel-radio">
+                      <input
+                        type="radio"
+                        name="balance-filter"
+                        value={opt.value}
+                        checked={params.balance === opt.value}
+                        onChange={() => handleBalanceChange(opt.value)}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  ))}
+                  {params.balance === 'range' && (
+                    <div className="inv-fpanel-range">
+                      <div className="inv-fpanel-range-pair">
+                        <span className="inv-fpanel-range-sym">$</span>
+                        <input
+                          type="number" min="0" step="0.01"
+                          className="inv-fpanel-range-input"
+                          placeholder="Min"
+                          value={params.balanceMin}
+                          onChange={e => setParams(p => ({ ...p, balanceMin: e.target.value, page: 1 }))}
+                        />
+                      </div>
+                      <span className="inv-fpanel-range-to">to</span>
+                      <div className="inv-fpanel-range-pair">
+                        <span className="inv-fpanel-range-sym">$</span>
+                        <input
+                          type="number" min="0" step="0.01"
+                          className="inv-fpanel-range-input"
+                          placeholder="Max"
+                          value={params.balanceMax}
+                          onChange={e => setParams(p => ({ ...p, balanceMax: e.target.value, page: 1 }))}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Due Date */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Due Date</span>
+                  <div className="inv-fpanel-date-row">
+                    <div className="inv-fpanel-date-field">
+                      <span className="inv-fpanel-date-key">From</span>
+                      <input
+                        type="date"
+                        className="inv-fpanel-date-input"
+                        value={params.dueStart}
+                        onChange={e => setParams(p => ({ ...p, dueStart: e.target.value, page: 1 }))}
+                      />
+                    </div>
+                    <div className="inv-fpanel-date-field">
+                      <span className="inv-fpanel-date-key">To</span>
+                      <input
+                        type="date"
+                        className="inv-fpanel-date-input"
+                        value={params.dueEnd}
+                        onChange={e => setParams(p => ({ ...p, dueEnd: e.target.value, page: 1 }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Client */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Client</span>
+                  {params.clientId ? (
+                    <div className="inv-fpanel-client-selected">
+                      <span>{params.clientName}</span>
+                      <button
+                        className="inv-fpanel-client-clear"
+                        onClick={handleClientClear}
+                        aria-label="Clear client filter"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        className="inv-fpanel-search-input"
+                        placeholder="Search clients…"
+                        value={clientQuery}
+                        onChange={e => { setClientQuery(e.target.value); searchClients(e.target.value); }}
+                        onKeyDown={e => e.key === 'Escape' && setClientResults([])}
+                      />
+                      {clientResults.length > 0 && (
+                        <div className="inv-fpanel-client-drop">
+                          {clientResults.map(c => (
+                            <button
+                              key={c.id}
+                              className="inv-fpanel-client-item"
+                              onMouseDown={() => handleClientSelect(c)}
+                            >
+                              <span className="inv-fpanel-client-name">{c.name}</span>
+                              {c.email && <span className="inv-fpanel-client-email">{c.email}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Invoice Source */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Invoice Source</span>
+                  <label className="inv-fpanel-radio">
+                    <input
+                      type="radio"
+                      name="source-filter"
+                      value=""
+                      checked={params.source === ''}
+                      onChange={() => setParams(p => ({ ...p, source: '', page: 1 }))}
+                    />
+                    <span>All sources</span>
+                  </label>
+                  {SOURCE_OPTIONS.map(opt => (
+                    <label key={opt.value} className="inv-fpanel-radio">
+                      <input
+                        type="radio"
+                        name="source-filter"
+                        value={opt.value}
+                        checked={params.source === opt.value}
+                        onChange={() => setParams(p => ({ ...p, source: opt.value, page: 1 }))}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Amount */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Amount</span>
+                  <div className="inv-fpanel-range">
+                    <div className="inv-fpanel-range-pair">
+                      <span className="inv-fpanel-range-sym">$</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        className="inv-fpanel-range-input"
+                        placeholder="Min"
+                        value={params.amountMin}
+                        onChange={e => setParams(p => ({ ...p, amountMin: e.target.value, page: 1 }))}
+                      />
+                    </div>
+                    <span className="inv-fpanel-range-to">to</span>
+                    <div className="inv-fpanel-range-pair">
+                      <span className="inv-fpanel-range-sym">$</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        className="inv-fpanel-range-input"
+                        placeholder="Max"
+                        value={params.amountMax}
+                        onChange={e => setParams(p => ({ ...p, amountMax: e.target.value, page: 1 }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Service */}
+                <div className="inv-fpanel-section">
+                  <span className="inv-fpanel-label">Service</span>
+                  <input
+                    type="text"
+                    className="inv-fpanel-search-input"
+                    placeholder="Filter by service type…"
+                    value={params.service}
+                    onChange={e => setParams(p => ({ ...p, service: e.target.value, page: 1 }))}
+                  />
+                </div>
+
+                {/* Clear All */}
+                {activeAdvancedFilters > 0 && (
+                  <div className="inv-fpanel-footer">
+                    <button
+                      className="inv-fpanel-clear"
+                      onClick={() => {
+                        setParams(p => ({
+                          ...p,
+                          balance: '', balanceMin: '', balanceMax: '',
+                          clientId: '', clientName: '',
+                          source: '', amountMin: '', amountMax: '',
+                          dueStart: '', dueEnd: '', service: '',
+                          page: 1,
+                        }));
+                        setClientQuery('');
+                        setClientResults([]);
+                      }}
+                    >
+                      Clear advanced filters
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -383,38 +754,71 @@ export default function Invoices() {
           {params.status !== 'all' && (
             <span className="inv-chip">
               Status: {FILTER_LABELS[params.status]}
-              <button
-                className="inv-chip-remove"
-                onClick={() => handleFilterChange('all')}
-                aria-label="Remove status filter"
-              >
+              <button className="inv-chip-remove" onClick={() => handleFilterChange('all')} aria-label="Remove status filter">
                 <X size={10} />
               </button>
             </span>
           )}
           {datePreset !== 'all' && (
             <span className="inv-chip">
-              Date: {DATE_LABELS[datePreset]}
-              <button
-                className="inv-chip-remove"
-                onClick={() => handleDatePreset('all')}
-                aria-label="Remove date filter"
-              >
+              Date: {DATE_LABELS[datePreset] || `${fmtDate(params.start)}–${fmtDate(params.end)}`}
+              <button className="inv-chip-remove" onClick={() => { handleDatePreset('all'); }} aria-label="Remove date filter">
                 <X size={10} />
               </button>
             </span>
           )}
-          {params.balanceGt0 && (
+          {params.balance !== '' && (
             <span className="inv-chip">
-              Balance &gt; $0
-              <button
-                className="inv-chip-remove"
-                onClick={() => handleBalanceGt0(false)}
-                aria-label="Remove balance filter"
-              >
+              {balanceChipLabel()}
+              <button className="inv-chip-remove" onClick={() => handleBalanceChange('')} aria-label="Remove balance filter">
                 <X size={10} />
               </button>
             </span>
+          )}
+          {params.clientId && (
+            <span className="inv-chip">
+              {params.clientName || 'Client'}
+              <button className="inv-chip-remove" onClick={handleClientClear} aria-label="Remove client filter">
+                <X size={10} />
+              </button>
+            </span>
+          )}
+          {params.source && (
+            <span className="inv-chip">
+              {sourceLabel}
+              <button className="inv-chip-remove" onClick={() => setParams(p => ({ ...p, source: '', page: 1 }))} aria-label="Remove source filter">
+                <X size={10} />
+              </button>
+            </span>
+          )}
+          {(params.amountMin || params.amountMax) && (
+            <span className="inv-chip">
+              {amountChipLabel()}
+              <button className="inv-chip-remove" onClick={() => setParams(p => ({ ...p, amountMin: '', amountMax: '', page: 1 }))} aria-label="Remove amount filter">
+                <X size={10} />
+              </button>
+            </span>
+          )}
+          {(params.dueStart || params.dueEnd) && (
+            <span className="inv-chip">
+              {dueDateChipLabel()}
+              <button className="inv-chip-remove" onClick={() => setParams(p => ({ ...p, dueStart: '', dueEnd: '', page: 1 }))} aria-label="Remove due date filter">
+                <X size={10} />
+              </button>
+            </span>
+          )}
+          {params.service && (
+            <span className="inv-chip">
+              Service: {params.service}
+              <button className="inv-chip-remove" onClick={() => setParams(p => ({ ...p, service: '', page: 1 }))} aria-label="Remove service filter">
+                <X size={10} />
+              </button>
+            </span>
+          )}
+          {hasActiveFilters && (
+            <button className="inv-chip-clear-all" onClick={clearAllFilters}>
+              Clear All
+            </button>
           )}
         </div>
       )}
@@ -521,7 +925,6 @@ export default function Invoices() {
           />
         </div>
       )}
-
     </div>
   );
 }

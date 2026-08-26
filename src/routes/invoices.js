@@ -602,15 +602,25 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const {
-      search     = '',
-      status     = 'all',
-      sort       = 'created_at',
-      order      = 'DESC',
-      page       = '1',
-      pageSize   = '50',
-      start      = '',
-      end        = '',
-      balanceGt0 = '',
+      search      = '',
+      status      = 'all',
+      sort        = 'created_at',
+      order       = 'DESC',
+      page        = '1',
+      pageSize    = '50',
+      start       = '',
+      end         = '',
+      balanceGt0  = '',
+      balanceEq0  = '',
+      balanceMin  = '',
+      balanceMax  = '',
+      client_id   = '',
+      source      = '',
+      amount_min  = '',
+      amount_max  = '',
+      due_start   = '',
+      due_end     = '',
+      service     = '',
     } = req.query;
 
     const ALLOWED_SORTS = {
@@ -687,6 +697,66 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
     }
     if (balanceGt0 === 'true') {
       conditions.push(`(i.status IN ('pending','failed') AND i.amount > 0)`);
+    }
+    if (balanceEq0 === 'true') {
+      conditions.push(`i.status = 'paid'`);
+    }
+    if (balanceMin !== '') {
+      const bMin = parseFloat(balanceMin);
+      if (!isNaN(bMin)) {
+        listParams.push(bMin);
+        conditions.push(`(i.status IN ('pending','failed') AND i.amount::numeric >= $${listParams.length})`);
+      }
+    }
+    if (balanceMax !== '') {
+      const bMax = parseFloat(balanceMax);
+      if (!isNaN(bMax)) {
+        listParams.push(bMax);
+        conditions.push(`(i.status IN ('pending','failed') AND i.amount::numeric <= $${listParams.length})`);
+      }
+    }
+
+    if (client_id) {
+      listParams.push(client_id);
+      conditions.push(`i.client_id = $${listParams.length}`);
+    }
+
+    if (source && source !== 'all') {
+      const SRC_MAP = { recurring: 'AGREEMENT', job: 'JOB', estimate: 'ESTIMATE', agreement: 'AGREEMENT', blank: 'MANUAL', manual: 'MANUAL' };
+      const mapped = SRC_MAP[source.toLowerCase()] || source.toUpperCase();
+      if (['JOB','MANUAL','ESTIMATE','AGREEMENT'].includes(mapped)) {
+        listParams.push(mapped);
+        conditions.push(`i.source_type = $${listParams.length}`);
+      }
+    }
+
+    if (amount_min !== '') {
+      const aMin = parseFloat(amount_min);
+      if (!isNaN(aMin)) {
+        listParams.push(aMin);
+        conditions.push(`i.amount::numeric >= $${listParams.length}`);
+      }
+    }
+    if (amount_max !== '') {
+      const aMax = parseFloat(amount_max);
+      if (!isNaN(aMax)) {
+        listParams.push(aMax);
+        conditions.push(`i.amount::numeric <= $${listParams.length}`);
+      }
+    }
+
+    if (due_start) {
+      listParams.push(due_start);
+      conditions.push(`i.due_date >= $${listParams.length}::date`);
+    }
+    if (due_end) {
+      listParams.push(due_end);
+      conditions.push(`i.due_date <= $${listParams.length}::date`);
+    }
+
+    if (service.trim()) {
+      listParams.push(`%${service.trim()}%`);
+      conditions.push(`COALESCE(j.service_type,'') ILIKE $${listParams.length}`);
     }
 
     const term = search.trim();
@@ -1045,6 +1115,51 @@ router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (r
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/invoices/:id/payments — record manual payment ─────────────────
+router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const VALID_METHODS = ['cash', 'check', 'other'];
+  const { amount, date, method, reference = '', note = '' } = req.body;
+
+  if (!method || !VALID_METHODS.includes(method)) {
+    return res.status(400).json({ error: `method must be one of: ${VALID_METHODS.join(', ')}` });
+  }
+  const amt = parseFloat(amount);
+  if (!amt || amt <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive number' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM invoices WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
+    const inv = rows[0];
+
+    if (inv.status === 'void') {
+      return res.status(400).json({ error: 'Cannot record payment on a void invoice' });
+    }
+    if (inv.status === 'paid') {
+      return res.status(400).json({ error: 'Invoice is already paid' });
+    }
+
+    const paymentDate = date || new Date().toISOString().slice(0, 10);
+    const combinedNote = [reference ? `Ref: ${reference}` : null, note || null].filter(Boolean).join(' — ') || null;
+
+    const { rows: updated } = await pool.query(
+      `UPDATE invoices
+       SET status = 'paid', paid_at = $1, paid_method = $2, payment_note = $3
+       WHERE id = $4 AND account_id = $5
+       RETURNING *`,
+      [paymentDate, method, combinedNote, req.params.id, req.accountId]
+    );
+
+    res.json(updated[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

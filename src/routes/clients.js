@@ -46,7 +46,8 @@ router.get('/search', requireAuth, async (req, res) => {
   const like = `%${q}%`;
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, phone, email, address, city, state, zip, tier
+      `SELECT id, name, phone, email, address, city, state, zip, tier,
+              card_on_file, payment_method_brand, payment_method_last4, stripe_payment_method_id
        FROM clients
        WHERE account_id = $1
          AND (

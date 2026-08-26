@@ -4,6 +4,7 @@ import { format, addDays } from 'date-fns';
 import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
+import PaymentCollectionModal from './PaymentCollectionModal';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -948,8 +949,11 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [internalNotes, setInternalNotes] = useState('');
 
   // ── save dropdown ───────────────────────────────────────────────────────────
-  const [saveDropOpen, setSaveDropOpen] = useState(false);
+  const [saveDropOpen,   setSaveDropOpen]   = useState(false);
   const saveDropRef = useRef(null);
+
+  // ── post-create collection modal ─────────────────────────────────────────────
+  const [collectInvoice,  setCollectInvoice]  = useState(null);
 
   // ── submission ──────────────────────────────────────────────────────────────
   const [saving,    setSaving]    = useState(false);
@@ -1299,6 +1303,11 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         await api.post(`/invoices/${res.data.id}/send`);
       }
 
+      if (action === 'collect') {
+        setCollectInvoice(res.data);
+        return;
+      }
+
       onCreated(res.data);
     } catch (err) {
       const msg = (err.response?.data?.error || '').toLowerCase();
@@ -1334,10 +1343,12 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   // Send: same as draft but also requires at least one line item with a positive amount
   const canSend  = canDraft && lineItems.some(i => parseFloat(i.unit_price) > 0);
 
-  const showCollect = acceptCard || acceptAch;
+  // Always show Save & Collect Payment — supports card, ACH, and manual recording
+  const showCollect = true;
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
+    <>
     <div className="ib-sheet" onClick={e => e.stopPropagation()}>
 
       {/* Header */}
@@ -1933,11 +1944,14 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
           />
         </div>
 
-        {/* Payment options */}
-        {(acceptCard || acceptAch || allowPartial) && (
-          <div className="ib-section">
-            <p className="ib-section-label">Payment Options</p>
+        {/* Payment Collection */}
+        <div className="ib-section">
+          <p className="ib-section-label">Payment Collection</p>
+
+          {/* Customer Can Pay By */}
+          {(acceptCard || acceptAch) && (
             <div className="ib-payment-opts">
+              <p className="ib-payopt-sublabel">Customer Can Pay By</p>
               {acceptCard && (
                 <label className="ib-payopt-row">
                   <input
@@ -1945,7 +1959,7 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     checked={payOptCard}
                     onChange={e => setPayOptCard(e.target.checked)}
                   />
-                  <span>Accept Card</span>
+                  <span>Card</span>
                 </label>
               )}
               {acceptAch && (
@@ -1955,22 +1969,46 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     checked={payOptAch}
                     onChange={e => setPayOptAch(e.target.checked)}
                   />
-                  <span>Accept ACH / Bank Transfer</span>
-                </label>
-              )}
-              {allowPartial && (
-                <label className="ib-payopt-row">
-                  <input
-                    type="checkbox"
-                    checked={payOptPartial}
-                    onChange={e => setPayOptPartial(e.target.checked)}
-                  />
-                  <span>Allow Partial Payments</span>
+                  <span>Bank Account (ACH)</span>
                 </label>
               )}
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Saved Payment Methods — shown when selected client has a card on file */}
+          {selectedClient?.card_on_file && selectedClient?.payment_method_brand && (
+            <div className="ib-saved-methods">
+              <p className="ib-payopt-sublabel">Saved Payment Methods</p>
+              <div className="ib-saved-method-item">
+                <span className="ib-saved-method-brand">{selectedClient.payment_method_brand}</span>
+                {selectedClient.payment_method_last4 && (
+                  <span className="ib-saved-method-last4"> •••• {selectedClient.payment_method_last4}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Allow Partial Payments */}
+          {allowPartial && (
+            <label className="ib-payopt-row" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={payOptPartial}
+                onChange={e => setPayOptPartial(e.target.checked)}
+              />
+              <span>Allow Partial Payments</span>
+            </label>
+          )}
+
+          {/* Agreement collection method note */}
+          {source === 'agreement' && selectedAgreement?.payment_behavior && selectedAgreement.payment_behavior !== 'send_invoice' && (
+            <p className="ib-payopt-note">
+              Collection Method:{' '}
+              {AGR_PAYMENT_BEHAVIOR_OPTIONS.find(o => o.value === selectedAgreement.payment_behavior)?.label
+                || selectedAgreement.payment_behavior}
+            </p>
+          )}
+        </div>
 
       </div>{/* end .ib-body */}
 
@@ -2026,5 +2064,14 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       </div>
 
     </div>
+    {collectInvoice && (
+      <PaymentCollectionModal
+        invoice={collectInvoice}
+        client={selectedClient}
+        onCollected={inv => { setCollectInvoice(null); onCreated(inv); }}
+        onSkip={() => { setCollectInvoice(null); onCreated(collectInvoice); }}
+      />
+    )}
+    </>
   );
 }

@@ -987,14 +987,14 @@ describe('InvoiceBuilder V2 — discount label', () => {
 // ── V2: Payment options ───────────────────────────────────────────────────────
 
 describe('InvoiceBuilder V2 — payment options', () => {
-  it('shows payment options section when accept_card is true', async () => {
+  it('shows payment collection section always', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
     await waitFor(() => {
-      expect(screen.getByText('Payment Options')).toBeInTheDocument();
+      expect(screen.getByText('Payment Collection')).toBeInTheDocument();
     });
   });
 
-  it('payment options section not shown when all are false', async () => {
+  it('customer can pay by checkboxes hidden when no methods configured', async () => {
     setup(vi.fn(), vi.fn(), {
       ...MOCK_SETTINGS,
       accept_card: false,
@@ -1002,21 +1002,21 @@ describe('InvoiceBuilder V2 — payment options', () => {
       allow_partial_payments: false,
     });
     await waitFor(() => {
-      expect(screen.queryByText('Payment Options')).toBeNull();
+      expect(screen.queryByText('Customer Can Pay By')).toBeNull();
     });
   });
 
-  it('Accept Card checkbox is visible when configured', async () => {
+  it('Card checkbox is visible when accept_card is configured', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
     await waitFor(() => {
-      expect(screen.getByText('Accept Card')).toBeInTheDocument();
+      expect(screen.getByText('Card')).toBeInTheDocument();
     });
   });
 
   it('ACH option only shows when business has it configured', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true, accept_ach: true });
     await waitFor(() => {
-      expect(screen.getByText(/accept ach/i)).toBeInTheDocument();
+      expect(screen.getByText('Bank Account (ACH)')).toBeInTheDocument();
     });
   });
 });
@@ -1058,14 +1058,14 @@ describe('InvoiceBuilder V2 — save actions', () => {
     });
   });
 
-  it('dropdown arrow not shown when no payment methods configured', async () => {
+  it('dropdown arrow always shown (Save & Collect available for manual payment)', async () => {
     setup(vi.fn(), vi.fn(), {
       ...MOCK_SETTINGS,
       accept_card: false,
       accept_ach: false,
     });
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /more save options/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /more save options/i })).not.toBeNull();
     });
   });
 });

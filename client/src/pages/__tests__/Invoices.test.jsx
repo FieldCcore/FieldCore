@@ -526,13 +526,12 @@ describe('Invoices — quick filters dropdown', () => {
     expect(trigger.textContent).toContain('Filters');
   });
 
-  it('clicking Filters opens dropdown with Balance > $0 option', async () => {
+  it('clicking Filters opens panel with Balance > $0 option', async () => {
     setup();
     await waitFor(() => screen.getByRole('table'));
     fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
-    const items = getFiltersGroup().querySelectorAll('.inv-dropdown-item');
-    expect(items.length).toBeGreaterThanOrEqual(1);
-    expect(items[0].textContent).toContain('Balance');
+    await waitFor(() => screen.getByLabelText('Balance > $0'));
+    expect(screen.getByLabelText('Balance > $0')).toBeInTheDocument();
   });
 
   it('enabling Balance > $0 sends balanceGt0=true', async () => {
@@ -541,7 +540,8 @@ describe('Invoices — quick filters dropdown', () => {
 
     api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
     fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
-    fireEvent.click(getFiltersGroup().querySelector('.inv-dropdown-item'));
+    await waitFor(() => screen.getByLabelText('Balance > $0'));
+    fireEvent.click(screen.getByLabelText('Balance > $0'));
 
     await waitFor(() => {
       expect(api.get.mock.calls[1][0]).toContain('balanceGt0=true');
@@ -554,7 +554,8 @@ describe('Invoices — quick filters dropdown', () => {
 
     api.get.mockResolvedValueOnce({ data: MOCK_RESPONSE });
     fireEvent.click(getFiltersGroup().querySelector('.inv-filter-trigger'));
-    fireEvent.click(getFiltersGroup().querySelector('.inv-dropdown-item'));
+    await waitFor(() => screen.getByLabelText('Balance > $0'));
+    fireEvent.click(screen.getByLabelText('Balance > $0'));
 
     await waitFor(() => {
       expect(getFiltersGroup().querySelector('.inv-filter-badge')).not.toBeNull();
