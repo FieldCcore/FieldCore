@@ -575,6 +575,8 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
         `SELECT COALESCE(tax_rate, 0)                    AS tax_rate,
                 COALESCE(accept_card, TRUE)               AS accept_card,
                 COALESCE(accept_ach, FALSE)               AS accept_ach,
+                COALESCE(accept_cash, TRUE)               AS accept_cash,
+                COALESCE(accept_check, TRUE)              AS accept_check,
                 COALESCE(allow_partial_payments, FALSE)   AS allow_partial_payments,
                 COALESCE(invoice_starting_number, 0)      AS invoice_starting_number,
                 default_terms
@@ -590,6 +592,8 @@ router.get('/settings', requireAuth, requireRole('owner', 'manager'), async (req
       tax_rate:                parseFloat(bs.tax_rate || 0),
       accept_card:             bs.accept_card !== false,
       accept_ach:              !!bs.accept_ach,
+      accept_cash:             bs.accept_cash !== false,
+      accept_check:            bs.accept_check !== false,
       allow_partial_payments:  !!bs.allow_partial_payments,
       default_terms:           bs.default_terms || null,
     });

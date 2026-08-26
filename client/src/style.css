@@ -2261,6 +2261,56 @@ body {
   font-size: 0.84rem; color: var(--navy); cursor: pointer;
 }
 .ib-payopt-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--navy); }
+.ib-payopt-sublabel {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--steel); margin: 0 0 8px;
+}
+
+/* ── Collect Payment Modal ───────────────────────────────── */
+.cpm-section-head {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--steel); margin: 0 0 10px;
+}
+.cpm-method-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; margin-bottom: 8px;
+  background: #fff; border: 1.5px solid var(--lightgray); border-radius: 8px;
+  cursor: pointer; text-align: left; transition: border-color .15s, background .15s;
+  font-family: 'Inter', sans-serif;
+}
+.cpm-method-btn:hover { border-color: var(--navy); background: var(--offwhite); }
+.cpm-method-btn:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+.cpm-method-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.cpm-method-icon { color: var(--slate); flex-shrink: 0; }
+.cpm-method-label {
+  font-size: 0.9rem; font-weight: 600; color: var(--navy); flex: 1;
+}
+.cpm-method-sub { font-size: 0.75rem; color: var(--steel); }
+.cpm-manual-grid { display: flex; flex-direction: column; gap: 0; }
+.cpm-divider {
+  text-align: center; font-size: 0.75rem; color: var(--steel);
+  margin: 10px 0; position: relative;
+}
+.cpm-divider::before, .cpm-divider::after {
+  content: ''; position: absolute; top: 50%; width: 42%; height: 1px;
+  background: var(--lightgray);
+}
+.cpm-divider::before { left: 0; }
+.cpm-divider::after { right: 0; }
+.cpm-tabs {
+  display: flex; gap: 6px; margin-bottom: 16px;
+}
+.cpm-tab {
+  flex: 1; padding: 7px 12px;
+  background: none; border: 1.5px solid var(--lightgray); border-radius: 6px;
+  font-family: 'Inter', sans-serif; font-size: 0.84rem; font-weight: 500;
+  color: var(--slate); cursor: pointer; transition: border-color .12s, color .12s;
+}
+.cpm-tab:hover { border-color: var(--navy); color: var(--navy); }
+.cpm-tab--active {
+  border-color: var(--navy); background: var(--navy); color: #fff;
+}
+.cpm-tab--active:hover { border-color: var(--navy); }
 
 /* ── Discount label input ─────────────────────────────────── */
 .ib-discount-label-input {

@@ -13,6 +13,8 @@ const MOCK_SETTINGS = {
   tax_rate: 0,
   accept_card: true,
   accept_ach: false,
+  accept_cash: true,
+  accept_check: true,
   allow_partial_payments: false,
   default_terms: null,
 };
@@ -994,15 +996,25 @@ describe('InvoiceBuilder V2 — payment options', () => {
     });
   });
 
-  it('customer can pay by checkboxes hidden when no methods configured', async () => {
+  it('Accepted Payment Methods hidden when all methods disabled', async () => {
     setup(vi.fn(), vi.fn(), {
       ...MOCK_SETTINGS,
       accept_card: false,
       accept_ach: false,
+      accept_cash: false,
+      accept_check: false,
       allow_partial_payments: false,
     });
     await waitFor(() => {
-      expect(screen.queryByText('Customer Can Pay By')).toBeNull();
+      expect(screen.queryByText('Accepted Payment Methods')).toBeNull();
+    });
+  });
+
+  it('Cash and Check checkboxes shown by default', async () => {
+    setup();
+    await waitFor(() => {
+      expect(screen.getByText('Cash')).toBeInTheDocument();
+      expect(screen.getByText('Check')).toBeInTheDocument();
     });
   });
 

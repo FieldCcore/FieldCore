@@ -1423,6 +1423,24 @@ describe('GET /api/invoices/settings — V2 payment capabilities', () => {
     expect(res.body).toHaveProperty('default_terms');
   });
 
+  it('returns accept_cash field (boolean, defaults true)', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(typeof res.body.accept_cash).toBe('boolean');
+    expect(res.body.accept_cash).toBe(true);
+  });
+
+  it('returns accept_check field (boolean, defaults true)', async () => {
+    const res = await request(app)
+      .get('/api/invoices/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(typeof res.body.accept_check).toBe('boolean');
+    expect(res.body.accept_check).toBe(true);
+  });
+
   it('returns 401 without token', async () => {
     await request(app).get('/api/invoices/settings').expect(401);
   });

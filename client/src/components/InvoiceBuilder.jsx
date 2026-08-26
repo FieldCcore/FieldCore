@@ -894,6 +894,8 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [previewNumErr,       setPreviewNumErr]       = useState(false);
   const [acceptCard,          setAcceptCard]          = useState(true);
   const [acceptAch,           setAcceptAch]           = useState(false);
+  const [acceptCash,          setAcceptCash]          = useState(true);
+  const [acceptCheck,         setAcceptCheck]         = useState(true);
   const [allowPartial,        setAllowPartial]        = useState(false);
 
   // ── client selection ────────────────────────────────────────────────────────
@@ -941,6 +943,8 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   // ── payment options (inherits from business settings, overridable) ──────────
   const [payOptCard,    setPayOptCard]    = useState(true);
   const [payOptAch,     setPayOptAch]     = useState(false);
+  const [payOptCash,    setPayOptCash]    = useState(true);
+  const [payOptCheck,   setPayOptCheck]   = useState(true);
   const [payOptPartial, setPayOptPartial] = useState(false);
 
   // ── notes ───────────────────────────────────────────────────────────────────
@@ -968,9 +972,13 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         setPreviewNumber(d.next_number != null ? d.next_number : null);
         setAcceptCard(d.accept_card !== false);
         setAcceptAch(!!d.accept_ach);
+        setAcceptCash(d.accept_cash !== false);
+        setAcceptCheck(d.accept_check !== false);
         setAllowPartial(!!d.allow_partial_payments);
         setPayOptCard(d.accept_card !== false);
         setPayOptAch(!!d.accept_ach);
+        setPayOptCash(d.accept_cash !== false);
+        setPayOptCheck(d.accept_check !== false);
         setPayOptPartial(!!d.allow_partial_payments);
         if (d.default_terms) setTerms(d.default_terms);
       })
@@ -1948,10 +1956,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         <div className="ib-section">
           <p className="ib-section-label">Payment Collection</p>
 
-          {/* Customer Can Pay By */}
-          {(acceptCard || acceptAch) && (
+          {/* Accepted Payment Methods */}
+          {(acceptCard || acceptAch || acceptCash || acceptCheck) && (
             <div className="ib-payment-opts">
-              <p className="ib-payopt-sublabel">Customer Can Pay By</p>
+              <p className="ib-payopt-sublabel">Accepted Payment Methods</p>
               {acceptCard && (
                 <label className="ib-payopt-row">
                   <input
@@ -1970,6 +1978,26 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                     onChange={e => setPayOptAch(e.target.checked)}
                   />
                   <span>Bank Account (ACH)</span>
+                </label>
+              )}
+              {acceptCash && (
+                <label className="ib-payopt-row">
+                  <input
+                    type="checkbox"
+                    checked={payOptCash}
+                    onChange={e => setPayOptCash(e.target.checked)}
+                  />
+                  <span>Cash</span>
+                </label>
+              )}
+              {acceptCheck && (
+                <label className="ib-payopt-row">
+                  <input
+                    type="checkbox"
+                    checked={payOptCheck}
+                    onChange={e => setPayOptCheck(e.target.checked)}
+                  />
+                  <span>Check</span>
                 </label>
               )}
             </div>
@@ -2068,6 +2096,10 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
       <PaymentCollectionModal
         invoice={collectInvoice}
         client={selectedClient}
+        acceptCard={payOptCard}
+        acceptAch={payOptAch}
+        acceptCash={payOptCash}
+        acceptCheck={payOptCheck}
         onCollected={inv => { setCollectInvoice(null); onCreated(inv); }}
         onSkip={() => { setCollectInvoice(null); onCreated(collectInvoice); }}
       />

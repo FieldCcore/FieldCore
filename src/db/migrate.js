@@ -1942,6 +1942,8 @@ const MIGRATIONS = [
   `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS accept_ach              BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS allow_partial_payments  BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS default_terms           TEXT`,
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS accept_cash             BOOLEAN NOT NULL DEFAULT TRUE`,
+  `ALTER TABLE booking_settings ADD COLUMN IF NOT EXISTS accept_check            BOOLEAN NOT NULL DEFAULT TRUE`,
 
   // Invoice-level: named discount + per-invoice payment option overrides
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_label  TEXT`,
