@@ -163,7 +163,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       <div className="invoice-amount-block">
         {(lineItems || []).map((item, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#1C2333', marginBottom: 6 }}>
-            <span style={{ flex: 1 }}>{item.description}</span>
+            <span style={{ flex: 1 }}>{item.name || item.description}</span>
             <span style={{ marginLeft: 16, fontVariantNumeric: 'tabular-nums' }}>${parseFloat(item.amount).toFixed(2)}</span>
             {isPending && (lineItems || []).length > 1 && (
               <button onClick={() => removeLineItem(i)} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>

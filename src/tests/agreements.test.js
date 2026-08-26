@@ -1291,3 +1291,117 @@ describe('Agreements V6 — preview end condition cutoffs', () => {
     expect(res.body.services.length).toBe(4);
   });
 });
+
+// ── Regression: INV-002 — billing_day 29–31 acceptance ────────────────────────
+
+describe('Regression INV-002 — billing_day accepts 29, 30, 31', () => {
+  it('accepts billing_day=29', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Day 29 Billing',
+        billing_trigger: 'specific_day', billing_day: 29,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_day).toBe(29);
+  });
+
+  it('accepts billing_day=30', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Day 30 Billing',
+        billing_trigger: 'specific_day', billing_day: 30,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_day).toBe(30);
+  });
+
+  it('accepts billing_day=31', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Day 31 Billing',
+        billing_trigger: 'specific_day', billing_day: 31,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_day).toBe(31);
+  });
+
+  it('rejects billing_day=32', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id: clientId, name: 'Day 32 Billing',
+        billing_trigger: 'specific_day', billing_day: 32,
+        plan_price: 100,
+      });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Regression: INV-003 — AgreementBuilder full field round-trip ──────────────
+
+describe('Regression INV-003 — full agreement field round-trip', () => {
+  it('stores all 12 previously-missing fields', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id:                    clientId,
+        name:                         'Full Field Agreement',
+        plan_price:                   299,
+        cadence:                      'monthly',
+        billing_cadence:              'monthly',
+        billing_trigger:              'specific_day',
+        billing_day:                  15,
+        payment_behavior:             'create_only',
+        missed_service_policy:        'credit',
+        end_condition_type:           'service_count',
+        end_after_occurrences:        24,
+        discount_type:                'percent',
+        discount_value:               10,
+        discount_name:                'Loyalty',
+        taxable:                      true,
+        preferred_weekday:            null,
+        service_day_of_month:         15,
+        extra_occurrence_policy:      'charge_per_additional',
+        additional_service_price:     75,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_behavior).toBe('create_only');
+    expect(res.body.missed_service_policy).toBe('credit');
+    expect(res.body.end_condition_type).toBe('service_count');
+    expect(res.body.end_after_occurrences).toBe(24);
+    expect(res.body.discount_type).toBe('percent');
+    expect(parseFloat(res.body.discount_value)).toBeCloseTo(10, 1);
+    expect(res.body.discount_name).toBe('Loyalty');
+    expect(res.body.taxable).toBe(true);
+    expect(res.body.service_day_of_month).toBe(15);
+    expect(res.body.extra_occurrence_policy).toBe('charge_per_additional');
+    expect(parseFloat(res.body.additional_service_price)).toBeCloseTo(75, 1);
+  });
+
+  it('stores days_before_service when trigger=days_before_first_service', async () => {
+    const res = await request(app)
+      .post('/api/agreements')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        client_id:            clientId,
+        name:                 'Days Before Trigger',
+        plan_price:           199,
+        billing_trigger:      'days_before_first_service',
+        days_before_service:  7,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.billing_trigger).toBe('days_before_first_service');
+    expect(res.body.days_before_service).toBe(7);
+  });
+});

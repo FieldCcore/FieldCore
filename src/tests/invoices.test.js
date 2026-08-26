@@ -1999,3 +1999,48 @@ describe('PUT /api/booking-settings — invoice_starting_number', () => {
     expect(inv.body.invoice_number).toBe(750);
   });
 });
+
+// ── Regression: INV-001 — line item name round-trip ───────────────────────────
+
+describe('Regression INV-001 — line item name field round-trip', () => {
+  it('stores and returns name as the primary line item field', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items: [
+          { name: 'AC Maintenance', description: 'Annual tune-up', quantity: 1, unit_price: 199 },
+          { name: 'Filter Replacement',                             quantity: 2, unit_price: 25  },
+        ],
+      })
+      .expect(201);
+
+    const li = Array.isArray(res.body.line_items)
+      ? res.body.line_items
+      : JSON.parse(res.body.line_items || '[]');
+
+    expect(li[0].name).toBe('AC Maintenance');
+    expect(li[1].name).toBe('Filter Replacement');
+  });
+
+  it('line items without description still have name populated', async () => {
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        source_type: 'MANUAL',
+        client_id:   clientId,
+        line_items: [{ name: 'Service Call', quantity: 1, unit_price: 85 }],
+      })
+      .expect(201);
+
+    const li = Array.isArray(res.body.line_items)
+      ? res.body.line_items
+      : JSON.parse(res.body.line_items || '[]');
+
+    expect(li[0].name).toBe('Service Call');
+    expect(li[0].description).toBeDefined();
+  });
+});
