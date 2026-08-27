@@ -7770,3 +7770,22 @@ body {
   background: var(--offwhite); border-radius: 6px;
   font-size: 0.82rem; color: var(--slate); line-height: 1.5;
 }
+
+/* Multi-schedule cards */
+.ab-schedule-card {
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.ab-schedule-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ab-schedule-num {
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--slate);
+}
+/* Inline catalog autocomplete next to free-text input */
+.ab-svc-autocomplete { width: 160px; flex-shrink: 0; }

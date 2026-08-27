@@ -31,6 +31,8 @@ const PAYMENT_VALUES       = ['paid_in_advance','pending','failed','overdue'];
 const PAYMENT_BEHAVIOR_VALUES = ['send_invoice','create_only','auto_charge_card','auto_charge_ach'];
 const DISCOUNT_TYPE_VALUES = ['none','percent','fixed'];
 const END_CONDITION_VALUES = ['none','date','service_count','billing_period_count'];
+const SCHEDULE_STATUS_VALUES = ['active','paused','completed','cancelled'];
+const SCHEDULE_END_COND_VALUES = ['none','date','service_count'];
 
 // Generates the next N future service occurrence dates from a cadence anchor.
 // interval-based cadences (weekly, every_N_weeks, custom) use startedAt as the
@@ -98,6 +100,64 @@ function nextOccurrences(cadence, startedAt, intervalDays, count, preferredWeekd
   return results;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function validateSchedule(s, idx) {
+  const label = `service_schedules[${idx}]`;
+  if (!s.cadence || !CADENCE_VALUES.includes(s.cadence))
+    return `${label}.cadence is invalid`;
+  if (s.cadence === 'custom' && (!s.service_interval_days || parseInt(s.service_interval_days, 10) < 1))
+    return `${label}.service_interval_days is required for custom cadence`;
+  if (s.preferred_weekday != null) {
+    const wd = parseInt(s.preferred_weekday, 10);
+    if (isNaN(wd) || wd < 0 || wd > 6) return `${label}.preferred_weekday must be 0–6`;
+  }
+  if (s.service_day_of_month != null) {
+    const d = parseInt(s.service_day_of_month, 10);
+    if (isNaN(d) || d < 1 || d > 31) return `${label}.service_day_of_month must be 1–31`;
+  }
+  if (s.end_condition_type && !SCHEDULE_END_COND_VALUES.includes(s.end_condition_type))
+    return `${label}.end_condition_type is invalid`;
+  if (s.end_condition_type === 'date' && !s.end_date)
+    return `${label}.end_date is required when end_condition_type is date`;
+  if (s.end_condition_type === 'service_count') {
+    const n = parseInt(s.end_after_occurrences, 10);
+    if (!n || n < 1) return `${label}.end_after_occurrences must be >= 1`;
+  }
+  return null;
+}
+
+async function insertSchedules(accountId, agreementId, schedules, client) {
+  for (let i = 0; i < schedules.length; i++) {
+    const s = schedules[i];
+    await client.query(
+      `INSERT INTO recurring_agreement_schedules
+         (account_id, agreement_id, service_type, service_id, asset_label, service_address,
+          cadence, preferred_weekday, service_day_of_month, service_interval_days,
+          started_at, preferred_start_time, end_condition_type, end_date, end_after_occurrences,
+          included_services_per_period, status, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,CURRENT_DATE),$12,$13,$14,$15,$16,$17,$18)`,
+      [
+        accountId, agreementId,
+        s.service_type || null, s.service_id || null, s.asset_label || null,
+        s.service_address || null,
+        s.cadence === 'biweekly' ? 'every_2_weeks' : s.cadence,
+        s.preferred_weekday != null ? parseInt(s.preferred_weekday, 10) : null,
+        s.service_day_of_month != null ? parseInt(s.service_day_of_month, 10) : null,
+        s.cadence === 'custom' ? parseInt(s.service_interval_days, 10) : null,
+        s.started_at || null,
+        s.preferred_start_time || '09:00',
+        s.end_condition_type || 'none',
+        s.end_condition_type === 'date' ? (s.end_date || null) : null,
+        s.end_condition_type === 'service_count' ? (parseInt(s.end_after_occurrences, 10) || null) : null,
+        Math.max(1, parseInt(s.included_services_per_period, 10) || 1),
+        SCHEDULE_STATUS_VALUES.includes(s.status) ? s.status : 'active',
+        i,
+      ]
+    );
+  }
+}
+
 // ─── GET /api/agreements ──────────────────────────────────────────────────────
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
@@ -119,7 +179,9 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
     const { rows } = await pool.query(
       `SELECT a.*,
               c.name AS client_name, c.email AS client_email,
-              c.address AS client_address, c.phone AS client_phone
+              c.address AS client_address, c.phone AS client_phone,
+              (SELECT COUNT(*) FROM recurring_agreement_schedules s
+               WHERE s.agreement_id = a.id AND s.status = 'active') AS active_schedule_count
        FROM recurring_agreements a
        JOIN clients c ON c.id = a.client_id
        WHERE a.account_id = $1${where}
@@ -175,12 +237,11 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     end_after_occurrences = null, end_after_periods = null,
     notes, line_items = [], started_at, next_billing_date,
     end_date = null, status = 'active',
+    service_schedules = null, // V4 multi-schedule
   } = req.body;
 
   if (!client_id) return res.status(400).json({ error: 'client_id is required' });
   if (!name)      return res.status(400).json({ error: 'name is required' });
-  if (!CADENCE_VALUES.includes(cadence))
-    return res.status(400).json({ error: 'invalid cadence' });
   if (!BILLING_CADENCE_VALUES.includes(billing_cadence))
     return res.status(400).json({ error: 'invalid billing_cadence' });
   if (!BILLING_TRIGGER_VALUES.includes(billing_trigger))
@@ -214,18 +275,6 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     if (additional_service_price == null || parseFloat(additional_service_price) < 0)
       return res.status(400).json({ error: 'additional_service_price is required for charge_per_additional policy' });
   }
-  if (cadence === 'custom' && (!service_interval_days || parseInt(service_interval_days, 10) < 1))
-    return res.status(400).json({ error: 'service_interval_days is required for custom cadence' });
-  if (preferred_weekday != null) {
-    const wd = parseInt(preferred_weekday, 10);
-    if (isNaN(wd) || wd < 0 || wd > 6)
-      return res.status(400).json({ error: 'preferred_weekday must be 0–6' });
-  }
-  if (service_day_of_month != null) {
-    const d = parseInt(service_day_of_month, 10);
-    if (isNaN(d) || d < 1 || d > 31)
-      return res.status(400).json({ error: 'service_day_of_month must be 1–31' });
-  }
   if (end_condition_type === 'date') {
     if (!end_date) return res.status(400).json({ error: 'end_date is required when end_condition_type is date' });
     if (started_at && end_date < started_at)
@@ -242,14 +291,50 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
   if (parseFloat(plan_price) < 0)
     return res.status(400).json({ error: 'plan_price must be >= 0' });
 
+  // Validate service_schedules if provided
+  const schedules = Array.isArray(service_schedules) && service_schedules.length > 0 ? service_schedules : null;
+  if (schedules) {
+    for (let i = 0; i < schedules.length; i++) {
+      const err = validateSchedule(schedules[i], i);
+      if (err) return res.status(400).json({ error: err });
+    }
+    if (schedules.every(s => s.status === 'cancelled'))
+      return res.status(400).json({ error: 'At least one active service schedule is required' });
+  } else {
+    // Legacy: validate single cadence
+    if (!CADENCE_VALUES.includes(cadence))
+      return res.status(400).json({ error: 'invalid cadence' });
+    if (cadence === 'custom' && (!service_interval_days || parseInt(service_interval_days, 10) < 1))
+      return res.status(400).json({ error: 'service_interval_days is required for custom cadence' });
+    if (preferred_weekday != null) {
+      const wd = parseInt(preferred_weekday, 10);
+      if (isNaN(wd) || wd < 0 || wd > 6)
+        return res.status(400).json({ error: 'preferred_weekday must be 0–6' });
+    }
+    if (service_day_of_month != null) {
+      const d = parseInt(service_day_of_month, 10);
+      if (isNaN(d) || d < 1 || d > 31)
+        return res.status(400).json({ error: 'service_day_of_month must be 1–31' });
+    }
+  }
+
+  const client = await pool.connect();
   try {
-    const clientRes = await pool.query(
+    await client.query('BEGIN');
+
+    const clientRes = await client.query(
       `SELECT id FROM clients WHERE id = $1 AND account_id = $2`,
       [client_id, req.accountId]
     );
-    if (!clientRes.rows[0]) return res.status(404).json({ error: 'Client not found' });
+    if (!clientRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Client not found' });
+    }
 
-    const { rows } = await pool.query(
+    // Use first schedule's cadence for legacy field if schedules provided
+    const legacyCadence = schedules ? (schedules[0].cadence === 'biweekly' ? 'every_2_weeks' : schedules[0].cadence) : cadence;
+
+    const { rows } = await client.query(
       `INSERT INTO recurring_agreements
          (account_id, client_id, name, service_type, service_address, service_id,
           cadence, billing_cadence, billing_trigger, billing_day, billing_interval_months,
@@ -262,16 +347,19 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,COALESCE($32,CURRENT_DATE),$33,$34,$35,$36)
        RETURNING *`,
       [
-        req.accountId, client_id, name.trim(), service_type || null, service_address || null,
+        req.accountId, client_id, name.trim(),
+        schedules ? (schedules[0].service_type || service_type || null) : (service_type || null),
+        schedules ? (schedules[0].service_address || service_address || null) : (service_address || null),
         service_id || null,
-        cadence, billing_cadence, billing_trigger,
+        legacyCadence,
+        billing_cadence, billing_trigger,
         billing_trigger === 'specific_day' ? parseInt(billing_day, 10) : null,
         billing_interval_months ? parseInt(billing_interval_months, 10) : null,
-        preferred_weekday != null ? parseInt(preferred_weekday, 10) : null,
-        service_day_of_month != null ? parseInt(service_day_of_month, 10) : null,
+        schedules ? (schedules[0].preferred_weekday != null ? parseInt(schedules[0].preferred_weekday, 10) : null) : (preferred_weekday != null ? parseInt(preferred_weekday, 10) : null),
+        schedules ? (schedules[0].service_day_of_month != null ? parseInt(schedules[0].service_day_of_month, 10) : null) : (service_day_of_month != null ? parseInt(service_day_of_month, 10) : null),
         Math.max(1, parseInt(included_services_per_period, 10) || 1),
         extra_occurrence_policy,
-        cadence === 'custom' ? parseInt(service_interval_days, 10) : null,
+        schedules ? (schedules[0].cadence === 'custom' ? parseInt(schedules[0].service_interval_days, 10) : null) : (cadence === 'custom' ? parseInt(service_interval_days, 10) : null),
         missed_service_policy,
         parseFloat(plan_price) || 0, payment_status, payment_behavior,
         notes || null, JSON.stringify(Array.isArray(line_items) ? line_items : []),
@@ -288,9 +376,40 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         req.userId,
       ]
     );
-    res.status(201).json(rows[0]);
+    const agreement = rows[0];
+
+    // Create service schedules
+    if (schedules) {
+      await insertSchedules(req.accountId, agreement.id, schedules, client);
+    } else {
+      // Legacy: create one schedule from flat fields
+      await insertSchedules(req.accountId, agreement.id, [{
+        service_type: service_type || null,
+        service_id:   service_id || null,
+        service_address: service_address || null,
+        cadence,
+        preferred_weekday: preferred_weekday != null ? parseInt(preferred_weekday, 10) : null,
+        service_day_of_month: service_day_of_month != null ? parseInt(service_day_of_month, 10) : null,
+        service_interval_days: cadence === 'custom' ? parseInt(service_interval_days, 10) : null,
+        started_at: started_at || null,
+        included_services_per_period: Math.max(1, parseInt(included_services_per_period, 10) || 1),
+        status: 'active',
+      }], client);
+    }
+
+    // Fetch schedules back
+    const schRes = await client.query(
+      `SELECT * FROM recurring_agreement_schedules WHERE agreement_id = $1 ORDER BY sort_order, created_at`,
+      [agreement.id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ ...agreement, service_schedules: schRes.rows });
   } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -307,16 +426,28 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
+    const agreement = rows[0];
+
+    const schRes = await pool.query(
+      `SELECT * FROM recurring_agreement_schedules
+       WHERE agreement_id = $1 AND status != 'cancelled'
+       ORDER BY sort_order, created_at`,
+      [req.params.id]
+    );
+    res.json({ ...agreement, service_schedules: schRes.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── POST /api/agreements/preview ────────────────────────────────────────────
-// Must be before /:id to prevent 'preview' being matched as a UUID param
+// Returns per-schedule upcoming dates + grouped chronological view.
+// Must be before /:id to prevent 'preview' being matched as a UUID param.
 router.post('/preview', requireAuth, async (req, res) => {
   const {
+    // Multi-schedule mode
+    schedules: schedulesInput,
+    // Legacy single-schedule mode
     cadence = 'monthly',
     started_at,
     service_interval_days,
@@ -325,26 +456,60 @@ router.post('/preview', requireAuth, async (req, res) => {
     end_condition_type = 'none',
     end_date = null,
     end_after_occurrences = null,
-    count = 4,
+    count = 8,
   } = req.body;
+
   try {
-    const maxCount = Math.min(parseInt(count, 10) || 4, 8);
+    const requestedCount = parseInt(count, 10) || 8;
+    const maxCount = Array.isArray(schedulesInput) && schedulesInput.length > 0
+      ? Math.min(requestedCount, 12)
+      : Math.min(requestedCount, 8);
+
+    if (Array.isArray(schedulesInput) && schedulesInput.length > 0) {
+      // Multi-schedule: return per-schedule dates and grouped view
+      const scheduleResults = schedulesInput.map(s => {
+        const c = s.cadence === 'biweekly' ? 'every_2_weeks' : (s.cadence || 'monthly');
+        let dates = nextOccurrences(
+          c, s.started_at, s.service_interval_days, maxCount,
+          s.preferred_weekday != null ? parseInt(s.preferred_weekday, 10) : null,
+          s.service_day_of_month != null ? parseInt(s.service_day_of_month, 10) : null,
+        );
+        if (s.end_condition_type === 'date' && s.end_date)
+          dates = dates.filter(d => d <= s.end_date);
+        else if (s.end_condition_type === 'service_count' && s.end_after_occurrences)
+          dates = dates.slice(0, parseInt(s.end_after_occurrences, 10) || 0);
+        return { label: s.label || s.service_type || `Schedule ${schedulesInput.indexOf(s) + 1}`, dates };
+      });
+
+      // Grouped: merge all dates, sort, show which schedules land on each
+      const dateMap = {};
+      scheduleResults.forEach((sr, idx) => {
+        sr.dates.forEach(d => {
+          if (!dateMap[d]) dateMap[d] = [];
+          dateMap[d].push(idx);
+        });
+      });
+      const grouped = Object.keys(dateMap).sort().map(date => ({
+        date,
+        schedule_indices: dateMap[date],
+        schedule_count: dateMap[date].length,
+      }));
+
+      return res.json({ schedules: scheduleResults, grouped });
+    }
+
+    // Legacy single-schedule
     let services = nextOccurrences(
-      cadence, started_at, service_interval_days,
-      maxCount,
+      cadence, started_at, service_interval_days, maxCount,
       preferred_weekday != null ? parseInt(preferred_weekday, 10) : null,
       service_day_of_month != null ? parseInt(service_day_of_month, 10) : null,
     );
-
-    // Apply end condition cutoffs to the preview
-    if (end_condition_type === 'date' && end_date) {
+    if (end_condition_type === 'date' && end_date)
       services = services.filter(d => d <= end_date);
-    } else if (end_condition_type === 'service_count' && end_after_occurrences != null) {
+    else if (end_condition_type === 'service_count' && end_after_occurrences != null) {
       const limit = parseInt(end_after_occurrences, 10) || 0;
       if (limit > 0) services = services.slice(0, limit);
     }
-    // 'billing_period_count' and 'none' show all preview dates untruncated
-
     res.json({ services });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -387,23 +552,125 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
   if (b.status             && !STATUS_VALUES.includes(b.status))
     return res.status(400).json({ error: 'invalid status' });
 
+  // Handle service_schedules updates if provided
+  const { service_schedules: schedulesUpdate, ...restBody } = b;
+
   for (const key of allowed) {
-    if (key in req.body) {
-      params.push(key === 'line_items' ? JSON.stringify(req.body[key]) : req.body[key]);
+    if (key in restBody) {
+      params.push(key === 'line_items' ? JSON.stringify(restBody[key]) : restBody[key]);
       updates.push(`${key} = $${params.length}`);
     }
   }
-  if (!updates.length) return res.status(400).json({ error: 'No updatable fields provided' });
+
+  const db = pool;
+  try {
+    let agreement;
+
+    if (updates.length) {
+      const { rows } = await db.query(
+        `UPDATE recurring_agreements
+         SET ${updates.join(', ')}, updated_at = NOW()
+         WHERE id = $1 AND account_id = $2
+         RETURNING *`,
+        params
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      agreement = rows[0];
+    } else {
+      const { rows } = await db.query(
+        `SELECT * FROM recurring_agreements WHERE id = $1 AND account_id = $2`,
+        [req.params.id, req.accountId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      agreement = rows[0];
+    }
+
+    // Apply schedule updates if provided
+    if (Array.isArray(schedulesUpdate)) {
+      for (let i = 0; i < schedulesUpdate.length; i++) {
+        const s = schedulesUpdate[i];
+        if (s.id) {
+          // Update existing schedule — only allowed fields
+          const schAllowed = ['service_type','service_id','asset_label','service_address',
+            'cadence','preferred_weekday','service_day_of_month','service_interval_days',
+            'started_at','preferred_start_time','end_condition_type','end_date',
+            'end_after_occurrences','included_services_per_period','status','sort_order'];
+          const schUpdates = [];
+          const schParams  = [s.id, req.accountId, req.params.id];
+          for (const key of schAllowed) {
+            if (key in s) {
+              const val = key === 'cadence' && s[key] === 'biweekly' ? 'every_2_weeks' : s[key];
+              schParams.push(val);
+              schUpdates.push(`${key} = $${schParams.length}`);
+            }
+          }
+          if (schUpdates.length) {
+            await db.query(
+              `UPDATE recurring_agreement_schedules
+               SET ${schUpdates.join(', ')}, updated_at = NOW()
+               WHERE id = $1 AND account_id = $2 AND agreement_id = $3`,
+              schParams
+            );
+          }
+        } else {
+          // New schedule — insert
+          const err = validateSchedule(s, i);
+          if (err) return res.status(400).json({ error: err });
+          const client = await pool.connect();
+          try {
+            await insertSchedules(req.accountId, req.params.id, [{ ...s, sort_order: i }], client);
+          } finally {
+            client.release();
+          }
+        }
+      }
+    }
+
+    const schRes = await db.query(
+      `SELECT * FROM recurring_agreement_schedules
+       WHERE agreement_id = $1 AND status != 'cancelled'
+       ORDER BY sort_order, created_at`,
+      [req.params.id]
+    );
+    res.json({ ...agreement, service_schedules: schRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/agreements/:id/schedules/:scheduleId ─────────────────────────
+// Manage individual schedule lifecycle (pause, reactivate, cancel, end).
+router.patch('/:id/schedules/:scheduleId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { id: agreementId, scheduleId } = req.params;
+  const { status, end_date, end_after_occurrences, end_condition_type } = req.body;
+
+  if (status && !SCHEDULE_STATUS_VALUES.includes(status))
+    return res.status(400).json({ error: 'invalid status' });
 
   try {
+    const updates = [];
+    const params  = [scheduleId, req.accountId, agreementId];
+
+    if (status != null) { params.push(status); updates.push(`status = $${params.length}`); }
+    if (end_date != null) { params.push(end_date); updates.push(`end_date = $${params.length}`); }
+    if (end_after_occurrences != null) { params.push(parseInt(end_after_occurrences, 10)); updates.push(`end_after_occurrences = $${params.length}`); }
+    if (end_condition_type != null) {
+      if (!SCHEDULE_END_COND_VALUES.includes(end_condition_type))
+        return res.status(400).json({ error: 'invalid end_condition_type' });
+      params.push(end_condition_type);
+      updates.push(`end_condition_type = $${params.length}`);
+    }
+
+    if (!updates.length) return res.status(400).json({ error: 'No updatable fields provided' });
+
     const { rows } = await pool.query(
-      `UPDATE recurring_agreements
+      `UPDATE recurring_agreement_schedules
        SET ${updates.join(', ')}, updated_at = NOW()
-       WHERE id = $1 AND account_id = $2
+       WHERE id = $1 AND account_id = $2 AND agreement_id = $3
        RETURNING *`,
       params
     );
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (!rows.length) return res.status(404).json({ error: 'Schedule not found' });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
@@ -89,6 +89,43 @@ function newLineItem() {
   return { _id: Math.random().toString(36).slice(2), name: '', amount: '' };
 }
 
+function newSchedule(overrides = {}) {
+  return {
+    _id: Math.random().toString(36).slice(2),
+    id: null,
+    _serviceTemplate: null,
+    serviceType: '',
+    serviceId: null,
+    assetLabel: '',
+    serviceAddress: '',
+    cadence: 'monthly',
+    preferredWeekday: '',
+    serviceDayOfMonth: '',
+    serviceIntervalDays: '',
+    startedAt: TODAY,
+    preferredStartTime: '09:00',
+    ...overrides,
+  };
+}
+
+function scheduleFromApi(s) {
+  return {
+    _id: Math.random().toString(36).slice(2),
+    id: s.id || null,
+    _serviceTemplate: null,
+    serviceType: s.service_type || '',
+    serviceId: s.service_id || null,
+    assetLabel: s.asset_label || '',
+    serviceAddress: s.service_address || '',
+    cadence: s.cadence || 'monthly',
+    preferredWeekday: s.preferred_weekday != null ? String(s.preferred_weekday) : '',
+    serviceDayOfMonth: s.service_day_of_month || '',
+    serviceIntervalDays: s.service_interval_days || '',
+    startedAt: s.started_at?.slice(0, 10) || TODAY,
+    preferredStartTime: s.preferred_start_time || '09:00',
+  };
+}
+
 export default function AgreementBuilder({ existing = null, onClose, onSaved }) {
   // ── client
   const [selectedClient, setSelectedClient] = useState(
@@ -96,19 +133,18 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
   );
 
   // ── agreement basics
-  const [name,        setName]        = useState(existing?.name        || '');
-  const [serviceType, setServiceType] = useState(existing?.service_type || '');
-  const [startedAt,   setStartedAt]   = useState(existing?.started_at?.slice(0, 10) || TODAY);
+  const [name,      setName]      = useState(existing?.name      || '');
+  const [startedAt, setStartedAt] = useState(existing?.started_at?.slice(0, 10) || TODAY);
 
-  // ── service cadence
-  const [cadence,             setCadence]             = useState(existing?.cadence || 'monthly');
-  const [serviceIntervalDays, setServiceIntervalDays] = useState(existing?.service_interval_days || '');
-  const [preferredWeekday,    setPreferredWeekday]    = useState(
-    existing?.preferred_weekday != null ? String(existing.preferred_weekday) : ''
-  );
-  const [serviceDayOfMonth,   setServiceDayOfMonth]   = useState(existing?.service_day_of_month || '');
+  // ── service schedules
+  const [schedules, setSchedules] = useState(() => {
+    if (existing?.service_schedules?.length) {
+      return existing.service_schedules.map(scheduleFromApi);
+    }
+    return [newSchedule({ startedAt: existing?.started_at?.slice(0, 10) || TODAY })];
+  });
 
-  // ── end condition
+  // ── end condition (agreement-level)
   const existingEndCondition = (() => {
     if (!existing) return 'none';
     if (existing.end_condition_type === 'date')                return 'date';
@@ -116,10 +152,10 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
     if (existing.end_condition_type === 'billing_period_count') return 'periods';
     return 'none';
   })();
-  const [endCondition,         setEndCondition]         = useState(existingEndCondition);
-  const [endDate,              setEndDate]              = useState(existing?.end_date?.slice(0, 10) || '');
-  const [endAfterOccurrences,  setEndAfterOccurrences]  = useState(existing?.end_after_occurrences || '');
-  const [endAfterPeriods,      setEndAfterPeriods]      = useState(existing?.end_after_periods || '');
+  const [endCondition,        setEndCondition]        = useState(existingEndCondition);
+  const [endDate,             setEndDate]             = useState(existing?.end_date?.slice(0, 10) || '');
+  const [endAfterOccurrences, setEndAfterOccurrences] = useState(existing?.end_after_occurrences || '');
+  const [endAfterPeriods,     setEndAfterPeriods]     = useState(existing?.end_after_periods || '');
 
   // ── billing
   const [billingCadence,            setBillingCadence]            = useState(existing?.billing_cadence || 'monthly');
@@ -155,11 +191,27 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
   const [saving,    setSaving]    = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // ── client autocomplete
+  // ── autocomplete fetch functions
   const fetchClients = useCallback(async (query, signal) => {
     const r = await api.get(`/clients/search?q=${encodeURIComponent(query)}`, { signal });
     return r.data || [];
   }, []);
+
+  const fetchServices = useCallback(async (query, signal) => {
+    const r = await api.get(`/agreements/services?q=${encodeURIComponent(query)}`, { signal });
+    return r.data || [];
+  }, []);
+
+  // ── schedule helpers
+  function updateSchedule(idx, field, val) {
+    setSchedules(prev => prev.map((s, i) => i === idx ? { ...s, [field]: val } : s));
+  }
+  function addSchedule() {
+    setSchedules(prev => [...prev, newSchedule({ startedAt })]);
+  }
+  function removeSchedule(idx) {
+    setSchedules(prev => prev.filter((_, i) => i !== idx));
+  }
 
   // ── line item helpers
   function updateLineItem(idx, field, val) {
@@ -172,15 +224,17 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
     setLineItems(prev => prev.filter((_, i) => i !== idx));
   }
 
-  // Map local end condition to backend enum
   const backendEndConditionType =
     endCondition === 'date'        ? 'date' :
     endCondition === 'occurrences' ? 'service_count' :
     endCondition === 'periods'     ? 'billing_period_count' : 'none';
 
-  // ── validation
+  const schedulesValid = schedules.length > 0 && schedules.every(s =>
+    s.cadence !== 'custom' || (parseInt(s.serviceIntervalDays, 10) > 0)
+  );
+
   const canSave = !saving && !!selectedClient && name.trim().length > 0
-    && (cadence !== 'custom' || (parseInt(serviceIntervalDays, 10) > 0))
+    && schedulesValid
     && (billingTrigger !== 'specific_day' || (parseInt(billingDay, 10) >= 1 && parseInt(billingDay, 10) <= 31))
     && (billingTrigger !== 'days_before_first_service' || parseInt(daysBeforeService, 10) > 0)
     && (endCondition !== 'date'        || !!endDate)
@@ -190,19 +244,29 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
     && (extraOccurrencePolicy !== 'charge_per_additional' || parseFloat(additionalServicePrice) > 0)
     && parseFloat(planPrice) > 0;
 
-  // ── submit
   async function handleSave() {
     setSaveError('');
     setSaving(true);
+
+    const serviceSchedules = schedules.map(s => ({
+      ...(s.id ? { id: s.id } : {}),
+      service_type:         s.serviceType.trim() || null,
+      service_id:           s.serviceId || null,
+      asset_label:          s.assetLabel.trim() || null,
+      service_address:      s.serviceAddress.trim() || null,
+      cadence:              s.cadence,
+      service_interval_days: s.cadence === 'custom' ? parseInt(s.serviceIntervalDays, 10) : null,
+      preferred_weekday:    s.preferredWeekday !== '' ? parseInt(s.preferredWeekday, 10) : null,
+      service_day_of_month: s.serviceDayOfMonth !== '' ? parseInt(s.serviceDayOfMonth, 10) : null,
+      started_at:           s.startedAt || startedAt,
+      preferred_start_time: s.preferredStartTime || '09:00',
+    }));
+
     const payload = {
       client_id:                    selectedClient.id,
       name:                         name.trim(),
-      service_type:                 serviceType.trim() || null,
-      cadence,
-      service_interval_days:        cadence === 'custom' ? parseInt(serviceIntervalDays, 10) : null,
-      preferred_weekday:            preferredWeekday !== '' ? parseInt(preferredWeekday, 10) : null,
-      service_day_of_month:         serviceDayOfMonth !== '' ? parseInt(serviceDayOfMonth, 10) : null,
       started_at:                   startedAt,
+      service_schedules:            serviceSchedules,
       end_condition_type:           backendEndConditionType,
       end_date:                     endCondition === 'date' && endDate ? endDate : null,
       end_after_occurrences:        endCondition === 'occurrences' ? parseInt(endAfterOccurrences, 10) || null : null,
@@ -225,7 +289,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
         name:   li.name,
         amount: parseFloat(li.amount) || 0,
       })),
-      notes:                        notes.trim() || null,
+      notes: notes.trim() || null,
     };
 
     try {
@@ -283,9 +347,9 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             />
           </section>
 
-          {/* Agreement name + service type */}
-          <section className="ab-section ab-row">
-            <div className="ab-field ab-field--grow">
+          {/* Agreement name */}
+          <section className="ab-section">
+            <div className="ab-field">
               <label className="ab-label">Agreement Name *</label>
               <input
                 className="ib-input"
@@ -294,18 +358,9 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                 placeholder="e.g. Monthly AC Maintenance"
               />
             </div>
-            <div className="ab-field">
-              <label className="ab-label">Service Type</label>
-              <input
-                className="ib-input"
-                value={serviceType}
-                onChange={e => setServiceType(e.target.value)}
-                placeholder="e.g. HVAC, Landscaping"
-              />
-            </div>
           </section>
 
-          {/* Start date */}
+          {/* Agreement start date (billing anchor) */}
           <section className="ab-section">
             <label className="ab-label">Agreement Start Date</label>
             <input
@@ -316,64 +371,199 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             />
           </section>
 
-          {/* SERVICE SCHEDULE */}
+          {/* SERVICE SCHEDULES */}
           <section className="ab-section">
-            <p className="ib-section-label">Service Schedule</p>
-            <div className="ab-row ab-row--gap">
-              <div className="ab-field ab-field--grow">
-                <label className="ab-label">Service Cadence</label>
-                <select
-                  className="ib-select"
-                  value={cadence}
-                  onChange={e => setCadence(e.target.value)}
-                >
-                  {SERVICE_CADENCE_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              {cadence === 'custom' && (
+            <p className="ib-section-label">Service Schedules</p>
+
+            {schedules.map((sched, idx) => (
+              <div key={sched._id} className="ab-schedule-card">
+                <div className="ab-schedule-header">
+                  <span className="ab-schedule-num">Schedule {idx + 1}</span>
+                  {schedules.length > 1 && (
+                    <button
+                      className="ib-del-btn"
+                      onClick={() => removeSchedule(idx)}
+                      aria-label={`Remove schedule ${idx + 1}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Service type — catalog autocomplete */}
                 <div className="ab-field">
-                  <label className="ab-label">Interval (Days)</label>
+                  <label className="ab-label">Service Type</label>
+                  {sched._serviceTemplate ? (
+                    <Autocomplete
+                      inputId={`ab-svc-${sched._id}`}
+                      label="Service type"
+                      placeholder="Search service catalog…"
+                      fetchResults={fetchServices}
+                      getKey={s => s.id}
+                      getDisplayValue={s => s.name}
+                      renderItem={(s, q) => (
+                        <div className="ac-client-item">
+                          <span className="ac-client-name">{highlight(s.name, q)}</span>
+                          {s.category && <span className="ac-client-meta">{s.category}</span>}
+                        </div>
+                      )}
+                      renderSelectedCard={s => (
+                        <div className="ib-client-card">
+                          <div className="ib-client-card-name">{s.name}</div>
+                          {s.category && <div className="ib-client-card-detail">{s.category}</div>}
+                        </div>
+                      )}
+                      selected={sched._serviceTemplate}
+                      onSelect={tmpl => {
+                        setSchedules(prev => prev.map((s, i) => i === idx
+                          ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id }
+                          : s
+                        ));
+                      }}
+                      onClear={() => {
+                        setSchedules(prev => prev.map((s, i) => i === idx
+                          ? { ...s, _serviceTemplate: null, serviceType: '', serviceId: null }
+                          : s
+                        ));
+                      }}
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        className="ib-input"
+                        style={{ flex: 1 }}
+                        value={sched.serviceType}
+                        onChange={e => updateSchedule(idx, 'serviceType', e.target.value)}
+                        placeholder="e.g. Detail, Oil Change, Mowing"
+                      />
+                      <Autocomplete
+                        inputId={`ab-svc-search-${sched._id}`}
+                        label="Search catalog"
+                        placeholder="Search catalog…"
+                        fetchResults={fetchServices}
+                        getKey={s => s.id}
+                        getDisplayValue={s => s.name}
+                        renderItem={(s, q) => (
+                          <div className="ac-client-item">
+                            <span className="ac-client-name">{highlight(s.name, q)}</span>
+                            {s.category && <span className="ac-client-meta">{s.category}</span>}
+                          </div>
+                        )}
+                        selected={null}
+                        onSelect={tmpl => {
+                          setSchedules(prev => prev.map((s, i) => i === idx
+                            ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id }
+                            : s
+                          ));
+                        }}
+                        onClear={() => {}}
+                        className="ab-svc-autocomplete"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Asset / Vehicle label */}
+                <div className="ab-field">
+                  <label className="ab-label">Asset / Vehicle Label <span className="ab-hint">(optional)</span></label>
                   <input
                     className="ib-input"
-                    type="number"
-                    min="1"
-                    value={serviceIntervalDays}
-                    onChange={e => setServiceIntervalDays(e.target.value)}
-                    placeholder="e.g. 10"
+                    value={sched.assetLabel}
+                    onChange={e => updateSchedule(idx, 'assetLabel', e.target.value)}
+                    placeholder="e.g. Vehicle 1, Unit A"
                   />
                 </div>
-              )}
-            </div>
-            {(cadence === 'weekly' || cadence === 'every_2_weeks' || cadence === 'every_3_weeks' || cadence === 'every_4_weeks') && (
-              <div className="ab-field" style={{ marginTop: 8 }}>
-                <label className="ab-label">Preferred Weekday</label>
-                <select
-                  className="ib-select"
-                  value={preferredWeekday}
-                  onChange={e => setPreferredWeekday(e.target.value)}
-                >
-                  {WEEKDAY_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+
+                {/* Service address (for same-day grouping) */}
+                <div className="ab-field">
+                  <label className="ab-label">Service Location <span className="ab-hint">(optional — used for grouping)</span></label>
+                  <input
+                    className="ib-input"
+                    value={sched.serviceAddress}
+                    onChange={e => updateSchedule(idx, 'serviceAddress', e.target.value)}
+                    placeholder="Leave blank to use client's address"
+                  />
+                </div>
+
+                {/* Cadence */}
+                <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
+                  <div className="ab-field ab-field--grow">
+                    <label className="ab-label">Service Cadence</label>
+                    <select
+                      className="ib-select"
+                      value={sched.cadence}
+                      onChange={e => updateSchedule(idx, 'cadence', e.target.value)}
+                    >
+                      {SERVICE_CADENCE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {sched.cadence === 'custom' && (
+                    <div className="ab-field">
+                      <label className="ab-label">Interval (days)</label>
+                      <input
+                        className="ib-input"
+                        type="number"
+                        min="1"
+                        value={sched.serviceIntervalDays}
+                        onChange={e => updateSchedule(idx, 'serviceIntervalDays', e.target.value)}
+                        placeholder="e.g. 10"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Preferred weekday for weekly cadences */}
+                {(sched.cadence === 'weekly' || sched.cadence === 'every_2_weeks' ||
+                  sched.cadence === 'every_3_weeks' || sched.cadence === 'every_4_weeks') && (
+                  <div className="ab-field" style={{ marginTop: 8 }}>
+                    <label className="ab-label">Preferred Weekday</label>
+                    <select
+                      className="ib-select"
+                      value={sched.preferredWeekday}
+                      onChange={e => updateSchedule(idx, 'preferredWeekday', e.target.value)}
+                    >
+                      {WEEKDAY_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Day of month for monthly */}
+                {sched.cadence === 'monthly' && (
+                  <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
+                    <label className="ab-label">Day of Month</label>
+                    <input
+                      className="ib-input"
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={sched.serviceDayOfMonth}
+                      onChange={e => updateSchedule(idx, 'serviceDayOfMonth', e.target.value)}
+                      placeholder={`${new Date((sched.startedAt || TODAY) + 'T00:00:00').getDate()} (from start date)`}
+                    />
+                  </div>
+                )}
+
+                {/* Schedule start date */}
+                <div className="ab-field" style={{ marginTop: 8 }}>
+                  <label className="ab-label">Schedule Start Date</label>
+                  <input
+                    className="ib-input ib-input--date"
+                    type="date"
+                    value={sched.startedAt}
+                    onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
+                  />
+                </div>
+
               </div>
-            )}
-            {cadence === 'monthly' && (
-              <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                <label className="ab-label">Day of Month</label>
-                <input
-                  className="ib-input"
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={serviceDayOfMonth}
-                  onChange={e => setServiceDayOfMonth(e.target.value)}
-                  placeholder={`${new Date(startedAt + 'T00:00:00').getDate()} (from start date)`}
-                />
-              </div>
-            )}
+            ))}
+
+            <button className="ab-add-li" onClick={addSchedule}>
+              <Plus size={13} /> Add Another Schedule
+            </button>
           </section>
 
           {/* END CONDITION */}
@@ -554,11 +744,9 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             </div>
             <div className="ab-coverage-example">
               <strong>Example:</strong>{' '}
-              {SERVICE_CADENCE_OPTIONS.find(o => o.value === cadence)?.label || cadence} service
-              {' '}→{' '}
+              {schedules.length} schedule{schedules.length !== 1 ? 's' : ''}{' '}·{' '}
               {BILLING_CADENCE_OPTIONS.find(o => o.value === billingCadence)?.label || billingCadence} billing
-              {' '}→{' '}
-              invoice triggered on{' '}
+              {' '}→ invoice on{' '}
               {BILLING_TRIGGER_OPTIONS.find(o => o.value === billingTrigger)?.label?.toLowerCase() || billingTrigger}
               {' '}covering{' '}
               {includedServicesPerPeriod} service{parseInt(includedServicesPerPeriod, 10) !== 1 ? 's' : ''} at ${parseFloat(planPrice || 0).toFixed(2)}
@@ -727,8 +915,9 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
               onClick={handleSave}
               disabled={!canSave}
               title={
-                !selectedClient      ? 'Select a client first'
-                : !name.trim()       ? 'Enter an agreement name'
+                !selectedClient           ? 'Select a client first'
+                : !name.trim()            ? 'Enter an agreement name'
+                : !schedulesValid         ? 'Fix schedule configuration'
                 : !(parseFloat(planPrice) > 0) ? 'Enter a plan price'
                 : ''
               }

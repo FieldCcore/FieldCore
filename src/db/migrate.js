@@ -2241,6 +2241,91 @@ const MIGRATIONS = [
          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE;
      END IF;
    END $$`,
+
+  // ── RECURRING AGREEMENT V4 — MULTI-SCHEDULE ────────────────────────────────
+
+  // Child table: one row per independent service schedule under an agreement.
+  // Multiple schedules under one agreement share one billing relationship.
+  `CREATE TABLE IF NOT EXISTS recurring_agreement_schedules (
+     id                       UUID    PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id               UUID    NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     agreement_id             UUID    NOT NULL REFERENCES recurring_agreements(id) ON DELETE CASCADE,
+     service_type             TEXT,
+     service_id               UUID    REFERENCES service_templates(id) ON DELETE SET NULL,
+     asset_label              TEXT,
+     service_address          TEXT,
+     cadence                  TEXT    NOT NULL DEFAULT 'monthly'
+                                CHECK (cadence IN ('weekly','every_2_weeks','every_3_weeks',
+                                                   'every_4_weeks','monthly','quarterly',
+                                                   'annual','custom')),
+     preferred_weekday        INT     CHECK (preferred_weekday IS NULL OR preferred_weekday BETWEEN 0 AND 6),
+     service_day_of_month     INT     CHECK (service_day_of_month IS NULL OR service_day_of_month BETWEEN 1 AND 31),
+     service_interval_days    INT,
+     started_at               DATE    NOT NULL DEFAULT CURRENT_DATE,
+     preferred_start_time     TEXT    DEFAULT '09:00',
+     end_condition_type       TEXT    NOT NULL DEFAULT 'none'
+                                CHECK (end_condition_type IN ('none','date','service_count')),
+     end_date                 DATE,
+     end_after_occurrences    INT,
+     included_services_per_period INT NOT NULL DEFAULT 1,
+     status                   TEXT    NOT NULL DEFAULT 'active'
+                                CHECK (status IN ('active','paused','completed','cancelled')),
+     sort_order               INT     NOT NULL DEFAULT 0,
+     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_schedules_agreement ON recurring_agreement_schedules(agreement_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_schedules_account   ON recurring_agreement_schedules(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_schedules_status    ON recurring_agreement_schedules(agreement_id, status)`,
+
+  // Add columns that may be missing from earlier versions of this table
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS asset_label TEXT`,
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS preferred_start_time TEXT DEFAULT '09:00'`,
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS included_services_per_period INT NOT NULL DEFAULT 1`,
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0`,
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+
+  // Occurrence tracking: idempotently links a schedule occurrence to a calendar job.
+  // UNIQUE (schedule_id, occurrence_date) prevents duplicate job generation.
+  // Multiple schedule occurrences on the same date share one job_id (grouped appointment).
+  `CREATE TABLE IF NOT EXISTS agreement_schedule_occurrences (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id     UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     agreement_id   UUID NOT NULL REFERENCES recurring_agreements(id) ON DELETE CASCADE,
+     schedule_id    UUID NOT NULL REFERENCES recurring_agreement_schedules(id) ON DELETE CASCADE,
+     job_id         UUID REFERENCES jobs(id) ON DELETE SET NULL,
+     occurrence_date DATE NOT NULL,
+     status         TEXT NOT NULL DEFAULT 'scheduled'
+                      CHECK (status IN ('scheduled','complete','cancelled','skipped')),
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (schedule_id, occurrence_date)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_occ_job      ON agreement_schedule_occurrences(job_id) WHERE job_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_occ_agreement ON agreement_schedule_occurrences(agreement_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_occ_schedule  ON agreement_schedule_occurrences(schedule_id)`,
+
+  // Link jobs back to the specific schedule that generated them.
+  // NULL for grouped jobs (multiple schedules map to one job — use agreement_schedule_occurrences).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS agreement_schedule_id UUID REFERENCES recurring_agreement_schedules(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_agr_schedule ON jobs(agreement_schedule_id) WHERE agreement_schedule_id IS NOT NULL`,
+
+  // Backfill: create one schedule record per existing agreement (idempotent).
+  // Existing agreements transparently become "agreement with one service schedule".
+  `INSERT INTO recurring_agreement_schedules
+     (account_id, agreement_id, service_type, service_id, service_address,
+      cadence, preferred_weekday, service_day_of_month, service_interval_days,
+      started_at, included_services_per_period, status)
+   SELECT
+     ra.account_id, ra.id,
+     ra.service_type, ra.service_id, ra.service_address,
+     ra.cadence, ra.preferred_weekday, ra.service_day_of_month, ra.service_interval_days,
+     COALESCE(ra.started_at, CURRENT_DATE),
+     COALESCE(ra.included_services_per_period, 1),
+     CASE WHEN ra.status IN ('paused','cancelled','expired','completed') THEN 'paused' ELSE 'active' END
+   FROM recurring_agreements ra
+   WHERE NOT EXISTS (
+     SELECT 1 FROM recurring_agreement_schedules s WHERE s.agreement_id = ra.id
+   )`,
 ];
 
 async function runMigrations() {

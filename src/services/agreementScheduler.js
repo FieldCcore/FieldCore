@@ -121,6 +121,14 @@ function fromDateStr(s) {
 }
 
 /**
+ * Normalises an address string for same-day grouping comparison.
+ * Lowercase + collapse whitespace so minor formatting differences don't split groups.
+ */
+function normalizeAddress(addr) {
+  return (addr || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Returns an array of the next `count` service date strings ('YYYY-MM-DD')
  * starting from fromDate (or today, whichever is later).
  */
@@ -364,14 +372,205 @@ async function checkEndConditions(agreement, client) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-schedule end condition check
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks if an individual recurring_agreement_schedules row has hit its end
+ * condition and marks it 'completed' if so.  Called before date generation for
+ * each schedule so expired schedules stop producing new jobs immediately.
+ */
+async function checkScheduleEndConditions(schedule, client) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const condType = schedule.end_condition_type || 'none';
+  let shouldComplete = false;
+
+  if (condType === 'date' && schedule.end_date) {
+    const endDate = fromDateStr(
+      typeof schedule.end_date === 'string'
+        ? schedule.end_date.slice(0, 10)
+        : toDateStr(new Date(schedule.end_date))
+    );
+    if (today > endDate) shouldComplete = true;
+  } else if (condType === 'service_count' && schedule.end_after_occurrences != null) {
+    const res = await client.query(
+      `SELECT COUNT(*) AS cnt FROM agreement_schedule_occurrences aso
+       JOIN jobs j ON j.id = aso.job_id
+       WHERE aso.schedule_id = $1 AND j.status = 'complete'`,
+      [schedule.id]
+    );
+    if (parseInt(res.rows[0].cnt, 10) >= schedule.end_after_occurrences) shouldComplete = true;
+  }
+
+  if (shouldComplete) {
+    await client.query(
+      `UPDATE recurring_agreement_schedules SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+      [schedule.id]
+    );
+    schedule.status = 'completed';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Job generation
 // ---------------------------------------------------------------------------
 
 /**
- * Creates upcoming jobs for the agreement for the next 45 days, skipping dates
- * where a non-cancelled job already exists.
+ * Creates upcoming jobs for the agreement for the next 45 days.
+ *
+ * Multi-schedule mode (preferred): loads all active child schedules, generates
+ * occurrence dates per schedule, groups by (date, normalized_address), and
+ * creates ONE job per group.  Inserts agreement_schedule_occurrences rows for
+ * idempotent traceability.
+ *
+ * Legacy fallback: when no child schedules exist the agreement's own cadence
+ * fields drive a single job per date (backwards-compatible with pre-V4 data
+ * that the backfill migration may not have reached yet).
  */
 async function generateUpcomingJobs(agreement, client) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 45);
+  const horizonStr = toDateStr(horizon);
+
+  // Load active child schedules
+  const schRes = await client.query(
+    `SELECT * FROM recurring_agreement_schedules
+     WHERE agreement_id = $1 AND status = 'active'
+     ORDER BY sort_order`,
+    [agreement.id]
+  );
+  const schedules = schRes.rows;
+
+  if (schedules.length === 0) {
+    return generateUpcomingJobsLegacy(agreement, client);
+  }
+
+  // Build (date, normalizedAddress) → group map
+  const groupMap = new Map();
+
+  for (const schedule of schedules) {
+    await checkScheduleEndConditions(schedule, client);
+    if (schedule.status !== 'active') continue;
+
+    // Per-schedule horizon: respect schedule-level end_date
+    let schedHorizon = horizonStr;
+    if (schedule.end_condition_type === 'date' && schedule.end_date) {
+      const endStr = typeof schedule.end_date === 'string'
+        ? schedule.end_date.slice(0, 10)
+        : toDateStr(new Date(schedule.end_date));
+      if (endStr < schedHorizon) schedHorizon = endStr;
+    }
+
+    const estDays = getIntervalDays(schedule.cadence, schedule.service_interval_days) || 30;
+    const approxCount = Math.ceil(45 / estDays) + 3;
+    const dates = getUpcomingServiceDates(schedule, approxCount, toDateStr(today))
+      .filter(d => d <= schedHorizon);
+
+    const normalizedAddr = normalizeAddress(
+      schedule.service_address || agreement.service_address || ''
+    );
+
+    for (const dateStr of dates) {
+      const key = `${dateStr}:${normalizedAddr}`;
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          dateStr,
+          address: schedule.service_address || agreement.service_address || null,
+          scheduleItems: [],
+        });
+      }
+      groupMap.get(key).scheduleItems.push(schedule);
+    }
+  }
+
+  let created = 0;
+
+  for (const [, group] of groupMap) {
+    const { dateStr, scheduleItems } = group;
+    try {
+      // Determine which schedules in this group still need an occurrence row.
+      // Also discover any existing job_id already linked to this address group
+      // (identified via occurrence rows — NOT by querying jobs directly, which
+      // would find jobs from other address groups on the same date).
+      const scheduleIds = scheduleItems.map(s => s.id);
+      const existingOcc = await client.query(
+        `SELECT schedule_id, job_id FROM agreement_schedule_occurrences
+         WHERE schedule_id = ANY($1::uuid[]) AND occurrence_date = $2`,
+        [scheduleIds, dateStr]
+      );
+      const alreadyLinked = new Set(existingOcc.rows.map(r => r.schedule_id));
+      const newItems = scheduleItems.filter(s => !alreadyLinked.has(s.id));
+      if (newItems.length === 0) continue;
+
+      // Reuse the job already linked to THIS group (if any schedule in the group
+      // already has an occurrence row pointing to a job).  Do NOT search by
+      // agreement_id+date alone — that would accidentally reuse jobs that belong
+      // to a different address group on the same day.
+      const existingJobRow = existingOcc.rows.find(r => r.job_id != null);
+      let jobId = existingJobRow ? existingJobRow.job_id : null;
+
+      if (!jobId) {
+        // Multi-schedule label: "Service A · Service B"; solo: schedule's service_type
+        const serviceLabel = scheduleItems.length === 1
+          ? (scheduleItems[0].service_type || agreement.service_type || 'Service')
+          : scheduleItems.map(s => s.service_type || s.asset_label || 'Service').join(' · ');
+
+        const startTime = scheduleItems[0].preferred_start_time || '09:00';
+        const scheduledAt = `${dateStr}T${startTime}:00`;
+
+        const jobRes = await client.query(
+          `INSERT INTO jobs
+             (account_id, client_id, service_type, scheduled_at, status, agreement_id, agreement_schedule_id)
+           VALUES ($1, $2, $3, $4::timestamp, 'scheduled', $5, $6)
+           RETURNING id`,
+          [
+            agreement.account_id,
+            agreement.client_id,
+            serviceLabel,
+            scheduledAt,
+            agreement.id,
+            scheduleItems.length === 1 ? scheduleItems[0].id : null,
+          ]
+        );
+        jobId = jobRes.rows[0].id;
+        created++;
+        console.log(
+          `${TAG} Created job ${jobId} for agreement ${agreement.id} on ${dateStr}` +
+          ` (${scheduleItems.length} schedule(s))`
+        );
+      }
+
+      // Upsert occurrence rows for each newly-linked schedule
+      for (const schedule of newItems) {
+        await client.query(
+          `INSERT INTO agreement_schedule_occurrences
+             (account_id, agreement_id, schedule_id, job_id, occurrence_date)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (schedule_id, occurrence_date) DO UPDATE SET job_id = EXCLUDED.job_id`,
+          [agreement.account_id, agreement.id, schedule.id, jobId, dateStr]
+        );
+      }
+    } catch (err) {
+      console.error(
+        `${TAG} Error generating job for agreement ${agreement.id} on ${dateStr}:`,
+        err.message
+      );
+    }
+  }
+
+  if (created > 0) {
+    console.log(`${TAG} Agreement ${agreement.id}: generated ${created} new job(s)`);
+  }
+}
+
+/**
+ * Legacy single-schedule job generation — used when an agreement has no child
+ * schedule rows (pre-migration data or edge cases).
+ */
+async function generateUpcomingJobsLegacy(agreement, client) {
   const today   = new Date();
   today.setHours(0, 0, 0, 0);
   const horizon = new Date(today);
