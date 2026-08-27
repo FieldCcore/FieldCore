@@ -2190,6 +2190,57 @@ const MIGRATIONS = [
 
   `CREATE INDEX IF NOT EXISTS idx_recurring_agreements_end_condition
      ON recurring_agreements(end_condition_type) WHERE status = 'active'`,
+
+  // ── PAYMENT WORKSPACE — stored balance + payment allocation tables ─────────
+  // Add stored balance column to invoices (NULL = use amount for backward compat)
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS balance NUMERIC(10,2)`,
+  // Back-fill: pending invoices get balance = amount, paid invoices get balance = 0
+  `UPDATE invoices SET balance = amount WHERE status IN ('pending','failed') AND balance IS NULL`,
+  `UPDATE invoices SET balance = 0     WHERE status = 'paid'               AND balance IS NULL`,
+
+  // Canonical payment records (one row per payment event, regardless of method)
+  `CREATE TABLE IF NOT EXISTS payments (
+     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id              UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id               UUID NOT NULL REFERENCES clients(id),
+     amount                  NUMERIC(10,2) NOT NULL,
+     method                  TEXT NOT NULL
+                               CHECK (method IN ('CARD','ACH','CASH','CHECK',
+                                                 'CASHAPP','PAYPAL','VENMO','ZELLE',
+                                                 'EXTERNAL_CARD','EXTERNAL_ACH','OTHER')),
+     payment_date            DATE NOT NULL,
+     reference               TEXT,
+     note                    TEXT,
+     provider_transaction_id TEXT,
+     created_by              UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_payments_account   ON payments(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_payments_client    ON payments(account_id, client_id)`,
+
+  // Allocation: how a payment is distributed across invoices
+  `CREATE TABLE IF NOT EXISTS payment_allocations (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     payment_id  UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+     invoice_id  UUID NOT NULL REFERENCES invoices(id),
+     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     amount      NUMERIC(10,2) NOT NULL,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_alloc_payment ON payment_allocations(payment_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_alloc_invoice ON payment_allocations(invoice_id)`,
+  // Fix missing CASCADE on payment_allocations.account_id (added 2026-08-27)
+  `DO $$ BEGIN
+     IF EXISTS (
+       SELECT 1 FROM information_schema.table_constraints
+       WHERE constraint_name = 'payment_allocations_account_id_fkey'
+         AND table_name = 'payment_allocations'
+     ) THEN
+       ALTER TABLE payment_allocations DROP CONSTRAINT payment_allocations_account_id_fkey;
+       ALTER TABLE payment_allocations ADD CONSTRAINT payment_allocations_account_id_fkey
+         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE;
+     END IF;
+   END $$`,
 ];
 
 async function runMigrations() {

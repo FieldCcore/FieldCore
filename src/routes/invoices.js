@@ -506,6 +506,12 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       ]
     );
 
+    // Initialize stored balance = invoice amount
+    await client.query(
+      `UPDATE invoices SET balance = amount WHERE id = $1 AND balance IS NULL`,
+      [rows[0].id]
+    );
+
     if (source_type === 'ESTIMATE') {
       await client.query(
         `UPDATE estimates SET converted_invoice_id = $1 WHERE id = $2 AND account_id = $3`,
@@ -633,7 +639,7 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
       due_date:       'i.due_date',
       status:         'i.status',
       amount:         'i.amount',
-      balance:        `CASE WHEN i.status IN ('pending','failed') THEN i.amount::numeric WHEN i.status = 'paid' THEN 0 ELSE NULL END`,
+      balance:        `COALESCE(i.balance, CASE WHEN i.status IN ('pending','failed') THEN i.amount::numeric WHEN i.status = 'paid' THEN 0 ELSE NULL END)`,
       created_at:     'i.created_at',
     };
     const sortCol = ALLOWED_SORTS[sort] || ALLOWED_SORTS.created_at;
@@ -795,11 +801,13 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
         `SELECT
            i.*,
            COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text, 8))) AS invoice_number,
-           CASE
-             WHEN i.status IN ('pending','failed') THEN i.amount
-             WHEN i.status = 'paid'                THEN 0
-             ELSE NULL
-           END                          AS balance,
+           COALESCE(i.balance,
+             CASE
+               WHEN i.status IN ('pending','failed') THEN i.amount
+               WHEN i.status = 'paid'                THEN 0
+               ELSE NULL
+             END
+           )                            AS balance,
            (i.status IN ('pending','failed') AND i.due_date IS NOT NULL AND i.due_date < NOW()) AS is_past_due,
            c.name    AS client_name,
            c.email   AS client_email,

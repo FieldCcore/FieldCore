@@ -5,6 +5,7 @@ import { Elements } from '@stripe/react-stripe-js';
 import api from '../api';
 import CardSetupForm from './CardSetupForm';
 import StatusBadge from './StatusBadge';
+import CollectPaymentWorkspace from './CollectPaymentWorkspace';
 
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
@@ -25,7 +26,8 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const [loading, setLoading]             = useState(false);
   const [sending, setSending]             = useState(false);
   const [copied,  setCopied]              = useState(false);
-  const [showCardSetup, setShowCardSetup] = useState(false);
+  const [showCardSetup,  setShowCardSetup]  = useState(false);
+  const [showCollectWs,  setShowCollectWs]  = useState(false);
   const [error,   setError]               = useState('');
   const [lineItems, setLineItems]         = useState(null);
   const [newName,  setNewName]            = useState('');
@@ -245,8 +247,11 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
 
       {isPending && (
         <div className="invoice-action-bar">
+          <button className="btn-primary" onClick={() => setShowCollectWs(true)}>
+            Collect Payment
+          </button>
           {invoice.card_on_file ? (
-            <button className="btn-primary" onClick={handleCharge} disabled={loading}>
+            <button className="btn-secondary" onClick={handleCharge} disabled={loading}>
               {loading ? 'Charging…' : 'Charge Card on File'}
             </button>
           ) : (
@@ -257,7 +262,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           {invoice.payment_link ? (
             <>
               <input readOnly value={invoice.payment_link} className="link-input" />
-              <button className="btn-primary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
+              <button className="btn-secondary" onClick={copyLink}>{copied ? 'Copied!' : 'Copy'}</button>
               <a href={invoice.payment_link} target="_blank" rel="noreferrer" className="btn-secondary">Open</a>
               <button className="btn-secondary" onClick={handleSend} disabled={sending}>
                 {sending ? 'Resending…' : 'Resend'}
@@ -270,6 +275,19 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           )}
           <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
         </div>
+      )}
+
+      {showCollectWs && (
+        <CollectPaymentWorkspace
+          invoice={invoice}
+          client={null}
+          onClose={() => setShowCollectWs(false)}
+          onPaymentRecorded={updatedInvoices => {
+            setShowCollectWs(false);
+            const updated = updatedInvoices?.find(i => i.id === invoice.id);
+            if (updated) { setInvoice(updated); onUpdate(updated); }
+          }}
+        />
       )}
 
       {showCardSetup && isPending && invoice.client_id && (

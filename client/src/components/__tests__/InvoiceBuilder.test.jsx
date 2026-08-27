@@ -989,32 +989,22 @@ describe('InvoiceBuilder V2 — discount label', () => {
 // ── V2: Payment options ───────────────────────────────────────────────────────
 
 describe('InvoiceBuilder V2 — payment options', () => {
-  it('shows payment collection section always', async () => {
+  it('shows ONLINE PAYMENT OPTIONS section always', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
     await waitFor(() => {
-      expect(screen.getByText('Payment Collection')).toBeInTheDocument();
+      expect(screen.getByText('ONLINE PAYMENT OPTIONS')).toBeInTheDocument();
     });
   });
 
-  it('Accepted Payment Methods hidden when all methods disabled', async () => {
+  it('Customer Can Pay Online By sublabel hidden when card and ACH both disabled', async () => {
     setup(vi.fn(), vi.fn(), {
       ...MOCK_SETTINGS,
       accept_card: false,
       accept_ach: false,
-      accept_cash: false,
-      accept_check: false,
       allow_partial_payments: false,
     });
     await waitFor(() => {
-      expect(screen.queryByText('Accepted Payment Methods')).toBeNull();
-    });
-  });
-
-  it('Cash and Check checkboxes shown by default', async () => {
-    setup();
-    await waitFor(() => {
-      expect(screen.getByText('Cash')).toBeInTheDocument();
-      expect(screen.getByText('Check')).toBeInTheDocument();
+      expect(screen.queryByText('Customer Can Pay Online By')).toBeNull();
     });
   });
 
@@ -1028,7 +1018,7 @@ describe('InvoiceBuilder V2 — payment options', () => {
   it('ACH option only shows when business has it configured', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true, accept_ach: true });
     await waitFor(() => {
-      expect(screen.getByText('Bank Account (ACH)')).toBeInTheDocument();
+      expect(screen.getByText('Bank Payment (ACH)')).toBeInTheDocument();
     });
   });
 });
