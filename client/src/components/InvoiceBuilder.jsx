@@ -892,9 +892,6 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [taxRate,             setTaxRate]             = useState(0);
   const [previewNumber,       setPreviewNumber]       = useState(null);
   const [previewNumErr,       setPreviewNumErr]       = useState(false);
-  const [acceptCard,          setAcceptCard]          = useState(true);
-  const [acceptAch,           setAcceptAch]           = useState(false);
-  const [allowPartial,        setAllowPartial]        = useState(false);
 
   // ── client selection ────────────────────────────────────────────────────────
   const [selectedClient, setSelectedClient] = useState(null);
@@ -938,10 +935,6 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
   const [discountValue, setDiscountValue] = useState('');
   const [discountLabel, setDiscountLabel] = useState('');
 
-  // ── payment options (inherits from business settings, overridable) ──────────
-  const [payOptCard,    setPayOptCard]    = useState(true);
-  const [payOptAch,     setPayOptAch]     = useState(false);
-  const [payOptPartial, setPayOptPartial] = useState(false);
 
   // ── notes ───────────────────────────────────────────────────────────────────
   const [clientMessage, setClientMessage] = useState('');
@@ -966,12 +959,6 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         const d = r.data;
         setTaxRate(d.tax_rate || 0);
         setPreviewNumber(d.next_number != null ? d.next_number : null);
-        setAcceptCard(d.accept_card !== false);
-        setAcceptAch(!!d.accept_ach);
-        setAllowPartial(!!d.allow_partial_payments);
-        setPayOptCard(d.accept_card !== false);
-        setPayOptAch(!!d.accept_ach);
-        setPayOptPartial(!!d.allow_partial_payments);
         if (d.default_terms) setTerms(d.default_terms);
       })
       .catch(() => { setPreviewNumErr(true); });
@@ -1289,11 +1276,6 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
         client_message: clientMessage.trim() || null,
         terms:          terms.trim() || null,
         internal_notes: internalNotes.trim() || null,
-        payment_options: {
-          accept_card:            payOptCard,
-          accept_ach:             payOptAch,
-          allow_partial_payments: payOptPartial,
-        },
         status: invoiceStatus,
       };
 
@@ -1574,6 +1556,9 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
                   {' · '}{selectedAgreement.payment_status === 'paid_in_advance' ? 'Paid in Advance'
                     : selectedAgreement.payment_status === 'failed' ? 'Payment Failed'
                     : selectedAgreement.payment_status === 'overdue' ? 'Overdue' : 'Pending'}
+                  {selectedAgreement.payment_behavior && selectedAgreement.payment_behavior !== 'send_invoice' && (
+                    <>{' · '}Collection: {AGR_PAYMENT_BEHAVIOR_OPTIONS.find(o => o.value === selectedAgreement.payment_behavior)?.label || selectedAgreement.payment_behavior}</>
+                  )}
                 </div>
                 {selectedAgreement.period_already_invoiced && (
                   <div className="ib-agr-card-warn">This billing period has already been invoiced.</div>
@@ -1942,72 +1927,6 @@ export default function InvoiceBuilder({ onClose, onCreated }) {
             value={internalNotes}
             onChange={e => setInternalNotes(e.target.value)}
           />
-        </div>
-
-        {/* Online Payment Options */}
-        <div className="ib-section">
-          <p className="ib-section-label">ONLINE PAYMENT OPTIONS</p>
-
-          {/* Customer-facing online payment methods (Card and ACH only) */}
-          {(acceptCard || acceptAch) && (
-            <div className="ib-payment-opts">
-              <p className="ib-payopt-sublabel">Customer Can Pay Online By</p>
-              {acceptCard && (
-                <label className="ib-payopt-row">
-                  <input
-                    type="checkbox"
-                    checked={payOptCard}
-                    onChange={e => setPayOptCard(e.target.checked)}
-                  />
-                  <span>Card</span>
-                </label>
-              )}
-              {acceptAch && (
-                <label className="ib-payopt-row">
-                  <input
-                    type="checkbox"
-                    checked={payOptAch}
-                    onChange={e => setPayOptAch(e.target.checked)}
-                  />
-                  <span>Bank Payment (ACH)</span>
-                </label>
-              )}
-            </div>
-          )}
-
-          {/* Saved Payment Methods — shown when selected client has a card on file */}
-          {selectedClient?.card_on_file && selectedClient?.payment_method_brand && (
-            <div className="ib-saved-methods">
-              <p className="ib-payopt-sublabel">Saved Payment Methods</p>
-              <div className="ib-saved-method-item">
-                <span className="ib-saved-method-brand">{selectedClient.payment_method_brand}</span>
-                {selectedClient.payment_method_last4 && (
-                  <span className="ib-saved-method-last4"> •••• {selectedClient.payment_method_last4}</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Allow Partial Payments */}
-          {allowPartial && (
-            <label className="ib-payopt-row" style={{ marginTop: 8 }}>
-              <input
-                type="checkbox"
-                checked={payOptPartial}
-                onChange={e => setPayOptPartial(e.target.checked)}
-              />
-              <span>Allow Partial Payments</span>
-            </label>
-          )}
-
-          {/* Agreement collection method note */}
-          {source === 'agreement' && selectedAgreement?.payment_behavior && selectedAgreement.payment_behavior !== 'send_invoice' && (
-            <p className="ib-payopt-note">
-              Collection Method:{' '}
-              {AGR_PAYMENT_BEHAVIOR_OPTIONS.find(o => o.value === selectedAgreement.payment_behavior)?.label
-                || selectedAgreement.payment_behavior}
-            </p>
-          )}
         </div>
 
       </div>{/* end .ib-body */}

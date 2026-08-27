@@ -13,11 +13,14 @@ router.get('/:invoiceId', async (req, res) => {
               c.name  AS client_name,
               j.service_type,
               j.scheduled_at,
-              a.name  AS business_name
+              a.name  AS business_name,
+              COALESCE(bs.accept_card, TRUE)  AS accept_card,
+              COALESCE(bs.accept_ach, FALSE)  AS accept_ach
        FROM invoices i
-       JOIN clients  c ON c.id = i.client_id
-       JOIN jobs     j ON j.id = i.job_id
-       JOIN accounts a ON a.id = i.account_id
+       JOIN clients  c  ON c.id = i.client_id
+       LEFT JOIN jobs j  ON j.id = i.job_id
+       JOIN accounts a  ON a.id = i.account_id
+       LEFT JOIN booking_settings bs ON bs.account_id = i.account_id
        WHERE i.id = $1`,
       [req.params.invoiceId]
     );

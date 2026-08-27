@@ -986,39 +986,65 @@ describe('InvoiceBuilder V2 — discount label', () => {
   });
 });
 
-// ── V2: Payment options ───────────────────────────────────────────────────────
+// ── V2: Payment options (removed from invoice builder — owned by Business Settings) ──────
 
 describe('InvoiceBuilder V2 — payment options', () => {
-  it('shows ONLINE PAYMENT OPTIONS section always', async () => {
+  it('does NOT show ONLINE PAYMENT OPTIONS section', async () => {
     setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
     await waitFor(() => {
-      expect(screen.getByText('ONLINE PAYMENT OPTIONS')).toBeInTheDocument();
+      expect(screen.queryByText('ONLINE PAYMENT OPTIONS')).toBeNull();
     });
   });
 
-  it('Customer Can Pay Online By sublabel hidden when card and ACH both disabled', async () => {
-    setup(vi.fn(), vi.fn(), {
-      ...MOCK_SETTINGS,
-      accept_card: false,
-      accept_ach: false,
-      allow_partial_payments: false,
-    });
+  it('does NOT show Card or ACH checkboxes in the invoice builder', async () => {
+    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true, accept_ach: true });
     await waitFor(() => {
       expect(screen.queryByText('Customer Can Pay Online By')).toBeNull();
     });
   });
 
-  it('Card checkbox is visible when accept_card is configured', async () => {
-    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true });
+  it('agreement card meta shows collection behavior when payment_behavior is not send_invoice', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search')) return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [{
+        ...MOCK_AGREEMENTS[0],
+        payment_behavior: 'auto_charge_card',
+      }] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Monthly AC Maintenance'));
+    fireEvent.click(screen.getByText('Monthly AC Maintenance'));
     await waitFor(() => {
-      expect(screen.getByText('Card')).toBeInTheDocument();
+      const meta = document.querySelector('.ib-agr-card-meta');
+      expect(meta).not.toBeNull();
+      expect(meta.textContent).toContain('Collection:');
+      expect(meta.textContent).toContain('Auto-Charge Card on File');
     });
   });
 
-  it('ACH option only shows when business has it configured', async () => {
-    setup(vi.fn(), vi.fn(), { ...MOCK_SETTINGS, accept_card: true, accept_ach: true });
+  it('agreement card meta does NOT show collection note when payment_behavior is send_invoice', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search')) return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [{
+        ...MOCK_AGREEMENTS[0],
+        payment_behavior: 'send_invoice',
+      }] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Monthly AC Maintenance'));
+    fireEvent.click(screen.getByText('Monthly AC Maintenance'));
     await waitFor(() => {
-      expect(screen.getByText('Bank Payment (ACH)')).toBeInTheDocument();
+      const meta = document.querySelector('.ib-agr-card-meta');
+      expect(meta).not.toBeNull();
+      expect(meta.textContent).not.toContain('Collection:');
     });
   });
 });

@@ -324,4 +324,29 @@ router.put('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
   }
 });
 
+// PATCH /api/booking-settings/payment-methods — update accepted online payment rails
+router.patch('/payment-methods', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { accept_card, accept_ach } = req.body;
+  if (accept_card !== undefined && typeof accept_card !== 'boolean') {
+    return res.status(400).json({ error: 'accept_card must be a boolean' });
+  }
+  if (accept_ach !== undefined && typeof accept_ach !== 'boolean') {
+    return res.status(400).json({ error: 'accept_ach must be a boolean' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO booking_settings (account_id, accept_card, accept_ach)
+       VALUES ($1, COALESCE($2, TRUE), COALESCE($3, FALSE))
+       ON CONFLICT (account_id) DO UPDATE SET
+         accept_card = COALESCE($2, booking_settings.accept_card),
+         accept_ach  = COALESCE($3, booking_settings.accept_ach)
+       RETURNING accept_card, accept_ach`,
+      [req.accountId, accept_card ?? null, accept_ach ?? null]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

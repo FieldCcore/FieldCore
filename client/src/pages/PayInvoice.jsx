@@ -110,6 +110,28 @@ export default function PayInvoice() {
                 </div>
               </div>
 
+              {(invoice.accept_card || invoice.accept_ach) && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 8 }}>
+                    Payment Method
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {invoice.accept_card && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                        <span style={{ fontSize: 16 }}>💳</span>
+                        Credit / Debit Card
+                      </div>
+                    )}
+                    {invoice.accept_ach && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
+                        <span style={{ fontSize: 16 }}>🏦</span>
+                        Bank Payment (ACH)
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={pay}
                 disabled={paying}

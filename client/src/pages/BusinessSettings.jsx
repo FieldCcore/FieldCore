@@ -87,6 +87,10 @@ export default function BusinessSettings() {
   const [rvSaving, setRvSaving]     = useState(false);
   const [rvSaved, setRvSaved]       = useState(false);
 
+  const [paymentMethods, setPaymentMethods] = useState({ accept_card: true, accept_ach: false });
+  const [pmSaving, setPmSaving] = useState(false);
+  const [pmSaved, setPmSaved]   = useState(false);
+
   useEffect(() => {
     api.get('/no-show/settings').then(r => {
       const s = r.data;
@@ -184,11 +188,24 @@ export default function BusinessSettings() {
       setClosures(d.closures || []);
       setServices(d.services || []);
     }).catch(() => setError('Failed to load settings.'));
+    api.get('/invoices/settings').then(r => {
+      setPaymentMethods({ accept_card: r.data.accept_card !== false, accept_ach: !!r.data.accept_ach });
+    }).catch(() => {});
   }, []);
 
   function flashSaved(key) {
     setSaved(key);
     setTimeout(() => setSaved(''), 2500);
+  }
+
+  async function savePaymentMethods() {
+    setPmSaving(true);
+    try {
+      await api.patch('/booking-settings/payment-methods', paymentMethods);
+      setPmSaved(true);
+      setTimeout(() => setPmSaved(false), 2500);
+    } catch { setError('Failed to save payment method settings.'); }
+    finally { setPmSaving(false); }
   }
 
   async function saveProfile() {
@@ -783,6 +800,39 @@ export default function BusinessSettings() {
           </div>
         </div>
         <SaveBar saving={saving} saved={saved === 'profile'} onSave={saveProfile} label="Save tax settings" />
+      </Section>
+
+      {/* ── Customer Online Payment Methods ── */}
+      <Section title="Customer Online Payment Methods">
+        <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14, lineHeight: 1.5 }}>
+          Controls which payment options are shown on your customer-facing invoice payment page.
+          Changes take effect immediately for all unpaid invoices.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={paymentMethods.accept_card}
+              onChange={e => setPaymentMethods(pm => ({ ...pm, accept_card: e.target.checked }))}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>Credit / Debit Card</div>
+              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Visa, Mastercard, Amex, Discover — processed via Stripe</div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={paymentMethods.accept_ach}
+              onChange={e => setPaymentMethods(pm => ({ ...pm, accept_ach: e.target.checked }))}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>Bank Payment (ACH)</div>
+              <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Direct bank transfer — lower fees, 2–5 day settlement</div>
+            </div>
+          </label>
+        </div>
+        <SaveBar saving={pmSaving} saved={pmSaved} onSave={savePaymentMethods} label="Save payment methods" />
       </Section>
 
       {/* ── Customer Policy ── */}
