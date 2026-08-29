@@ -626,7 +626,7 @@ describe('InvoiceBuilder — inline agreement form', () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
     await waitFor(() => {
-      expect(screen.getByTestId('agr-cadence')).toBeInTheDocument();
+      expect(screen.getByTestId('agr-cadence-0')).toBeInTheDocument();
     });
   });
 
@@ -658,7 +658,7 @@ describe('InvoiceBuilder — inline agreement form', () => {
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
       if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
-      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/agreements/services')) return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: [] });
     });
@@ -676,7 +676,7 @@ describe('InvoiceBuilder — inline agreement form', () => {
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
       if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
-      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/agreements/services')) return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: [] });
     });
@@ -699,7 +699,7 @@ describe('InvoiceBuilder — inline agreement form', () => {
     api.get.mockImplementation(url => {
       if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
       if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
-      if (url.includes('/services/search'))   return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/agreements/services')) return Promise.resolve({ data: MOCK_SERVICES });
       if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: [] });
     });
@@ -724,32 +724,32 @@ describe('InvoiceBuilder — inline agreement form', () => {
   it('end date toggle shows end date field when "Specific end date" selected', async () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
-    await waitFor(() => screen.getByTestId('agr-end-condition'));
-    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'date' } });
+    await waitFor(() => screen.getByTestId('agr-end-condition-0'));
+    fireEvent.change(screen.getByTestId('agr-end-condition-0'), { target: { value: 'date' } });
     await waitFor(() => {
-      expect(screen.getByTestId('agr-end-date')).toBeInTheDocument();
+      expect(screen.getByTestId('agr-end-date-0')).toBeInTheDocument();
     });
   });
 
   it('end date field hides again when condition switched back to "No end date"', async () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
-    await waitFor(() => screen.getByTestId('agr-end-condition'));
-    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'date' } });
-    await waitFor(() => screen.getByTestId('agr-end-date'));
-    fireEvent.change(screen.getByTestId('agr-end-condition'), { target: { value: 'none' } });
+    await waitFor(() => screen.getByTestId('agr-end-condition-0'));
+    fireEvent.change(screen.getByTestId('agr-end-condition-0'), { target: { value: 'date' } });
+    await waitFor(() => screen.getByTestId('agr-end-date-0'));
+    fireEvent.change(screen.getByTestId('agr-end-condition-0'), { target: { value: 'none' } });
     await waitFor(() => {
-      expect(screen.queryByTestId('agr-end-date')).toBeNull();
+      expect(screen.queryByTestId('agr-end-date-0')).toBeNull();
     });
   });
 
   it('schedule preview appears when start date is set', async () => {
     await openEmptyAgreementState();
     fireEvent.click(screen.getByText('Create Recurring Agreement'));
-    await waitFor(() => screen.getByTestId('agr-cadence'));
+    await waitFor(() => screen.getByTestId('agr-cadence-0'));
     // Start date defaults to TODAY so preview should appear immediately
     await waitFor(() => {
-      expect(screen.getByTestId('agr-schedule-preview')).toBeInTheDocument();
+      expect(screen.getByTestId('agr-preview-0')).toBeInTheDocument();
     });
   });
 
@@ -1215,5 +1215,244 @@ describe('InvoiceBuilder — invoice number preview', () => {
     render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
     await act(async () => { vi.advanceTimersByTime(100); });
     expect(screen.queryByText(/Preview #/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Multi-schedule inline form ────────────────────────────────────────────────
+
+describe('InvoiceBuilder — multi-schedule inline form', () => {
+  async function openMultiScheduleForm() {
+    api.get.mockImplementation(url => {
+      if (url.includes('/invoices/settings')) return Promise.resolve({ data: MOCK_SETTINGS });
+      if (url.includes('/clients/search'))    return Promise.resolve({ data: MOCK_CLIENTS });
+      if (url.includes('/agreements/services')) return Promise.resolve({ data: MOCK_SERVICES });
+      if (url.includes('/invoices/eligible-agreements')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<InvoiceBuilder onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Recurring Agreement'));
+    await pickClient();
+    await waitFor(() => screen.getByText('Create Recurring Agreement'));
+    fireEvent.click(screen.getByText('Create Recurring Agreement'));
+    await waitFor(() => screen.getByTestId('agr-schedule-0'));
+  }
+
+  it('renders one schedule card by default', async () => {
+    await openMultiScheduleForm();
+    expect(screen.getByTestId('agr-schedule-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('agr-schedule-1')).toBeNull();
+  });
+
+  it('shows "Schedule 1" label on first card', async () => {
+    await openMultiScheduleForm();
+    expect(screen.getByText('Schedule 1')).toBeInTheDocument();
+  });
+
+  it('Remove button is not shown when only one schedule', async () => {
+    await openMultiScheduleForm();
+    expect(screen.queryByTestId('agr-remove-schedule-0')).toBeNull();
+  });
+
+  it('Add Service Schedule button is present', async () => {
+    await openMultiScheduleForm();
+    expect(screen.getByTestId('agr-add-schedule')).toBeInTheDocument();
+  });
+
+  it('clicking Add Service Schedule adds a second card', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-schedule-1')).toBeInTheDocument();
+      expect(screen.getByText('Schedule 2')).toBeInTheDocument();
+    });
+  });
+
+  it('Remove button appears on both cards when two schedules exist', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    expect(screen.getByTestId('agr-remove-schedule-0')).toBeInTheDocument();
+    expect(screen.getByTestId('agr-remove-schedule-1')).toBeInTheDocument();
+  });
+
+  it('clicking Remove on second schedule removes it', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    fireEvent.click(screen.getByTestId('agr-remove-schedule-1'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('agr-schedule-1')).toBeNull();
+    });
+  });
+
+  it('clicking Add twice produces three schedule cards', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-schedule-2')).toBeInTheDocument();
+      expect(screen.getByText('Schedule 3')).toBeInTheDocument();
+    });
+  });
+
+  it('each schedule has its own cadence selector', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    expect(screen.getByTestId('agr-cadence-0')).toBeInTheDocument();
+    expect(screen.getByTestId('agr-cadence-1')).toBeInTheDocument();
+  });
+
+  it('each schedule has its own asset label field', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    fireEvent.change(screen.getByTestId('agr-asset-label-0'), { target: { value: 'Vehicle 1' } });
+    fireEvent.change(screen.getByTestId('agr-asset-label-1'), { target: { value: 'Vehicle 2' } });
+    expect(screen.getByDisplayValue('Vehicle 1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Vehicle 2')).toBeInTheDocument();
+  });
+
+  it('each schedule has its own service address field', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    fireEvent.change(screen.getByTestId('agr-service-address-0'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByTestId('agr-service-address-1'), { target: { value: '2 Oak Ave' } });
+    expect(screen.getByDisplayValue('1 Main St')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2 Oak Ave')).toBeInTheDocument();
+  });
+
+  it('weekly cadence shows Preferred Day selector on that card', async () => {
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-cadence-0'), { target: { value: 'weekly' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-weekday-0')).toBeInTheDocument();
+    });
+  });
+
+  it('switching away from weekly cadence hides Preferred Day', async () => {
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-cadence-0'), { target: { value: 'weekly' } });
+    await waitFor(() => screen.getByTestId('agr-weekday-0'));
+    fireEvent.change(screen.getByTestId('agr-cadence-0'), { target: { value: 'monthly' } });
+    await waitFor(() => {
+      expect(screen.queryByTestId('agr-weekday-0')).toBeNull();
+    });
+  });
+
+  it('custom cadence shows interval days field', async () => {
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-cadence-0'), { target: { value: 'custom' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-interval-days-0')).toBeInTheDocument();
+    });
+  });
+
+  it('end condition "occurrences" shows occurrence count field', async () => {
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-end-condition-0'), { target: { value: 'occurrences' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-end-occ-0')).toBeInTheDocument();
+    });
+  });
+
+  it('monthly cadence shows Day of Month field', async () => {
+    await openMultiScheduleForm();
+    // monthly is default, so Day of Month should already be visible
+    expect(screen.getByTestId('agr-dom-0')).toBeInTheDocument();
+  });
+
+  it('day of month field hides when cadence changes from monthly', async () => {
+    await openMultiScheduleForm();
+    expect(screen.getByTestId('agr-dom-0')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('agr-cadence-0'), { target: { value: 'weekly' } });
+    await waitFor(() => {
+      expect(screen.queryByTestId('agr-dom-0')).toBeNull();
+    });
+  });
+
+  it('per-schedule preview updates independently per card', async () => {
+    await openMultiScheduleForm();
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    // Both schedules start with today as start date, so previews render
+    await waitFor(() => {
+      expect(screen.getByTestId('agr-preview-0')).toBeInTheDocument();
+      expect(screen.getByTestId('agr-preview-1')).toBeInTheDocument();
+    });
+  });
+
+  it('Create Agreement posts service_schedules array with one entry by default', async () => {
+    api.post.mockResolvedValueOnce({ data: { id: 'a-new', name: 'Test Agr', ...MOCK_AGREEMENTS[0] } });
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Quarterly HVAC' } });
+    fireEvent.change(screen.getByTestId('agr-plan-price'), { target: { value: '200' } });
+    fireEvent.click(screen.getByText('Create Agreement'));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/agreements', expect.objectContaining({
+        service_schedules: expect.arrayContaining([
+          expect.objectContaining({ cadence: 'monthly' }),
+        ]),
+      }));
+      const call = api.post.mock.calls.find(c => c[0] === '/agreements');
+      expect(call[1].service_schedules).toHaveLength(1);
+    });
+  });
+
+  it('Create Agreement posts two service_schedules when two schedules added', async () => {
+    api.post.mockResolvedValueOnce({ data: { id: 'a-new', name: 'Test Agr', ...MOCK_AGREEMENTS[0] } });
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Multi-Service' } });
+    fireEvent.change(screen.getByTestId('agr-plan-price'), { target: { value: '350' } });
+
+    fireEvent.click(screen.getByTestId('agr-add-schedule'));
+    await waitFor(() => screen.getByTestId('agr-schedule-1'));
+    fireEvent.change(screen.getByTestId('agr-cadence-1'), { target: { value: 'weekly' } });
+
+    fireEvent.click(screen.getByText('Create Agreement'));
+    await waitFor(() => {
+      const call = api.post.mock.calls.find(c => c[0] === '/agreements');
+      expect(call[1].service_schedules).toHaveLength(2);
+      expect(call[1].service_schedules[0].cadence).toBe('monthly');
+      expect(call[1].service_schedules[1].cadence).toBe('weekly');
+    });
+  });
+
+  it('payload includes included_services_per_period: 99', async () => {
+    api.post.mockResolvedValueOnce({ data: { id: 'a-new', name: 'Test', ...MOCK_AGREEMENTS[0] } });
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Plan A' } });
+    fireEvent.change(screen.getByTestId('agr-plan-price'), { target: { value: '100' } });
+    fireEvent.click(screen.getByText('Create Agreement'));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/agreements', expect.objectContaining({
+        included_services_per_period: 99,
+      }));
+    });
+  });
+
+  it('Create Agreement is disabled when plan price is empty', async () => {
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Some Plan' } });
+    // plan price left empty
+    const btn = screen.getByText('Create Agreement');
+    expect(btn).toBeDisabled();
+  });
+
+  it('asset label and service address from schedule card go into payload', async () => {
+    api.post.mockResolvedValueOnce({ data: { id: 'a-new', name: 'Test', ...MOCK_AGREEMENTS[0] } });
+    await openMultiScheduleForm();
+    fireEvent.change(screen.getByTestId('agr-name'), { target: { value: 'Detail Plan' } });
+    fireEvent.change(screen.getByTestId('agr-plan-price'), { target: { value: '150' } });
+    fireEvent.change(screen.getByTestId('agr-asset-label-0'), { target: { value: 'Fleet Van' } });
+    fireEvent.change(screen.getByTestId('agr-service-address-0'), { target: { value: '100 Depot Rd' } });
+    fireEvent.click(screen.getByText('Create Agreement'));
+    await waitFor(() => {
+      const call = api.post.mock.calls.find(c => c[0] === '/agreements');
+      expect(call[1].service_schedules[0].asset_label).toBe('Fleet Van');
+      expect(call[1].service_schedules[0].service_address).toBe('100 Depot Rd');
+    });
   });
 });
