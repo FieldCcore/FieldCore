@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
+import ClientLocationField from '../components/ClientLocationField';
 
 const STATUSES = ['draft','active','on_hold','completed','cancelled'];
 const STATUS_LABELS = {
@@ -20,7 +21,7 @@ function fmtDate(iso) {
 
 const EMPTY_FORM = {
   name: '', description: '', client_id: '', status: 'active',
-  start_date: '', end_date: '', location: '',
+  start_date: '', end_date: '', location: '', location_id: null,
 };
 
 export default function Projects() {
@@ -259,7 +260,17 @@ export default function Projects() {
               </div>
               <div style={fieldStyle}>
                 <label style={labelStyle}>Location / Address</label>
-                <input style={inputStyle} value={form.location} onChange={f('location')} placeholder="Project site address" />
+                <ClientLocationField
+                  clientId={form.client_id || null}
+                  locationId={form.location_id || null}
+                  address={form.location}
+                  onSelect={loc => setForm(prev => ({
+                    ...prev,
+                    location_id: loc.location_id || null,
+                    location:    loc.address ? [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') : prev.location,
+                  }))}
+                  onAddressChange={v => setForm(prev => ({ ...prev, location: v, location_id: null }))}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { MapPin, Plus, Star, Trash2 } from 'lucide-react';
 import api from '../api';
 import ClientForm from '../components/ClientForm';
 import StatusBadge from '../components/StatusBadge';
+import ClientLocationField from '../components/ClientLocationField';
 
 export default function ClientProfile() {
   const { id } = useParams();
@@ -21,6 +23,8 @@ export default function ClientProfile() {
   const [calling, setCalling] = useState(false);
   const [callModal, setCallModal] = useState(false);
   const [operatorNumber, setOperatorNumber] = useState('');
+  const [locations, setLocations] = useState([]);
+  const [showAddLocation, setShowAddLocation] = useState(false);
 
   useEffect(() => {
     api.get(`/clients/${id}`)
@@ -32,7 +36,38 @@ export default function ClientProfile() {
       .then(r => setNoShows(r.data)).catch(() => {});
     api.get(`/reviews?client_id=${id}`)
       .then(r => setReviews(r.data)).catch(() => {});
+    api.get(`/clients/${id}/locations`)
+      .then(r => setLocations(r.data || [])).catch(() => {});
   }, [id]);
+
+  async function setPrimaryLocation(locationId) {
+    try {
+      const res = await api.post(`/clients/${id}/locations/${locationId}/primary`);
+      setLocations(prev => prev.map(l => ({ ...l, is_primary: l.id === res.data.id })));
+    } catch {}
+  }
+
+  async function deleteLocation(locationId) {
+    if (!window.confirm('Remove this location?')) return;
+    try {
+      await api.delete(`/clients/${id}/locations/${locationId}`);
+      setLocations(prev => prev.filter(l => l.id !== locationId));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not remove location.');
+    }
+  }
+
+  function handleLocationAdded(loc) {
+    if (loc.id) {
+      setLocations(prev => {
+        const without = prev.filter(l => l.id !== loc.id);
+        return loc.is_primary
+          ? [{ ...loc }, ...without.map(l => ({ ...l, is_primary: false }))]
+          : [...without, loc];
+      });
+    }
+    setShowAddLocation(false);
+  }
 
   async function handleSms(e) {
     e.preventDefault();
@@ -149,6 +184,77 @@ export default function ClientProfile() {
           <p><label>Email</label> {client.email || '—'}</p>
           <p><label>Address</label> {client.address || '—'}</p>
           <p><label>Card on File</label> {client.card_on_file ? 'Yes' : 'No'}</p>
+        </div>
+
+        {/* Service Locations */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <MapPin size={15} style={{ color: 'var(--slate)' }} />
+              Service Locations
+            </h3>
+            {!showAddLocation && (
+              <button
+                onClick={() => setShowAddLocation(true)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <Plus size={13} /> Add
+              </button>
+            )}
+          </div>
+
+          {locations.length === 0 && !showAddLocation && (
+            <p style={{ fontSize: 13, color: 'var(--steel)', margin: 0 }}>No saved service locations.</p>
+          )}
+
+          {locations.map(loc => (
+            <div key={loc.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {loc.label}
+                  {loc.is_primary && (
+                    <span style={{ fontSize: 10, background: 'var(--offwhite)', border: '1px solid var(--lightgray)', borderRadius: 4, padding: '1px 5px', color: 'var(--slate)' }}>Primary</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>
+                  {[loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || '—'}
+                </div>
+                {loc.access_instructions && (
+                  <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2, fontStyle: 'italic' }}>
+                    {loc.access_instructions}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {!loc.is_primary && (
+                  <button onClick={() => setPrimaryLocation(loc.id)} title="Set as primary"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 2 }}>
+                    <Star size={13} />
+                  </button>
+                )}
+                <button onClick={() => deleteLocation(loc.id)} title="Remove location"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', padding: 2 }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {showAddLocation && (
+            <div style={{ marginTop: 8 }}>
+              <ClientLocationField
+                clientId={id}
+                locationId={null}
+                address=""
+                onSelect={handleLocationAdded}
+                onAddressChange={() => {}}
+              />
+              <button onClick={() => setShowAddLocation(false)}
+                style={{ marginTop: 8, fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)' }}>
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="card">

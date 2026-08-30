@@ -5,6 +5,7 @@ import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
 import AddressAutocomplete from './AddressAutocomplete';
+import ClientLocationField from './ClientLocationField';
 import CollectPaymentWorkspace from './CollectPaymentWorkspace';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -391,6 +392,7 @@ function newSchedule() {
     serviceId:         null,
     assetLabel:        '',
     serviceAddress:    '',
+    serviceLocationId: null,
     cadence:           'monthly',
     svcIntervalDays:   '',
     startedAt:         TODAY,
@@ -669,13 +671,19 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
               <div className="ib-inline-agr-row">
                 <div className="ib-field ib-field--grow">
                   <label className="ib-label">Service Location</label>
-                  <AddressAutocomplete
-                    className="ib-input"
-                    value={s.serviceAddress}
-                    onChange={val => updateSchedule(idx, 'serviceAddress', val)}
-                    onPlace={place => updateSchedule(idx, 'serviceAddress', place.formattedAddress || place.street || '')}
-                    placeholder="Address or location name"
-                    data-testid={`agr-service-address-${idx}`}
+                  <ClientLocationField
+                    clientId={resolvedClientId || null}
+                    locationId={s.serviceLocationId || null}
+                    address={s.serviceAddress}
+                    onSelect={loc => {
+                      updateSchedule(idx, 'serviceLocationId', loc.location_id || null);
+                      updateSchedule(idx, 'serviceAddress', loc.address || '');
+                    }}
+                    onAddressChange={val => {
+                      updateSchedule(idx, 'serviceLocationId', null);
+                      updateSchedule(idx, 'serviceAddress', val);
+                    }}
+                    testId={`agr-service-address-${idx}`}
                   />
                 </div>
               </div>

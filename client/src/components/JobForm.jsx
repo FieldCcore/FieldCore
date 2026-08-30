@@ -4,6 +4,7 @@ import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { Plus, Trash2, Lock } from 'lucide-react';
 import api from '../api';
 import AddressAutocomplete from './AddressAutocomplete';
+import ClientLocationField from './ClientLocationField';
 import JobTeamSelector from './JobTeamSelector';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimezone';
@@ -106,6 +107,7 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     travel_fee:      job?.travel_fee != null ? String(job.travel_fee) : '',
     notes:           job?.notes      || '',
     recurring:       job?.recurring  || 'none',
+    location_id:     job?.location_id    || null,
     service_address: job?.service_address || '',
     service_city:    job?.service_city    || '',
     service_state:   job?.service_state   || '',
@@ -258,9 +260,10 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         original_local_start: localInput,
         // scheduling_timezone mirrors input_timezone for legacy scheduler / SMS paths.
         scheduling_timezone: inputTimezone,
-        amount:      form.amount      || null,
-        service_lat: form.service_lat || null,
-        service_lng: form.service_lng || null,
+        amount:       form.amount      || null,
+        service_lat:  form.service_lat || null,
+        service_lng:  form.service_lng || null,
+        location_id:  form.location_id || null,
         job_manager_id: form.job_manager_id || null,
         estimated_labor_hours: form.estimated_labor_hours ? parseFloat(form.estimated_labor_hours) : null,
       };
@@ -666,23 +669,28 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
 
       <div className="form-group">
         <label>Service Location <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— where the work happens (optional)</span></label>
-        <AddressAutocomplete
-          value={form.service_address}
-          onChange={v => setForm(prev => ({ ...prev, service_address: v, service_lat: '', service_lng: '' }))}
-          onPlace={({ street, city, state, zip, lat, lng }) =>
-            setForm(prev => ({
-              ...prev,
-              service_address: street, service_city: city, service_state: state,
-              service_zip: zip, service_lat: lat || '', service_lng: lng || '',
-            }))
-          }
-          placeholder="Street address"
+        <ClientLocationField
+          clientId={form.client_id || null}
+          locationId={form.location_id || null}
+          address={form.service_address}
+          onSelect={loc => setForm(prev => ({
+            ...prev,
+            location_id:     loc.location_id || null,
+            service_address: loc.address     || '',
+            service_city:    loc.city        || '',
+            service_state:   loc.state       || '',
+            service_zip:     loc.zip         || '',
+            service_lat:     loc.lat         != null ? String(loc.lat) : '',
+            service_lng:     loc.lng         != null ? String(loc.lng) : '',
+          }))}
+          onAddressChange={v => setForm(prev => ({
+            ...prev,
+            location_id:     null,
+            service_address: v,
+            service_lat:     '',
+            service_lng:     '',
+          }))}
         />
-        {(form.service_city || form.service_state) && (
-          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 4 }}>
-            {[form.service_city, form.service_state, form.service_zip].filter(Boolean).join(', ')}
-          </div>
-        )}
       </div>
 
       {isMultiDay && (

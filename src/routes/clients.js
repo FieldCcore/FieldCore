@@ -215,4 +215,165 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
   }
 });
 
+// ── Client Locations ──────────────────────────────────────────────────────────
+
+// GET /api/clients/:id/locations
+router.get('/:id/locations', requireAuth, async (req, res) => {
+  try {
+    const clientCheck = await pool.query(
+      `SELECT id FROM clients WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!clientCheck.rows.length) return res.status(404).json({ error: 'Client not found.' });
+
+    const { rows } = await pool.query(
+      `SELECT * FROM client_locations
+       WHERE client_id = $1 AND account_id = $2
+       ORDER BY is_primary DESC, created_at ASC`,
+      [req.params.id, req.accountId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/clients/:id/locations
+router.post('/:id/locations', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const clientId = req.params.id;
+  const {
+    label = 'Service Location', address, city, state, zip, country,
+    lat, lng, place_id, formatted_address, access_instructions, is_primary,
+  } = req.body;
+
+  if (!address || !address.trim()) return res.status(400).json({ error: 'address is required.' });
+
+  try {
+    const clientCheck = await pool.query(
+      `SELECT id FROM clients WHERE id = $1 AND account_id = $2`,
+      [clientId, req.accountId]
+    );
+    if (!clientCheck.rows.length) return res.status(404).json({ error: 'Client not found.' });
+
+    // Dedup by place_id: if this exact place is already saved, return it
+    if (place_id) {
+      const existing = await pool.query(
+        `SELECT * FROM client_locations WHERE client_id = $1 AND account_id = $2 AND place_id = $3`,
+        [clientId, req.accountId, place_id]
+      );
+      if (existing.rows.length) return res.status(200).json(existing.rows[0]);
+    }
+
+    const isFirst = (await pool.query(
+      `SELECT COUNT(*) FROM client_locations WHERE client_id = $1 AND account_id = $2`,
+      [clientId, req.accountId]
+    )).rows[0].count === '0';
+
+    const makePrimary = isFirst || !!is_primary;
+
+    // If setting as primary, unset existing primary
+    if (makePrimary) {
+      await pool.query(
+        `UPDATE client_locations SET is_primary = false WHERE client_id = $1 AND account_id = $2`,
+        [clientId, req.accountId]
+      );
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO client_locations
+         (account_id, client_id, label, address, city, state, zip, country,
+          lat, lng, place_id, formatted_address, access_instructions, is_primary)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING *`,
+      [
+        req.accountId, clientId, label.trim(), address.trim(),
+        city || null, state || null, zip || null, country || null,
+        lat || null, lng || null, place_id || null, formatted_address || null,
+        access_instructions || null, makePrimary,
+      ]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/clients/:id/locations/:locationId
+router.patch('/:id/locations/:locationId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { label, address, city, state, zip, country, lat, lng,
+          place_id, formatted_address, access_instructions } = req.body;
+
+  const allowed = ['label','address','city','state','zip','country','lat','lng',
+                   'place_id','formatted_address','access_instructions'];
+  const updates = [];
+  const values  = [];
+  let i = 1;
+
+  const body = { label, address, city, state, zip, country, lat, lng,
+                 place_id, formatted_address, access_instructions };
+  allowed.forEach(f => {
+    if (body[f] !== undefined) {
+      updates.push(`${f} = $${i++}`);
+      values.push(body[f]);
+    }
+  });
+  if (!updates.length) return res.status(400).json({ error: 'No fields to update.' });
+
+  updates.push(`updated_at = NOW()`);
+  values.push(req.params.locationId, req.accountId);
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE client_locations SET ${updates.join(', ')}
+       WHERE id = $${i} AND account_id = $${i + 1} RETURNING *`,
+      values
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Location not found.' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/clients/:id/locations/:locationId
+router.delete('/:id/locations/:locationId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM client_locations WHERE id = $1 AND account_id = $2 AND client_id = $3 RETURNING *`,
+      [req.params.locationId, req.accountId, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Location not found.' });
+    res.json({ ok: true });
+  } catch (err) {
+    // FK violation — location referenced by active jobs
+    if (err.code === '23503') return res.status(409).json({ error: 'This location is referenced by one or more jobs and cannot be deleted.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/clients/:id/locations/:locationId/primary
+router.post('/:id/locations/:locationId/primary', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { id: clientId, locationId } = req.params;
+  try {
+    const check = await pool.query(
+      `SELECT id FROM client_locations WHERE id = $1 AND client_id = $2 AND account_id = $3`,
+      [locationId, clientId, req.accountId]
+    );
+    if (!check.rows.length) return res.status(404).json({ error: 'Location not found.' });
+
+    await pool.query(
+      `UPDATE client_locations SET is_primary = false WHERE client_id = $1 AND account_id = $2`,
+      [clientId, req.accountId]
+    );
+    const { rows } = await pool.query(
+      `UPDATE client_locations SET is_primary = true, updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [locationId]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -2326,6 +2326,43 @@ const MIGRATIONS = [
    WHERE NOT EXISTS (
      SELECT 1 FROM recurring_agreement_schedules s WHERE s.agreement_id = ra.id
    )`,
+
+  // ── CLIENT LOCATIONS V1 ───────────────────────────────────────────────────────
+  // Multi-location support: each client can have named service locations.
+  // Jobs reference a canonical location_id for same-day grouping and dedup.
+  `CREATE TABLE IF NOT EXISTS client_locations (
+     id                  UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id          UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id           UUID        NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+     label               TEXT        NOT NULL DEFAULT 'Service Location',
+     address             TEXT,
+     city                TEXT,
+     state               TEXT,
+     zip                 TEXT,
+     country             TEXT,
+     lat                 NUMERIC(10,6),
+     lng                 NUMERIC(10,6),
+     place_id            TEXT,
+     formatted_address   TEXT,
+     access_instructions TEXT,
+     is_primary          BOOLEAN     NOT NULL DEFAULT false,
+     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_client_locations_client  ON client_locations(client_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_client_locations_account ON client_locations(account_id, client_id)`,
+
+  // Backfill: seed primary location from each client's existing address (idempotent)
+  `INSERT INTO client_locations
+     (account_id, client_id, label, address, city, state, zip, lat, lng, is_primary)
+   SELECT c.account_id, c.id, 'Primary', c.address, c.city, c.state, c.zip, c.lat, c.lng, true
+   FROM clients c
+   WHERE c.address IS NOT NULL AND c.address != ''
+     AND NOT EXISTS (SELECT 1 FROM client_locations cl WHERE cl.client_id = c.id)`,
+
+  // Link jobs to canonical service location (nullable — existing jobs unchanged)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES client_locations(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_location ON jobs(location_id) WHERE location_id IS NOT NULL`,
 ];
 
 async function runMigrations() {

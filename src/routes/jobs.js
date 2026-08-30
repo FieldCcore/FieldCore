@@ -340,6 +340,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee,
     service_address, service_location, address,
     service_city, service_state, service_zip, service_lat, service_lng,
+    // Canonical client location reference (optional — snapshots address fields below)
+    location_id,
     // Multi-day fields
     is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date,
     end_date_unknown, job_manager_id, estimated_labor_hours, billing_method, priority,
@@ -438,13 +440,36 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       }
     }
 
-    const streetAddr        = service_address || service_location || address || null;
+    // If location_id supplied, snapshot address fields from the canonical client location.
+    // Frontend-supplied address fields override the snapshot (allows one-off adjustments).
+    let resolvedLocationId = null;
+    if (location_id) {
+      const locRow = await client.query(
+        `SELECT * FROM client_locations WHERE id = $1 AND account_id = $2`,
+        [location_id, req.accountId]
+      );
+      if (locRow.rows.length) {
+        const loc = locRow.rows[0];
+        resolvedLocationId = loc.id;
+        if (!service_address && loc.address) {
+          // eslint-disable-next-line no-param-reassign -- intentional snapshot
+          req.body.service_address = loc.address;
+          req.body.service_city    = loc.city  || null;
+          req.body.service_state   = loc.state || null;
+          req.body.service_zip     = loc.zip   || null;
+          req.body.service_lat     = loc.lat   || null;
+          req.body.service_lng     = loc.lng   || null;
+        }
+      }
+    }
+
+    const streetAddr        = req.body.service_address || service_location || address || null;
     const addressToGeocode  = streetAddr
-      ? [streetAddr, service_city, service_state, service_zip].filter(Boolean).join(', ')
+      ? [streetAddr, req.body.service_city || service_city, req.body.service_state || service_state, req.body.service_zip || service_zip].filter(Boolean).join(', ')
       : null;
     let finalServiceAddress = streetAddr;
-    let finalServiceLat      = service_lat  || null;
-    let finalServiceLng      = service_lng  || null;
+    let finalServiceLat      = req.body.service_lat || service_lat  || null;
+    let finalServiceLng      = req.body.service_lng || service_lng  || null;
     let mappingWarning       = null;
     let geocodeStatus        = 'not_attempted';
     let geocodeProviderStatus = null;
@@ -480,18 +505,23 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
       `INSERT INTO jobs
          (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring,
           travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng,
+          location_id,
           is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date, end_date_unknown,
           job_manager_id, estimated_labor_hours, billing_method, priority,
           scheduling_timezone, original_local_start, geocode_status,
           input_timezone, input_timezone_source, creator_timezone_at_creation,
           geocode_provider_status, geocode_error, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW())
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
        RETURNING *`,
       [
         req.accountId, client_id, effectiveTechId, service_type,
         finalScheduledAt, amount || null, notes, recurring || 'none',
-        travelFee, finalServiceAddress || null, service_city || null,
-        service_state || null, service_zip || null, finalServiceLat, finalServiceLng,
+        travelFee, finalServiceAddress || null,
+        req.body.service_city || service_city || null,
+        req.body.service_state || service_state || null,
+        req.body.service_zip || service_zip || null,
+        finalServiceLat, finalServiceLng,
+        resolvedLocationId,
         !!is_multi_day, title || null, scope_of_work || null,
         estimated_start_date || null, estimated_end_date || null, !!end_date_unknown,
         job_manager_id || null, estimated_labor_hours || null,
