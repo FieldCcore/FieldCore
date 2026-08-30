@@ -272,13 +272,13 @@ function CreateMenu({ open, onOpen, onClose }) {
                   icon={Calendar}
                   label="Single-Day Job"
                   description="One-day service appointment"
-                  onClick={() => go('/jobs?new=1')}
+                  onClick={() => go('/jobs?create=single-day')}
                 />
                 <CreateMenuItem
                   icon={CalendarDays}
                   label="Multi-Day Job"
                   description={canMultiDay ? 'Multi-session work spanning several days' : 'Requires Solo plan'}
-                  onClick={() => go('/jobs?new=1&multiday=1')}
+                  onClick={() => go('/jobs?create=multi-day')}
                   disabled={!canMultiDay}
                   badge={!canMultiDay ? 'Solo+' : null}
                 />
@@ -286,7 +286,7 @@ function CreateMenu({ open, onOpen, onClose }) {
                   icon={RefreshCw}
                   label="Recurring Service"
                   description="Set up a multi-schedule recurring agreement"
-                  onClick={() => go('/jobs?new=1&type=recurring')}
+                  onClick={() => go('/jobs?create=recurring')}
                 />
                 <CreateMenuItem
                   icon={FolderOpen}

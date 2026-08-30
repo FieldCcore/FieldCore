@@ -29,8 +29,9 @@ const LEGEND = [
   { key: 'cancelled',   label: 'Cancelled',   color: CAL_STATUS_COLOR.cancelled   },
 ];
 
-const VALID_VIEWS   = ['month', 'week', 'day', 'agenda'];
-const VALID_FILTERS = ['all', 'scheduled', 'in_progress', 'complete', 'cancelled'];
+const VALID_VIEWS        = ['month', 'week', 'day', 'agenda'];
+const VALID_FILTERS      = ['all', 'scheduled', 'in_progress', 'complete', 'cancelled'];
+const VALID_CREATE_MODES = new Set(['single-day', 'multi-day', 'recurring']);
 
 // ─── RBC localizer ────────────────────────────────────────────────────────────
 const localizer = dateFnsLocalizer({
@@ -215,15 +216,28 @@ export default function Jobs() {
   const [calendarTZ,      setCalendarTZ]      = useState(() => resolveCalendarTimeZone({}).timezone);
   const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'month');
   const [date,            setDate]            = useState(new Date());
-  const [modal,           setModal]           = useState(null);    // 'create' | 'edit'
-  const [drawerJob,       setDrawerJob]       = useState(null);    // event detail drawer
-  const [defaultStart,    setDefaultStart]    = useState(null);
-  const [defaultMultiDay, setDefaultMultiDay] = useState(false);
+  const [modal,        setModal]        = useState(null);    // 'edit' only — create/recurring driven by URL
+  const [drawerJob,    setDrawerJob]    = useState(null);    // event detail drawer
+  const [defaultStart, setDefaultStart] = useState(null);
+
+  // ── URL-driven create mode ──────────────────────────────────────────────────
+  // ?create=single-day | multi-day | recurring keeps the modal open across
+  // hard refreshes, new tabs, and same-page navigations.
+  const _rawCreate    = searchParams.get('create');
+  const validCreateMode = VALID_CREATE_MODES.has(_rawCreate) ? _rawCreate : null;
   const [loading,         setLoading]         = useState(true);
   const [statusFilter,    setStatusFilter]    = useState(() => VALID_FILTERS.includes(initFilter) ? initFilter : 'all');
   const [techFilter,      setTechFilter]      = useState(null);
 
   const viewScrolled = useRef(false);
+
+  const closeCreate = useCallback(() => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.delete('create');
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // ── Data ────────────────────────────────────────────────────────────────────
   const loadJobs = useCallback(() => {
@@ -253,29 +267,7 @@ export default function Jobs() {
     }).catch(() => {});
   }, []);
 
-  // ── Consume ?new=1 whenever it appears — handles same-page navigation ────────
-  // Using [] caused the effect to only fire on mount. If the user is already on
-  // /jobs (Calendar), nav('/jobs?new=1') updates the URL but never remounts the
-  // component, so the old effect never fired. Now we track the ?new param and
-  // respond to any URL change that brings ?new=1 into view.
-  const _newParam = searchParams.get('new');
-  useEffect(() => {
-    if (_newParam !== '1') return;
-    const isRecurring = searchParams.get('type') === 'recurring';
-    setDefaultStart(new Date());
-    setDefaultMultiDay(searchParams.get('multiday') === '1');
-    setModal(isRecurring ? 'recurring' : 'create');
-    // Remove the trigger params so back-navigation doesn't re-open the modal
-    setSearchParams(prev => {
-      const p = new URLSearchParams(prev);
-      p.delete('new');
-      p.delete('multiday');
-      p.delete('type');
-      return p;
-    }, { replace: true });
-  }, [_newParam]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Persist view + filter to URL (merges — never clobbers ?job=) ────────────
+  // ── Persist view + filter to URL (merges — never clobbers ?job= or ?create=) ─
   useEffect(() => {
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
@@ -434,7 +426,11 @@ export default function Jobs() {
   // ── Event interactions ─────────────────────────────────────────────────────
   function handleSelectSlot({ start }) {
     setDefaultStart(start);
-    setModal('create');
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('create', 'single-day');
+      return p;
+    });
   }
 
   function handleSelectEvent(event) {
@@ -459,7 +455,7 @@ export default function Jobs() {
         ...job.sessions.map(s => ({ ...s, job_id: job.id, service_type: job.service_type, client_name: job.client_name })),
       ]);
     }
-    setModal(null);
+    closeCreate();
   }
 
   function handleJobEdited(updated) {
@@ -623,21 +619,21 @@ export default function Jobs() {
         </CalendarErrorBoundary>
       )}
 
-      {/* Create modal */}
-      {modal === 'create' && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+      {/* Create modal — driven by ?create=single-day or ?create=multi-day in URL */}
+      {(validCreateMode === 'single-day' || validCreateMode === 'multi-day') && (
+        <div className="modal-overlay" onClick={closeCreate}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>New Job</h2>
-              <button className="btn-close" onClick={() => setModal(null)}>×</button>
+              <h2>{validCreateMode === 'multi-day' ? 'New Multi-Day Job' : 'New Job'}</h2>
+              <button className="btn-close" onClick={closeCreate}>×</button>
             </div>
             <div className="modal-body">
               <JobForm
-                defaultStart={defaultStart}
-                defaultMultiDay={defaultMultiDay}
+                defaultStart={defaultStart ?? new Date()}
+                defaultMultiDay={validCreateMode === 'multi-day'}
                 schedulingTimezone={calendarTZ}
                 onSave={handleJobCreated}
-                onCancel={() => setModal(null)}
+                onCancel={closeCreate}
               />
             </div>
           </div>
@@ -664,21 +660,21 @@ export default function Jobs() {
         </div>
       )}
 
-      {/* Recurring Service drawer — new recurring agreement from Calendar */}
-      {modal === 'recurring' && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+      {/* Recurring Service modal — driven by ?create=recurring in URL */}
+      {validCreateMode === 'recurring' && (
+        <div className="modal-overlay" onClick={closeCreate}>
           <div className="modal" style={{ maxWidth: 660, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>New Recurring Service</h2>
-              <button className="btn-close" onClick={() => setModal(null)}>×</button>
+              <button className="btn-close" onClick={closeCreate}>×</button>
             </div>
             <div className="modal-body">
               <InlineAgreementForm
                 onSaved={() => {
-                  setModal(null);
+                  closeCreate();
                   loadJobs();
                 }}
-                onCancel={() => setModal(null)}
+                onCancel={closeCreate}
               />
             </div>
           </div>
