@@ -3,6 +3,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { processAgreement }         = require('../services/agreementScheduler');
 
 const CADENCE_VALUES = [
   'weekly','every_2_weeks','every_3_weeks','every_4_weeks',
@@ -405,6 +406,17 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
 
     await client.query('COMMIT');
     res.status(201).json({ ...agreement, service_schedules: schRes.rows });
+
+    // Immediately generate jobs for the next 45-day window so the Calendar
+    // shows new recurring jobs without waiting for the nightly cron.
+    // Skipped in test environment to avoid double-generation against the test DB.
+    if (agreement.status === 'active' && process.env.NODE_ENV !== 'test') {
+      setImmediate(() => {
+        processAgreement(agreement).catch(err => {
+          console.error('[agreements] Background job generation failed:', agreement.id, err.message);
+        });
+      });
+    }
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
     res.status(500).json({ error: err.message });

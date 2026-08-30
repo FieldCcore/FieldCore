@@ -4,6 +4,7 @@ import { format, addDays } from 'date-fns';
 import { Search, X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
+import AddressAutocomplete from './AddressAutocomplete';
 import CollectPaymentWorkspace from './CollectPaymentWorkspace';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -668,10 +669,11 @@ function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
               <div className="ib-inline-agr-row">
                 <div className="ib-field ib-field--grow">
                   <label className="ib-label">Service Location</label>
-                  <input
+                  <AddressAutocomplete
                     className="ib-input"
                     value={s.serviceAddress}
-                    onChange={e => updateSchedule(idx, 'serviceAddress', e.target.value)}
+                    onChange={val => updateSchedule(idx, 'serviceAddress', val)}
+                    onPlace={place => updateSchedule(idx, 'serviceAddress', place.formattedAddress || place.street || '')}
                     placeholder="Address or location name"
                     data-testid={`agr-service-address-${idx}`}
                   />

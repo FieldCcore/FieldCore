@@ -4,7 +4,7 @@ import api from '../api';
 // Address autocomplete backed by the server-side /api/maps/autocomplete proxy.
 // On selection, fetches /api/maps/place-details for coordinates + full address.
 // All Google API calls are proxied through the server — no client-side Places library needed.
-export default function AddressAutocomplete({ value, onChange, onPlace, placeholder, style, className }) {
+export default function AddressAutocomplete({ value, onChange, onPlace, placeholder, style, className, 'data-testid': dataTestId }) {
   const inputRef  = useRef(null);
   const timerRef  = useRef(null);
   const [preds,    setPreds]    = useState([]);
@@ -102,6 +102,7 @@ export default function AddressAutocomplete({ value, onChange, onPlace, placehol
         autoComplete="off"
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         aria-busy={resolving}
+        data-testid={dataTestId}
       />
       {open && preds.length > 0 && (
         <ul style={{
