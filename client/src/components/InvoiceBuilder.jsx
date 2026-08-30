@@ -404,7 +404,7 @@ function newSchedule() {
 }
 
 // ── InlineAgreementForm — multi-schedule recurring agreement builder ───────────
-function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
+export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCancel }) {
   // Client — may be pre-set from parent or chosen within the form
   const [resolvedClientId, setResolvedClientId] = useState(initialClientId || null);
   const [formClientName,   setFormClientName]   = useState('');

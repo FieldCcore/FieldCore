@@ -11,6 +11,7 @@ import JobForm from '../components/JobForm';
 import JobDetail from '../components/JobDetail';
 import CalendarErrorBoundary from '../components/CalendarErrorBoundary';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
+import { InlineAgreementForm } from '../components/InvoiceBuilder';
 
 // ─── Calendar status color system ────────────────────────────────────────────
 // Imported from the shared module — Calendar is the source of truth.
@@ -252,14 +253,27 @@ export default function Jobs() {
     }).catch(() => {});
   }, []);
 
-  // ── One-time init: consume ?new=1 ───────────────────────────────────────────
+  // ── Consume ?new=1 whenever it appears — handles same-page navigation ────────
+  // Using [] caused the effect to only fire on mount. If the user is already on
+  // /jobs (Calendar), nav('/jobs?new=1') updates the URL but never remounts the
+  // component, so the old effect never fired. Now we track the ?new param and
+  // respond to any URL change that brings ?new=1 into view.
+  const _newParam = searchParams.get('new');
   useEffect(() => {
-    if (searchParams.get('new') === '1') {
-      setDefaultStart(new Date());
-      setDefaultMultiDay(searchParams.get('multiday') === '1');
-      setModal('create');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (_newParam !== '1') return;
+    const isRecurring = searchParams.get('type') === 'recurring';
+    setDefaultStart(new Date());
+    setDefaultMultiDay(searchParams.get('multiday') === '1');
+    setModal(isRecurring ? 'recurring' : 'create');
+    // Remove the trigger params so back-navigation doesn't re-open the modal
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.delete('new');
+      p.delete('multiday');
+      p.delete('type');
+      return p;
+    }, { replace: true });
+  }, [_newParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persist view + filter to URL (merges — never clobbers ?job=) ────────────
   useEffect(() => {
@@ -643,6 +657,27 @@ export default function Jobs() {
                 job={drawerJob}
                 schedulingTimezone={calendarTZ}
                 onSave={handleJobEdited}
+                onCancel={() => setModal(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recurring Service drawer — new recurring agreement from Calendar */}
+      {modal === 'recurring' && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal" style={{ maxWidth: 660, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>New Recurring Service</h2>
+              <button className="btn-close" onClick={() => setModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <InlineAgreementForm
+                onSaved={() => {
+                  setModal(null);
+                  loadJobs();
+                }}
                 onCancel={() => setModal(null)}
               />
             </div>

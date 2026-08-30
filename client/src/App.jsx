@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Phone, Plus, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen } from 'lucide-react';
+import { Phone, Plus, Lock, UserPlus, Inbox, FileText, Briefcase, Calendar, CalendarDays, Receipt, ChevronRight, FolderOpen, RefreshCw } from 'lucide-react';
 import { Routes, Route, NavLink, Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from './api';
 
@@ -281,6 +281,12 @@ function CreateMenu({ open, onOpen, onClose }) {
                   onClick={() => go('/jobs?new=1&multiday=1')}
                   disabled={!canMultiDay}
                   badge={!canMultiDay ? 'Solo+' : null}
+                />
+                <CreateMenuItem
+                  icon={RefreshCw}
+                  label="Recurring Service"
+                  description="Set up a multi-schedule recurring agreement"
+                  onClick={() => go('/jobs?new=1&type=recurring')}
                 />
                 <CreateMenuItem
                   icon={FolderOpen}
