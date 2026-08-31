@@ -346,9 +346,11 @@ export default function Jobs() {
         // scheduling timezone hour — RBC uses these for grid placement.
         const utcStart = new Date(j.scheduled_at);
         const utcEnd   = addMinutes(utcStart, j.duration_minutes || 60);
+        const svcCount = j.service_count > 1 ? ` (${j.service_count} services)` : '';
+        const svcLabel = j.service_type || 'Service';
         return {
           id:       j.id,
-          title:    `${j.service_type}${j.client_name ? ' — ' + j.client_name : ''}`,
+          title:    `${svcLabel}${svcCount}${j.client_name ? ' — ' + j.client_name : ''}`,
           start:    toZonedTime(utcStart, calendarTZ),
           end:      toZonedTime(utcEnd,   calendarTZ),
           resource: { ...j, _type: 'job' },

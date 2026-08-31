@@ -129,6 +129,75 @@ function normalizeAddress(addr) {
 }
 
 /**
+ * Maximum gap (minutes) between consecutive service windows that still allows
+ * two occurrences to share one Calendar visit.
+ * e.g. 9-11 AM then 11 AM-1 PM → gap=0 → group.
+ *      9-11 AM then 5-7 PM    → gap=360 → separate appointments.
+ */
+const MAX_VISIT_GAP_MINUTES = 60;
+
+/**
+ * Convert "HH:MM" to minutes from midnight.  Defaults to 9:00 AM when absent.
+ */
+function timeToMinutes(t) {
+  if (!t) return 9 * 60;
+  const [h, m] = t.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/**
+ * Build the grouping key for a schedule within an agreement.
+ * Prefers canonical location_id; falls back to normalised address string.
+ */
+function buildGroupKey(schedule, agreement) {
+  if (schedule.location_id) return `loc:${schedule.location_id}`;
+  const addr = schedule.service_address || agreement.service_address || '';
+  return `addr:${normalizeAddress(addr)}`;
+}
+
+/**
+ * Split a list of schedules into time-compatible sub-groups.
+ * Schedules are sorted by start time.  A new sub-group begins whenever
+ * the gap between the previous window's end and the next window's start
+ * exceeds MAX_VISIT_GAP_MINUTES.
+ *
+ * Returns an array of arrays (each inner array is one compatible visit group).
+ */
+function splitByTimeCompatibility(scheduleItems) {
+  if (scheduleItems.length <= 1) return [scheduleItems];
+
+  const sorted = [...scheduleItems].sort(
+    (a, b) => timeToMinutes(a.preferred_start_time) - timeToMinutes(b.preferred_start_time)
+  );
+
+  const groups = [];
+  let current = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = current[current.length - 1];
+    const prevEnd = timeToMinutes(prev.preferred_start_time) + (prev.duration_minutes || 0);
+    const currStart = timeToMinutes(sorted[i].preferred_start_time);
+    if (currStart - prevEnd <= MAX_VISIT_GAP_MINUTES) {
+      current.push(sorted[i]);
+    } else {
+      groups.push(current);
+      current = [sorted[i]];
+    }
+  }
+  groups.push(current);
+  return groups;
+}
+
+/**
+ * Format minutes-from-midnight as "HH:MM".
+ */
+function minutesToTime(m) {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/**
  * Returns an array of the next `count` service date strings ('YYYY-MM-DD')
  * starting from fromDate (or today, whichever is later).
  */
@@ -420,13 +489,12 @@ async function checkScheduleEndConditions(schedule, client) {
  * Creates upcoming jobs for the agreement for the next 45 days.
  *
  * Multi-schedule mode (preferred): loads all active child schedules, generates
- * occurrence dates per schedule, groups by (date, normalized_address), and
- * creates ONE job per group.  Inserts agreement_schedule_occurrences rows for
- * idempotent traceability.
+ * occurrence dates per schedule, groups by canonical location (location_id when
+ * set, else normalised address), then splits each group by time compatibility
+ * (MAX_VISIT_GAP_MINUTES).  Creates ONE job per compatible visit group.
  *
  * Legacy fallback: when no child schedules exist the agreement's own cadence
- * fields drive a single job per date (backwards-compatible with pre-V4 data
- * that the backfill migration may not have reached yet).
+ * fields drive a single job per date (backwards-compatible with pre-V4 data).
  */
 async function generateUpcomingJobs(agreement, client) {
   const today = new Date();
@@ -435,12 +503,16 @@ async function generateUpcomingJobs(agreement, client) {
   horizon.setDate(horizon.getDate() + 45);
   const horizonStr = toDateStr(horizon);
 
-  // Load active child schedules
+  // Load active child schedules, joining client_locations for propagated address fields.
   const schRes = await client.query(
-    `SELECT * FROM recurring_agreement_schedules
-     WHERE agreement_id = $1 AND status = 'active'
-     ORDER BY sort_order`,
-    [agreement.id]
+    `SELECT ras.*,
+            cl.address AS cl_address, cl.city AS cl_city, cl.state AS cl_state,
+            cl.zip AS cl_zip, cl.lat AS cl_lat, cl.lng AS cl_lng
+     FROM recurring_agreement_schedules ras
+     LEFT JOIN client_locations cl ON cl.id = ras.location_id AND cl.account_id = $2
+     WHERE ras.agreement_id = $1 AND ras.status = 'active'
+     ORDER BY ras.sort_order`,
+    [agreement.id, agreement.account_id]
   );
   const schedules = schRes.rows;
 
@@ -448,14 +520,13 @@ async function generateUpcomingJobs(agreement, client) {
     return generateUpcomingJobsLegacy(agreement, client);
   }
 
-  // Build (date, normalizedAddress) → group map
+  // Build (date, locationKey) → group map
   const groupMap = new Map();
 
   for (const schedule of schedules) {
     await checkScheduleEndConditions(schedule, client);
     if (schedule.status !== 'active') continue;
 
-    // Per-schedule horizon: respect schedule-level end_date
     let schedHorizon = horizonStr;
     if (schedule.end_condition_type === 'date' && schedule.end_date) {
       const endStr = typeof schedule.end_date === 'string'
@@ -469,18 +540,12 @@ async function generateUpcomingJobs(agreement, client) {
     const dates = getUpcomingServiceDates(schedule, approxCount, toDateStr(today))
       .filter(d => d <= schedHorizon);
 
-    const normalizedAddr = normalizeAddress(
-      schedule.service_address || agreement.service_address || ''
-    );
+    const locationKey = buildGroupKey(schedule, agreement);
 
     for (const dateStr of dates) {
-      const key = `${dateStr}:${normalizedAddr}`;
+      const key = `${dateStr}:${locationKey}`;
       if (!groupMap.has(key)) {
-        groupMap.set(key, {
-          dateStr,
-          address: schedule.service_address || agreement.service_address || null,
-          scheduleItems: [],
-        });
+        groupMap.set(key, { dateStr, locationKey, scheduleItems: [] });
       }
       groupMap.get(key).scheduleItems.push(schedule);
     }
@@ -490,102 +555,213 @@ async function generateUpcomingJobs(agreement, client) {
 
   for (const [, group] of groupMap) {
     const { dateStr, scheduleItems } = group;
-    try {
-      // Determine which schedules in this group still need an occurrence row.
-      // Also discover any existing job_id already linked to this address group
-      // (identified via occurrence rows — NOT by querying jobs directly, which
-      // would find jobs from other address groups on the same date).
-      const scheduleIds = scheduleItems.map(s => s.id);
-      const existingOcc = await client.query(
-        `SELECT schedule_id, job_id FROM agreement_schedule_occurrences
-         WHERE schedule_id = ANY($1::uuid[]) AND occurrence_date = $2`,
-        [scheduleIds, dateStr]
-      );
-      const alreadyLinked = new Set(existingOcc.rows.map(r => r.schedule_id));
-      const newItems = scheduleItems.filter(s => !alreadyLinked.has(s.id));
-      if (newItems.length === 0) continue;
 
-      // Reuse the job already linked to THIS group (if any schedule in the group
-      // already has an occurrence row pointing to a job).  Do NOT search by
-      // agreement_id+date alone — that would accidentally reuse jobs that belong
-      // to a different address group on the same day.
-      const existingJobRow = existingOcc.rows.find(r => r.job_id != null);
-      let jobId = existingJobRow ? existingJobRow.job_id : null;
+    // Split into time-compatible sub-groups (respects MAX_VISIT_GAP_MINUTES).
+    // Each sub-group becomes one Calendar appointment.
+    const subGroups = splitByTimeCompatibility(scheduleItems);
 
-      if (!jobId) {
-        // Multi-schedule label: "Service A · Service B"; solo: schedule's service_type
-        const serviceLabel = scheduleItems.length === 1
-          ? (scheduleItems[0].service_type || agreement.service_type || 'Service')
-          : scheduleItems.map(s => s.service_type || s.asset_label || 'Service').join(' · ');
-
-        const startTime = scheduleItems[0].preferred_start_time || '09:00';
-        const scheduledAt = `${dateStr}T${startTime}:00`;
-        const totalDuration = scheduleItems.reduce((sum, s) => sum + (s.duration_minutes || 0), 0) || null;
-
-        const jobRes = await client.query(
-          `INSERT INTO jobs
-             (account_id, client_id, service_type, scheduled_at, status, agreement_id, agreement_schedule_id, duration_minutes)
-           VALUES ($1, $2, $3, $4::timestamp, 'scheduled', $5, $6, $7)
-           RETURNING id`,
-          [
-            agreement.account_id,
-            agreement.client_id,
-            serviceLabel,
-            scheduledAt,
-            agreement.id,
-            scheduleItems.length === 1 ? scheduleItems[0].id : null,
-            totalDuration,
-          ]
-        );
-        jobId = jobRes.rows[0].id;
-        created++;
-        console.log(
-          `${TAG} Created job ${jobId} for agreement ${agreement.id} on ${dateStr}` +
-          ` (${scheduleItems.length} schedule(s))`
+    for (const subGroup of subGroups) {
+      try {
+        created += await processVisitGroup(agreement, client, dateStr, subGroup);
+      } catch (err) {
+        console.error(
+          `${TAG} Error generating visit for agreement ${agreement.id} on ${dateStr}:`,
+          err.message
         );
       }
-
-      // Upsert occurrence rows for each newly-linked schedule
-      for (const schedule of newItems) {
-        await client.query(
-          `INSERT INTO agreement_schedule_occurrences
-             (account_id, agreement_id, schedule_id, job_id, occurrence_date)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (schedule_id, occurrence_date) DO UPDATE SET job_id = EXCLUDED.job_id`,
-          [agreement.account_id, agreement.id, schedule.id, jobId, dateStr]
-        );
-      }
-
-      // Insert job_services for each newly-linked schedule (idempotent via partial unique index)
-      for (let i = 0; i < newItems.length; i++) {
-        const schedule = newItems[i];
-        await client.query(
-          `INSERT INTO job_services
-             (job_id, account_id, service_name, asset_label, duration_minutes, agreement_schedule_id, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (job_id, agreement_schedule_id)
-           WHERE agreement_schedule_id IS NOT NULL DO NOTHING`,
-          [
-            jobId,
-            agreement.account_id,
-            schedule.service_type || agreement.service_type || 'Service',
-            schedule.asset_label || null,
-            schedule.duration_minutes || null,
-            schedule.id,
-            i,
-          ]
-        );
-      }
-    } catch (err) {
-      console.error(
-        `${TAG} Error generating job for agreement ${agreement.id} on ${dateStr}:`,
-        err.message
-      );
     }
   }
 
   if (created > 0) {
     console.log(`${TAG} Agreement ${agreement.id}: generated ${created} new job(s)`);
+  }
+}
+
+/**
+ * Creates (or updates) one Calendar visit for a time-compatible sub-group of
+ * schedules on a given date.  Returns 1 if a new job was created, 0 otherwise.
+ */
+async function processVisitGroup(agreement, client, dateStr, subGroup) {
+  const scheduleIds = subGroup.map(s => s.id);
+
+  // Check which schedules already have occurrence rows for this date.
+  const existingOcc = await client.query(
+    `SELECT schedule_id, job_id FROM agreement_schedule_occurrences
+     WHERE schedule_id = ANY($1::uuid[]) AND occurrence_date = $2`,
+    [scheduleIds, dateStr]
+  );
+  const alreadyLinked = new Set(existingOcc.rows.map(r => r.schedule_id));
+  const newItems = subGroup.filter(s => !alreadyLinked.has(s.id));
+  if (newItems.length === 0) return 0;
+
+  // Reuse a job already linked to this visit group via occurrence rows.
+  const existingJobRow = existingOcc.rows.find(r => r.job_id != null);
+  let jobId = existingJobRow ? existingJobRow.job_id : null;
+
+  // If no occurrence-linked job exists, look for a legacy job (created before
+  // the occurrence-row system) to adopt rather than creating a duplicate.
+  if (!jobId) {
+    const legacyRes = await client.query(
+      `SELECT j.id FROM jobs j
+       WHERE j.agreement_id = $1
+         AND j.scheduled_at::date = $2
+         AND j.status NOT IN ('cancelled')
+         AND NOT EXISTS (
+           SELECT 1 FROM agreement_schedule_occurrences aso WHERE aso.job_id = j.id
+         )
+       ORDER BY j.created_at
+       LIMIT 1`,
+      [agreement.id, dateStr]
+    );
+    if (legacyRes.rows.length > 0) {
+      jobId = legacyRes.rows[0].id;
+      console.log(`${TAG} Adopting legacy job ${jobId} for agreement ${agreement.id} on ${dateStr}`);
+    }
+  }
+
+  // Compute parent visit window: earliest start → latest end.
+  const startMins = Math.min(...subGroup.map(s => timeToMinutes(s.preferred_start_time)));
+  const endMins   = Math.max(...subGroup.map(s => timeToMinutes(s.preferred_start_time) + (s.duration_minutes || 0)));
+  const parentStart  = minutesToTime(startMins);
+  const parentDuration = endMins > startMins ? endMins - startMins : null;
+
+  // Service label: "Type A · Type B" for multi-service visits.
+  const serviceLabel = subGroup.length === 1
+    ? (subGroup[0].service_type || agreement.service_type || 'Service')
+    : subGroup.map(s => s.service_type || s.asset_label || 'Service').join(' · ');
+
+  // Resolve location for job row (location_id → cl_* fields take precedence).
+  const anchor = subGroup[0];
+  const locationId = anchor.location_id || null;
+  const serviceAddress = anchor.cl_address || anchor.service_address || agreement.service_address || null;
+  const serviceCity    = anchor.cl_city    || null;
+  const serviceState   = anchor.cl_state   || null;
+  const serviceZip     = anchor.cl_zip     || null;
+  const serviceLat     = anchor.cl_lat     || null;
+  const serviceLng     = anchor.cl_lng     || null;
+
+  const scheduledAt = `${dateStr}T${parentStart}:00`;
+
+  let created = 0;
+  if (!jobId) {
+    const jobRes = await client.query(
+      `INSERT INTO jobs
+         (account_id, client_id, service_type, scheduled_at, status,
+          agreement_id, agreement_schedule_id, duration_minutes,
+          location_id, service_address, service_city, service_state, service_zip,
+          service_lat, service_lng)
+       VALUES ($1,$2,$3,$4::timestamp,'scheduled',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING id`,
+      [
+        agreement.account_id, agreement.client_id,
+        serviceLabel, scheduledAt,
+        agreement.id,
+        subGroup.length === 1 ? subGroup[0].id : null,
+        parentDuration,
+        locationId, serviceAddress, serviceCity, serviceState, serviceZip,
+        serviceLat, serviceLng,
+      ]
+    );
+    jobId = jobRes.rows[0].id;
+    created = 1;
+    console.log(
+      `${TAG} Created job ${jobId} for agreement ${agreement.id} on ${dateStr}` +
+      ` (${subGroup.length} schedule(s), ${parentStart}, ${parentDuration}min)`
+    );
+  } else {
+    // Update adopted or existing job to reflect current group label and timing.
+    await client.query(
+      `UPDATE jobs SET
+         service_type     = $1,
+         scheduled_at     = $2::timestamp,
+         duration_minutes = COALESCE($3, duration_minutes),
+         location_id      = COALESCE($4, location_id),
+         service_address  = COALESCE($5, service_address),
+         service_city     = COALESCE($6, service_city),
+         service_state    = COALESCE($7, service_state),
+         service_zip      = COALESCE($8, service_zip),
+         updated_at       = NOW()
+       WHERE id = $9 AND account_id = $10`,
+      [
+        serviceLabel, scheduledAt, parentDuration,
+        locationId, serviceAddress, serviceCity, serviceState, serviceZip,
+        jobId, agreement.account_id,
+      ]
+    );
+  }
+
+  // Upsert occurrence rows for newly-linked schedules.
+  for (const schedule of newItems) {
+    await client.query(
+      `INSERT INTO agreement_schedule_occurrences
+         (account_id, agreement_id, schedule_id, job_id, occurrence_date)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (schedule_id, occurrence_date) DO UPDATE SET job_id = EXCLUDED.job_id`,
+      [agreement.account_id, agreement.id, schedule.id, jobId, dateStr]
+    );
+  }
+
+  // Upsert job_services for newly-linked schedules (idempotent).
+  for (let i = 0; i < newItems.length; i++) {
+    const schedule = newItems[i];
+    await client.query(
+      `INSERT INTO job_services
+         (job_id, account_id, service_name, asset_label, duration_minutes,
+          agreement_schedule_id, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (job_id, agreement_schedule_id)
+       WHERE agreement_schedule_id IS NOT NULL DO NOTHING`,
+      [
+        jobId, agreement.account_id,
+        schedule.service_type || agreement.service_type || 'Service',
+        schedule.asset_label  || null,
+        schedule.duration_minutes || null,
+        schedule.id,
+        i,
+      ]
+    );
+  }
+
+  return created;
+}
+
+/**
+ * Cancels legacy jobs (created before the occurrence-row system) that are
+ * superseded by a new grouped visit on the same date for this agreement.
+ * Run before generateUpcomingJobs so duplicates are removed first.
+ */
+async function repairExistingVisits(agreement, client) {
+  // Find future unmatched legacy jobs — scheduled, no occurrence rows.
+  const { rows: legacyJobs } = await client.query(
+    `SELECT j.id, j.scheduled_at::date::text AS service_date
+     FROM jobs j
+     WHERE j.agreement_id  = $1
+       AND j.account_id    = $2
+       AND j.status NOT IN ('cancelled', 'complete')
+       AND j.scheduled_at  >= NOW()
+       AND NOT EXISTS (
+         SELECT 1 FROM agreement_schedule_occurrences aso WHERE aso.job_id = j.id
+       )`,
+    [agreement.id, agreement.account_id]
+  );
+
+  for (const lj of legacyJobs) {
+    // Check whether a proper grouped job already exists for the same date.
+    const { rows: grouped } = await client.query(
+      `SELECT DISTINCT aso.job_id
+       FROM agreement_schedule_occurrences aso
+       WHERE aso.agreement_id = $1 AND aso.occurrence_date = $2`,
+      [agreement.id, lj.service_date]
+    );
+    if (grouped.length > 0) {
+      await client.query(
+        `UPDATE jobs SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+        [lj.id]
+      );
+      console.log(
+        `${TAG} Repair: cancelled legacy job ${lj.id} (superseded by grouped visit on ${lj.service_date})`
+      );
+    }
   }
 }
 
@@ -1074,7 +1250,10 @@ async function processAgreement(agreement) {
       return;
     }
 
-    // Step 2: generate upcoming jobs (45-day horizon)
+    // Step 2a: cancel legacy duplicate visits before generating new grouped ones
+    await repairExistingVisits(agreement, client);
+
+    // Step 2b: generate upcoming jobs (45-day horizon)
     await generateUpcomingJobs(agreement, client);
 
     // Step 3: ensure current + next billing periods exist

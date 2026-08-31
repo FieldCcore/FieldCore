@@ -125,7 +125,9 @@ describe('AgreementBuilder — multi-schedule UI', () => {
 
   it('shows Service Location field per schedule', () => {
     setup();
-    expect(screen.getByPlaceholderText(/leave blank to use client/i)).toBeInTheDocument();
+    // ClientLocationField replaced the old text input; when no client is selected it
+    // renders AddressAutocomplete with "Street address" placeholder, or the location label.
+    expect(screen.getByText(/service location/i)).toBeInTheDocument();
   });
 
   it('shows Schedule Start Date field per schedule', () => {
@@ -244,10 +246,13 @@ describe('AgreementBuilder — edit mode with existing service_schedules', () =>
     expect(screen.getByDisplayValue('SUV')).toBeInTheDocument();
   });
 
-  it('populates service address from existing schedule', () => {
+  it('populates service address from existing schedule', async () => {
     setup(existingAgreement);
-    const addrInputs = screen.getAllByDisplayValue('100 Oak St');
-    expect(addrInputs.length).toBe(2);
+    // ClientLocationField is async (fetches client locations before rendering the address input)
+    await waitFor(() => {
+      const addrInputs = screen.getAllByDisplayValue('100 Oak St');
+      expect(addrInputs.length).toBe(2);
+    });
   });
 
   it('shows "Save Changes" button in edit mode', () => {

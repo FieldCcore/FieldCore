@@ -2402,6 +2402,15 @@ const MIGRATIONS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_job_services_schedule_job
      ON job_services(job_id, agreement_schedule_id)
      WHERE agreement_schedule_id IS NOT NULL`,
+
+  // ── VISIT GROUPING V1 ────────────────────────────────────────────────────────
+  // Canonical location reference on recurring schedules.
+  // Preferred over fragile address-string comparison for same-day visit grouping.
+  // When set, the scheduler uses loc:{location_id} as the grouping key instead of
+  // normalizing the service_address string. Schedules sharing the same location_id
+  // on the same date (and with compatible times) share one Calendar appointment.
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES client_locations(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_agr_schedules_location ON recurring_agreement_schedules(location_id) WHERE location_id IS NOT NULL`,
 ];
 
 async function runMigrations() {

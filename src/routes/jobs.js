@@ -238,7 +238,9 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT j.*, c.name AS client_name, u.name AS tech_name,
-              um.name AS job_manager_name
+              um.name AS job_manager_name,
+              (SELECT COUNT(*)::int FROM job_services js
+               WHERE js.job_id = j.id AND js.account_id = j.account_id) AS service_count
        FROM jobs j
        JOIN clients c   ON c.id = j.client_id
        LEFT JOIN users u  ON u.id = j.tech_id

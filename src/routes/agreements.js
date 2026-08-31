@@ -134,15 +134,17 @@ async function insertSchedules(accountId, agreementId, schedules, client) {
     await client.query(
       `INSERT INTO recurring_agreement_schedules
          (account_id, agreement_id, service_type, service_id, asset_label, service_address,
+          location_id,
           cadence, preferred_weekday, service_day_of_month, service_interval_days,
           started_at, preferred_start_time, duration_minutes,
           end_condition_type, end_date, end_after_occurrences,
           included_services_per_period, status, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,CURRENT_DATE),$12,$13,$14,$15,$16,$17,$18,$19)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12,CURRENT_DATE),$13,$14,$15,$16,$17,$18,$19,$20)`,
       [
         accountId, agreementId,
         s.service_type || null, s.service_id || null, s.asset_label || null,
         s.service_address || null,
+        s.location_id || null,
         s.cadence === 'biweekly' ? 'every_2_weeks' : s.cadence,
         s.preferred_weekday != null ? parseInt(s.preferred_weekday, 10) : null,
         s.service_day_of_month != null ? parseInt(s.service_day_of_month, 10) : null,
@@ -606,6 +608,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
         if (s.id) {
           // Update existing schedule — only allowed fields
           const schAllowed = ['service_type','service_id','asset_label','service_address',
+            'location_id',
             'cadence','preferred_weekday','service_day_of_month','service_interval_days',
             'started_at','preferred_start_time','duration_minutes','end_condition_type','end_date',
             'end_after_occurrences','included_services_per_period','status','sort_order'];

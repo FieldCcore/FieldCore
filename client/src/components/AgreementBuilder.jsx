@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
+import ClientLocationField from './ClientLocationField';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -97,6 +98,7 @@ function newSchedule(overrides = {}) {
     serviceType: '',
     serviceId: null,
     assetLabel: '',
+    locationId: null,
     serviceAddress: '',
     cadence: 'monthly',
     preferredWeekday: '',
@@ -117,6 +119,7 @@ function scheduleFromApi(s) {
     serviceType: s.service_type || '',
     serviceId: s.service_id || null,
     assetLabel: s.asset_label || '',
+    locationId: s.location_id || null,
     serviceAddress: s.service_address || '',
     cadence: s.cadence || 'monthly',
     preferredWeekday: s.preferred_weekday != null ? String(s.preferred_weekday) : '',
@@ -255,6 +258,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
       service_type:         s.serviceType.trim() || null,
       service_id:           s.serviceId || null,
       asset_label:          s.assetLabel.trim() || null,
+      location_id:          s.locationId || null,
       service_address:      s.serviceAddress.trim() || null,
       cadence:              s.cadence,
       service_interval_days: s.cadence === 'custom' ? parseInt(s.serviceIntervalDays, 10) : null,
@@ -479,14 +483,21 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                   />
                 </div>
 
-                {/* Service address (for same-day grouping) */}
+                {/* Service location — canonical location_id preferred over address string */}
                 <div className="ab-field">
-                  <label className="ab-label">Service Location <span className="ab-hint">(optional — used for grouping)</span></label>
-                  <input
-                    className="ib-input"
-                    value={sched.serviceAddress}
-                    onChange={e => updateSchedule(idx, 'serviceAddress', e.target.value)}
-                    placeholder="Leave blank to use client's address"
+                  <label className="ab-label">Service Location <span className="ab-hint">(optional — used for visit grouping)</span></label>
+                  <ClientLocationField
+                    clientId={selectedClient?.id || null}
+                    locationId={sched.locationId}
+                    address={sched.serviceAddress}
+                    onSelect={({ location_id, address, city, state, zip, lat, lng }) => {
+                      setSchedules(prev => prev.map((s, i) => i === idx ? {
+                        ...s,
+                        locationId:     location_id || null,
+                        serviceAddress: address || '',
+                      } : s));
+                    }}
+                    onAddressChange={v => updateSchedule(idx, 'serviceAddress', v)}
                   />
                 </div>
 

@@ -470,8 +470,19 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                     <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 3, whiteSpace: 'pre-wrap' }}>{svc.description}</div>
                   )}
                   <div style={{ display: 'flex', gap: 12, marginTop: svc.description || svc.asset_label ? 5 : 3, flexWrap: 'wrap' }}>
-                    {svc.duration_minutes && (
+                    {svc.schedule_preferred_start_time && (
+                      <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600 }}>
+                        {svc.schedule_preferred_start_time}
+                        {svc.duration_minutes ? ` · ${formatDuration(svc.duration_minutes)}` : ''}
+                      </span>
+                    )}
+                    {!svc.schedule_preferred_start_time && svc.duration_minutes && (
                       <span style={{ fontSize: 11, color: 'var(--steel)' }}>{formatDuration(svc.duration_minutes)}</span>
+                    )}
+                    {svc.schedule_cadence && (
+                      <span style={{ fontSize: 11, color: 'var(--steel)', textTransform: 'capitalize' }}>
+                        {svc.schedule_cadence.replace(/_/g, ' ')}
+                      </span>
                     )}
                     {isAdmin && svc.price_cents != null && (
                       <span style={{ fontSize: 11, color: 'var(--steel)' }}>${(svc.price_cents / 100).toFixed(2)}</span>
