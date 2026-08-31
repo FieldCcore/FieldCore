@@ -110,10 +110,11 @@ function AddLocationForm({ clientId, onSaved, onCancel }) {
         {label === '__custom__' && (
           <input
             data-testid="add-location-custom-label"
+            className="ib-input"
             value={customLabel}
             onChange={e => setCustomLabel(e.target.value)}
             placeholder="e.g. Vacation Home, Job Site A"
-            style={{ marginTop: 8, fontSize: 13, width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--lightgray)' }}
+            style={{ marginTop: 8 }}
           />
         )}
       </div>
@@ -154,10 +155,10 @@ function AddLocationForm({ clientId, onSaved, onCancel }) {
           Access Instructions <span style={{ fontWeight: 400 }}>(optional)</span>
         </div>
         <input
+          className="ib-input"
           value={accessInstructions}
           onChange={e => setAccessInstructions(e.target.value)}
           placeholder="Gate code, parking, etc."
-          style={{ fontSize: 13, width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--lightgray)' }}
         />
       </div>
 
@@ -186,14 +187,11 @@ function AddLocationForm({ clientId, onSaved, onCancel }) {
       )}
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" onClick={onCancel}
-          style={{ padding: '7px 14px', fontSize: 12, borderRadius: 6, border: '1px solid var(--lightgray)', background: 'var(--white)', cursor: 'pointer' }}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" data-testid="add-location-save-btn"
-          onClick={handleSave}
-          disabled={saving || !address.trim()}
-          style={{ padding: '7px 14px', fontSize: 12, borderRadius: 6, border: 'none', background: 'var(--navy)', color: '#fff', cursor: saving || !address.trim() ? 'default' : 'pointer', opacity: saving || !address.trim() ? 0.6 : 1 }}>
+        <button type="button" className="btn btn-primary btn-sm" data-testid="add-location-save-btn"
+          onClick={handleSave} disabled={saving || !address.trim()}>
           {saving ? 'Saving…' : 'Use This Location'}
         </button>
       </div>
@@ -323,9 +321,9 @@ export default function ClientLocationField({
         <>
           <select
             data-testid="location-dropdown"
+            className="ib-select"
             value={locationId || ''}
             onChange={handleDropdownChange}
-            style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--lightgray)', background: 'var(--white)', color: 'var(--navy)' }}
           >
             <option value="">— Select service location —</option>
             {locations.map(loc => (

@@ -688,16 +688,11 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
               {techs.length > 0 && (
                 <div className="ib-inline-agr-row">
                   <div className="ib-field ib-field--grow">
-                    <label className="ib-label" style={{ fontSize: 12 }}>Technicians for Day {idx + 1}</label>
+                    <label className="ib-label">Technicians for Day {idx + 1}</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
                       {techs.map(t => (
-                        <label key={t.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                          padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                          background: sess.tech_ids.includes(t.id) ? 'var(--navy)' : 'var(--white)',
-                          color: sess.tech_ids.includes(t.id) ? '#fff' : 'var(--navy)',
-                          border: '1px solid var(--lightgray)',
-                        }}>
+                        <label key={t.id}
+                          className={`ib-tech-chip${sess.tech_ids.includes(t.id) ? ' ib-tech-chip--active' : ''}`}>
                           <input type="checkbox" style={{ display: 'none' }}
                             checked={sess.tech_ids.includes(t.id)}
                             onChange={() => toggleSessionTech(idx, t.id)} />
@@ -717,7 +712,7 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
           >
             <Plus size={13} /> Add Another Day
           </button>
-          <div style={{ padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
+          <div style={{ padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 'var(--r-md)', border: '1px solid var(--lightgray)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <input type="checkbox" id="end_date_unknown" checked={form.end_date_unknown} onChange={set('end_date_unknown')} />
               <label htmlFor="end_date_unknown" className="ib-label" style={{ marginBottom: 0, cursor: 'pointer' }}>

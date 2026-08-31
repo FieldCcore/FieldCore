@@ -2162,7 +2162,7 @@ body {
 .ib-schedule-card {
   background: var(--offwhite);
   border: 1px solid var(--lightgray);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -2217,6 +2217,28 @@ body {
   background: var(--offwhite);
   border-color: var(--sand);
   color: var(--navy);
+}
+
+/* ── Tech-selection chip (multi-day session technician toggles) ── */
+.ib-tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--lightgray);
+  background: var(--white);
+  color: var(--navy);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  user-select: none;
+}
+.ib-tech-chip--active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
 }
 
 /* ── Universal Autocomplete component ───────────────────── */
