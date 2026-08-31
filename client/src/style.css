@@ -2105,6 +2105,7 @@ body {
 }
 .ib-inline-agr-row .ib-field { flex: 1; min-width: 160px; }
 .ib-field--grow { flex-grow: 1; }
+.ib-field--sm   { max-width: 200px; }
 .ib-inline-agr-actions {
   display: flex;
   justify-content: flex-end;

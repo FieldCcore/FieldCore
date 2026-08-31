@@ -7,6 +7,8 @@ import Autocomplete, { highlight } from './Autocomplete';
 import AddressAutocomplete from './AddressAutocomplete';
 import ClientLocationField from './ClientLocationField';
 import CollectPaymentWorkspace from './CollectPaymentWorkspace';
+import CreationSection from './CreationSection';
+import CreationCard from './CreationCard';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -552,8 +554,7 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
 
       {/* ── Client — shown when no client was pre-selected ─────────────────── */}
       {!initialClientId && (
-        <div className="ib-inline-agr-section" style={{ paddingTop: 0, borderTop: 'none' }}>
-          <div className="ib-inline-agr-section-label">Client *</div>
+        <CreationSection label="Client *" noBorder>
           <div style={{ position: 'relative' }}>
             <input
               className="ib-input"
@@ -578,12 +579,11 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
               Client: <strong>{formClientName}</strong>
             </p>
           )}
-        </div>
+        </CreationSection>
       )}
 
       {/* ── Agreement Basics ──────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Agreement Basics</div>
+      <CreationSection label="Agreement Basics">
         <div className="ib-inline-agr-row">
           <div className="ib-field ib-field--grow">
             <label className="ib-label">Agreement Name *</label>
@@ -596,11 +596,10 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             />
           </div>
         </div>
-      </div>
+      </CreationSection>
 
       {/* ── Service Schedules ─────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Service Schedules</div>
+      <CreationSection label="Service Schedules">
 
         {schedules.map((s, idx) => {
           const isWeekly = ['weekly','every_2_weeks','every_3_weeks','every_4_weeks'].includes(s.cadence);
@@ -616,23 +615,14 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
           );
 
           return (
-            <div key={s._id} className="ib-schedule-card" data-testid={`agr-schedule-${idx}`}>
-
-              {/* Card header */}
-              <div className="ib-schedule-card-hd">
-                <span className="ib-schedule-card-num">Schedule {idx + 1}</span>
-                {schedules.length > 1 && (
-                  <button
-                    type="button"
-                    className="ib-remove-schedule"
-                    onClick={() => removeSchedule(idx)}
-                    title="Remove this schedule"
-                    data-testid={`agr-remove-schedule-${idx}`}
-                  >
-                    <X size={13} /> Remove
-                  </button>
-                )}
-              </div>
+            <CreationCard
+              key={s._id}
+              label={`Schedule ${idx + 1}`}
+              showRemove={schedules.length > 1}
+              onRemove={() => removeSchedule(idx)}
+              removeTestId={`agr-remove-schedule-${idx}`}
+              testId={`agr-schedule-${idx}`}
+            >
 
               {/* Service / Package */}
               <div className="ib-inline-agr-row">
@@ -817,7 +807,7 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
                   </div>
                 </div>
               )}
-            </div>
+            </CreationCard>
           );
         })}
 
@@ -830,11 +820,10 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
         >
           <Plus size={14} /> Add Service Schedule
         </button>
-      </div>
+      </CreationSection>
 
       {/* ── Billing ───────────────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Billing</div>
+      <CreationSection label="Billing">
         <div className="ib-inline-agr-row">
           <div className="ib-field">
             <label className="ib-label">Billing Cadence</label>
@@ -881,11 +870,10 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             </div>
           </div>
         </div>
-      </div>
+      </CreationSection>
 
       {/* ── Payment Behavior ──────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Payment Behavior</div>
+      <CreationSection label="Payment Behavior">
         <div className="ib-inline-agr-row">
           <div className="ib-field ib-field--grow">
             <label className="ib-label">When an invoice is generated for this agreement</label>
@@ -895,11 +883,10 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             </select>
           </div>
         </div>
-      </div>
+      </CreationSection>
 
       {/* ── Discount ──────────────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Discount</div>
+      <CreationSection label="Discount">
         <div className="ib-inline-agr-row">
           <div className="ib-field">
             <label className="ib-label">Discount type</label>
@@ -945,11 +932,10 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             </label>
           </div>
         </div>
-      </div>
+      </CreationSection>
 
       {/* ── Exception Policies ────────────────────────────────────────────── */}
-      <div className="ib-inline-agr-section">
-        <div className="ib-inline-agr-section-label">Exception Policies</div>
+      <CreationSection label="Exception Policies">
         <div className="ib-inline-agr-row">
           <div className="ib-field">
             <label className="ib-label">If Services Exceed Included Limit</label>
@@ -978,7 +964,7 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             </div>
           </div>
         )}
-      </div>
+      </CreationSection>
 
       {/* ── Notes ─────────────────────────────────────────────────────────── */}
       <div className="ib-field" style={{ marginTop: 4 }}>

@@ -12,6 +12,7 @@ import JobDetail from '../components/JobDetail';
 import CalendarErrorBoundary from '../components/CalendarErrorBoundary';
 import { resolveCalendarTimeZone } from '../utils/calendarTimezone';
 import { InlineAgreementForm } from '../components/InvoiceBuilder';
+import CreationShell from '../components/CreationShell';
 
 // ─── Calendar status color system ────────────────────────────────────────────
 // Imported from the shared module — Calendar is the source of truth.
@@ -647,23 +648,15 @@ export default function Jobs() {
 
       {/* Recurring Service modal — driven by ?create=recurring in URL */}
       {validCreateMode === 'recurring' && (
-        <div className="modal-overlay" onClick={closeCreate}>
-          <div className="modal" style={{ maxWidth: 660, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>New Recurring Service</h2>
-              <button className="btn-close" onClick={closeCreate}>×</button>
-            </div>
-            <div className="modal-body">
-              <InlineAgreementForm
-                onSaved={() => {
-                  closeCreate();
-                  loadJobs();
-                }}
-                onCancel={closeCreate}
-              />
-            </div>
-          </div>
-        </div>
+        <CreationShell title="New Recurring Service" onClose={closeCreate}>
+          <InlineAgreementForm
+            onSaved={() => {
+              closeCreate();
+              loadJobs();
+            }}
+            onCancel={closeCreate}
+          />
+        </CreationShell>
       )}
 
       {/* Event detail drawer — right-side panel, non-navigating */}
