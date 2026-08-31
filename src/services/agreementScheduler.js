@@ -520,11 +520,12 @@ async function generateUpcomingJobs(agreement, client) {
 
         const startTime = scheduleItems[0].preferred_start_time || '09:00';
         const scheduledAt = `${dateStr}T${startTime}:00`;
+        const totalDuration = scheduleItems.reduce((sum, s) => sum + (s.duration_minutes || 0), 0) || null;
 
         const jobRes = await client.query(
           `INSERT INTO jobs
-             (account_id, client_id, service_type, scheduled_at, status, agreement_id, agreement_schedule_id)
-           VALUES ($1, $2, $3, $4::timestamp, 'scheduled', $5, $6)
+             (account_id, client_id, service_type, scheduled_at, status, agreement_id, agreement_schedule_id, duration_minutes)
+           VALUES ($1, $2, $3, $4::timestamp, 'scheduled', $5, $6, $7)
            RETURNING id`,
           [
             agreement.account_id,
@@ -533,6 +534,7 @@ async function generateUpcomingJobs(agreement, client) {
             scheduledAt,
             agreement.id,
             scheduleItems.length === 1 ? scheduleItems[0].id : null,
+            totalDuration,
           ]
         );
         jobId = jobRes.rows[0].id;
@@ -551,6 +553,27 @@ async function generateUpcomingJobs(agreement, client) {
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (schedule_id, occurrence_date) DO UPDATE SET job_id = EXCLUDED.job_id`,
           [agreement.account_id, agreement.id, schedule.id, jobId, dateStr]
+        );
+      }
+
+      // Insert job_services for each newly-linked schedule (idempotent via partial unique index)
+      for (let i = 0; i < newItems.length; i++) {
+        const schedule = newItems[i];
+        await client.query(
+          `INSERT INTO job_services
+             (job_id, account_id, service_name, asset_label, duration_minutes, agreement_schedule_id, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (job_id, agreement_schedule_id)
+           WHERE agreement_schedule_id IS NOT NULL DO NOTHING`,
+          [
+            jobId,
+            agreement.account_id,
+            schedule.service_type || agreement.service_type || 'Service',
+            schedule.asset_label || null,
+            schedule.duration_minutes || null,
+            schedule.id,
+            i,
+          ]
         );
       }
     } catch (err) {

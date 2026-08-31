@@ -2394,6 +2394,14 @@ const MIGRATIONS = [
   // Duration columns — canonical scheduled duration in minutes for sessions and recurring schedules.
   `ALTER TABLE job_sessions ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`,
   `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`,
+
+  // ── JOB SERVICES — Agreement schedule traceability ────────────────────────────
+  // Links each service line item to the recurring agreement schedule that generated it.
+  // Enables idempotent job_services inserts in agreementScheduler (ON CONFLICT DO NOTHING).
+  `ALTER TABLE job_services ADD COLUMN IF NOT EXISTS agreement_schedule_id UUID REFERENCES recurring_agreement_schedules(id) ON DELETE SET NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_job_services_schedule_job
+     ON job_services(job_id, agreement_schedule_id)
+     WHERE agreement_schedule_id IS NOT NULL`,
 ];
 
 async function runMigrations() {

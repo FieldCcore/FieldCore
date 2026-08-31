@@ -331,11 +331,15 @@ router.get('/:id', requireAuth, async (req, res) => {
     );
     job.team = team;
 
-    // Service lines (all job types)
+    // Service lines (all job types) — join schedule for cadence/timing on recurring jobs
     const { rows: services } = await pool.query(
-      `SELECT * FROM job_services
-       WHERE job_id = $1 AND account_id = $2
-       ORDER BY sort_order, created_at`,
+      `SELECT js.*,
+          ras.cadence              AS schedule_cadence,
+          ras.preferred_start_time AS schedule_preferred_start_time
+       FROM job_services js
+       LEFT JOIN recurring_agreement_schedules ras ON ras.id = js.agreement_schedule_id
+       WHERE js.job_id = $1 AND js.account_id = $2
+       ORDER BY js.sort_order, js.created_at`,
       [job.id, req.accountId]
     );
     job.services = services;

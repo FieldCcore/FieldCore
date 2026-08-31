@@ -624,44 +624,25 @@ export default function Jobs() {
       )}
 
       {/* Create modal — driven by ?create=single-day or ?create=multi-day in URL */}
+      {/* JobForm is self-contained (ab-overlay + ab-sheet) — no wrapper needed */}
       {(validCreateMode === 'single-day' || validCreateMode === 'multi-day') && (
-        <div className="modal-overlay" onClick={closeCreate}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{validCreateMode === 'multi-day' ? 'New Multi-Day Job' : 'New Job'}</h2>
-              <button className="btn-close" onClick={closeCreate}>×</button>
-            </div>
-            <div className="modal-body">
-              <JobForm
-                defaultStart={defaultStart ?? new Date()}
-                defaultMultiDay={validCreateMode === 'multi-day'}
-                schedulingTimezone={calendarTZ}
-                onSave={handleJobCreated}
-                onCancel={closeCreate}
-              />
-            </div>
-          </div>
-        </div>
+        <JobForm
+          defaultStart={defaultStart ?? new Date()}
+          defaultMultiDay={validCreateMode === 'multi-day'}
+          schedulingTimezone={calendarTZ}
+          onSave={handleJobCreated}
+          onCancel={closeCreate}
+        />
       )}
 
-      {/* Edit modal (opens from drawer) */}
+      {/* Edit modal (opens from drawer) — self-contained */}
       {modal === 'edit' && drawerJob && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Edit Job</h2>
-              <button className="btn-close" onClick={() => setModal(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <JobForm
-                job={drawerJob}
-                schedulingTimezone={calendarTZ}
-                onSave={handleJobEdited}
-                onCancel={() => setModal(null)}
-              />
-            </div>
-          </div>
-        </div>
+        <JobForm
+          job={drawerJob}
+          schedulingTimezone={calendarTZ}
+          onSave={handleJobEdited}
+          onCancel={() => setModal(null)}
+        />
       )}
 
       {/* Recurring Service modal — driven by ?create=recurring in URL */}

@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, addMinutes } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
-import { Plus, Trash2, Lock } from 'lucide-react';
+import { X, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
-import AddressAutocomplete from './AddressAutocomplete';
 import ClientLocationField from './ClientLocationField';
 import JobTeamSelector from './JobTeamSelector';
-import { useEntitlements } from '../hooks/useEntitlements';
 import { resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimezone';
 import { TIMEZONES } from '../utils/timezones';
 
@@ -21,7 +19,6 @@ function computeSessionEndTime(startTime, durationMinutes) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-// Detected once per page load — never changes.
 const BROWSER_TZ = (() => {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -29,26 +26,19 @@ const BROWSER_TZ = (() => {
   } catch { return 'UTC'; }
 })();
 
-// Format a UTC ISO string into a datetime-local value in the given timezone.
 function toLocalInTZ(utcIso, tz) {
   if (!utcIso) return '';
-  try {
-    return formatInTimeZone(new Date(utcIso), tz, "yyyy-MM-dd'T'HH:mm");
-  } catch { return ''; }
+  try { return formatInTimeZone(new Date(utcIso), tz, "yyyy-MM-dd'T'HH:mm"); }
+  catch { return ''; }
 }
 
-// Format a Date (from a calendar slot click) into a datetime-local value
-// in the given timezone. Falls back to ISO string if conversion fails.
 function dateToLocalInTZ(ds, tz) {
   if (!ds) return '';
   if (typeof ds === 'string') return ds;
-  try {
-    return formatInTimeZone(ds, tz, "yyyy-MM-dd'T'HH:mm");
-  } catch { return ''; }
+  try { return formatInTimeZone(ds, tz, "yyyy-MM-dd'T'HH:mm"); }
+  catch { return ''; }
 }
 
-// For display in the conversion preview: convert a local string from one TZ to another.
-// Display-only — this is fine on the frontend.
 function convertLocalToTZ(localStr, fromTZ, toTZ) {
   if (!localStr || !localStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)) return null;
   try {
@@ -58,9 +48,8 @@ function convertLocalToTZ(localStr, fromTZ, toTZ) {
 }
 
 /**
- * schedulingTimezone — the IANA timezone the calendar is currently displaying
- * (comes from business_profiles.timezone via the parent page). Used to
- * pre-fill times from calendar slot clicks in the expected display timezone.
+ * schedulingTimezone — the IANA timezone the calendar is currently displaying.
+ * defaultMultiDay — true when opened from the "New Multi-Day Job" menu item.
  */
 export default function JobForm({ job, defaultStart, defaultMultiDay = false, onSave, onCancel, schedulingTimezone }) {
   const [clients,   setClients]   = useState([]);
@@ -68,15 +57,8 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
   const [templates, setTemplates] = useState([]);
   const [crews,     setCrews]     = useState([]);
   const [assignment, setAssignment] = useState({ members: [], crewId: null });
-  // Track whether the existing assignment was loaded (edit mode). Prevents
-  // accidentally clearing a team if the /assignments fetch fails.
   const [assignmentLoaded, setAssignmentLoaded] = useState(!job);
 
-  // ── Input timezone: the timezone the user is entering times in ──────────────
-  // This is explicitly separate from the calendar display timezone (schedulingTimezone).
-  // For edits: restore from stored job.input_timezone (round-trip invariant).
-  // For new jobs from calendar slot clicks: default to calendar display timezone.
-  // For new jobs from the "New Job" button (no slot): default to browser timezone.
   const initialInputTZ = useMemo(() => {
     if (job?.input_timezone && isValidTimezone(job.input_timezone)) return job.input_timezone;
     if (defaultStart && schedulingTimezone && isValidTimezone(schedulingTimezone)) return schedulingTimezone;
@@ -90,15 +72,10 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     return 'browser';
   });
 
-  // resolvedTZ is kept only for calendar-slot pre-fill (defaultStartToInput).
-  // It must NEVER be used to parse appointment input or convert the scheduled time.
   const resolvedTZ = resolveCalendarTimeZone({
     businessTimezone: schedulingTimezone || job?.scheduling_timezone,
   }).timezone;
 
-  // Initial scheduled_at string for the datetime-local input.
-  // Round-trip: for jobs with original_local_start, use that exact string.
-  // Backward-compat: for old jobs without it, convert UTC → initialInputTZ.
   const initialScheduledAt = useMemo(() => {
     if (job?.scheduled_at) {
       return job.original_local_start || toLocalInTZ(job.scheduled_at, initialInputTZ);
@@ -123,7 +100,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     service_zip:     job?.service_zip     || '',
     service_lat:     job?.service_lat     || '',
     service_lng:     job?.service_lng     || '',
-    // Multi-day fields
     is_multi_day:         job?.is_multi_day       || defaultMultiDay || false,
     title:                job?.title              || '',
     scope_of_work:        job?.scope_of_work      || '',
@@ -137,7 +113,7 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     billing_method:       job?.billing_method      || 'fixed',
     priority:             job?.priority            || 'normal',
   });
-  // Service lines: each { service_name, asset_label, description, duration_minutes, price_cents, service_notes }
+
   const [serviceLines, setServiceLines] = useState(
     job?.services?.length > 0
       ? job.services.map(s => ({ ...s }))
@@ -146,11 +122,8 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
   const [sessions, setSessions] = useState([blankSession(
     defaultStart ? format(new Date(defaultStart), 'yyyy-MM-dd') : ''
   )]);
-  const [saving, setSaving]             = useState(false);
-  const [error,  setError]              = useState('');
-  const [showUpgradeHint, setShowUpgradeHint] = useState(false);
-  const { entitlements } = useEntitlements();
-  const canMultiDay = entitlements?.capabilities?.can_create_multi_day_jobs !== false;
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState('');
 
   useEffect(() => {
     api.get('/clients').then(r => setClients(r.data));
@@ -167,7 +140,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         if (tf > 0) setForm(prev => ({ ...prev, travel_fee: String(tf) }));
       }).catch(() => {});
     } else {
-      // Pre-populate team assignment from existing job_assignments
       api.get(`/jobs/${job.id}/assignments`)
         .then(r => {
           const rows = r.data?.assignments || [];
@@ -210,7 +182,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       }
       return { ...prev, ...updates };
     });
-    // Pre-populate a service line from the template (user can edit asset_label etc.)
     setServiceLines(prev => {
       if (prev.length === 0) {
         return [{
@@ -226,7 +197,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     });
   }
 
-  // ── Session helpers ───────────────────────────────────────────
   const setSession = (idx, field) => e => {
     const val = e.target.value;
     setSessions(prev => prev.map((s, i) => i === idx ? { ...s, [field]: val } : s));
@@ -242,13 +212,8 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     }));
   }
 
-  function addSession() {
-    setSessions(prev => [...prev, blankSession()]);
-  }
-
-  function removeSession(idx) {
-    setSessions(prev => prev.filter((_, i) => i !== idx));
-  }
+  function addSession() { setSessions(prev => [...prev, blankSession()]); }
+  function removeSession(idx) { setSessions(prev => prev.filter((_, i) => i !== idx)); }
 
   function copyFirstSessionTimes() {
     if (sessions.length < 2) return;
@@ -262,9 +227,36 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     }));
   }
 
-  // ── Submit ────────────────────────────────────────────────────
-  async function handleSubmit(e) {
-    e.preventDefault();
+  const conversionPreview = useMemo(() => {
+    if (!form.scheduled_at || !schedulingTimezone || inputTimezone === schedulingTimezone) return null;
+    if (!isValidTimezone(schedulingTimezone)) return null;
+    const inCalTZ = convertLocalToTZ(form.scheduled_at, inputTimezone, schedulingTimezone);
+    if (!inCalTZ) return null;
+    const calLabel = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
+    return `In company timezone (${calLabel}): ${inCalTZ}`;
+  }, [form.scheduled_at, inputTimezone, schedulingTimezone]);
+
+  const tzOptions = useMemo(() => {
+    const pinned = new Set();
+    const result = [];
+    if (BROWSER_TZ) { pinned.add(BROWSER_TZ); result.push({ value: BROWSER_TZ, label: `My timezone — ${BROWSER_TZ}` }); }
+    if (schedulingTimezone && isValidTimezone(schedulingTimezone) && !pinned.has(schedulingTimezone)) {
+      pinned.add(schedulingTimezone);
+      const bl = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
+      result.push({ value: schedulingTimezone, label: `Business timezone — ${bl} (${schedulingTimezone})` });
+    }
+    if (inputTimezone && !pinned.has(inputTimezone)) {
+      pinned.add(inputTimezone);
+      result.push({ value: inputTimezone, label: inputTimezone });
+    }
+    result.push({ value: '__sep__', label: '──────────────────', disabled: true });
+    for (const tz of TIMEZONES) {
+      if (!pinned.has(tz)) result.push({ value: tz, label: tz });
+    }
+    return result;
+  }, [schedulingTimezone, inputTimezone]);
+
+  async function handleSave() {
     if (!form.client_id)    return setError('Client is required.');
     if (!form.service_type) return setError('Service type is required.');
     if (form.is_multi_day) {
@@ -274,21 +266,15 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     setSaving(true);
     setError('');
     try {
-      // The raw local string typed by the user. We do NOT convert to UTC on the frontend.
-      // The backend receives scheduled_at_local + input_timezone and converts server-side.
       const localInput = form.scheduled_at || null;
-
       const payload = {
         ...form,
-        // Send the raw local string and the explicit timezone — server does the UTC conversion.
-        scheduled_at:        undefined,      // not sent (no frontend UTC conversion)
+        scheduled_at:        undefined,
         scheduled_at_local:  localInput,
         input_timezone:      inputTimezone,
         input_timezone_source: inputTZSource === 'stored' ? 'user_confirmed' : inputTZSource,
         creator_timezone:    BROWSER_TZ,
-        // Store the raw typed string for round-trip (edit form restores from this).
         original_local_start: localInput,
-        // scheduling_timezone mirrors input_timezone for legacy scheduler / SMS paths.
         scheduling_timezone: inputTimezone,
         amount:       form.amount      || null,
         service_lat:  form.service_lat || null,
@@ -306,7 +292,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       delete payload._duration_minutes;
       delete payload._end_at;
 
-      // For new single-day jobs: include team assignment in POST body (transactional).
       if (!job && !form.is_multi_day && assignment.members.length > 0) {
         payload.assignment = {
           members: assignment.members.map(m => ({
@@ -326,7 +311,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
           duration_minutes: parseInt(s.duration_minutes, 10) || null,
           lead_tech_id:    s.lead_tech_id || null,
         }));
-        // Use first session date as the job-level scheduled_at_local if no time was set
         if (!payload.scheduled_at_local && sessions[0]?.scheduled_date) {
           const d = sessions[0].scheduled_date;
           const t = sessions[0].start_time || '08:00';
@@ -340,8 +324,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         ? await api.patch(`/jobs/${job.id}`, payload)
         : await api.post('/jobs', payload);
 
-      // For single-day edits: sync team assignments via PUT (only if we successfully
-      // loaded the existing team — prevents accidental unassign on fetch failure).
       if (job && !form.is_multi_day && assignmentLoaded) {
         try {
           await api.put(`/jobs/${job.id}/assignments`, {
@@ -364,7 +346,6 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         }
       }
 
-      // Sync service lines on edit (PUT replaces the full list)
       if (job) {
         const svcPayload = serviceLines
           .filter(s => s.service_name?.trim())
@@ -380,455 +361,450 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     }
   }
 
-  // ── Conversion preview ────────────────────────────────────────
-  // Show what the entered time maps to in the calendar display timezone when they differ.
-  const conversionPreview = useMemo(() => {
-    if (!form.scheduled_at || !schedulingTimezone || inputTimezone === schedulingTimezone) return null;
-    if (!isValidTimezone(schedulingTimezone)) return null;
-    const inCalTZ = convertLocalToTZ(form.scheduled_at, inputTimezone, schedulingTimezone);
-    if (!inCalTZ) return null;
-    const calLabel = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
-    return `In company timezone (${calLabel}): ${inCalTZ}`;
-  }, [form.scheduled_at, inputTimezone, schedulingTimezone]);
-
   const isMultiDay = form.is_multi_day;
 
-  // Build timezone selector options: browser TZ + business TZ + full list
-  const tzOptions = useMemo(() => {
-    const pinned = new Set();
-    const result = [];
-    if (BROWSER_TZ) { pinned.add(BROWSER_TZ); result.push({ value: BROWSER_TZ, label: `My timezone — ${BROWSER_TZ}` }); }
-    if (schedulingTimezone && isValidTimezone(schedulingTimezone) && !pinned.has(schedulingTimezone)) {
-      pinned.add(schedulingTimezone);
-      const bl = schedulingTimezone.split('/').pop().replace(/_/g, ' ');
-      result.push({ value: schedulingTimezone, label: `Business timezone — ${bl} (${schedulingTimezone})` });
-    }
-    // If current inputTimezone isn't in the pinned list (e.g., stored from a different device), add it
-    if (inputTimezone && !pinned.has(inputTimezone)) {
-      pinned.add(inputTimezone);
-      result.push({ value: inputTimezone, label: inputTimezone });
-    }
-    // Divider then full sorted list
-    result.push({ value: '__sep__', label: '──────────────────', disabled: true });
-    for (const tz of TIMEZONES) {
-      if (!pinned.has(tz)) result.push({ value: tz, label: tz });
-    }
-    return result;
-  }, [schedulingTimezone, inputTimezone]);
-
   return (
-    <form className="client-form" onSubmit={handleSubmit}>
-      {error && <p className="form-error">{error}</p>}
+    <div className="ab-overlay" onClick={onCancel}>
+      <div className="ab-sheet" onClick={e => e.stopPropagation()}>
 
-      {/* ── Job Duration Toggle ── */}
-      <div className="form-group">
-        <label style={{ fontSize: 13, fontWeight: 700, display: 'block', marginBottom: 8 }}>Job Duration</label>
-        <div style={{ display: 'flex', gap: 0, border: '1px solid var(--lightgray)', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
-          <button
-            type="button"
-            onClick={() => { setForm(prev => ({ ...prev, is_multi_day: false })); setShowUpgradeHint(false); }}
-            style={{
-              padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-              background: !form.is_multi_day ? 'var(--navy)' : 'var(--white)',
-              color:      !form.is_multi_day ? '#fff' : 'var(--slate)',
-            }}
-          >
-            Single Day
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!canMultiDay) { setShowUpgradeHint(true); return; }
-              setShowUpgradeHint(false);
-              setForm(prev => ({ ...prev, is_multi_day: true }));
-            }}
-            style={{
-              padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none',
-              cursor: canMultiDay ? 'pointer' : 'default',
-              background: form.is_multi_day ? 'var(--navy)' : 'var(--white)',
-              color:      form.is_multi_day ? '#fff' : (canMultiDay ? 'var(--slate)' : 'var(--steel)'),
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}
-          >
-            Multiple Days
-            {!canMultiDay && <Lock size={11} style={{ opacity: 0.6 }} />}
+        {/* Header */}
+        <div className="ab-header">
+          <h2 className="ab-title">
+            {job ? 'Edit Job' : isMultiDay ? 'New Multi-Day Job' : 'New Job'}
+          </h2>
+          <button className="ib-close" onClick={onCancel} aria-label="Close">
+            <X size={18} />
           </button>
         </div>
-        {showUpgradeHint && !canMultiDay && (
-          <div style={{ marginTop: 8, padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe',
-            borderRadius: 6, fontSize: 12, color: '#1e40af', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Lock size={12} />
-            Multi-Day Jobs require the <strong>Solo plan</strong> or higher.{' '}
-            <a href="/billing" style={{ color: '#1d4ed8', fontWeight: 700, textDecoration: 'none' }}>Upgrade →</a>
-          </div>
-        )}
-      </div>
 
-      {/* ── Multi-day project title ── */}
-      {isMultiDay && (
-        <div className="form-group">
-          <label>Project Title</label>
-          <input value={form.title} onChange={set('title')} placeholder="e.g. Fleet Interior Restoration — Unit 1018–1205" />
-        </div>
-      )}
+        <div className="ab-body">
 
-      <div className="form-row">
-        <div className="form-group">
-          <label>Client *</label>
-          <select value={form.client_id} onChange={set('client_id')}>
-            <option value="">Select client...</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label>{isMultiDay ? 'Job Manager' : 'Assign Team'}</label>
-          {isMultiDay ? (
-            <select value={form.job_manager_id} onChange={set('job_manager_id')}>
-              <option value="">No manager assigned</option>
-              {techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          ) : (
-            <JobTeamSelector
-              value={assignment}
-              onChange={setAssignment}
-              techs={techs}
-              crews={crews}
-            />
-          )}
-        </div>
-      </div>
-
-      {templates.length > 0 && (
-        <div className="form-group">
-          <label>Service Template</label>
-          <select onChange={e => applyTemplate(e.target.value)} defaultValue="">
-            <option value="">— pick a template to auto-fill —</option>
-            {templates.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.name}{t.duration_minutes ? ` (${t.duration_minutes} min)` : ''}{t.price != null ? ` · $${parseFloat(t.price).toFixed(2)}` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="form-row">
-        <div className="form-group">
-          <label>Service Type *</label>
-          <input value={form.service_type} onChange={set('service_type')} placeholder="e.g. Fleet Decontamination" />
-        </div>
-        <div className="form-group">
-          <label>Amount ($)</label>
-          <input type="number" step="0.01" value={form.amount} onChange={set('amount')} placeholder="0.00" />
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label>Travel Fee ($) <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— added as line item on invoice</span></label>
-        <input type="number" step="0.01" min="0" value={form.travel_fee} onChange={set('travel_fee')} placeholder="0.00" />
-      </div>
-
-      {/* ── Single-day scheduling ── */}
-      {!isMultiDay && (
-        <>
-          <div className="form-group">
-            <label>Scheduled Date &amp; Time</label>
-            <input type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} />
-          </div>
-
-          {/* Timezone selector — explicit: which timezone is the entered time in? */}
-          <div className="form-group" style={{ marginTop: -8, marginBottom: 14 }}>
-            <label style={{ fontSize: 11, color: 'var(--steel)', fontWeight: 500, marginBottom: 4, display: 'block' }}>
-              Times entered in
-            </label>
-            <select
-              value={inputTimezone}
-              onChange={e => { setInputTimezone(e.target.value); setInputTZSource('user_selected'); }}
-              style={{ fontSize: 13, padding: '6px 8px' }}
-            >
-              {tzOptions.map(opt => (
-                <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Conversion preview — shown when input TZ differs from calendar display TZ */}
-          {conversionPreview && (
-            <div style={{ fontSize: 12, color: 'var(--slate)', background: 'var(--offwhite)',
-              border: '1px solid var(--lightgray)', borderRadius: 6, padding: '6px 10px',
-              marginTop: -8, marginBottom: 14 }}>
-              {conversionPreview}
+          {/* CLIENT */}
+          <section className="ab-section">
+            <p className="ib-section-label">Client</p>
+            <div className="ab-field">
+              <label className="ab-label">Client *</label>
+              <select className="ib-select" value={form.client_id} onChange={set('client_id')}>
+                <option value="">Select client...</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
-          )}
+          </section>
 
-          {form._end_at && (
-            <p style={{ fontSize: 12, color: '#8A90A2', marginTop: -8, marginBottom: 12 }}>
-              Estimated end: {form._end_at.replace('T', ' at ').replace(/:\d\d$/, '')}
-            </p>
-          )}
-        </>
-      )}
+          {/* JOB DETAILS */}
+          <section className="ab-section">
+            <p className="ib-section-label">Job Details</p>
+            {isMultiDay && (
+              <div className="ab-field">
+                <label className="ab-label">Project Title</label>
+                <input
+                  className="ib-input"
+                  value={form.title}
+                  onChange={set('title')}
+                  placeholder="e.g. Fleet Interior Restoration — Unit 1018–1205"
+                />
+              </div>
+            )}
+            {templates.length > 0 && (
+              <div className="ab-field">
+                <label className="ab-label">Service Template</label>
+                <select className="ib-select" onChange={e => applyTemplate(e.target.value)} defaultValue="">
+                  <option value="">— pick a template to auto-fill —</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.duration_minutes ? ` (${t.duration_minutes} min)` : ''}{t.price != null ? ` · $${parseFloat(t.price).toFixed(2)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="ab-row ab-row--gap">
+              <div className="ab-field ab-field--grow">
+                <label className="ab-label">Service Type *</label>
+                <input
+                  className="ib-input"
+                  value={form.service_type}
+                  onChange={set('service_type')}
+                  placeholder="e.g. Fleet Decontamination"
+                />
+              </div>
+              <div className="ab-field ab-field--sm">
+                <label className="ab-label">Amount ($)</label>
+                <input
+                  className="ib-input"
+                  type="number"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={set('amount')}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
+              <label className="ab-label">Travel Fee ($)</label>
+              <input
+                className="ib-input"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.travel_fee}
+                onChange={set('travel_fee')}
+                placeholder="0.00"
+              />
+            </div>
+            {isMultiDay && (
+              <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
+                <div className="ab-field">
+                  <label className="ab-label">Priority</label>
+                  <select className="ib-select" value={form.priority} onChange={set('priority')}>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                <div className="ab-field ab-field--grow">
+                  <label className="ab-label">Billing Method</label>
+                  <select className="ib-select" value={form.billing_method} onChange={set('billing_method')}>
+                    <option value="fixed">Fixed Price</option>
+                    <option value="hourly">Hourly</option>
+                    <option value="daily">Daily Rate</option>
+                    <option value="per_item">Per Service Item</option>
+                    <option value="milestone">Milestone</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </section>
 
-      {/* ── Multi-day session builder (new jobs only — sessions managed from job detail when editing) ── */}
-      {isMultiDay && !job && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>
-              Work Sessions ({sessions.length})
-            </label>
-            {sessions.length > 1 && (
-              <button type="button" className="btn-secondary"
-                style={{ fontSize: 11, padding: '4px 10px' }} onClick={copyFirstSessionTimes}>
-                Copy Day 1 times to all
+          {/* SERVICES */}
+          <section className="ab-section">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <p className="ib-section-label" style={{ marginBottom: 0 }}>Services</p>
+              <button
+                type="button"
+                className="ab-add-li"
+                onClick={() => setServiceLines(prev => [...prev, { service_name: '', asset_label: '', description: '', duration_minutes: '', service_notes: '' }])}
+              >
+                <Plus size={12} /> Add Service
               </button>
-            )}
-          </div>
-
-          {sessions.map((sess, idx) => (
-            <div key={idx} style={{ border: '1px solid var(--lightgray)', borderRadius: 8,
-              padding: 14, marginBottom: 10, background: 'var(--offwhite)', position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>
-                  Day {idx + 1}
-                </span>
-                {sessions.length > 1 && (
-                  <button type="button" onClick={() => removeSession(idx)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', display: 'flex', alignItems: 'center' }}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-              <div className="form-row" style={{ gap: 8 }}>
-                <div className="form-group" style={{ flex: '1 1 140px' }}>
-                  <label>Date *</label>
-                  <input type="date" value={sess.scheduled_date} onChange={setSession(idx, 'scheduled_date')} />
-                </div>
-                <div className="form-group" style={{ flex: '1 1 100px' }}>
-                  <label>Start</label>
-                  <input type="time" value={sess.start_time} onChange={setSession(idx, 'start_time')} />
-                </div>
-                <div className="form-group" style={{ flex: '1 1 100px' }}>
-                  <label>Duration (min)</label>
-                  <input type="number" min="15" max="1440" step="15"
-                    value={sess.duration_minutes}
-                    onChange={setSession(idx, 'duration_minutes')}
-                    placeholder="60" />
-                </div>
-              </div>
-              {techs.length > 0 && (
-                <div className="form-group" style={{ marginTop: 6 }}>
-                  <label style={{ fontSize: 12 }}>Technicians for Day {idx + 1}</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                    {techs.map(t => (
-                      <label key={t.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                        padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                        background: sess.tech_ids.includes(t.id) ? 'var(--navy)' : 'var(--white)',
-                        color: sess.tech_ids.includes(t.id) ? '#fff' : 'var(--navy)',
-                        border: '1px solid var(--lightgray)',
-                      }}>
-                        <input type="checkbox" style={{ display: 'none' }}
-                          checked={sess.tech_ids.includes(t.id)}
-                          onChange={() => toggleSessionTech(idx, t.id)} />
-                        {t.name}
-                      </label>
-                    ))}
+            </div>
+            {serviceLines.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--steel)', margin: 0 }}>
+                No service lines — uses Service Type above. Click "Add Service" to specify individual services with assets.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {serviceLines.map((svc, idx) => (
+                  <div key={idx} className="ab-schedule-card">
+                    <div className="ab-schedule-header">
+                      <span className="ab-schedule-num">Service {idx + 1}</span>
+                      <button
+                        className="ib-del-btn"
+                        onClick={() => setServiceLines(prev => prev.filter((_, i) => i !== idx))}
+                        aria-label={`Remove service ${idx + 1}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="ab-row ab-row--gap">
+                      <div className="ab-field ab-field--grow">
+                        <label className="ab-label">Service Name *</label>
+                        <input
+                          className="ib-input"
+                          value={svc.service_name}
+                          onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_name: e.target.value } : s))}
+                          placeholder="e.g. Full Detail, Maintenance Wash"
+                        />
+                      </div>
+                      <div className="ab-field">
+                        <label className="ab-label">Asset / For</label>
+                        <input
+                          className="ib-input"
+                          value={svc.asset_label}
+                          onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, asset_label: e.target.value } : s))}
+                          placeholder="e.g. 2025 Ford F-150"
+                        />
+                      </div>
+                    </div>
+                    <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
+                      <div className="ab-field ab-field--sm">
+                        <label className="ab-label">Duration (min)</label>
+                        <input
+                          className="ib-input"
+                          type="number"
+                          min="1"
+                          value={svc.duration_minutes}
+                          onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, duration_minutes: e.target.value } : s))}
+                          placeholder="60"
+                        />
+                      </div>
+                      <div className="ab-field ab-field--grow">
+                        <label className="ab-label">Service Notes</label>
+                        <input
+                          className="ib-input"
+                          value={svc.service_notes}
+                          onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_notes: e.target.value } : s))}
+                          placeholder="Notes for this service…"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
-
-          <button type="button" className="btn-secondary"
-            style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-            onClick={addSession}>
-            <Plus size={14} /> Add Another Day
-          </button>
-
-          {/* Estimated completion */}
-          <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <input type="checkbox" id="end_date_unknown" checked={form.end_date_unknown} onChange={set('end_date_unknown')} />
-              <label htmlFor="end_date_unknown" style={{ fontSize: 13, cursor: 'pointer', margin: 0 }}>
-                Completion date is not yet known
-              </label>
-            </div>
-            {!form.end_date_unknown && (
-              <div className="form-row" style={{ gap: 8, margin: 0 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>Est. Start</label>
-                  <input type="date" value={form.estimated_start_date} onChange={set('estimated_start_date')} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>Est. Completion</label>
-                  <input type="date" value={form.estimated_end_date} onChange={set('estimated_end_date')} />
-                </div>
+                ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
+          </section>
 
-      {/* Editing multi-day: note that sessions are managed from the detail view */}
-      {isMultiDay && job && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
-          padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1e40af' }}>
-          Work sessions are managed from the Job Detail panel. Use "Add Workday" there to add or edit sessions.
-        </div>
-      )}
+          {/* SERVICE LOCATION */}
+          <section className="ab-section">
+            <p className="ib-section-label">Service Location</p>
+            <ClientLocationField
+              clientId={form.client_id || null}
+              locationId={form.location_id || null}
+              address={form.service_address}
+              onSelect={loc => setForm(prev => ({
+                ...prev,
+                location_id:     loc.location_id || null,
+                service_address: loc.address     || '',
+                service_city:    loc.city        || '',
+                service_state:   loc.state       || '',
+                service_zip:     loc.zip         || '',
+                service_lat:     loc.lat         != null ? String(loc.lat) : '',
+                service_lng:     loc.lng         != null ? String(loc.lng) : '',
+              }))}
+              onAddressChange={v => setForm(prev => ({
+                ...prev,
+                location_id:     null,
+                service_address: v,
+                service_lat:     '',
+                service_lng:     '',
+              }))}
+            />
+          </section>
 
-      {/* ── Scope & priority (multi-day) ── */}
-      {isMultiDay && (
-        <div className="form-row">
-          <div className="form-group">
-            <label>Priority</label>
-            <select value={form.priority} onChange={set('priority')}>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Billing Method</label>
-            <select value={form.billing_method} onChange={set('billing_method')}>
-              <option value="fixed">Fixed Price</option>
-              <option value="hourly">Hourly</option>
-              <option value="daily">Daily Rate</option>
-              <option value="per_item">Per Service Item</option>
-              <option value="milestone">Milestone</option>
-            </select>
-          </div>
-        </div>
-      )}
-
-      <div className="form-group">
-        <label>Service Location <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— where the work happens (optional)</span></label>
-        <ClientLocationField
-          clientId={form.client_id || null}
-          locationId={form.location_id || null}
-          address={form.service_address}
-          onSelect={loc => setForm(prev => ({
-            ...prev,
-            location_id:     loc.location_id || null,
-            service_address: loc.address     || '',
-            service_city:    loc.city        || '',
-            service_state:   loc.state       || '',
-            service_zip:     loc.zip         || '',
-            service_lat:     loc.lat         != null ? String(loc.lat) : '',
-            service_lng:     loc.lng         != null ? String(loc.lng) : '',
-          }))}
-          onAddressChange={v => setForm(prev => ({
-            ...prev,
-            location_id:     null,
-            service_address: v,
-            service_lat:     '',
-            service_lng:     '',
-          }))}
-        />
-      </div>
-
-      {isMultiDay && (
-        <div className="form-group">
-          <label>Scope of Work</label>
-          <textarea value={form.scope_of_work} onChange={set('scope_of_work')} rows={3}
-            placeholder="Overall scope and objectives for this project…" />
-        </div>
-      )}
-
-      {/* ── Duration (single-day only) ── */}
-      {!isMultiDay && (
-        <div className="form-group">
-          <label>Duration (minutes)</label>
-          <input
-            type="number" min="15" max="1440" step="15"
-            value={form.duration_minutes}
-            onChange={set('duration_minutes')}
-            placeholder="60"
-          />
-        </div>
-      )}
-
-      {/* ── Service Lines ── */}
-      <div className="form-group">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <label style={{ marginBottom: 0 }}>Services</label>
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ fontSize: 11, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-            onClick={() => setServiceLines(prev => [...prev, { service_name: '', asset_label: '', description: '', duration_minutes: '', service_notes: '' }])}
-          >
-            <Plus size={11} /> Add Service
-          </button>
-        </div>
-        {serviceLines.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--steel)', padding: '8px 0' }}>
-            No service lines — uses Service Type above. Click "+ Add Service" to specify individual services with assets.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {serviceLines.map((svc, idx) => (
-              <div key={idx} style={{ border: '1px solid var(--lightgray)', borderRadius: 8, padding: 12, background: 'var(--offwhite)', position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>Service {idx + 1}</span>
-                  <button type="button" onClick={() => setServiceLines(prev => prev.filter((_, i) => i !== idx))}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', display: 'flex', alignItems: 'center' }}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                <div className="form-row">
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 11 }}>Service Name *</label>
-                    <input
-                      value={svc.service_name}
-                      onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_name: e.target.value } : s))}
-                      placeholder="e.g. Full Detail, Maintenance Wash"
-                      style={{ fontSize: 13 }}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 11 }}>Asset / Service For</label>
-                    <input
-                      value={svc.asset_label}
-                      onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, asset_label: e.target.value } : s))}
-                      placeholder="e.g. 2025 Ford F-150, Main Pool, Unit #2"
-                      style={{ fontSize: 13 }}
-                    />
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginBottom: 8 }}>
-                  <label style={{ fontSize: 11 }}>Service Notes / Instructions</label>
+          {/* SCHEDULE (single-day only) */}
+          {!isMultiDay && (
+            <section className="ab-section">
+              <p className="ib-section-label">Schedule</p>
+              <div className="ab-row ab-row--gap">
+                <div className="ab-field ab-field--grow">
+                  <label className="ab-label">Date &amp; Time</label>
                   <input
-                    value={svc.service_notes}
-                    onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_notes: e.target.value } : s))}
-                    placeholder="Specific notes for this service…"
-                    style={{ fontSize: 13 }}
+                    className="ib-input"
+                    type="datetime-local"
+                    value={form.scheduled_at}
+                    onChange={set('scheduled_at')}
+                  />
+                </div>
+                <div className="ab-field ab-field--sm">
+                  <label className="ab-label">Duration (min)</label>
+                  <input
+                    className="ib-input"
+                    type="number"
+                    min="15"
+                    max="1440"
+                    step="15"
+                    value={form.duration_minutes}
+                    onChange={set('duration_minutes')}
+                    placeholder="60"
                   />
                 </div>
               </div>
-            ))}
+              <div className="ab-field" style={{ marginTop: 8 }}>
+                <label className="ab-label" style={{ fontSize: 11, color: 'var(--steel)' }}>Times entered in</label>
+                <select
+                  className="ib-select"
+                  value={inputTimezone}
+                  onChange={e => { setInputTimezone(e.target.value); setInputTZSource('user_selected'); }}
+                >
+                  {tzOptions.map(opt => (
+                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              {conversionPreview && (
+                <p style={{ fontSize: 12, color: 'var(--slate)', background: 'var(--offwhite)', border: '1px solid var(--lightgray)', borderRadius: 6, padding: '6px 10px', marginTop: 6 }}>
+                  {conversionPreview}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* WORK SESSIONS (multi-day, new only) */}
+          {isMultiDay && !job && (
+            <section className="ab-section">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <p className="ib-section-label" style={{ marginBottom: 0 }}>Work Sessions ({sessions.length})</p>
+                {sessions.length > 1 && (
+                  <button type="button" className="ab-add-li" onClick={copyFirstSessionTimes}>
+                    Copy Day 1 times to all
+                  </button>
+                )}
+              </div>
+              {sessions.map((sess, idx) => (
+                <div key={idx} className="ab-schedule-card" style={{ marginBottom: 10 }}>
+                  <div className="ab-schedule-header">
+                    <span className="ab-schedule-num">Day {idx + 1}</span>
+                    {sessions.length > 1 && (
+                      <button className="ib-del-btn" onClick={() => removeSession(idx)} aria-label={`Remove day ${idx + 1}`}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="ab-row ab-row--gap">
+                    <div className="ab-field ab-field--grow">
+                      <label className="ab-label">Date *</label>
+                      <input className="ib-input" type="date" value={sess.scheduled_date} onChange={setSession(idx, 'scheduled_date')} />
+                    </div>
+                    <div className="ab-field ab-field--sm">
+                      <label className="ab-label">Start</label>
+                      <input className="ib-input" type="time" value={sess.start_time} onChange={setSession(idx, 'start_time')} />
+                    </div>
+                    <div className="ab-field ab-field--sm">
+                      <label className="ab-label">Duration (min)</label>
+                      <input
+                        className="ib-input"
+                        type="number"
+                        min="15"
+                        max="1440"
+                        step="15"
+                        value={sess.duration_minutes}
+                        onChange={setSession(idx, 'duration_minutes')}
+                        placeholder="60"
+                      />
+                    </div>
+                  </div>
+                  {techs.length > 0 && (
+                    <div className="ab-field" style={{ marginTop: 8 }}>
+                      <label className="ab-label" style={{ fontSize: 12 }}>Technicians for Day {idx + 1}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                        {techs.map(t => (
+                          <label key={t.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
+                            padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                            background: sess.tech_ids.includes(t.id) ? 'var(--navy)' : 'var(--white)',
+                            color: sess.tech_ids.includes(t.id) ? '#fff' : 'var(--navy)',
+                            border: '1px solid var(--lightgray)',
+                          }}>
+                            <input type="checkbox" style={{ display: 'none' }}
+                              checked={sess.tech_ids.includes(t.id)}
+                              onChange={() => toggleSessionTech(idx, t.id)} />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="ab-add-li" style={{ width: '100%', justifyContent: 'center' }} onClick={addSession}>
+                <Plus size={13} /> Add Another Day
+              </button>
+              <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <input type="checkbox" id="end_date_unknown" checked={form.end_date_unknown} onChange={set('end_date_unknown')} />
+                  <label htmlFor="end_date_unknown" className="ab-label" style={{ marginBottom: 0, cursor: 'pointer' }}>
+                    Completion date is not yet known
+                  </label>
+                </div>
+                {!form.end_date_unknown && (
+                  <div className="ab-row ab-row--gap">
+                    <div className="ab-field">
+                      <label className="ab-label">Est. Start</label>
+                      <input className="ib-input" type="date" value={form.estimated_start_date} onChange={set('estimated_start_date')} />
+                    </div>
+                    <div className="ab-field">
+                      <label className="ab-label">Est. Completion</label>
+                      <input className="ib-input" type="date" value={form.estimated_end_date} onChange={set('estimated_end_date')} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Edit multi-day: sessions managed from detail view */}
+          {isMultiDay && job && (
+            <section className="ab-section">
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#1e40af' }}>
+                Work sessions are managed from the Job Detail panel. Use "Add Workday" there to add or edit sessions.
+              </div>
+            </section>
+          )}
+
+          {/* ASSIGNED TEAM */}
+          <section className="ab-section">
+            <p className="ib-section-label">{isMultiDay ? 'Job Manager' : 'Assigned Team'}</p>
+            {isMultiDay ? (
+              <div className="ab-field">
+                <label className="ab-label">Job Manager</label>
+                <select className="ib-select" value={form.job_manager_id} onChange={set('job_manager_id')}>
+                  <option value="">No manager assigned</option>
+                  {techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <JobTeamSelector value={assignment} onChange={setAssignment} techs={techs} crews={crews} />
+            )}
+          </section>
+
+          {/* SCOPE OF WORK (multi-day) */}
+          {isMultiDay && (
+            <section className="ab-section">
+              <p className="ib-section-label">Scope of Work</p>
+              <textarea
+                className="ib-textarea"
+                value={form.scope_of_work}
+                onChange={set('scope_of_work')}
+                rows={3}
+                placeholder="Overall scope and objectives for this project…"
+              />
+            </section>
+          )}
+
+          {/* INSTRUCTIONS */}
+          <section className="ab-section">
+            <p className="ib-section-label">Instructions</p>
+            <textarea
+              className="ib-textarea"
+              value={form.instructions}
+              onChange={set('instructions')}
+              rows={2}
+              placeholder="Gate code, parking notes, access details — visible to technician…"
+            />
+          </section>
+
+          {/* INTERNAL NOTES */}
+          <section className="ab-section">
+            <label className="ab-label">Internal Notes</label>
+            <textarea
+              className="ib-textarea"
+              value={form.notes}
+              onChange={set('notes')}
+              rows={2}
+              placeholder="Internal admin notes…"
+            />
+          </section>
+
+        </div>{/* end .ab-body */}
+
+        {/* Footer */}
+        <div className="ib-footer">
+          {error && <p className="ib-save-error">{error}</p>}
+          <div className="ib-footer-actions">
+            <button className="btn btn-secondary" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Saving…' : job ? 'Save Changes' : isMultiDay ? 'Create Multi-Day Job' : 'Create Job'}
+            </button>
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className="form-group">
-        <label>Instructions <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— operational, visible to technician</span></label>
-        <textarea value={form.instructions} onChange={set('instructions')} rows={2} placeholder="Gate code, parking notes, access details…" />
-      </div>
-
-      <div className="form-group">
-        <label>Notes <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— internal admin only</span></label>
-        <textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Internal notes…" />
-      </div>
-
-      <div className="form-actions">
-        <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Saving...' : job ? 'Save Changes' : 'Create Job'}
-        </button>
-      </div>
-    </form>
+      </div>{/* end .ab-sheet */}
+    </div>
   );
 }
