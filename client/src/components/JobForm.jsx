@@ -11,7 +11,14 @@ import { resolveCalendarTimeZone, isValidTimezone } from '../utils/calendarTimez
 import { TIMEZONES } from '../utils/timezones';
 
 function blankSession(date = '') {
-  return { scheduled_date: date, start_time: '', end_time: '', title: '', description: '', tech_ids: [], lead_tech_id: '' };
+  return { scheduled_date: date, start_time: '', duration_minutes: '', title: '', description: '', tech_ids: [], lead_tech_id: '' };
+}
+
+function computeSessionEndTime(startTime, durationMinutes) {
+  if (!startTime || !durationMinutes) return null;
+  const [h, m] = startTime.split(':').map(Number);
+  const total = h * 60 + m + parseInt(durationMinutes, 10);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 // Detected once per page load — never changes.
@@ -248,10 +255,10 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     const first = sessions[0];
     setSessions(prev => prev.map((s, i) => i === 0 ? s : {
       ...s,
-      start_time:   first.start_time,
-      end_time:     first.end_time,
-      tech_ids:     [...first.tech_ids],
-      lead_tech_id: first.lead_tech_id,
+      start_time:      first.start_time,
+      duration_minutes: first.duration_minutes,
+      tech_ids:        [...first.tech_ids],
+      lead_tech_id:    first.lead_tech_id,
     }));
   }
 
@@ -314,9 +321,10 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       if (form.is_multi_day) {
         payload.sessions = sessions.map(s => ({
           ...s,
-          start_time:  s.start_time   || null,
-          end_time:    s.end_time     || null,
-          lead_tech_id: s.lead_tech_id || null,
+          start_time:      s.start_time || null,
+          end_time:        computeSessionEndTime(s.start_time, s.duration_minutes),
+          duration_minutes: parseInt(s.duration_minutes, 10) || null,
+          lead_tech_id:    s.lead_tech_id || null,
         }));
         // Use first session date as the job-level scheduled_at_local if no time was set
         if (!payload.scheduled_at_local && sessions[0]?.scheduled_date) {
@@ -523,20 +531,9 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
       {/* ── Single-day scheduling ── */}
       {!isMultiDay && (
         <>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Scheduled Date &amp; Time</label>
-              <input type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} />
-            </div>
-            <div className="form-group">
-              <label>Recurring</label>
-              <select value={form.recurring} onChange={set('recurring')}>
-                <option value="none">One-time</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Bi-weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
+          <div className="form-group">
+            <label>Scheduled Date &amp; Time</label>
+            <input type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} />
           </div>
 
           {/* Timezone selector — explicit: which timezone is the entered time in? */}
@@ -613,8 +610,11 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
                   <input type="time" value={sess.start_time} onChange={setSession(idx, 'start_time')} />
                 </div>
                 <div className="form-group" style={{ flex: '1 1 100px' }}>
-                  <label>End</label>
-                  <input type="time" value={sess.end_time} onChange={setSession(idx, 'end_time')} />
+                  <label>Duration (min)</label>
+                  <input type="number" min="15" max="1440" step="15"
+                    value={sess.duration_minutes}
+                    onChange={setSession(idx, 'duration_minutes')}
+                    placeholder="60" />
                 </div>
               </div>
               {techs.length > 0 && (

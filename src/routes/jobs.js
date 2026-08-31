@@ -634,12 +634,13 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         const { rows: sRows } = await client.query(
           `INSERT INTO job_sessions
              (job_id, account_id, session_number, title, description, scheduled_date,
-              start_time, end_time, lead_tech_id, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+              start_time, end_time, duration_minutes, lead_tech_id, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
           [
             job.id, req.accountId, idx + 1,
             sess.title || null, sess.description || null, sess.scheduled_date,
             sess.start_time || null, sess.end_time || null,
+            sess.duration_minutes ? parseInt(sess.duration_minutes, 10) : null,
             sess.lead_tech_id || tech_id || null, req.userId,
           ]
         );
@@ -1103,7 +1104,7 @@ router.get('/:id/sessions', requireAuth, async (req, res) => {
 // ── POST /api/jobs/:id/sessions — add work session ───────────────────────────
 router.post('/:id/sessions', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const {
-    scheduled_date, start_time, end_time, title, description,
+    scheduled_date, start_time, end_time, duration_minutes, title, description,
     lead_tech_id, tech_ids = [], estimated_hours,
   } = req.body;
 
@@ -1136,12 +1137,13 @@ router.post('/:id/sessions', requireAuth, requireRole('owner', 'manager'), async
     const { rows: sRows } = await pool.query(
       `INSERT INTO job_sessions
          (job_id, account_id, session_number, title, description, scheduled_date,
-          start_time, end_time, lead_tech_id, estimated_hours, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          start_time, end_time, duration_minutes, lead_tech_id, estimated_hours, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         req.params.id, req.accountId, sessionNumber,
         title || null, description || null, scheduled_date,
         start_time || null, end_time || null,
+        duration_minutes ? parseInt(duration_minutes, 10) : null,
         lead_tech_id || null, estimated_hours || null, req.userId,
       ]
     );
@@ -1173,7 +1175,7 @@ router.post('/:id/sessions', requireAuth, requireRole('owner', 'manager'), async
 // ── PATCH /api/jobs/:id/sessions/:sid ─────────────────────────────────────────
 router.patch('/:id/sessions/:sid', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const SESSION_FIELDS = [
-    'title','description','scheduled_date','start_time','end_time',
+    'title','description','scheduled_date','start_time','end_time','duration_minutes',
     'lead_tech_id','estimated_hours','actual_hours','internal_notes','client_notes',
     'work_completed','work_remaining','blockers','completion_pct',
   ];

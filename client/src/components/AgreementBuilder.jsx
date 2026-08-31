@@ -104,6 +104,7 @@ function newSchedule(overrides = {}) {
     serviceIntervalDays: '',
     startedAt: TODAY,
     preferredStartTime: '09:00',
+    durationMinutes: '',
     ...overrides,
   };
 }
@@ -123,6 +124,7 @@ function scheduleFromApi(s) {
     serviceIntervalDays: s.service_interval_days || '',
     startedAt: s.started_at?.slice(0, 10) || TODAY,
     preferredStartTime: s.preferred_start_time || '09:00',
+    durationMinutes: s.duration_minutes || '',
   };
 }
 
@@ -260,6 +262,7 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
       service_day_of_month: s.serviceDayOfMonth !== '' ? parseInt(s.serviceDayOfMonth, 10) : null,
       started_at:           s.startedAt || startedAt,
       preferred_start_time: s.preferredStartTime || '09:00',
+      duration_minutes:     s.durationMinutes !== '' ? parseInt(s.durationMinutes, 10) || null : null,
     }));
 
     const payload = {
@@ -416,7 +419,8 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                       selected={sched._serviceTemplate}
                       onSelect={tmpl => {
                         setSchedules(prev => prev.map((s, i) => i === idx
-                          ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id }
+                          ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
+                              durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
                           : s
                         ));
                       }}
@@ -452,7 +456,8 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                         selected={null}
                         onSelect={tmpl => {
                           setSchedules(prev => prev.map((s, i) => i === idx
-                            ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id }
+                            ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
+                                durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
                             : s
                           ));
                         }}
@@ -556,6 +561,32 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                     value={sched.startedAt}
                     onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
                   />
+                </div>
+
+                {/* Duration per visit */}
+                <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
+                  <div className="ab-field ab-field--sm">
+                    <label className="ab-label">Duration per Visit (minutes)</label>
+                    <input
+                      className="ib-input"
+                      type="number"
+                      min="15"
+                      max="1440"
+                      step="15"
+                      value={sched.durationMinutes}
+                      onChange={e => updateSchedule(idx, 'durationMinutes', e.target.value)}
+                      placeholder="e.g. 60"
+                    />
+                  </div>
+                  <div className="ab-field ab-field--grow">
+                    <label className="ab-label">Preferred Start Time</label>
+                    <input
+                      className="ib-input"
+                      type="time"
+                      value={sched.preferredStartTime}
+                      onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
+                    />
+                  </div>
                 </div>
 
               </div>

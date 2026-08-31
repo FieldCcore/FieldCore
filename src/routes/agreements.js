@@ -135,9 +135,10 @@ async function insertSchedules(accountId, agreementId, schedules, client) {
       `INSERT INTO recurring_agreement_schedules
          (account_id, agreement_id, service_type, service_id, asset_label, service_address,
           cadence, preferred_weekday, service_day_of_month, service_interval_days,
-          started_at, preferred_start_time, end_condition_type, end_date, end_after_occurrences,
+          started_at, preferred_start_time, duration_minutes,
+          end_condition_type, end_date, end_after_occurrences,
           included_services_per_period, status, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,CURRENT_DATE),$12,$13,$14,$15,$16,$17,$18)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,CURRENT_DATE),$12,$13,$14,$15,$16,$17,$18,$19)`,
       [
         accountId, agreementId,
         s.service_type || null, s.service_id || null, s.asset_label || null,
@@ -148,6 +149,7 @@ async function insertSchedules(accountId, agreementId, schedules, client) {
         s.cadence === 'custom' ? parseInt(s.service_interval_days, 10) : null,
         s.started_at || null,
         s.preferred_start_time || '09:00',
+        s.duration_minutes ? parseInt(s.duration_minutes, 10) : null,
         s.end_condition_type || 'none',
         s.end_condition_type === 'date' ? (s.end_date || null) : null,
         s.end_condition_type === 'service_count' ? (parseInt(s.end_after_occurrences, 10) || null) : null,
@@ -605,7 +607,7 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
           // Update existing schedule — only allowed fields
           const schAllowed = ['service_type','service_id','asset_label','service_address',
             'cadence','preferred_weekday','service_day_of_month','service_interval_days',
-            'started_at','preferred_start_time','end_condition_type','end_date',
+            'started_at','preferred_start_time','duration_minutes','end_condition_type','end_date',
             'end_after_occurrences','included_services_per_period','status','sort_order'];
           const schUpdates = [];
           const schParams  = [s.id, req.accountId, req.params.id];

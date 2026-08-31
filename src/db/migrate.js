@@ -2390,6 +2390,10 @@ const MIGRATIONS = [
   // Operational instructions field: tech-visible notes for performing the job.
   // Separate from admin-only internal notes (jobs.notes).
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS instructions TEXT`,
+
+  // Duration columns — canonical scheduled duration in minutes for sessions and recurring schedules.
+  `ALTER TABLE job_sessions ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`,
+  `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER`,
 ];
 
 async function runMigrations() {
