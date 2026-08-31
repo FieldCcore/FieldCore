@@ -130,8 +130,37 @@ function CalEventCard({ event }) {
   );
 }
 
-// ─── Custom week/day column header ────────────────────────────────────────────
-// Shows day abbreviation above date number, today highlighted.
+// ─── Month view event card — compact, single row ─────────────────────────────
+// Month cells are ~22px per event slot. Never render multi-line duration cards here.
+function MonthEventCard({ event }) {
+  const resource   = event.resource || {};
+  const isSession  = resource._type === 'session';
+  const clientName = resource.client_name || '';
+  const svcName    = resource.service_type || resource.title || '';
+  const svcCount   = parseInt(resource.service_count || 0, 10);
+  const svcLabel   = svcCount > 1 ? `${svcName} +${svcCount - 1}` : svcName;
+  const dayBadge   = isSession
+    ? (resource.total_sessions > 1 ? `Day ${resource.day_number}/${resource.total_sessions}` : 'Multi')
+    : null;
+  const timeStr    = format(new Date(event.start), 'h:mm a');
+
+  return (
+    <div className="cal-month-card">
+      {dayBadge && <span className="cal-month-badge">{dayBadge}</span>}
+      <span className="cal-month-time">{timeStr}</span>
+      <span className="cal-month-svc">{svcLabel}</span>
+      {clientName && <span className="cal-month-cli"> — {clientName}</span>}
+    </div>
+  );
+}
+
+// ─── Month day-of-week column header — DOW label only ─────────────────────────
+// Month view: "SUN  MON  TUE…" — no date number (that lives in each cell).
+function MonthDayHeader({ label }) {
+  return <div className="fc-month-dh">{(label || '').toUpperCase()}</div>;
+}
+
+// ─── Week/Day column header — DOW above date number, today highlighted ────────
 function WeekDayHeader({ date }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const isToday  = format(date, 'yyyy-MM-dd') === todayStr;
@@ -263,8 +292,25 @@ function parseTime(timeStr) {
   const d = new Date(); d.setHours(h, m, 0, 0); return d;
 }
 
-// Stable component object — defined once outside render to avoid RBC remounts
-const CAL_COMPONENTS = { toolbar: CalendarToolbar, event: CalEventCard, header: WeekDayHeader };
+// Stable component object — defined once outside render to avoid RBC remounts.
+// Per-view components: Month gets compact single-row cards; Week/Day get
+// duration-adaptive multi-line cards. Headers differ: Month shows DOW only,
+// Week/Day shows DOW + date number with today highlight.
+const CAL_COMPONENTS = {
+  toolbar: CalendarToolbar,
+  month: {
+    event:  MonthEventCard,
+    header: MonthDayHeader,
+  },
+  week: {
+    event:  CalEventCard,
+    header: WeekDayHeader,
+  },
+  day: {
+    event:  CalEventCard,
+    header: WeekDayHeader,
+  },
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Jobs() {
@@ -422,20 +468,31 @@ export default function Jobs() {
     const jobEvents = jobs
       .filter(j => j.scheduled_at && !j.is_multi_day)
       .map(j => {
-        // FIXED: Use toZonedTime to create "fake local" dates so react-big-calendar
-        // places events at the correct wall-clock position in the business timezone,
-        // regardless of the browser's local timezone.
-        // toZonedTime returns a Date whose .getHours()/.getMinutes() match the
-        // scheduling timezone hour — RBC uses these for grid placement.
+        // toZonedTime creates "fake local" dates so react-big-calendar places events
+        // at the correct wall-clock position in the business timezone regardless of
+        // the browser's local timezone.
         const utcStart = new Date(j.scheduled_at);
         const utcEnd   = addMinutes(utcStart, j.duration_minutes || 60);
+        const startZ   = toZonedTime(utcStart, calendarTZ);
+        const endZ     = toZonedTime(utcEnd,   calendarTZ);
+
+        // Clamp end to 23:59:59 on the same calendar day as start.
+        // A single-day job that runs late (e.g. 10 PM–1 AM) would otherwise produce
+        // start=Aug4 end=Aug5, making RBC Month treat it as a multi-day spanning event
+        // that bleeds into the neighboring cell.
+        const startDay = format(startZ, 'yyyy-MM-dd');
+        const endDay   = format(endZ,   'yyyy-MM-dd');
+        const clampedEnd = startDay === endDay
+          ? endZ
+          : new Date(startZ.getFullYear(), startZ.getMonth(), startZ.getDate(), 23, 59, 59, 0);
+
         const svcCount = j.service_count > 1 ? ` (${j.service_count} services)` : '';
         const svcLabel = j.service_type || 'Service';
         return {
           id:       j.id,
           title:    `${svcLabel}${svcCount}${j.client_name ? ' — ' + j.client_name : ''}`,
-          start:    toZonedTime(utcStart, calendarTZ),
-          end:      toZonedTime(utcEnd,   calendarTZ),
+          start:    startZ,
+          end:      clampedEnd,
           resource: { ...j, _type: 'job' },
         };
       });
