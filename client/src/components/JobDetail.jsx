@@ -50,7 +50,7 @@ function fmtHistorical(min) {
   return `${days} days ago`;
 }
 
-export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit, calendarTZ }) {
+export default function JobDetail({ job: initialJob, onClose, onStatusChange, onEdit, onDeleted, calendarTZ }) {
   // Display timezone: prefer the timezone the appointment was explicitly entered in,
   // then fall back to the calendar display timezone (business profile timezone).
   const inputTZValid = initialJob?.input_timezone && isValidTimezone(initialJob.input_timezone);
@@ -89,6 +89,9 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const [declaring,     setDeclaring]     = useState(false);
   const [arrived,       setArrived]       = useState(false);
   const [completing,    setCompleting]    = useState(false);
+  const [deletePanel,   setDeletePanel]   = useState(null);   // null | 'job' | 'visit' | `svc:${scheduleId}`
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState(null);
 
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'owner' || user?.role === 'manager';
@@ -153,6 +156,46 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
       alert(err.response?.data?.error || 'Could not complete job.');
     } finally {
       setCompleting(false);
+    }
+  }
+
+  // ── Delete / suppress actions ────────────────────────────────────────────────
+  async function confirmDeleteJob() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/jobs/${job.id}`);
+      onDeleted?.(job.id);
+      onClose();
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Could not delete job.');
+      setDeleting(false);
+    }
+  }
+
+  async function confirmDeleteVisit() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/jobs/${job.id}`);
+      onDeleted?.(job.id);
+      onClose();
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Could not delete this visit.');
+      setDeleting(false);
+    }
+  }
+
+  async function confirmRemoveService(scheduleId) {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/jobs/${job.id}/occurrences/${scheduleId}`);
+      onDeleted?.(job.id);
+      onClose();
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Could not remove service.');
+      setDeleting(false);
     }
   }
 
@@ -841,6 +884,146 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             Open Job ↗
           </button>
         </div>
+
+        {/* ── DESTRUCTIVE ACTIONS (admin only) ──────────────────────────────── */}
+        {isAdmin && job.status !== 'complete' && (
+          <div className="jd-section" style={{ borderColor: '#fca5a5', background: '#fff8f8', marginTop: 8 }}>
+            {!deletePanel ? (
+              /* ── Trigger buttons ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {job.agreement_id ? (
+                  /* Recurring-generated visit */
+                  <>
+                    <button
+                      onClick={() => setDeletePanel('visit')}
+                      style={{ background: 'none', border: 'none', color: '#dc2626',
+                        fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                        padding: '4px 0' }}
+                    >
+                      Delete This Visit
+                    </button>
+                    {job.services?.filter(s => s.agreement_schedule_id).length > 1 &&
+                      job.services.filter(s => s.agreement_schedule_id).map(svc => (
+                        <button key={svc.id}
+                          onClick={() => setDeletePanel(`svc:${svc.agreement_schedule_id}`)}
+                          style={{ background: 'none', border: 'none', color: '#7c3aed',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                            padding: '2px 0' }}
+                        >
+                          Remove {svc.service_name} From This Visit
+                        </button>
+                      ))
+                    }
+                  </>
+                ) : (
+                  /* Single-day or multi-day job */
+                  <button
+                    onClick={() => setDeletePanel('job')}
+                    style={{ background: 'none', border: 'none', color: '#dc2626',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                      padding: '4px 0' }}
+                  >
+                    {job.is_multi_day ? 'Delete Job (All Sessions)' : 'Delete Job'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── Confirmation panel ── */
+              <div>
+                {deletePanel === 'job' && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
+                      {job.is_multi_day ? 'Delete this job?' : 'Delete this job?'}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#991b1b', marginBottom: 12, lineHeight: 1.5 }}>
+                      {job.is_multi_day
+                        ? `This will remove ${job.client_name}'s "${job.service_type || job.title}" job and all ${sessions.length} associated work sessions. This cannot be undone.`
+                        : `This will permanently remove this appointment for ${job.client_name}. This cannot be undone.`
+                      }
+                    </div>
+                  </div>
+                )}
+                {deletePanel === 'visit' && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
+                      Delete this recurring visit?
+                    </div>
+                    {job.services?.filter(s => s.agreement_schedule_id).length > 0 && (
+                      <div style={{ fontSize: 12, color: '#374151', marginBottom: 8 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>This visit contains:</div>
+                        {job.services.filter(s => s.agreement_schedule_id).map(svc => (
+                          <div key={svc.id} style={{ paddingLeft: 8, color: '#374151' }}>
+                            · {svc.service_name}{svc.asset_label ? ` — ${svc.asset_label}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: '#991b1b', marginBottom: 12, lineHeight: 1.5 }}>
+                      Deleting this visit removes all listed services for{' '}
+                      {job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'this date'} only.
+                      The recurring agreement will continue and future visits are not affected.
+                    </div>
+                  </div>
+                )}
+                {deletePanel?.startsWith('svc:') && (() => {
+                  const schedId = deletePanel.slice(4);
+                  const svc = job.services?.find(s => s.agreement_schedule_id === schedId);
+                  return svc ? (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#5b21b6', marginBottom: 6 }}>
+                        Remove {svc.service_name} from this visit?
+                      </div>
+                      <div style={{ fontSize: 12, color: '#4c1d95', marginBottom: 12, lineHeight: 1.5 }}>
+                        {svc.service_name}{svc.asset_label ? ` (${svc.asset_label})` : ''} will be removed from{' '}
+                        {job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'this date'} only.
+                        The remaining services in this visit and all future recurring occurrences are not affected.
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {deleteError && (
+                  <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, marginBottom: 10 }}>
+                    {deleteError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    disabled={deleting}
+                    onClick={() => {
+                      if (deletePanel === 'job')      confirmDeleteJob();
+                      else if (deletePanel === 'visit') confirmDeleteVisit();
+                      else if (deletePanel?.startsWith('svc:')) confirmRemoveService(deletePanel.slice(4));
+                    }}
+                    style={{
+                      padding: '7px 16px', borderRadius: 6, border: 'none', fontSize: 12,
+                      fontWeight: 700, cursor: deleting ? 'wait' : 'pointer',
+                      background: deletePanel?.startsWith('svc:') ? '#7c3aed' : '#dc2626',
+                      color: '#fff', opacity: deleting ? 0.6 : 1,
+                    }}
+                  >
+                    {deleting ? 'Removing…' : (
+                      deletePanel === 'job'
+                        ? (job.is_multi_day ? 'Confirm Delete Job' : 'Confirm Delete')
+                        : deletePanel === 'visit'
+                          ? 'Confirm Delete Visit'
+                          : 'Confirm Remove'
+                    )}
+                  </button>
+                  <button
+                    disabled={deleting}
+                    onClick={() => { setDeletePanel(null); setDeleteError(null); }}
+                    className="btn-secondary"
+                    style={{ fontSize: 12, padding: '7px 16px' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

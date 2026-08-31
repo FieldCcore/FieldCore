@@ -466,7 +466,7 @@ async function checkScheduleEndConditions(schedule, client) {
     const res = await client.query(
       `SELECT COUNT(*) AS cnt FROM agreement_schedule_occurrences aso
        JOIN jobs j ON j.id = aso.job_id
-       WHERE aso.schedule_id = $1 AND j.status = 'complete'`,
+       WHERE aso.schedule_id = $1 AND j.status = 'complete' AND aso.deleted_at IS NULL`,
       [schedule.id]
     );
     if (parseInt(res.rows[0].cnt, 10) >= schedule.end_after_occurrences) shouldComplete = true;
@@ -587,7 +587,7 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   // Check which schedules already have occurrence rows for this date.
   const existingOcc = await client.query(
     `SELECT schedule_id, job_id FROM agreement_schedule_occurrences
-     WHERE schedule_id = ANY($1::uuid[]) AND occurrence_date = $2`,
+     WHERE schedule_id = ANY($1::uuid[]) AND occurrence_date = $2 AND deleted_at IS NULL`,
     [scheduleIds, dateStr]
   );
   const alreadyLinked = new Set(existingOcc.rows.map(r => r.schedule_id));
@@ -750,7 +750,7 @@ async function repairExistingVisits(agreement, client) {
     const { rows: grouped } = await client.query(
       `SELECT DISTINCT aso.job_id
        FROM agreement_schedule_occurrences aso
-       WHERE aso.agreement_id = $1 AND aso.occurrence_date = $2`,
+       WHERE aso.agreement_id = $1 AND aso.occurrence_date = $2 AND aso.deleted_at IS NULL`,
       [agreement.id, lj.service_date]
     );
     if (grouped.length > 0) {

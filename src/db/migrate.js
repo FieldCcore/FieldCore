@@ -2411,6 +2411,16 @@ const MIGRATIONS = [
   // on the same date (and with compatible times) share one Calendar appointment.
   `ALTER TABLE recurring_agreement_schedules ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES client_locations(id) ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS idx_agr_schedules_location ON recurring_agreement_schedules(location_id) WHERE location_id IS NOT NULL`,
+
+  // ── DELETE JOB / VISIT SUPPRESSION V1 ────────────────────────────────────────
+  // Soft-delete: deleted jobs are hidden from all active views without destroying
+  // referential integrity (invoices, job_services, occurrences all remain intact
+  // for audit purposes).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`,
+  // Occurrence suppression: when a recurring visit is deleted, its occurrence rows
+  // are marked with deleted_at so the scheduler does not recreate that appointment
+  // on its next run.
+  `ALTER TABLE agreement_schedule_occurrences ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`,
 ];
 
 async function runMigrations() {

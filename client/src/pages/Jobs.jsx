@@ -476,6 +476,17 @@ export default function Jobs() {
     setDrawerJob(prev => prev ? { ...prev, ...updated } : null);
   }
 
+  function handleJobDeleted(jobId) {
+    setJobs(prev => prev.filter(j => j.id !== jobId));
+    setSessions(prev => prev.filter(s => s.job_id !== jobId));
+    setDrawerJob(null);
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.delete('job');
+      return p;
+    }, { replace: true });
+  }
+
   // ── Event styles ───────────────────────────────────────────────────────────
   function eventStyleGetter(event) {
     if (view === 'agenda') {
@@ -680,6 +691,7 @@ export default function Jobs() {
               onClose={closeDrawer}
               onStatusChange={handleStatusChange}
               onEdit={() => setModal('edit')}
+              onDeleted={handleJobDeleted}
               calendarTZ={calendarTZ}
             />
           </aside>

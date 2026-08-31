@@ -206,7 +206,7 @@ router.post('/check-conflicts', requireAuth, async (req, res) => {
 // ── GET /api/jobs ─────────────────────────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
   const { date, date_from, date_to, tech_id, status, client_id } = req.query;
-  const conditions = ['j.account_id = $1'];
+  const conditions = ['j.account_id = $1', 'j.deleted_at IS NULL'];
   const values = [req.accountId];
   let i = 2;
 
@@ -292,6 +292,7 @@ router.get('/sessions', requireAuth, async (req, res) => {
        LEFT JOIN users u ON u.id = s.lead_tech_id
        WHERE ${conditions.join(' AND ')}
          AND s.status NOT IN ('cancelled')
+         AND j.deleted_at IS NULL
        ORDER BY s.scheduled_date, s.start_time NULLS LAST`,
       values
     );
@@ -316,7 +317,7 @@ router.get('/:id', requireAuth, async (req, res) => {
        LEFT JOIN users u   ON u.id  = j.tech_id
        LEFT JOIN users um  ON um.id = j.job_manager_id
        LEFT JOIN client_locations cl ON cl.id = j.location_id
-       WHERE j.id = $1 AND j.account_id = $2`,
+       WHERE j.id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL`,
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
@@ -757,6 +758,174 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// ── DELETE /api/jobs/:id — soft-delete a job ─────────────────────────────────
+// Handles three cases:
+//   1. Single-day job      → mark deleted_at
+//   2. Multi-day job       → cancel eligible sessions + mark deleted_at
+//   3. Recurring-generated → suppress occurrence rows so scheduler won't recreate
+//
+// Financial protection: jobs with non-draft invoices or completed status are blocked.
+router.delete('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    const { rows } = await dbClient.query(
+      `SELECT j.*,
+              (SELECT COUNT(*) FROM invoices i
+               WHERE i.job_id = j.id AND i.status NOT IN ('draft','void')) AS protected_count
+       FROM jobs j
+       WHERE j.id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const job = rows[0];
+
+    // Financial + history protection
+    if (parseInt(job.protected_count, 10) > 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'This job has an associated invoice or payment and cannot be deleted. Cancel it instead to preserve the financial record.',
+        code: 'PROTECTED_INVOICE',
+      });
+    }
+    if (job.status === 'complete') {
+      await dbClient.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Completed jobs cannot be deleted to preserve operational history. Cancel it instead.',
+        code: 'PROTECTED_COMPLETE',
+      });
+    }
+
+    // Suppress occurrence rows so the scheduler will not recreate this visit.
+    if (job.agreement_id) {
+      await dbClient.query(
+        `UPDATE agreement_schedule_occurrences SET deleted_at = NOW()
+         WHERE job_id = $1 AND deleted_at IS NULL`,
+        [job.id]
+      );
+    }
+
+    // Cancel eligible sessions for multi-day jobs.
+    if (job.is_multi_day) {
+      await dbClient.query(
+        `UPDATE job_sessions SET status = 'cancelled', updated_at = NOW()
+         WHERE job_id = $1 AND account_id = $2
+           AND status NOT IN ('completed_for_day', 'cancelled')`,
+        [job.id, req.accountId]
+      );
+    }
+
+    // Soft-delete the job.
+    await dbClient.query(
+      `UPDATE jobs SET deleted_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND account_id = $2`,
+      [job.id, req.accountId]
+    );
+
+    await dbClient.query('COMMIT');
+
+    audit.log(req.accountId, req.userId, 'job.deleted', 'job', job.id,
+      { is_multi_day: !!job.is_multi_day, agreement_id: job.agreement_id || null }, req.ip);
+
+    res.json({ deleted: true });
+  } catch (err) {
+    try { await dbClient.query('ROLLBACK'); } catch {}
+    res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
+  }
+});
+
+// ── DELETE /api/jobs/:id/occurrences/:scheduleId — remove ONE service ─────────
+// Removes a single recurring service from a grouped Calendar visit without
+// deleting the entire visit or the recurring series.  Suppresses just that
+// schedule's occurrence row and removes its job_services record.  Recalculates
+// the parent job's duration and service_type label from the remaining services.
+router.delete('/:id/occurrences/:scheduleId', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    // Verify job belongs to account and is not deleted/complete.
+    const { rows: jobRows } = await dbClient.query(
+      `SELECT j.id, j.agreement_id, j.account_id FROM jobs j
+       WHERE j.id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL`,
+      [req.params.id, req.accountId]
+    );
+    if (!jobRows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Suppress the specific occurrence.
+    const { rows: occRows } = await dbClient.query(
+      `UPDATE agreement_schedule_occurrences
+       SET deleted_at = NOW()
+       WHERE job_id = $1 AND schedule_id = $2 AND deleted_at IS NULL
+       RETURNING id`,
+      [req.params.id, req.params.scheduleId]
+    );
+    if (!occRows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Occurrence not found for this job and schedule' });
+    }
+
+    // Remove from job_services.
+    await dbClient.query(
+      `DELETE FROM job_services WHERE job_id = $1 AND agreement_schedule_id = $2`,
+      [req.params.id, req.params.scheduleId]
+    );
+
+    // Find remaining active occurrences for this job.
+    const { rows: remaining } = await dbClient.query(
+      `SELECT ras.service_type, ras.asset_label, ras.preferred_start_time, ras.duration_minutes
+       FROM agreement_schedule_occurrences aso
+       JOIN recurring_agreement_schedules ras ON ras.id = aso.schedule_id
+       WHERE aso.job_id = $1 AND aso.deleted_at IS NULL`,
+      [req.params.id]
+    );
+
+    if (remaining.length === 0) {
+      // No services remain — soft-delete the parent job too.
+      await dbClient.query(
+        `UPDATE jobs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [req.params.id]
+      );
+    } else {
+      // Recalculate parent visit window from remaining schedules.
+      const tmins = t => {
+        if (!t) return 9 * 60;
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + (m || 0);
+      };
+      const startMins = Math.min(...remaining.map(s => tmins(s.preferred_start_time)));
+      const endMins   = Math.max(...remaining.map(s => tmins(s.preferred_start_time) + (s.duration_minutes || 0)));
+      const newDuration = endMins > startMins ? endMins - startMins : null;
+      const newLabel = remaining.length === 1
+        ? (remaining[0].service_type || remaining[0].asset_label || 'Service')
+        : remaining.map(s => s.service_type || s.asset_label || 'Service').join(' · ');
+
+      await dbClient.query(
+        `UPDATE jobs SET service_type = $1, duration_minutes = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [newLabel, newDuration, req.params.id]
+      );
+    }
+
+    await dbClient.query('COMMIT');
+    res.json({ removed: true });
+  } catch (err) {
+    try { await dbClient.query('ROLLBACK'); } catch {}
+    res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
   }
 });
 
