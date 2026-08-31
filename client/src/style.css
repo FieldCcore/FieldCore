@@ -3015,16 +3015,27 @@ body {
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
 
 /* ── Custom week/day column header — DOW above date number ─── */
-/* Override padding only in time views (week/day) so month headers keep their own padding */
-.rbc-time-header .rbc-header { padding: 0 !important; border-bottom: 1.5px solid var(--lightgray) !important; background: var(--white) !important; }
+/* Override padding + height in time views so month headers keep their own padding.
+   min-height: 62px guarantees the today badge (28px circle + 9px DOW + gaps + 10px
+   top/bottom padding = 57px) always fits without the RBC default overflow:hidden
+   clipping its bottom half. overflow: visible lets the cell size to its content. */
+.rbc-time-header .rbc-header {
+  padding: 0 !important;
+  min-height: 62px !important;
+  overflow: visible !important;
+  border-bottom: 1.5px solid var(--lightgray) !important;
+  background: var(--white) !important;
+}
 .rbc-time-header .rbc-header.rbc-today { background: #FDFAF5 !important; }
 .fc-week-dh {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8px 4px;
-  gap: 2px;
+  padding: 10px 4px;
+  gap: 4px;
+  min-height: 62px;
+  box-sizing: border-box;
 }
 .fc-week-dh-dow {
   font-family: 'DM Mono', monospace;
@@ -3042,18 +3053,19 @@ body {
   color: var(--navy);
   line-height: 1;
 }
-/* Today column: sand circle behind the date number */
+/* Today column: navy circle behind the date number */
 .fc-week-dh--today .fc-week-dh-dow { color: var(--navy); }
 .fc-week-dh--today .fc-week-dh-num {
   background: var(--navy);
   color: #fff;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
+  flex-shrink: 0;
 }
 
 /* ── Calendar event cards — adaptive by duration ─────────── */
