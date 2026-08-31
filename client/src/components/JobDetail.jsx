@@ -903,8 +903,8 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        {/* ── ACTION ROW: Edit · Open · Delete (one horizontal bar) ─────────── */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+        {/* ── ACTION ROW: Edit · Open · Delete — one shared flex container ──── */}
+        <div className="jd-action-row">
           <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
           <button
             className="btn-secondary"
@@ -914,11 +914,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
             Open Job ↗
           </button>
           {isAdmin && job.status !== 'complete' && (
-            <button
-              className="btn-void"
-              style={{ marginLeft: 'auto' }}
-              onClick={openDeleteModal}
-            >
+            <button className="btn-void" onClick={openDeleteModal}>
               {job.agreement_id
                 ? 'Delete This Visit'
                 : job.is_multi_day
