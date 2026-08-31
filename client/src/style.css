@@ -2788,6 +2788,11 @@ body {
   margin-top: 16px;
   flex-wrap: nowrap;
 }
+.jd-action-row .btn-secondary,
+.jd-action-row .btn-void {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .job-status-section  { background: var(--off); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); margin-top: 10px; }
 .status-label        {
   font-family: 'DM Mono', monospace;
@@ -6491,9 +6496,9 @@ body {
   /* Filter count badge: hide on tiny screens */
   .filter-count { display: none; }
   /* Job Detail action row: intentional column stack, Delete last */
-  .jd-action-row { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+  .jd-action-row { flex-direction: column; align-items: flex-start; justify-content: flex-start; }
   .jd-action-row .btn-secondary,
-  .jd-action-row .btn-void { width: 100%; text-align: center; justify-content: center; }
+  .jd-action-row .btn-void { width: 100%; text-align: center; justify-content: center; white-space: nowrap; flex-shrink: 0; }
 }
 
 /* ═══════════════════════════════════════════════════════════
