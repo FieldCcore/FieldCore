@@ -2966,7 +2966,11 @@ body {
 .rbc-show-more { color: var(--navy) !important; font-size: 11px !important; font-weight: 700 !important; background: none !important; border: none !important; cursor: pointer !important; padding: 2px 6px !important; }
 /* ── Week/Day time grid ───────────────────────────────────── */
 .rbc-time-view { border-radius: 0 0 12px 12px !important; overflow: hidden !important; border: 1px solid var(--lightgray) !important; border-top: none !important; }
-.rbc-time-header { border-bottom: 1.5px solid var(--lightgray) !important; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid var(--lightgray); }
+/* overflow:visible overrides RBC's built-in overflow:hidden on this container.
+   The container's auto height was resolving smaller than the today badge, causing
+   clip-by-parent. Border-radius still draws on the border; child backgrounds
+   in the top corners are white so no visual artifact. */
+.rbc-time-header { border-bottom: 1.5px solid var(--lightgray) !important; border-radius: 12px 12px 0 0; overflow: visible !important; border: 1px solid var(--lightgray); }
 .rbc-time-content { border-top: none !important; }
 /* step=15 timeslots=4 → 4 slots per hour-block; each group = 1 hour */
 .rbc-timeslot-group { min-height: 64px !important; border-bottom: 1px solid var(--lightgray) !important; }
@@ -3015,13 +3019,15 @@ body {
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
 
 /* ── Custom week/day column header — DOW above date number ─── */
-/* Override padding + height in time views so month headers keep their own padding.
-   min-height: 62px guarantees the today badge (28px circle + 9px DOW + gaps + 10px
-   top/bottom padding = 57px) always fits without the RBC default overflow:hidden
-   clipping its bottom half. overflow: visible lets the cell size to its content. */
+/* Gutter min-height forces the flex row to allocate space for the badge before
+   stretching. Without it, the all-day area's height:100% can create a circular
+   dependency that resolves the container to a smaller height than the cells need. */
+.rbc-time-header-gutter,
+.rbc-label.rbc-time-header-gutter { min-height: 64px !important; }
+
 .rbc-time-header .rbc-header {
   padding: 0 !important;
-  min-height: 62px !important;
+  min-height: 64px !important;
   overflow: visible !important;
   border-bottom: 1.5px solid var(--lightgray) !important;
   background: var(--white) !important;
@@ -3034,7 +3040,7 @@ body {
   justify-content: center;
   padding: 10px 4px;
   gap: 4px;
-  min-height: 62px;
+  min-height: 64px;
   box-sizing: border-box;
 }
 .fc-week-dh-dow {
