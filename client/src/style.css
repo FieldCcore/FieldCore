@@ -817,8 +817,11 @@ body {
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
-.btn-void:hover { background: var(--red-lt); }
+.btn-void:hover    { background: var(--red-lt); border-color: rgba(198,40,40,.6); }
+.btn-void:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-void:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 
 /* ── Search ──────────────────────────────────────────────── */
 .search-input {

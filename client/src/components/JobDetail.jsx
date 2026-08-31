@@ -89,7 +89,11 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const [declaring,     setDeclaring]     = useState(false);
   const [arrived,       setArrived]       = useState(false);
   const [completing,    setCompleting]    = useState(false);
-  const [deletePanel,   setDeletePanel]   = useState(null);   // null | 'job' | 'visit' | `svc:${scheduleId}`
+  // Delete modal state machine
+  const [deleteStep,    setDeleteStep]    = useState(null);   // null | 'confirm-single' | 'confirm-multi' | 'scope' | 'preview'
+  const [deleteScope,   setDeleteScope]   = useState(null);   // 'visit_only' | 'future' | 'entire' | `svc:${scheduleId}`
+  const [deleteImpact,  setDeleteImpact]  = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
   const [deleteError,   setDeleteError]   = useState(null);
 
@@ -159,7 +163,38 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }
   }
 
-  // ── Delete / suppress actions ────────────────────────────────────────────────
+  // ── Delete modal helpers ──────────────────────────────────────────────────────
+  function openDeleteModal() {
+    setDeleteError(null);
+    setDeleteScope(null);
+    setDeleteImpact(null);
+    if (job.agreement_id) setDeleteStep('scope');
+    else if (job.is_multi_day) setDeleteStep('confirm-multi');
+    else setDeleteStep('confirm-single');
+  }
+
+  function closeDeleteModal() {
+    setDeleteStep(null);
+    setDeleteScope(null);
+    setDeleteImpact(null);
+    setDeleteError(null);
+  }
+
+  async function fetchDeleteImpact() {
+    if (!deleteScope) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      const r = await api.get(`/jobs/${job.id}/delete-impact?scope=${deleteScope}`);
+      setDeleteImpact(r.data);
+      setDeleteStep('preview');
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Could not load impact. Try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   async function confirmDeleteJob() {
     setDeleting(true);
     setDeleteError(null);
@@ -173,28 +208,22 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
     }
   }
 
-  async function confirmDeleteVisit() {
+  async function confirmRecurringDelete() {
     setDeleting(true);
     setDeleteError(null);
+    const scope = deleteImpact?.scope || deleteScope;
     try {
-      await api.delete(`/jobs/${job.id}`);
+      if (scope === 'visit_only') {
+        await api.delete(`/jobs/${job.id}`);
+      } else if (scope === 'future' || scope === 'entire') {
+        await api.post(`/jobs/${job.id}/delete-recurring`, { scope });
+      } else if (scope?.startsWith('svc:')) {
+        await api.delete(`/jobs/${job.id}/occurrences/${scope.slice(4)}`);
+      }
       onDeleted?.(job.id);
       onClose();
     } catch (err) {
-      setDeleteError(err.response?.data?.error || 'Could not delete this visit.');
-      setDeleting(false);
-    }
-  }
-
-  async function confirmRemoveService(scheduleId) {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/jobs/${job.id}/occurrences/${scheduleId}`);
-      onDeleted?.(job.id);
-      onClose();
-    } catch (err) {
-      setDeleteError(err.response?.data?.error || 'Could not remove service.');
+      setDeleteError(err.response?.data?.error || 'Could not complete deletion.');
       setDeleting(false);
     }
   }
@@ -874,7 +903,8 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        <div className="form-actions" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+        {/* ── ACTION ROW: Edit · Open · Delete (one horizontal bar) ─────────── */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
           <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
           <button
             className="btn-secondary"
@@ -883,148 +913,223 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           >
             Open Job ↗
           </button>
+          {isAdmin && job.status !== 'complete' && (
+            <button
+              className="btn-void"
+              style={{ marginLeft: 'auto' }}
+              onClick={openDeleteModal}
+            >
+              {job.agreement_id
+                ? 'Delete This Visit'
+                : job.is_multi_day
+                  ? 'Delete Multi-Day Job'
+                  : 'Delete Job'
+              }
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* ── DESTRUCTIVE ACTIONS (admin only) ──────────────────────────────── */}
-        {isAdmin && job.status !== 'complete' && (
-          <div className="jd-section" style={{ borderColor: '#fca5a5', background: '#fff8f8', marginTop: 8 }}>
-            {!deletePanel ? (
-              /* ── Trigger buttons ── */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {job.agreement_id ? (
-                  /* Recurring-generated visit */
-                  <>
-                    <button
-                      onClick={() => setDeletePanel('visit')}
-                      style={{ background: 'none', border: 'none', color: '#dc2626',
-                        fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-                        padding: '4px 0' }}
-                    >
-                      Delete This Visit
-                    </button>
-                    {job.services?.filter(s => s.agreement_schedule_id).length > 1 &&
-                      job.services.filter(s => s.agreement_schedule_id).map(svc => (
-                        <button key={svc.id}
-                          onClick={() => setDeletePanel(`svc:${svc.agreement_schedule_id}`)}
-                          style={{ background: 'none', border: 'none', color: '#7c3aed',
-                            fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-                            padding: '2px 0' }}
-                        >
-                          Remove {svc.service_name} From This Visit
-                        </button>
-                      ))
-                    }
-                  </>
-                ) : (
-                  /* Single-day or multi-day job */
-                  <button
-                    onClick={() => setDeletePanel('job')}
-                    style={{ background: 'none', border: 'none', color: '#dc2626',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-                      padding: '4px 0' }}
-                  >
-                    {job.is_multi_day ? 'Delete Job (All Sessions)' : 'Delete Job'}
+      {/* ── DELETE MODAL ──────────────────────────────────────────────────────── */}
+      {deleteStep && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={closeDeleteModal}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 460, width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18)', maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+
+            {/* ── Single-day confirmation ── */}
+            {deleteStep === 'confirm-single' && (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>Delete job?</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, color: 'var(--slate)' }}><span style={{ fontWeight: 600 }}>Client: </span>{job.client_name}</div>
+                  <div style={{ fontSize: 13, color: 'var(--slate)' }}><span style={{ fontWeight: 600 }}>Date: </span>{job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d, yyyy') : '—'}</div>
+                  <div style={{ fontSize: 13, color: 'var(--slate)' }}><span style={{ fontWeight: 600 }}>Service: </span>{job.service_type || '—'}</div>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 20 }}>
+                  This job will be removed from the Calendar.
+                </div>
+                {deleteError && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, marginBottom: 12 }}>{deleteError}</div>}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn-secondary" onClick={closeDeleteModal} disabled={deleting}>Cancel</button>
+                  <button className="btn-void" onClick={confirmDeleteJob} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete Job'}</button>
+                </div>
+              </>
+            )}
+
+            {/* ── Multi-day confirmation ── */}
+            {deleteStep === 'confirm-multi' && (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>Delete multi-day job?</div>
+                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 20, lineHeight: 1.6 }}>
+                  {sessions.length > 0
+                    ? <>This job contains <strong>{sessions.length} work session{sessions.length !== 1 ? 's' : ''}</strong>. Deleting will remove all <strong>{sessions.filter(s => !['completed_for_day', 'cancelled'].includes(s.status)).length} eligible session{sessions.filter(s => !['completed_for_day', 'cancelled'].includes(s.status)).length !== 1 ? 's' : ''}</strong> from the Calendar.</>
+                    : 'This multi-day job will be removed from the Calendar.'
+                  }
+                </div>
+                {deleteError && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, marginBottom: 12 }}>{deleteError}</div>}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn-secondary" onClick={closeDeleteModal} disabled={deleting}>Cancel</button>
+                  <button className="btn-void" onClick={confirmDeleteJob} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete Multi-Day Job'}</button>
+                </div>
+              </>
+            )}
+
+            {/* ── Recurring scope selector ── */}
+            {deleteStep === 'scope' && (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>Delete recurring service</div>
+                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 20 }}>Choose what you want to delete.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+                  {[
+                    {
+                      key: 'visit_only',
+                      title: 'This visit only',
+                      desc: `${job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'This date'} only. Future visits continue normally.`,
+                    },
+                    {
+                      key: 'future',
+                      title: 'This and future visits',
+                      desc: `${job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'This date'} and all upcoming scheduled visits. Past history remains.`,
+                    },
+                    {
+                      key: 'entire',
+                      title: 'Entire recurring service',
+                      desc: 'End this recurring service and remove all eligible upcoming visits. Completed work and financial history remain.',
+                    },
+                    ...(job.services?.filter(s => s.agreement_schedule_id).length > 1
+                      ? job.services.filter(s => s.agreement_schedule_id).map(svc => ({
+                          key: `svc:${svc.agreement_schedule_id}`,
+                          title: `Remove ${svc.service_name} from this visit`,
+                          desc: `${svc.service_name}${svc.asset_label ? ` (${svc.asset_label})` : ''} removed from this date only. Other services and future occurrences are not affected.`,
+                        }))
+                      : []),
+                  ].map(opt => (
+                    <label key={opt.key} style={{
+                      display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px',
+                      borderRadius: 8, border: `1.5px solid ${deleteScope === opt.key ? 'var(--navy)' : 'var(--lightgray)'}`,
+                      background: deleteScope === opt.key ? 'var(--off)' : '#fff',
+                      cursor: 'pointer', transition: 'border-color .15s, background .15s',
+                    }}>
+                      <input type="radio" name="del-scope" value={opt.key}
+                        checked={deleteScope === opt.key}
+                        onChange={() => setDeleteScope(opt.key)}
+                        style={{ marginTop: 3, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 3 }}>{opt.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--slate)' }}>{opt.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {deleteError && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, marginBottom: 12 }}>{deleteError}</div>}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn-secondary" onClick={closeDeleteModal}>Cancel</button>
+                  <button className="btn-primary" disabled={!deleteScope || deleteLoading} onClick={fetchDeleteImpact}>
+                    {deleteLoading ? 'Loading…' : 'Continue'}
                   </button>
-                )}
-              </div>
-            ) : (
-              /* ── Confirmation panel ── */
-              <div>
-                {deletePanel === 'job' && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
-                      {job.is_multi_day ? 'Delete this job?' : 'Delete this job?'}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#991b1b', marginBottom: 12, lineHeight: 1.5 }}>
-                      {job.is_multi_day
-                        ? `This will remove ${job.client_name}'s "${job.service_type || job.title}" job and all ${sessions.length} associated work sessions. This cannot be undone.`
-                        : `This will permanently remove this appointment for ${job.client_name}. This cannot be undone.`
-                      }
-                    </div>
-                  </div>
-                )}
-                {deletePanel === 'visit' && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
-                      Delete this recurring visit?
-                    </div>
-                    {job.services?.filter(s => s.agreement_schedule_id).length > 0 && (
-                      <div style={{ fontSize: 12, color: '#374151', marginBottom: 8 }}>
-                        <div style={{ fontWeight: 600, marginBottom: 4 }}>This visit contains:</div>
-                        {job.services.filter(s => s.agreement_schedule_id).map(svc => (
-                          <div key={svc.id} style={{ paddingLeft: 8, color: '#374151' }}>
-                            · {svc.service_name}{svc.asset_label ? ` — ${svc.asset_label}` : ''}
+                </div>
+              </>
+            )}
+
+            {/* ── Impact preview + final confirm ── */}
+            {deleteStep === 'preview' && deleteImpact && (
+              <>
+                {deleteImpact.scope === 'visit_only' && (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>Delete this visit?</div>
+                    {deleteImpact.service_details?.length > 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 6 }}>
+                          This appointment contains
+                        </div>
+                        {deleteImpact.service_details.map((svc, i) => (
+                          <div key={i} style={{ fontSize: 13, color: 'var(--navy)', padding: '5px 0', borderBottom: '1px solid var(--lightgray)' }}>
+                            {svc.service_name}{svc.asset_label ? ` — ${svc.asset_label}` : ''}
                           </div>
                         ))}
                       </div>
                     )}
-                    <div style={{ fontSize: 12, color: '#991b1b', marginBottom: 12, lineHeight: 1.5 }}>
-                      Deleting this visit removes all listed services for{' '}
-                      {job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'this date'} only.
-                      The recurring agreement will continue and future visits are not affected.
+                    <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 20, lineHeight: 1.6 }}>
+                      <strong>{deleteImpact.services} scheduled service{deleteImpact.services !== 1 ? 's' : ''}</strong>{' '}
+                      will be removed for{' '}
+                      {deleteImpact.from_date ? format(new Date(deleteImpact.from_date + 'T12:00:00'), 'MMMM d') : 'this date'}.
+                      Future recurring visits will continue.
                     </div>
-                  </div>
+                  </>
                 )}
-                {deletePanel?.startsWith('svc:') && (() => {
-                  const schedId = deletePanel.slice(4);
-                  const svc = job.services?.find(s => s.agreement_schedule_id === schedId);
-                  return svc ? (
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#5b21b6', marginBottom: 6 }}>
-                        Remove {svc.service_name} from this visit?
+
+                {deleteImpact.scope === 'future' && (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>Delete this and future visits?</div>
+                    <div style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 13, color: 'var(--navy)' }}><strong>{deleteImpact.appointments}</strong> upcoming appointment{deleteImpact.appointments !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 13, color: 'var(--navy)' }}><strong>{deleteImpact.services}</strong> scheduled service occurrence{deleteImpact.services !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
+                        Beginning {deleteImpact.from_date ? format(new Date(deleteImpact.from_date + 'T12:00:00'), 'MMMM d, yyyy') : ''}
                       </div>
-                      <div style={{ fontSize: 12, color: '#4c1d95', marginBottom: 12, lineHeight: 1.5 }}>
-                        {svc.service_name}{svc.asset_label ? ` (${svc.asset_label})` : ''} will be removed from{' '}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 20 }}>Completed appointments and protected financial history will remain.</div>
+                  </>
+                )}
+
+                {deleteImpact.scope === 'entire' && (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>End recurring service?</div>
+                    {deleteImpact.agreement_name && (
+                      <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>
+                        <span style={{ fontWeight: 600 }}>Recurring Service: </span>{deleteImpact.agreement_name}
+                      </div>
+                    )}
+                    <div style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 13, color: 'var(--navy)' }}>End the recurring agreement</div>
+                      <div style={{ fontSize: 13, color: 'var(--navy)' }}>Remove <strong>{deleteImpact.appointments}</strong> eligible upcoming appointment{deleteImpact.appointments !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 13, color: 'var(--navy)' }}>Remove <strong>{deleteImpact.services}</strong> scheduled service occurrence{deleteImpact.services !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 20 }}>Historical completed work, invoices, and payments will remain.</div>
+                  </>
+                )}
+
+                {deleteImpact.scope?.startsWith('svc:') && (() => {
+                  const svc = job.services?.find(s => s.agreement_schedule_id === deleteImpact.scope.slice(4));
+                  return (
+                    <>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>
+                        Remove {svc?.service_name || 'service'} from this visit?
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 20, lineHeight: 1.6 }}>
+                        {svc?.service_name}{svc?.asset_label ? ` (${svc.asset_label})` : ''} will be removed from{' '}
                         {job.scheduled_at ? format(new Date(job.scheduled_at), 'MMMM d') : 'this date'} only.
                         The remaining services in this visit and all future recurring occurrences are not affected.
                       </div>
-                    </div>
-                  ) : null;
+                    </>
+                  );
                 })()}
 
-                {deleteError && (
-                  <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, marginBottom: 10 }}>
-                    {deleteError}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    disabled={deleting}
-                    onClick={() => {
-                      if (deletePanel === 'job')      confirmDeleteJob();
-                      else if (deletePanel === 'visit') confirmDeleteVisit();
-                      else if (deletePanel?.startsWith('svc:')) confirmRemoveService(deletePanel.slice(4));
-                    }}
-                    style={{
-                      padding: '7px 16px', borderRadius: 6, border: 'none', fontSize: 12,
-                      fontWeight: 700, cursor: deleting ? 'wait' : 'pointer',
-                      background: deletePanel?.startsWith('svc:') ? '#7c3aed' : '#dc2626',
-                      color: '#fff', opacity: deleting ? 0.6 : 1,
-                    }}
-                  >
+                {deleteError && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, marginBottom: 12 }}>{deleteError}</div>}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn-secondary" onClick={() => { setDeleteStep('scope'); setDeleteError(null); }} disabled={deleting}>Back</button>
+                  <button className="btn-void" onClick={confirmRecurringDelete} disabled={deleting}>
                     {deleting ? 'Removing…' : (
-                      deletePanel === 'job'
-                        ? (job.is_multi_day ? 'Confirm Delete Job' : 'Confirm Delete')
-                        : deletePanel === 'visit'
-                          ? 'Confirm Delete Visit'
-                          : 'Confirm Remove'
+                      deleteImpact.scope === 'visit_only' ? 'Delete Visit' :
+                      deleteImpact.scope === 'future'     ? 'Delete Future Visits' :
+                      deleteImpact.scope === 'entire'     ? 'End Recurring Service' :
+                                                            'Remove Service'
                     )}
                   </button>
-                  <button
-                    disabled={deleting}
-                    onClick={() => { setDeletePanel(null); setDeleteError(null); }}
-                    className="btn-secondary"
-                    style={{ fontSize: 12, padding: '7px 16px' }}
-                  >
-                    Cancel
-                  </button>
                 </div>
-              </div>
+              </>
             )}
+
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

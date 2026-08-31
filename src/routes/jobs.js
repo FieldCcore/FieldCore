@@ -929,6 +929,215 @@ router.delete('/:id/occurrences/:scheduleId', requireAuth, requireRole('owner', 
   }
 });
 
+// ── GET /api/jobs/:id/delete-impact — impact preview for recurring deletion ────
+// Returns real appointment + service occurrence counts for the selected scope.
+// Appointments = distinct job rows; services = occurrence rows (respects grouping).
+router.get('/:id/delete-impact', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { scope } = req.query;
+  if (!['visit_only', 'future', 'entire'].includes(scope) && !scope?.startsWith('svc:')) {
+    return res.status(400).json({ error: 'scope must be visit_only, future, entire, or svc:<scheduleId>' });
+  }
+  try {
+    const { rows: jobRows } = await pool.query(
+      `SELECT j.*, ra.name AS agreement_name
+       FROM jobs j
+       LEFT JOIN recurring_agreements ra ON ra.id = j.agreement_id
+       WHERE j.id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL`,
+      [req.params.id, req.accountId]
+    );
+    if (!jobRows.length) return res.status(404).json({ error: 'Job not found' });
+    const job = jobRows[0];
+
+    // Resolve the occurrence date for this specific job.
+    const { rows: occRows } = await pool.query(
+      `SELECT MIN(occurrence_date)::text AS from_date
+       FROM agreement_schedule_occurrences WHERE job_id = $1 AND deleted_at IS NULL`,
+      [job.id]
+    );
+    const fromDate = occRows[0]?.from_date || (job.scheduled_at ? job.scheduled_at.slice(0, 10) : null);
+
+    if (scope === 'visit_only' || scope?.startsWith('svc:')) {
+      // Count services + details for THIS job only.
+      const { rows: cntRows } = await pool.query(
+        `SELECT COUNT(*)::int AS cnt FROM agreement_schedule_occurrences
+         WHERE job_id = $1 AND deleted_at IS NULL`,
+        [job.id]
+      );
+      const { rows: details } = await pool.query(
+        `SELECT js.service_name, js.asset_label FROM job_services js
+         WHERE js.job_id = $1 AND js.account_id = $2 ORDER BY js.sort_order`,
+        [job.id, req.accountId]
+      );
+      return res.json({
+        scope, appointments: 1, services: cntRows[0].cnt,
+        service_details: details, from_date: fromDate, agreement_name: job.agreement_name,
+      });
+    }
+
+    // future or entire: count across the whole agreement from fromDate / now.
+    const isEntire = scope === 'entire';
+    const dateParam = isEntire ? null : fromDate;
+    const dateFilter = isEntire
+      ? `j.scheduled_at >= NOW()`
+      : `j.scheduled_at::date >= $3`;
+    const occFilter = isEntire
+      ? `aso.occurrence_date >= CURRENT_DATE`
+      : `aso.occurrence_date >= $3`;
+    const params = isEntire
+      ? [job.agreement_id, req.accountId]
+      : [job.agreement_id, req.accountId, fromDate];
+
+    const { rows: apptRows } = await pool.query(
+      `SELECT COUNT(DISTINCT j.id)::int AS appointments
+       FROM jobs j
+       WHERE j.agreement_id = $1 AND j.account_id = $2
+         AND ${dateFilter}
+         AND j.status NOT IN ('complete','cancelled') AND j.deleted_at IS NULL`,
+      params
+    );
+    const { rows: svcRows } = await pool.query(
+      `SELECT COUNT(aso.id)::int AS services
+       FROM agreement_schedule_occurrences aso
+       JOIN jobs j ON j.id = aso.job_id
+       WHERE aso.agreement_id = $1 AND j.account_id = $2
+         AND ${occFilter}
+         AND aso.deleted_at IS NULL
+         AND j.status NOT IN ('complete','cancelled') AND j.deleted_at IS NULL`,
+      params
+    );
+
+    return res.json({
+      scope, from_date: fromDate, agreement_name: job.agreement_name,
+      appointments: apptRows[0].appointments,
+      services:     svcRows[0].services,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/jobs/:id/delete-recurring — future or entire scope deletion ─────
+// 'future': suppress all occurrence rows + soft-delete all future eligible jobs
+//   for this agreement from this occurrence's date forward; sets schedule end_date.
+// 'entire': cancel the agreement + suppress all future occurrence rows + soft-delete
+//   all future eligible jobs.
+router.post('/:id/delete-recurring', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { scope } = req.body;
+  if (!['future', 'entire'].includes(scope)) {
+    return res.status(400).json({ error: 'scope must be future or entire' });
+  }
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    const { rows: jobRows } = await dbClient.query(
+      `SELECT j.*, ra.name AS agreement_name
+       FROM jobs j
+       LEFT JOIN recurring_agreements ra ON ra.id = j.agreement_id
+       WHERE j.id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL`,
+      [req.params.id, req.accountId]
+    );
+    if (!jobRows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    const job = jobRows[0];
+    if (!job.agreement_id) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: 'This job is not part of a recurring agreement' });
+    }
+
+    // Resolve the occurrence date for this job.
+    const { rows: occRows } = await dbClient.query(
+      `SELECT MIN(occurrence_date)::text AS from_date
+       FROM agreement_schedule_occurrences WHERE job_id = $1 AND deleted_at IS NULL`,
+      [job.id]
+    );
+    const fromDate = occRows[0]?.from_date || (job.scheduled_at ? job.scheduled_at.slice(0, 10) : null);
+
+    if (scope === 'future') {
+      // End all active schedules at the day before this occurrence so the scheduler
+      // stops generating visits from this date forward.
+      if (fromDate) {
+        const endDate = new Date(fromDate + 'T12:00:00');
+        endDate.setDate(endDate.getDate() - 1);
+        const endStr = endDate.toISOString().slice(0, 10);
+        await dbClient.query(
+          `UPDATE recurring_agreement_schedules
+           SET end_condition_type = 'date', end_date = $1, updated_at = NOW()
+           WHERE agreement_id = $2 AND status = 'active'`,
+          [endStr, job.agreement_id]
+        );
+      }
+
+      // Suppress occurrence rows from this date forward.
+      if (fromDate) {
+        await dbClient.query(
+          `UPDATE agreement_schedule_occurrences SET deleted_at = NOW()
+           WHERE agreement_id = $1 AND occurrence_date >= $2 AND deleted_at IS NULL`,
+          [job.agreement_id, fromDate]
+        );
+      }
+
+      // Soft-delete all eligible future jobs for this agreement from this date.
+      const { rows: futureJobs } = await dbClient.query(
+        `SELECT j.id,
+                (SELECT COUNT(*) FROM invoices i WHERE i.job_id = j.id AND i.status NOT IN ('draft','void')) AS protected_count
+         FROM jobs j
+         WHERE j.agreement_id = $1 AND j.account_id = $2
+           AND j.scheduled_at::date >= COALESCE($3::date, CURRENT_DATE)
+           AND j.status NOT IN ('complete','cancelled') AND j.deleted_at IS NULL`,
+        [job.agreement_id, req.accountId, fromDate]
+      );
+      for (const fj of futureJobs) {
+        if (parseInt(fj.protected_count, 10) > 0) continue;
+        await dbClient.query(`UPDATE jobs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`, [fj.id]);
+      }
+    }
+
+    if (scope === 'entire') {
+      // Cancel the recurring agreement.
+      await dbClient.query(
+        `UPDATE recurring_agreements SET status = 'cancelled', updated_at = NOW()
+         WHERE id = $1 AND account_id = $2`,
+        [job.agreement_id, req.accountId]
+      );
+
+      // Suppress all future occurrence rows.
+      await dbClient.query(
+        `UPDATE agreement_schedule_occurrences SET deleted_at = NOW()
+         WHERE agreement_id = $1 AND occurrence_date >= CURRENT_DATE AND deleted_at IS NULL`,
+        [job.agreement_id]
+      );
+
+      // Soft-delete all eligible future jobs.
+      const { rows: futureJobs } = await dbClient.query(
+        `SELECT j.id,
+                (SELECT COUNT(*) FROM invoices i WHERE i.job_id = j.id AND i.status NOT IN ('draft','void')) AS protected_count
+         FROM jobs j
+         WHERE j.agreement_id = $1 AND j.account_id = $2
+           AND j.scheduled_at >= NOW()
+           AND j.status NOT IN ('complete','cancelled') AND j.deleted_at IS NULL`,
+        [job.agreement_id, req.accountId]
+      );
+      for (const fj of futureJobs) {
+        if (parseInt(fj.protected_count, 10) > 0) continue;
+        await dbClient.query(`UPDATE jobs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`, [fj.id]);
+      }
+    }
+
+    await dbClient.query('COMMIT');
+    audit.log(req.accountId, req.userId, 'recurring.deleted', 'recurring_agreement', job.agreement_id,
+      { scope, from_date: fromDate, triggered_by_job: job.id }, req.ip);
+    res.json({ deleted: true, scope });
+  } catch (err) {
+    try { await dbClient.query('ROLLBACK'); } catch {}
+    res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
+  }
+});
+
 // ── PATCH /api/jobs/:id — full edit ──────────────────────────────────────────
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   // New scheduling contract: convert scheduled_at_local + input_timezone to UTC before patching.
