@@ -2421,6 +2421,9 @@ const MIGRATIONS = [
   // are marked with deleted_at so the scheduler does not recreate that appointment
   // on its next run.
   `ALTER TABLE agreement_schedule_occurrences ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`,
+
+  // Calendar week start preference per business (0=Sunday, 1=Monday)
+  `ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS week_start_day SMALLINT DEFAULT 0`,
 ];
 
 async function runMigrations() {

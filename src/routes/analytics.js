@@ -11,15 +11,21 @@ router.get('/dashboard', requireAuth, async (req, res) => {
   try {
     const [todayJobs, weekRevenue, mtdRevenue, activeJobs, pendingInvoices, pendingDeposits, teamStats, weekBars, recentReviews, todaySessions, weekCollected, weekOutstanding, prevWeekRevenue, weekInvoicesPaidCount, failedInvoiceCount, totalDepositCount, scheduledData, upcomingData] = await Promise.all([
 
-      // Today's jobs with client + tech name
+      // Today's jobs with client + tech name — uses business timezone for date boundary
+      // so Calendar and Dashboard agree about which jobs belong to "today".
       pool.query(
         `SELECT j.id, j.service_type, j.status, j.amount, j.scheduled_at, j.notes,
-                c.name AS client_name, u.name AS tech_name
+                j.agreement_id, j.duration_minutes,
+                c.name AS client_name, u.name AS tech_name,
+                (SELECT COUNT(*) FROM job_services js WHERE js.job_id = j.id) AS service_count
          FROM jobs j
          JOIN clients c ON c.id = j.client_id
          LEFT JOIN users u ON u.id = j.tech_id
+         LEFT JOIN business_profiles bp ON bp.account_id = j.account_id
          WHERE j.account_id = $1
-           AND j.scheduled_at::date = CURRENT_DATE
+           AND j.deleted_at IS NULL
+           AND (j.scheduled_at AT TIME ZONE COALESCE(bp.timezone, 'America/New_York'))::date
+               = (NOW()       AT TIME ZONE COALESCE(bp.timezone, 'America/New_York'))::date
          ORDER BY j.scheduled_at`,
         [accountId]
       ),
@@ -245,6 +251,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
               AND scheduled_at::date = CURRENT_DATE
               AND scheduled_at > NOW()
               AND status NOT IN ('complete', 'cancelled')
+              AND deleted_at IS NULL
               AND (is_multi_day IS NULL OR is_multi_day = FALSE)
            ) +
            (SELECT COUNT(*)
@@ -255,6 +262,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
               AND (s.start_time IS NULL OR s.start_time::time > CURRENT_TIME)
               AND s.status NOT IN ('completed_for_day', 'cancelled', 'missed')
               AND j.status NOT IN ('complete', 'cancelled')
+              AND j.deleted_at IS NULL
            ) AS total`,
         [accountId]
       ),

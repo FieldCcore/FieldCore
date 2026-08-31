@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Calendar, Briefcase, FileText, CreditCard, Star,
@@ -98,6 +98,10 @@ export default function Dashboard() {
   const { priorities, loading: prioritiesLoading } = usePriorities();
   const { activity,   loading: activityLoading }   = useActivity();
 
+  const refreshData = useCallback(() => {
+    api.get('/analytics/dashboard').then(r => setData(r.data)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     api.get('/analytics/dashboard')
       .then(r => setData(r.data))
@@ -106,6 +110,19 @@ export default function Dashboard() {
     api.get('/google-reviews/connection')
       .then(r => setGbp(r.data)).catch(() => {});
   }, []);
+
+  // Refresh when tab regains focus (multi-tab consistency)
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) refreshData(); };
+    document.addEventListener('visibilitychange', onVisible);
+    // Refresh when Calendar mutations write to localStorage (same-window cross-page)
+    const onStorage = e => { if (e.key === 'fc_jobs_mutated') refreshData(); };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [refreshData]);
 
   if (loading) {
     return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading dashboard…</div>;
@@ -305,23 +322,45 @@ export default function Dashboard() {
           {todayJobs.length === 0 ? (
             <div className="dp-empty">
               <div className="dp-empty__icon"><Calendar size={15} strokeWidth={1.5} /></div>
-              <div className="dp-empty__title">No jobs today</div>
-              <div className="dp-empty__subtitle">Jobs scheduled for today will appear here.</div>
+              <div className="dp-empty__title">No jobs scheduled for today</div>
+              <div className="dp-empty__sub">
+                <button
+                  className="dp-empty__link"
+                  onClick={() => nav('/jobs?view=day')}
+                  type="button"
+                >
+                  View Calendar →
+                </button>
+              </div>
             </div>
           ) : (
-            todayJobs.map((j, i) => (
-              <div className="dash-jrow" key={i}>
-                <div className="dash-jdot" style={{ background: STATUS_DOT[j.status] }} />
-                <div className="dash-ji">
-                  <div className="dash-jname">{j.client_name} — {j.service_type}</div>
-                  <div className="dash-jsub">{j.tech_name ? `${j.tech_name} · ` : ''}{j.amount ? `$${j.amount}` : 'No amount set'}</div>
+            todayJobs.map((j, i) => {
+              const svcCount = parseInt(j.service_count || 0, 10);
+              const svcLabel = svcCount > 1
+                ? `${j.service_type || 'Service'} +${svcCount - 1} more`
+                : (j.service_type || 'Service');
+              return (
+                <div
+                  className="dash-jrow"
+                  key={j.id || i}
+                  onClick={() => nav(`/jobs?job=${j.id}&view=day`)}
+                  style={{ cursor: 'pointer' }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && nav(`/jobs?job=${j.id}&view=day`)}
+                >
+                  <div className="dash-jdot" style={{ background: STATUS_DOT[j.status] || 'var(--steel)' }} />
+                  <div className="dash-ji">
+                    <div className="dash-jname">{j.client_name} — {svcLabel}</div>
+                    <div className="dash-jsub">{j.tech_name ? `${j.tech_name} · ` : ''}{j.amount ? `$${j.amount}` : 'No amount set'}</div>
+                  </div>
+                  <div className="dash-jmeta">
+                    <div className="dash-jtime">{fmtTime(j.scheduled_at)}</div>
+                    <StatusBadge status={j.status}>{STATUS_LABEL[j.status] || j.status}</StatusBadge>
+                  </div>
                 </div>
-                <div className="dash-jmeta">
-                  <div className="dash-jtime">{fmtTime(j.scheduled_at)}</div>
-                  <StatusBadge status={j.status}>{STATUS_LABEL[j.status]}</StatusBadge>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </DashboardPanel>
 

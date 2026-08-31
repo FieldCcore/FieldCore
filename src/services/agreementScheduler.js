@@ -755,11 +755,11 @@ async function repairExistingVisits(agreement, client) {
     );
     if (grouped.length > 0) {
       await client.query(
-        `UPDATE jobs SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+        `UPDATE jobs SET status = 'cancelled', deleted_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [lj.id]
       );
       console.log(
-        `${TAG} Repair: cancelled legacy job ${lj.id} (superseded by grouped visit on ${lj.service_date})`
+        `${TAG} Repair: cancelled+soft-deleted legacy job ${lj.id} (superseded by grouped visit on ${lj.service_date})`
       );
     }
   }

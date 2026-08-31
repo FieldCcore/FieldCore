@@ -60,7 +60,7 @@ export default function BusinessSettings() {
   const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
 
-  const [profile, setProfile] = useState({ business_name:'', phone:'', address:'', city:'', state:'', zip:'', website:'', description:'', timezone:'America/New_York', vertical:'', ein:'', customer_inactivity_days: null });
+  const [profile, setProfile] = useState({ business_name:'', phone:'', address:'', city:'', state:'', zip:'', website:'', description:'', timezone:'America/New_York', vertical:'', ein:'', customer_inactivity_days: null, week_start_day: 0 });
   const [hours, setHours] = useState([]);
   const [closures, setClosures] = useState([]);
   const [newClosure, setNewClosure] = useState({ closure_date:'', name:'', is_emergency: false });
@@ -626,6 +626,16 @@ export default function BusinessSettings() {
             </select>
             <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--steel)', lineHeight: 1.4 }}>
               Used to schedule and display job times across your team. Changing this affects <em>future</em> scheduling only — existing jobs are stored in UTC and are not shifted.
+            </p>
+          </div>
+          <div className="bss-field">
+            <label className="bss-label">Start Week On</label>
+            <select className="bss-input" value={profile.week_start_day ?? 0} onChange={e => setProfile(p => ({...p, week_start_day: parseInt(e.target.value, 10)}))}>
+              <option value={0}>Sunday</option>
+              <option value={1}>Monday</option>
+            </select>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--steel)', lineHeight: 1.4 }}>
+              Controls the first day of the week on the Calendar and Month views.
             </p>
           </div>
           <div className="bss-field bss-span2">

@@ -2879,7 +2879,8 @@ body {
 .rbc-off-range-bg { background: var(--off) !important; }
 .rbc-event  { cursor: pointer !important; box-shadow: 0 1px 3px rgba(0,0,0,.12) !important; border-radius: 6px !important; border: none !important; }
 .rbc-event:hover { opacity: .88; }
-.rbc-event-label { font-size: 10px !important; font-weight: 500 !important; }
+/* Built-in time label hidden — our CalEventCard renders its own time string */
+.rbc-event-label { display: none !important; }
 .rbc-event-content { font-size: 12px !important; font-weight: 600 !important; }
 .rbc-header { font-family: 'DM Mono', monospace !important; font-weight: 600 !important; font-size: 10px !important; color: var(--steel) !important; letter-spacing: .06em !important; text-transform: uppercase !important; padding: 10px 8px !important; border-bottom: 1.5px solid var(--lightgray) !important; background: var(--white) !important; }
 .rbc-header.rbc-today { color: var(--navy) !important; background: #FDFAF5 !important; }
@@ -2892,18 +2893,27 @@ body {
 .rbc-date-cell.rbc-now a { color: var(--navy) !important; font-weight: 800 !important; }
 .rbc-date-cell a { color: var(--slate) !important; text-decoration: none !important; }
 .rbc-show-more { color: var(--navy) !important; font-size: 11px !important; font-weight: 700 !important; background: none !important; border: none !important; cursor: pointer !important; padding: 2px 6px !important; }
+/* ── Week/Day time grid ───────────────────────────────────── */
 .rbc-time-view { border-radius: 0 0 12px 12px !important; overflow: hidden !important; border: 1px solid var(--lightgray) !important; border-top: none !important; }
 .rbc-time-header { border-bottom: 1.5px solid var(--lightgray) !important; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid var(--lightgray); }
 .rbc-time-content { border-top: none !important; }
-.rbc-time-slot { border-top: 1px solid #f4f3f0 !important; }
-.rbc-timeslot-group { border-bottom: 1px solid var(--lightgray) !important; }
+/* step=15 timeslots=4 → 4 slots per hour-block; each group = 1 hour */
+.rbc-timeslot-group { min-height: 64px !important; border-bottom: 1px solid var(--lightgray) !important; }
 .rbc-time-gutter .rbc-timeslot-group { border-bottom: none !important; }
+.rbc-time-slot { border-top: 1px solid #f4f3f0 !important; }
+/* Show only the top slot label (the hour) — hide quarter-hour sub-labels */
 .rbc-time-gutter .rbc-time-slot { font-family: 'DM Mono', monospace !important; font-size: 10px !important; color: var(--steel) !important; }
+.rbc-time-gutter .rbc-time-slot:not(:first-child) { opacity: 0; }
+/* Wider gutter to accommodate "10 AM" labels */
+.rbc-time-gutter { min-width: 52px !important; }
+
+/* ── Current-time indicator — red dot + line + time label ─── */
 .rbc-current-time-indicator {
   background-color: var(--red) !important;
   height: 2px !important;
   z-index: 4 !important;
   pointer-events: none;
+  overflow: visible !important;
 }
 .rbc-current-time-indicator::before {
   content: '';
@@ -2915,13 +2925,76 @@ body {
   border-radius: 50%;
   background: var(--red);
 }
+/* Time label sits right after the dot, on top of the line */
+.rbc-current-time-indicator::after {
+  content: var(--rbc-now-label, '');
+  position: absolute;
+  left: 8px;
+  top: -8px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--red);
+  background: rgba(255,255,255,0.9);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
 
-/* ── Calendar event cards ─────────────────────────────────── */
+/* ── Custom week/day column header — DOW above date number ─── */
+/* Override padding only in time views (week/day) so month headers keep their own padding */
+.rbc-time-header .rbc-header { padding: 0 !important; border-bottom: 1.5px solid var(--lightgray) !important; background: var(--white) !important; }
+.rbc-time-header .rbc-header.rbc-today { background: #FDFAF5 !important; }
+.fc-week-dh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  gap: 2px;
+}
+.fc-week-dh-dow {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--steel);
+  line-height: 1;
+}
+.fc-week-dh-num {
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1;
+}
+/* Today column: sand circle behind the date number */
+.fc-week-dh--today .fc-week-dh-dow { color: var(--navy); }
+.fc-week-dh--today .fc-week-dh-num {
+  background: var(--navy);
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+/* ── Calendar event cards — adaptive by duration ─────────── */
 .cal-event-card { display: flex; flex-direction: column; gap: 1px; overflow: hidden; height: 100%; }
 .cal-event-day  { font-size: 9px; font-weight: 600; opacity: 0.75; text-transform: uppercase; letter-spacing: .04em; line-height: 1; }
+.cal-event-time { font-size: 9px; font-weight: 500; opacity: 0.85; line-height: 1; white-space: nowrap; }
 .cal-event-svc  { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
 .cal-event-cli  { font-size: 10px; font-weight: 400; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+.cal-event-tech { font-size: 9px; font-weight: 500; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+/* XS cards: tight — just the label */
+.cal-event-card--xs { gap: 0; }
+.cal-event-card--xs .cal-event-svc { font-size: 10px; }
 
 /* ── Filter bar ───────────────────────────────────────────── */
 .cal-filter-bar {
@@ -7105,6 +7178,18 @@ body {
   font-size: 11px;
   color: var(--steel);
   max-width: 200px;
+}
+.dp-empty__sub { font-size: 11px; color: var(--steel); margin-top: 2px; }
+.dp-empty__link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* ── Quick Actions list ── */

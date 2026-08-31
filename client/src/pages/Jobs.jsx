@@ -34,14 +34,16 @@ const VALID_VIEWS        = ['month', 'week', 'day', 'agenda'];
 const VALID_FILTERS      = ['all', 'scheduled', 'in_progress', 'complete', 'cancelled'];
 const VALID_CREATE_MODES = new Set(['single-day', 'multi-day', 'recurring']);
 
-// ─── RBC localizer ────────────────────────────────────────────────────────────
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 0 }),
-  getDay,
-  locales: { 'en-US': enUS },
-});
+// ─── RBC localizer factory — week start is configurable (0=Sun, 1=Mon) ────────
+function makeLocalizer(weekStartsOn) {
+  return dateFnsLocalizer({
+    format,
+    parse,
+    startOfWeek: (date) => startOfWeek(date, { weekStartsOn }),
+    getDay,
+    locales: { 'en-US': enUS },
+  });
+}
 
 // ─── Scroll current-time indicator into view ─────────────────────────────────
 function scrollToNow() {
@@ -58,24 +60,85 @@ function scrollToNow() {
   });
 }
 
-// ─── Custom event card ────────────────────────────────────────────────────────
-// react-big-calendar calls this with { event, title, isAllDay, ... }
+// ─── Custom event card — adaptive content based on duration ──────────────────
+// Larger blocks show richer detail; short blocks show just the essential label.
 function CalEventCard({ event }) {
   const resource   = event.resource || {};
   const isSession  = resource._type === 'session';
   const clientName = resource.client_name || '';
+  const techName   = resource.tech_name   || '';
   const svcName    = resource.service_type || resource.title || '';
+  const svcCount   = parseInt(resource.service_count || 0, 10);
+  const svcLabel   = svcCount > 1 ? `${svcName} +${svcCount - 1}` : svcName;
   const dayLabel   = isSession
     ? (resource.total_sessions > 1
-        ? `Day ${resource.day_number} of ${resource.total_sessions}`
+        ? `Day ${resource.day_number}/${resource.total_sessions}`
         : 'Multi-Day')
-    : '';
+    : null;
 
+  const durationMin = event.end && event.start
+    ? Math.round((new Date(event.end) - new Date(event.start)) / 60000)
+    : 60;
+
+  // Time range string for medium/large cards
+  const timeStr = durationMin >= 45
+    ? `${format(new Date(event.start), 'h:mm')}–${format(new Date(event.end), 'h:mm a')}`
+    : null;
+
+  if (durationMin < 25) {
+    // XS: service label only
+    return (
+      <div className="cal-event-card cal-event-card--xs">
+        {dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+        <span className="cal-event-svc">{svcLabel || clientName}</span>
+      </div>
+    );
+  }
+
+  if (durationMin < 55) {
+    // SM: service + client
+    return (
+      <div className="cal-event-card cal-event-card--sm">
+        {dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+        <span className="cal-event-svc">{svcLabel}</span>
+        {clientName && <span className="cal-event-cli">{clientName}</span>}
+      </div>
+    );
+  }
+
+  if (durationMin < 100) {
+    // MD: time + service + client
+    return (
+      <div className="cal-event-card cal-event-card--md">
+        {dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+        {timeStr   && <span className="cal-event-time">{timeStr}</span>}
+        <span className="cal-event-svc">{svcLabel}</span>
+        {clientName && <span className="cal-event-cli">{clientName}</span>}
+      </div>
+    );
+  }
+
+  // LG: full detail — time + service + client + tech
   return (
-    <div className="cal-event-card">
+    <div className="cal-event-card cal-event-card--lg">
       {dayLabel && <span className="cal-event-day">{dayLabel}</span>}
+      {timeStr   && <span className="cal-event-time">{timeStr}</span>}
+      <span className="cal-event-svc">{svcLabel}</span>
       {clientName && <span className="cal-event-cli">{clientName}</span>}
-      {svcName    && <span className="cal-event-svc">{svcName}</span>}
+      {techName   && <span className="cal-event-tech">{techName}</span>}
+    </div>
+  );
+}
+
+// ─── Custom week/day column header ────────────────────────────────────────────
+// Shows day abbreviation above date number, today highlighted.
+function WeekDayHeader({ date }) {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const isToday  = format(date, 'yyyy-MM-dd') === todayStr;
+  return (
+    <div className={`fc-week-dh${isToday ? ' fc-week-dh--today' : ''}`}>
+      <span className="fc-week-dh-dow">{format(date, 'EEE').toUpperCase()}</span>
+      <span className="fc-week-dh-num">{format(date, 'd')}</span>
     </div>
   );
 }
@@ -201,7 +264,7 @@ function parseTime(timeStr) {
 }
 
 // Stable component object — defined once outside render to avoid RBC remounts
-const CAL_COMPONENTS = { toolbar: CalendarToolbar, event: CalEventCard };
+const CAL_COMPONENTS = { toolbar: CalendarToolbar, event: CalEventCard, header: WeekDayHeader };
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Jobs() {
@@ -215,6 +278,7 @@ export default function Jobs() {
   const [businessHours,   setBusinessHours]   = useState([]);
   const [techs,           setTechs]           = useState([]);
   const [calendarTZ,      setCalendarTZ]      = useState(() => resolveCalendarTimeZone({}).timezone);
+  const [weekStartDay,    setWeekStartDay]    = useState(0); // 0=Sunday, 1=Monday
   const [view,            setView]            = useState(() => VALID_VIEWS.includes(initView)   ? initView   : 'month');
   const [date,            setDate]            = useState(new Date());
   const [modal,        setModal]        = useState(null);    // 'edit' only — create/recurring driven by URL
@@ -240,6 +304,23 @@ export default function Jobs() {
     }, { replace: true });
   }, [setSearchParams]);
 
+  // ── Dynamic localizer — rebuilds when week start changes ───────────────────
+  const localizer = useMemo(() => makeLocalizer(weekStartDay), [weekStartDay]);
+
+  // ── Current-time CSS variable — keeps "5:26 PM" label on the indicator ─────
+  useEffect(() => {
+    function syncTimeLabel() {
+      const now = new Date();
+      const h = now.getHours() % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const ampm = now.getHours() < 12 ? 'AM' : 'PM';
+      document.documentElement.style.setProperty('--rbc-now-label', `"${h}:${m} ${ampm}"`);
+    }
+    syncTimeLabel();
+    const id = setInterval(syncTimeLabel, 30000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Data ────────────────────────────────────────────────────────────────────
   const loadJobs = useCallback(() => {
     Promise.all([api.get('/jobs'), api.get('/jobs/sessions')])
@@ -258,6 +339,8 @@ export default function Jobs() {
       if (r.data?.hours) setBusinessHours(r.data.hours);
       const { timezone } = resolveCalendarTimeZone({ businessTimezone: r.data?.profile?.timezone });
       setCalendarTZ(timezone);
+      const wsd = parseInt(r.data?.profile?.week_start_day ?? 0, 10);
+      setWeekStartDay(wsd === 1 ? 1 : 0);
     }).catch(() => {});
   }, []);
 
@@ -462,6 +545,7 @@ export default function Jobs() {
         ...job.sessions.map(s => ({ ...s, job_id: job.id, service_type: job.service_type, client_name: job.client_name })),
       ]);
     }
+    localStorage.setItem('fc_jobs_mutated', Date.now().toString());
     closeCreate();
   }
 
@@ -469,17 +553,20 @@ export default function Jobs() {
     setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
     setModal(null);
     setDrawerJob(prev => prev ? { ...prev, ...updated } : null);
+    localStorage.setItem('fc_jobs_mutated', Date.now().toString());
   }
 
   function handleStatusChange(updated) {
     setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
     setDrawerJob(prev => prev ? { ...prev, ...updated } : null);
+    localStorage.setItem('fc_jobs_mutated', Date.now().toString());
   }
 
   function handleJobDeleted(jobId) {
     setJobs(prev => prev.filter(j => j.id !== jobId));
     setSessions(prev => prev.filter(s => s.job_id !== jobId));
     setDrawerJob(null);
+    localStorage.setItem('fc_jobs_mutated', Date.now().toString());
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
       p.delete('job');
@@ -628,10 +715,16 @@ export default function Jobs() {
               slotPropGetter={businessHours.length > 0 ? slotPropGetter : undefined}
               min={calMin}
               max={calMax}
+              step={15}
+              timeslots={4}
               selectable
               views={{ month: true, week: true, day: true, agenda: FieldCoreAgendaView }}
               components={CAL_COMPONENTS}
-              style={{ height: 'max(560px, calc(100vh - 320px))' }}
+              formats={{
+                timeGutterFormat: (d, culture, loc) => loc.format(d, 'h a', culture),
+                dayHeaderFormat:  (d, culture, loc) => loc.format(d, 'EEEE, MMMM d, yyyy', culture),
+              }}
+              style={{ height: 'max(600px, calc(100vh - 300px))' }}
             />
           </div>
         </CalendarErrorBoundary>

@@ -41,7 +41,7 @@ router.get('/', requireAuth, async (req, res) => {
 // PUT /api/business-settings/profile
 router.put('/profile', requireAuth, async (req, res) => {
   const accountId = req.accountId;
-  const { business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days } = req.body;
+  const { business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days, week_start_day } = req.body;
   if (timezone && !validateIanaTimezone(timezone)) {
     return res.status(400).json({ error: `Invalid timezone: ${timezone}. Use an IANA identifier such as America/New_York.` });
   }
@@ -49,10 +49,11 @@ router.put('/profile', requireAuth, async (req, res) => {
   if (inactivityDays !== null && (inactivityDays < 1 || inactivityDays > 3650)) {
     return res.status(400).json({ error: 'customer_inactivity_days must be between 1 and 3650.' });
   }
+  const weekStartDay = week_start_day != null ? (parseInt(week_start_day, 10) === 1 ? 1 : 0) : 0;
   try {
     await pool.query(`
-      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+      INSERT INTO business_profiles (account_id, business_name, phone, address, city, state, zip, website, description, timezone, vertical, ein, customer_inactivity_days, week_start_day, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
       ON CONFLICT (account_id) DO UPDATE SET
         business_name             = EXCLUDED.business_name,
         phone                     = EXCLUDED.phone,
@@ -66,8 +67,9 @@ router.put('/profile', requireAuth, async (req, res) => {
         vertical                  = EXCLUDED.vertical,
         ein                       = EXCLUDED.ein,
         customer_inactivity_days  = EXCLUDED.customer_inactivity_days,
+        week_start_day            = EXCLUDED.week_start_day,
         updated_at                = NOW()
-    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical, ein || null, inactivityDays]);
+    `, [accountId, business_name, phone, address, city, state, zip, website, description, timezone || 'America/New_York', vertical, ein || null, inactivityDays, weekStartDay]);
 
     // Sync name to accounts table if provided
     if (business_name) {
