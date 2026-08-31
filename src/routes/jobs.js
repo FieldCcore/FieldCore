@@ -28,8 +28,10 @@ const VALID_SESSION_STATUSES = [
 
 // Fields that may be updated via PATCH /api/jobs/:id
 const PATCHABLE_JOB_FIELDS = [
-  'client_id','tech_id','service_type','scheduled_at','amount','travel_fee','notes','recurring',
+  'client_id','tech_id','service_type','scheduled_at','amount','travel_fee','notes','instructions',
+  'recurring','duration_minutes',
   'service_address','service_city','service_state','service_zip','service_lat','service_lng',
+  'location_id',
   // Multi-day fields
   'title','scope_of_work','estimated_start_date','estimated_end_date','end_date_unknown',
   'job_manager_id','estimated_labor_hours','overall_completion_pct','billing_method','priority',
@@ -297,35 +299,60 @@ router.get('/sessions', requireAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/jobs/:id — single job with sessions ──────────────────────────────
+// ── GET /api/jobs/:id — single job with full operational context ───────────────
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT j.*, c.name AS client_name, u.name AS tech_name,
-              um.name AS job_manager_name
+      `SELECT j.*,
+              c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+              u.name  AS tech_name,
+              um.name AS job_manager_name,
+              cl.label               AS location_label,
+              cl.access_instructions AS location_access_instructions
        FROM jobs j
-       JOIN clients c   ON c.id = j.client_id
-       LEFT JOIN users u  ON u.id = j.tech_id
-       LEFT JOIN users um ON um.id = j.job_manager_id
+       JOIN clients c    ON c.id  = j.client_id
+       LEFT JOIN users u   ON u.id  = j.tech_id
+       LEFT JOIN users um  ON um.id = j.job_manager_id
+       LEFT JOIN client_locations cl ON cl.id = j.location_id
        WHERE j.id = $1 AND j.account_id = $2`,
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     const job = rows[0];
 
+    // Full assigned team (all job types, Phase B read path)
+    const { rows: team } = await pool.query(
+      `SELECT ja.user_id, ja.assignment_role, ja.is_primary, u.name AS member_name, u.role AS user_role
+       FROM job_assignments ja
+       JOIN users u ON u.id = ja.user_id
+       WHERE ja.job_id = $1 AND ja.account_id = $2 AND ja.removed_at IS NULL
+       ORDER BY ja.is_primary DESC, u.name`,
+      [job.id, req.accountId]
+    );
+    job.team = team;
+
+    // Service lines (all job types)
+    const { rows: services } = await pool.query(
+      `SELECT * FROM job_services
+       WHERE job_id = $1 AND account_id = $2
+       ORDER BY sort_order, created_at`,
+      [job.id, req.accountId]
+    );
+    job.services = services;
+
+    // Assets/service targets (all job types)
+    const { rows: assets } = await pool.query(
+      `SELECT a.*, u.name AS assigned_tech_name
+       FROM job_assets a
+       LEFT JOIN users u ON u.id = a.assigned_tech_id
+       WHERE a.job_id = $1 AND a.account_id = $2
+       ORDER BY a.created_at`,
+      [job.id, req.accountId]
+    );
+    job.assets = assets;
+
     if (job.is_multi_day) {
       job.sessions = await getSessionsForJob(job.id, req.accountId);
-
-      // Fetch assets
-      const { rows: assets } = await pool.query(
-        `SELECT a.*, u.name AS assigned_tech_name
-         FROM job_assets a
-         LEFT JOIN users u ON u.id = a.assigned_tech_id
-         WHERE a.job_id = $1 AND a.account_id = $2
-         ORDER BY a.created_at`,
-        [job.id, req.accountId]
-      );
-      job.assets = assets;
     }
 
     res.json(job);
@@ -337,7 +364,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 // ── POST /api/jobs ────────────────────────────────────────────────────────────
 router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, async (req, res) => {
   const {
-    client_id, tech_id, service_type, scheduled_at, amount, notes, recurring, travel_fee,
+    client_id, tech_id, service_type, scheduled_at, amount, notes, instructions, recurring, travel_fee,
     service_address, service_location, address,
     service_city, service_state, service_zip, service_lat, service_lng,
     // Canonical client location reference (optional — snapshots address fields below)
@@ -353,6 +380,8 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
     // Team assignment payload (new path) — assignment.members drives tech_id (Phase A).
     // Legacy callers may still send tech_id directly; both paths are supported.
     assignment,
+    // Service lines: [{ service_name, description, asset_label, quantity, duration_minutes, price_cents, service_notes, sort_order }]
+    services = [],
   } = req.body;
 
   if (!client_id || !service_type) {
@@ -503,19 +532,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
 
     const { rows } = await client.query(
       `INSERT INTO jobs
-         (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, recurring,
-          travel_fee, service_address, service_city, service_state, service_zip, service_lat, service_lng,
+         (account_id, client_id, tech_id, service_type, scheduled_at, amount, notes, instructions,
+          recurring, travel_fee,
+          service_address, service_city, service_state, service_zip, service_lat, service_lng,
           location_id,
           is_multi_day, title, scope_of_work, estimated_start_date, estimated_end_date, end_date_unknown,
           job_manager_id, estimated_labor_hours, billing_method, priority,
           scheduling_timezone, original_local_start, geocode_status,
           input_timezone, input_timezone_source, creator_timezone_at_creation,
           geocode_provider_status, geocode_error, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,NOW())
        RETURNING *`,
       [
         req.accountId, client_id, effectiveTechId, service_type,
-        finalScheduledAt, amount || null, notes, recurring || 'none',
+        finalScheduledAt, amount || null, notes || null, instructions || null,
+        recurring || 'none',
         travelFee, finalServiceAddress || null,
         req.body.service_city || service_city || null,
         req.body.service_state || service_state || null,
@@ -655,6 +686,27 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), checkJobLimit, as
         ).then(result => {
           if (!result?.blocked) return pool.query(`UPDATE jobs SET confirmation_sent = TRUE WHERE id = $1`, [job.id]);
         }).catch(() => {});
+      }
+    }
+
+    // Persist service lines after commit (pool.query on committed job)
+    if (services.length > 0) {
+      for (let i = 0; i < services.length; i++) {
+        const svc = services[i];
+        if (!svc?.service_name) continue;
+        await pool.query(
+          `INSERT INTO job_services
+             (job_id, account_id, service_name, description, asset_label,
+              quantity, duration_minutes, price_cents, service_notes, sort_order)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            job.id, req.accountId, svc.service_name.trim(),
+            svc.description || null, svc.asset_label || null,
+            svc.quantity || 1, svc.duration_minutes || null,
+            svc.price_cents || null, svc.service_notes || null,
+            svc.sort_order != null ? svc.sort_order : i,
+          ]
+        ).catch(() => {});
       }
     }
 
@@ -846,6 +898,46 @@ router.post('/:id/geocode', requireAuth, requireRole('owner', 'manager'), async 
       geocode_provider_status: providerStatus,
       error: geocodeErrMsg,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/jobs/:id/services — replace all service lines ───────────────────
+router.put('/:id/services', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { services = [] } = req.body;
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM jobs WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!existing.length) return res.status(404).json({ error: 'Not found' });
+
+    // Replace all service lines atomically
+    await pool.query(`DELETE FROM job_services WHERE job_id = $1 AND account_id = $2`, [req.params.id, req.accountId]);
+
+    const created = [];
+    for (let i = 0; i < services.length; i++) {
+      const svc = services[i];
+      if (!svc?.service_name) continue;
+      const { rows } = await pool.query(
+        `INSERT INTO job_services
+           (job_id, account_id, service_name, description, asset_label,
+            quantity, duration_minutes, price_cents, service_notes, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING *`,
+        [
+          req.params.id, req.accountId, svc.service_name.trim(),
+          svc.description || null, svc.asset_label || null,
+          svc.quantity || 1, svc.duration_minutes || null,
+          svc.price_cents || null, svc.service_notes || null,
+          svc.sort_order != null ? svc.sort_order : i,
+        ]
+      );
+      created.push(rows[0]);
+    }
+
+    res.json({ services: created });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

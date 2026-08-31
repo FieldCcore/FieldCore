@@ -60,6 +60,21 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
   const [job,           setJob]           = useState(initialJob);
   const [sessions,      setSessions]      = useState(initialJob.sessions || []);
   const [sessionsLoaded,setSessLoaded]    = useState(!!initialJob.sessions);
+
+  // Sync enriched data when parent fetches full detail after calendar click.
+  // Preserves local status/clock changes made via actions.
+  useEffect(() => {
+    setJob(prev => ({
+      ...initialJob,
+      // Keep locally-mutated fields so in-flight action updates aren't clobbered.
+      status: prev.status,
+      no_show_clock_started_at: prev.no_show_clock_started_at,
+    }));
+    if (initialJob.sessions?.length) {
+      setSessions(initialJob.sessions);
+      setSessLoaded(true);
+    }
+  }, [initialJob]); // eslint-disable-line react-hooks/exhaustive-deps
   const [updating,      setUpdating]      = useState(false);
   const [photos,        setPhotos]        = useState([]);
   const [loadingPhotos, setLoadingPhotos] = useState(true);
@@ -296,152 +311,269 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
       </div>
 
       <div className="modal-body">
-        {/* ── Core detail rows ── */}
-        <div className="job-detail-body">
-          <div className="detail-row">
-            <label>Assigned Team</label>
-            <span>
-              {job.is_multi_day
-                ? (job.job_manager_name || 'Unassigned')
-                : (job.tech_name || 'Unassigned')}
-            </span>
-          </div>
 
-          {job.is_multi_day ? (
-            <>
-              <div className="detail-row">
-                <label>Progress</label>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ flex: 1, height: 6, background: 'var(--lightgray)', borderRadius: 99, overflow: 'hidden', minWidth: 80 }}>
-                    <div style={{ height: '100%', width: `${job.overall_completion_pct || 0}%`,
-                      background: 'var(--sand)', borderRadius: 99 }} />
-                  </div>
-                  <span style={{ fontWeight: 700 }}>{job.overall_completion_pct || 0}%</span>
-                </span>
-              </div>
-              <div className="detail-row">
-                <label>Sessions</label>
-                <span>{completedSessions} of {sessions.length} completed</span>
-              </div>
-              {nextSession && (
-                <div className="detail-row">
-                  <label>Next Session</label>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <CalendarDays size={12} />
-                    {format(new Date(nextSession.scheduled_date + 'T12:00:00'), 'MMM d, yyyy')}
-                    {nextSession.start_time && ` at ${nextSession.start_time.slice(0,5)}`}
-                  </span>
+        {/* ── SERVICE LOCATION ─────────────────────────────────────────────────── */}
+        <div className="jd-section">
+          <div className="jd-section-label">Service Location</div>
+          {addressLine1 ? (
+            <div style={{ marginTop: 6 }}>
+              {job.location_label && (
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 2 }}>
+                  {job.location_label}
                 </div>
               )}
-              {(job.estimated_start_date || job.estimated_end_date) && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ color: 'var(--sand)', textDecoration: 'none', fontSize: 13 }}
+              >
+                <span style={{ display: 'block' }}>{addressLine1}</span>
+                {addressLine2 && <span style={{ display: 'block' }}>{addressLine2}</span>}
+              </a>
+              {job.location_access_instructions && (
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 4, fontStyle: 'italic' }}>
+                  {job.location_access_instructions}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--steel)', marginTop: 6 }}>No service address on file</div>
+          )}
+        </div>
+
+        {/* ── SCHEDULE ────────────────────────────────────────────────────────── */}
+        <div className="jd-section">
+          <div className="jd-section-label">Schedule</div>
+          <div className="job-detail-body" style={{ marginTop: 6 }}>
+            {job.is_multi_day ? (
+              <>
+                {(job.estimated_start_date || job.estimated_end_date) && (
+                  <div className="detail-row">
+                    <label>Date Range</label>
+                    <span>
+                      {job.estimated_start_date ? format(new Date(job.estimated_start_date + 'T12:00:00'), 'MMM d') : '?'}
+                      {' – '}
+                      {job.end_date_unknown ? 'TBD' : job.estimated_end_date ? format(new Date(job.estimated_end_date + 'T12:00:00'), 'MMM d, yyyy') : 'TBD'}
+                    </span>
+                  </div>
+                )}
+                {nextSession && (
+                  <div className="detail-row">
+                    <label>Next Session</label>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <CalendarDays size={12} />
+                      {format(new Date(nextSession.scheduled_date + 'T12:00:00'), 'MMM d, yyyy')}
+                      {nextSession.start_time && ` at ${nextSession.start_time.slice(0,5)}`}
+                    </span>
+                  </div>
+                )}
                 <div className="detail-row">
-                  <label>Date Range</label>
-                  <span>
-                    {job.estimated_start_date ? format(new Date(job.estimated_start_date + 'T12:00:00'), 'MMM d') : '?'}
-                    {' – '}
-                    {job.end_date_unknown ? 'TBD' : job.estimated_end_date ? format(new Date(job.estimated_end_date + 'T12:00:00'), 'MMM d, yyyy') : 'TBD'}
+                  <label>Sessions</label>
+                  <span>{completedSessions} of {sessions.length} completed</span>
+                </div>
+                <div className="detail-row">
+                  <label>Progress</label>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, height: 6, background: 'var(--lightgray)', borderRadius: 99, overflow: 'hidden', minWidth: 80 }}>
+                      <div style={{ height: '100%', width: `${job.overall_completion_pct || 0}%`, background: 'var(--sand)', borderRadius: 99 }} />
+                    </div>
+                    <span style={{ fontWeight: 700 }}>{job.overall_completion_pct || 0}%</span>
                   </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="detail-row">
+                  <label>Start</label>
+                  <span>
+                    {job.scheduled_at ? formatTZ(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a', tz) : '—'}
+                    {job.scheduled_at && (
+                      <span style={{ fontSize: 11, color: 'var(--steel)', marginLeft: 6 }}>
+                        {tz.split('/').pop().replace(/_/g, ' ')}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {job.scheduled_at && job.duration_minutes ? (
+                  <div className="detail-row">
+                    <label>End</label>
+                    <span>{formatTZ(addMinutes(new Date(job.scheduled_at), job.duration_minutes), 'h:mm a', tz)}</span>
+                  </div>
+                ) : null}
+                {job.duration_minutes ? (
+                  <div className="detail-row">
+                    <label>Duration</label>
+                    <span>{formatDuration(job.duration_minutes)}</span>
+                  </div>
+                ) : null}
+                {job.recurring && job.recurring !== 'none' && (
+                  <div className="detail-row">
+                    <label>Recurrence</label>
+                    <span style={{ textTransform: 'capitalize' }}>{job.recurring}</span>
+                  </div>
+                )}
+              </>
+            )}
+            {job.checkin_at && (
+              <div className="detail-row">
+                <label>Check-in</label>
+                <span>
+                  {formatTZ(new Date(job.checkin_at), 'h:mm a', tz)}
+                  {job.checkin_lat ? ` · ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── ASSIGNED TEAM ────────────────────────────────────────────────────── */}
+        <div className="jd-section">
+          <div className="jd-section-label">Assigned Team</div>
+          {job.team?.length > 0 ? (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {job.team.map(m => (
+                <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <span style={{ fontWeight: m.is_primary ? 700 : 400, color: 'var(--navy)' }}>{m.member_name}</span>
+                  {m.is_primary && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--slate)', background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 99, padding: '1px 7px', letterSpacing: '.04em' }}>LEAD</span>
+                  )}
+                  {m.assignment_role && m.assignment_role !== 'lead_technician' && (
+                    <span style={{ fontSize: 11, color: 'var(--steel)', textTransform: 'capitalize' }}>{m.assignment_role.replace(/_/g, ' ')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--steel)', marginTop: 6 }}>
+              Unassigned
+            </div>
+          )}
+        </div>
+
+        {/* ── SERVICES ─────────────────────────────────────────────────────────── */}
+        <div className="jd-section">
+          <div className="jd-section-label">Services</div>
+          {job.services?.length > 0 ? (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {job.services.map((svc, idx) => (
+                <div key={svc.id || idx} style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  border: '1px solid var(--lightgray)', background: 'var(--off)',
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>{svc.service_name}</div>
+                  {svc.asset_label && (
+                    <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
+                      {svc.asset_label}
+                    </div>
+                  )}
+                  {svc.description && (
+                    <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 3, whiteSpace: 'pre-wrap' }}>{svc.description}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 12, marginTop: svc.description || svc.asset_label ? 5 : 3, flexWrap: 'wrap' }}>
+                    {svc.duration_minutes && (
+                      <span style={{ fontSize: 11, color: 'var(--steel)' }}>{formatDuration(svc.duration_minutes)}</span>
+                    )}
+                    {isAdmin && svc.price_cents != null && (
+                      <span style={{ fontSize: 11, color: 'var(--steel)' }}>${(svc.price_cents / 100).toFixed(2)}</span>
+                    )}
+                    {svc.is_complete && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a' }}>✓ Done</span>
+                    )}
+                  </div>
+                  {svc.service_notes && (
+                    <div style={{ fontSize: 12, color: 'var(--navy)', marginTop: 5, padding: '5px 8px', background: '#fffbeb', borderRadius: 5, border: '1px solid #fde68a' }}>
+                      {svc.service_notes}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Fallback: show service_type as single service when no job_services records
+            <div style={{ marginTop: 6, fontSize: 13, color: job.service_type ? 'var(--navy)' : 'var(--steel)' }}>
+              {job.service_type || 'No services listed'}
+              {job.is_multi_day && job.title && job.service_type !== job.title && (
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>{job.service_type}</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── ASSETS / SERVICE FOR ─────────────────────────────────────────────── */}
+        {job.assets?.length > 0 && (
+          <div className="jd-section">
+            <div className="jd-section-label">Assets / Service For</div>
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {job.assets.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--navy)' }}>{a.name}</span>
+                    {a.description && <span style={{ fontSize: 12, color: 'var(--slate)', marginLeft: 6 }}>{a.description}</span>}
+                    {a.identifier && <span style={{ fontSize: 11, color: 'var(--steel)', display: 'block' }}>{a.identifier}</span>}
+                    {a.notes && <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>{a.notes}</div>}
+                  </div>
+                  {a.status && a.status !== 'pending' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: a.status === 'completed' ? '#dcfce7' : 'var(--off)', color: a.status === 'completed' ? '#15803d' : 'var(--slate)' }}>
+                      {a.status}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── INSTRUCTIONS ─────────────────────────────────────────────────────── */}
+        {(job.instructions || job.notes) && (
+          <div className="jd-section">
+            <div className="jd-section-label">Instructions</div>
+            {job.instructions && (
+              <div style={{ fontSize: 13, color: 'var(--navy)', marginTop: 6, whiteSpace: 'pre-wrap' }}>
+                {job.instructions}
+              </div>
+            )}
+            {job.notes && job.notes !== job.instructions && (
+              <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: job.instructions ? 8 : 6, whiteSpace: 'pre-wrap' }}>
+                {isAdmin ? (
+                  <><span style={{ fontSize: 10, fontWeight: 700, color: 'var(--steel)', letterSpacing: '.05em', display: 'block', marginBottom: 2 }}>INTERNAL NOTES</span>{job.notes}</>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── SCOPE OF WORK (multi-day) / DESCRIPTION ─────────────────────────── */}
+        {(job.scope_of_work || job.description) && (
+          <div className="jd-section">
+            {job.scope_of_work && (
+              <div className="detail-row"><label>Approved Scope</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.scope_of_work}</span></div>
+            )}
+            {job.description && (
+              <div className="detail-row"><label>Description</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.description}</span></div>
+            )}
+          </div>
+        )}
+
+        {/* ── BILLING (admin/manager only) ─────────────────────────────────────── */}
+        {isAdmin && (job.amount || job.billing_method) && (
+          <div className="jd-section">
+            <div className="jd-section-label">Billing</div>
+            <div className="job-detail-body" style={{ marginTop: 6 }}>
+              {job.amount && (
+                <div className="detail-row">
+                  <label>Amount</label>
+                  <span>${parseFloat(job.amount).toFixed(2)}</span>
                 </div>
               )}
               {job.billing_method && job.billing_method !== 'fixed' && (
                 <div className="detail-row">
-                  <label>Billing</label>
+                  <label>Method</label>
                   <span style={{ textTransform: 'capitalize' }}>{job.billing_method.replace('_', ' ')}</span>
                 </div>
               )}
-            </>
-          ) : (
-            <>
-              <div className="detail-row">
-                <label>Start</label>
-                <span>
-                  {job.scheduled_at ? formatTZ(new Date(job.scheduled_at), 'MMM d, yyyy h:mm a', tz) : '—'}
-                  {job.scheduled_at && (
-                    <span style={{ fontSize: 11, color: 'var(--steel)', marginLeft: 6 }}>
-                      {tz.split('/').pop().replace(/_/g, ' ')}
-                    </span>
-                  )}
-                </span>
-              </div>
-              {job.scheduled_at && job.duration_minutes ? (
-                <div className="detail-row">
-                  <label>End</label>
-                  <span>{formatTZ(addMinutes(new Date(job.scheduled_at), job.duration_minutes), 'h:mm a', tz)}</span>
-                </div>
-              ) : null}
-              {job.duration_minutes ? (
-                <div className="detail-row">
-                  <label>Duration</label>
-                  <span>{formatDuration(job.duration_minutes)}</span>
-                </div>
-              ) : null}
-            </>
-          )}
-
-          {/* Financial — owner / manager only */}
-          {isAdmin && job.amount && (
-            <div className="detail-row">
-              <label>Amount</label>
-              <span>${parseFloat(job.amount).toFixed(2)}</span>
             </div>
-          )}
-
-          {!job.is_multi_day && job.recurring && job.recurring !== 'none' && (
-            <div className="detail-row">
-              <label>Recurring</label>
-              <span style={{ textTransform: 'capitalize' }}>{job.recurring}</span>
-            </div>
-          )}
-
-          {job.checkin_at && (
-            <div className="detail-row">
-              <label>Check-in</label>
-              <span>
-                {formatTZ(new Date(job.checkin_at), 'h:mm a', tz)}
-                {job.checkin_lat ? ` · ${parseFloat(job.checkin_lat).toFixed(4)}, ${parseFloat(job.checkin_lng).toFixed(4)}` : ''}
-              </span>
-            </div>
-          )}
-
-          {/* Service address — two-line format */}
-          <div className="detail-row">
-            <label>Location</label>
-            {addressLine1 ? (
-              <span>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{ color: 'var(--sand)', textDecoration: 'none' }}
-                >
-                  <span style={{ display: 'block' }}>{addressLine1}</span>
-                  {addressLine2 && <span style={{ display: 'block' }}>{addressLine2}</span>}
-                </a>
-              </span>
-            ) : (
-              <span style={{ color: 'var(--steel)' }}>Service address unavailable</span>
-            )}
           </div>
-
-          {/* Multi-day: show service type when title differs */}
-          {job.is_multi_day && job.title && job.service_type && job.service_type !== job.title && (
-            <div className="detail-row"><label>Service</label><span>{job.service_type}</span></div>
-          )}
-
-          {/* Customer-approved scope */}
-          {job.scope_of_work && (
-            <div className="detail-row"><label>Approved Scope</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.scope_of_work}</span></div>
-          )}
-
-          {/* Service or job description */}
-          {job.description && (
-            <div className="detail-row"><label>Description</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.description}</span></div>
-          )}
-
-          {/* Internal job notes */}
-          {job.notes && (
-            <div className="detail-row"><label>Job Notes</label><span style={{ whiteSpace: 'pre-wrap' }}>{job.notes}</span></div>
-          )}
-        </div>
+        )}
 
         {/* ── Multi-day sessions panel ── */}
         {job.is_multi_day && (

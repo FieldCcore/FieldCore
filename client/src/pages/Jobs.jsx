@@ -304,9 +304,10 @@ export default function Jobs() {
     const jobId = searchParams.get('job');
     autoOpenDone.current = true;
     if (!jobId) return;
+    // Always fetch full detail so team/services/assets are present from URL-open.
     const found = jobs.find(j => j.id === jobId);
-    if (found) setDrawerJob(found);
-    else api.get(`/jobs/${jobId}`).then(r => setDrawerJob(r.data)).catch(() => {});
+    if (found) setDrawerJob(found); // show immediately, then enrich
+    api.get(`/jobs/${jobId}`).then(r => setDrawerJob(r.data)).catch(() => {});
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Close drawer on Escape ──────────────────────────────────────────────────
@@ -439,7 +440,10 @@ export default function Jobs() {
       ? jobs.find(j => j.id === resource._jobId)
       : resource;
     if (!jobToOpen) return;
+    // Show list-data immediately so the drawer opens without delay,
+    // then replace with full detail (team, services, assets, location label).
     setDrawerJob(jobToOpen);
+    api.get(`/jobs/${jobToOpen.id}`).then(r => setDrawerJob(r.data)).catch(() => {});
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
       p.set('job', jobToOpen.id);

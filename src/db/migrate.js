@@ -2363,6 +2363,33 @@ const MIGRATIONS = [
   // Link jobs to canonical service location (nullable — existing jobs unchanged)
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES client_locations(id) ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_location ON jobs(location_id) WHERE location_id IS NOT NULL`,
+
+  // ── JOB SERVICES V1 ──────────────────────────────────────────────────────────
+  // Multi-service line items per job. Each line can specify the service performed,
+  // the asset/target being serviced, duration, and operational notes for the technician.
+  `CREATE TABLE IF NOT EXISTS job_services (
+     id               UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+     job_id           UUID        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     account_id       UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     service_name     TEXT        NOT NULL,
+     description      TEXT,
+     asset_label      TEXT,
+     quantity         NUMERIC     NOT NULL DEFAULT 1,
+     duration_minutes INTEGER,
+     price_cents      INTEGER,
+     service_notes    TEXT,
+     sort_order       INTEGER     NOT NULL DEFAULT 0,
+     is_complete      BOOLEAN     NOT NULL DEFAULT false,
+     completed_at     TIMESTAMPTZ,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_services_job_id     ON job_services(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_services_account_id ON job_services(account_id)`,
+
+  // Operational instructions field: tech-visible notes for performing the job.
+  // Separate from admin-only internal notes (jobs.notes).
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS instructions TEXT`,
 ];
 
 async function runMigrations() {

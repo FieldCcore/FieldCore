@@ -103,9 +103,11 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     client_id:       job?.client_id    || '',
     service_type:    job?.service_type || '',
     scheduled_at:    initialScheduledAt,
+    duration_minutes: job?.duration_minutes || 60,
     amount:          job?.amount     || '',
     travel_fee:      job?.travel_fee != null ? String(job.travel_fee) : '',
     notes:           job?.notes      || '',
+    instructions:    job?.instructions || '',
     recurring:       job?.recurring  || 'none',
     location_id:     job?.location_id    || null,
     service_address: job?.service_address || '',
@@ -128,6 +130,12 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     billing_method:       job?.billing_method      || 'fixed',
     priority:             job?.priority            || 'normal',
   });
+  // Service lines: each { service_name, asset_label, description, duration_minutes, price_cents, service_notes }
+  const [serviceLines, setServiceLines] = useState(
+    job?.services?.length > 0
+      ? job.services.map(s => ({ ...s }))
+      : []
+  );
   const [sessions, setSessions] = useState([blankSession(
     defaultStart ? format(new Date(defaultStart), 'yyyy-MM-dd') : ''
   )]);
@@ -185,6 +193,7 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
     setForm(prev => {
       const updates = { service_type: tpl.name };
       if (tpl.price != null) updates.amount = String(tpl.price);
+      if (tpl.duration_minutes) updates.duration_minutes = tpl.duration_minutes;
       if (prev.scheduled_at && tpl.duration_minutes) {
         const start = new Date(prev.scheduled_at);
         if (!isNaN(start.getTime())) {
@@ -193,6 +202,20 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         }
       }
       return { ...prev, ...updates };
+    });
+    // Pre-populate a service line from the template (user can edit asset_label etc.)
+    setServiceLines(prev => {
+      if (prev.length === 0) {
+        return [{
+          service_name:    tpl.name,
+          asset_label:     '',
+          description:     tpl.description || '',
+          duration_minutes: tpl.duration_minutes || '',
+          service_notes:   '',
+          price_cents:     tpl.price != null ? Math.round(parseFloat(tpl.price) * 100) : null,
+        }];
+      }
+      return prev;
     });
   }
 
@@ -266,6 +289,11 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         location_id:  form.location_id || null,
         job_manager_id: form.job_manager_id || null,
         estimated_labor_hours: form.estimated_labor_hours ? parseFloat(form.estimated_labor_hours) : null,
+        duration_minutes: parseInt(form.duration_minutes, 10) || 60,
+        instructions: form.instructions || null,
+        services: serviceLines
+          .filter(s => s.service_name?.trim())
+          .map((s, i) => ({ ...s, sort_order: i })),
       };
       delete payload.scheduled_at;
       delete payload._duration_minutes;
@@ -326,6 +354,14 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
           setSaving(false);
           return;
         }
+      }
+
+      // Sync service lines on edit (PUT replaces the full list)
+      if (job) {
+        const svcPayload = serviceLines
+          .filter(s => s.service_name?.trim())
+          .map((s, i) => ({ ...s, sort_order: i }));
+        await api.put(`/jobs/${job.id}/services`, { services: svcPayload }).catch(() => {});
       }
 
       onSave(res.data);
@@ -701,9 +737,90 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         </div>
       )}
 
+      {/* ── Duration (single-day only) ── */}
+      {!isMultiDay && (
+        <div className="form-group">
+          <label>Duration (minutes)</label>
+          <input
+            type="number" min="15" max="1440" step="15"
+            value={form.duration_minutes}
+            onChange={set('duration_minutes')}
+            placeholder="60"
+          />
+        </div>
+      )}
+
+      {/* ── Service Lines ── */}
       <div className="form-group">
-        <label>Notes</label>
-        <textarea value={form.notes} onChange={set('notes')} rows={3} placeholder="Job notes..." />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <label style={{ marginBottom: 0 }}>Services</label>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: 11, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+            onClick={() => setServiceLines(prev => [...prev, { service_name: '', asset_label: '', description: '', duration_minutes: '', service_notes: '' }])}
+          >
+            <Plus size={11} /> Add Service
+          </button>
+        </div>
+        {serviceLines.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--steel)', padding: '8px 0' }}>
+            No service lines — uses Service Type above. Click "+ Add Service" to specify individual services with assets.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {serviceLines.map((svc, idx) => (
+              <div key={idx} style={{ border: '1px solid var(--lightgray)', borderRadius: 8, padding: 12, background: 'var(--offwhite)', position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>Service {idx + 1}</span>
+                  <button type="button" onClick={() => setServiceLines(prev => prev.filter((_, i) => i !== idx))}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--steel)', display: 'flex', alignItems: 'center' }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="form-row">
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 11 }}>Service Name *</label>
+                    <input
+                      value={svc.service_name}
+                      onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_name: e.target.value } : s))}
+                      placeholder="e.g. Full Detail, Maintenance Wash"
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 11 }}>Asset / Service For</label>
+                    <input
+                      value={svc.asset_label}
+                      onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, asset_label: e.target.value } : s))}
+                      placeholder="e.g. 2025 Ford F-150, Main Pool, Unit #2"
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 11 }}>Service Notes / Instructions</label>
+                  <input
+                    value={svc.service_notes}
+                    onChange={e => setServiceLines(prev => prev.map((s, i) => i === idx ? { ...s, service_notes: e.target.value } : s))}
+                    placeholder="Specific notes for this service…"
+                    style={{ fontSize: 13 }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label>Instructions <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— operational, visible to technician</span></label>
+        <textarea value={form.instructions} onChange={set('instructions')} rows={2} placeholder="Gate code, parking notes, access details…" />
+      </div>
+
+      <div className="form-group">
+        <label>Notes <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 12 }}>— internal admin only</span></label>
+        <textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Internal notes…" />
       </div>
 
       <div className="form-actions">
