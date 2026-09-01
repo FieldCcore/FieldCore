@@ -1489,6 +1489,177 @@ body {
   color: var(--steel);
 }
 
+/* ── New Invoice Workspace (/invoices/new) ───────────────── */
+.niw-page { padding-bottom: 40px; }
+
+.niw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.niw-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.niw-title { font-size: 1.35rem; font-weight: 700; color: var(--navy); margin: 0; }
+.niw-preview-num { font-size: 0.78rem; color: var(--steel); white-space: nowrap; }
+.niw-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.niw-save-split { position: relative; display: flex; }
+.niw-save-primary { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.niw-save-arrow {
+  border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important;
+  border-left: 1px solid rgba(255,255,255,.25) !important;
+  padding-left: 8px !important; padding-right: 8px !important;
+}
+.niw-save-drop {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.1);
+  z-index: 200; min-width: 180px; overflow: hidden;
+}
+.niw-save-drop-item {
+  display: block; width: 100%; padding: 10px 16px;
+  text-align: left; background: none; border: none;
+  font-size: 0.83rem; color: var(--navy); cursor: pointer;
+}
+.niw-save-drop-item:hover { background: var(--offwhite); }
+.niw-save-drop-item:disabled { color: var(--steel); cursor: default; }
+
+.niw-save-error {
+  background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626;
+  border-radius: 8px; padding: 9px 14px; font-size: 0.82rem; margin-bottom: 14px;
+}
+
+.niw-body { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+.niw-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.niw-sidebar { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 72px; }
+
+.niw-card { background: var(--white); border: 1px solid var(--lightgray); border-radius: 10px; padding: 18px 20px; }
+.niw-card-title {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--steel); margin: 0 0 12px;
+}
+.niw-required { color: #e53e3e; margin-left: 2px; }
+.niw-optional { color: var(--steel); font-weight: 400; }
+
+.niw-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.niw-field:last-child { margin-bottom: 0; }
+.niw-label { display: block; font-size: 0.73rem; font-weight: 600; color: var(--navy); margin-bottom: 5px; }
+
+.niw-input {
+  height: 36px; padding: 0 10px;
+  border: 1px solid var(--lightgray); border-radius: 6px;
+  font-size: 0.85rem; color: var(--navy); background: var(--white);
+  width: 100%; box-sizing: border-box; font-family: inherit;
+}
+.niw-input--readonly { background: var(--offwhite); color: var(--slate); cursor: default; }
+.niw-input:focus { outline: none; border-color: var(--sand); box-shadow: 0 0 0 2px rgba(193,158,101,.15); }
+
+.niw-textarea {
+  width: 100%; padding: 9px 10px;
+  border: 1px solid var(--lightgray); border-radius: 6px;
+  font-size: 0.85rem; color: var(--navy); background: var(--white);
+  resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.5;
+}
+.niw-textarea:focus { outline: none; border-color: var(--sand); box-shadow: 0 0 0 2px rgba(193,158,101,.15); }
+
+.niw-job-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.niw-link-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.77rem; font-weight: 600; color: var(--navy);
+  background: var(--offwhite); border: 1px solid var(--lightgray);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap;
+}
+.niw-link-btn:hover:not(:disabled) { background: var(--lightgray); }
+.niw-link-btn:disabled { opacity: 0.45; cursor: default; }
+.niw-link-cancel { font-size: 0.77rem; color: var(--slate); background: none; border: none; cursor: pointer; padding: 0; }
+.niw-link-cancel:hover { color: var(--navy); }
+.niw-job-hint { font-size: 0.78rem; color: var(--steel); margin: 0; line-height: 1.4; }
+
+.niw-job-card { background: var(--offwhite); border: 1px solid var(--lightgray); border-radius: 8px; padding: 12px 14px; }
+.niw-job-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.niw-job-card-info { flex: 1; min-width: 0; }
+.niw-job-card-name { font-size: 0.88rem; font-weight: 600; color: var(--navy); }
+.niw-job-card-meta { font-size: 0.75rem; color: var(--slate); margin-top: 3px; }
+.niw-job-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.niw-job-card-amount { font-size: 0.88rem; font-weight: 600; color: var(--navy); }
+.niw-job-unlink {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; background: none; border: none;
+  cursor: pointer; color: var(--slate); border-radius: 4px;
+}
+.niw-job-unlink:hover { color: var(--navy); background: var(--lightgray); }
+
+.niw-job-picker { margin-top: 4px; }
+.niw-job-search-wrap { position: relative; margin-bottom: 8px; }
+.niw-search-icon {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  color: var(--slate); pointer-events: none;
+}
+.niw-job-search {
+  width: 100%; height: 36px; padding: 0 10px 0 30px;
+  border: 1px solid var(--lightgray); border-radius: 6px;
+  font-size: 0.85rem; color: var(--navy); box-sizing: border-box; font-family: inherit;
+}
+.niw-job-search:focus { outline: none; border-color: var(--sand); }
+.niw-job-list { max-height: 220px; overflow-y: auto; }
+.niw-job-row {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; padding: 9px 4px;
+  border-bottom: 1px solid var(--lightgray); cursor: pointer;
+}
+.niw-job-row:last-child { border-bottom: none; }
+.niw-job-row:hover { background: var(--offwhite); border-radius: 6px; }
+.niw-job-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.niw-job-row-name { font-size: 0.84rem; font-weight: 600; color: var(--navy); }
+.niw-job-row-amount { font-size: 0.84rem; font-weight: 600; color: var(--navy); white-space: nowrap; }
+.niw-job-row-meta { font-size: 0.74rem; color: var(--slate); margin-top: 2px; }
+.niw-state { font-size: 0.83rem; color: var(--steel); padding: 12px 0; text-align: center; }
+.niw-state--error { color: #dc2626; }
+.niw-empty { font-size: 0.8rem; color: var(--steel); padding: 10px 0; }
+.niw-empty p { margin: 0; }
+
+.niw-discount-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--lightgray); flex-wrap: wrap;
+}
+.niw-discount-label { font-size: 0.77rem; font-weight: 600; color: var(--slate); white-space: nowrap; }
+.niw-discount-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
+.niw-discount-type { width: auto !important; min-width: 120px; }
+.niw-discount-name { width: 150px !important; }
+.niw-discount-val  { width: 84px !important; }
+
+.niw-totals-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.83rem; padding: 5px 0; color: var(--navy); gap: 8px;
+}
+.niw-totals-row span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.niw-totals-row--discount { color: #15803d; }
+.niw-totals-row--muted { color: var(--steel); }
+.niw-totals-row--total { font-weight: 700; font-size: 0.93rem; }
+.niw-totals-row--balance { font-weight: 700; }
+.niw-totals-divider { height: 1px; background: var(--lightgray); margin: 5px 0; }
+
+.niw-mobile-actions { display: none; }
+
+@media (max-width: 960px) {
+  .niw-body { grid-template-columns: 1fr; }
+  .niw-sidebar { position: static; order: 2; }
+  .niw-mobile-actions { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+}
+@media (max-width: 600px) {
+  .niw-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .niw-header-actions { width: 100%; justify-content: flex-end; }
+  .niw-card { padding: 14px; }
+}
+
 /* ── New Invoice modal ───────────────────────────────────── */
 .ni-modal {
   display: flex;

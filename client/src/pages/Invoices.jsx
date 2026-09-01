@@ -4,7 +4,6 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } fro
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check } from 'lucide-react';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
-import InvoiceBuilder from '../components/InvoiceBuilder';
 import StatusBadge from '../components/StatusBadge';
 
 const PAGE_SIZE = 50;
@@ -119,7 +118,6 @@ export default function Invoices() {
   const [kpis, setKpis]         = useState(EMPTY_KPIS);
   const [total, setTotal]       = useState(0);
   const [selected, setSelected] = useState(null);
-  const [showNew, setShowNew]   = useState(false);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [searchInput, setSearchInput] = useState('');
@@ -219,15 +217,10 @@ export default function Invoices() {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Consume ?new=1 from global create menu
+  // Consume ?new=1 — redirect to canonical new invoice page
   useEffect(() => {
     if (searchParams.get('new') === '1') {
-      setShowNew(true);
-      setSearchParams(prev => {
-        const p = new URLSearchParams(prev);
-        p.delete('new');
-        return p;
-      }, { replace: true });
+      navigate('/invoices/new', { replace: true });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -242,12 +235,6 @@ export default function Invoices() {
       else setDatePreset('custom');
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleInvoiceCreated(newInvoice) {
-    setShowNew(false);
-    doFetch(params);
-    setSelected({ id: newInvoice.id, ...newInvoice });
-  }
 
   function handleFilterChange(f) {
     setParams(p => ({ ...p, status: f, page: 1 }));
@@ -377,7 +364,7 @@ export default function Invoices() {
       {/* ── Page header ───────────────────────────────────────── */}
       <div className="page-header">
         <h1>Invoices</h1>
-        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
+        <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
           + New Invoice
         </button>
       </div>
@@ -916,15 +903,6 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* ── Invoice Builder ───────────────────────────────────── */}
-      {showNew && (
-        <div className="ib-overlay" onClick={() => setShowNew(false)}>
-          <InvoiceBuilder
-            onClose={() => setShowNew(false)}
-            onCreated={handleInvoiceCreated}
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -67,6 +67,7 @@ import BusinessSettings   from './pages/BusinessSettings';
 import Entities          from './pages/Entities';
 import ClientPortal       from './pages/ClientPortal';
 import EstimatesPage     from './pages/Estimates';
+import NewInvoicePage   from './pages/NewInvoicePage';
 import SignEstimate      from './pages/SignEstimate';
 import ReviewPage       from './pages/ReviewPage';
 import TechApp         from './pages/TechApp';
@@ -300,7 +301,7 @@ function CreateMenu({ open, onOpen, onClose }) {
             )}
           </div>
 
-          <div className="create-new-menu-item"><CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices?new=1')} /></div>
+          <div className="create-new-menu-item"><CreateMenuItem icon={Receipt} label="Invoice" description="Create and send a client invoice" onClick={() => go('/invoices/new')} /></div>
 
           {(!canMultiDay || !canProject) && (
             <div style={{ padding: '8px 16px 10px' }}>
@@ -606,6 +607,7 @@ function AppShell() {
             <Route path="/jobs"        element={<ProtectedRoute><Jobs /></ProtectedRoute>}           />
             <Route path="/revenue"     element={<ProtectedRoute><PlanGate requires="pro"><Revenue /></PlanGate></ProtectedRoute>}   />
             <Route path="/deposits"    element={<ProtectedRoute><PlanGate requires="pro"><Deposits /></PlanGate></ProtectedRoute>}  />
+            <Route path="/invoices/new" element={<ProtectedRoute><NewInvoicePage /></ProtectedRoute>}  />
             <Route path="/invoices"    element={<ProtectedRoute><Invoices /></ProtectedRoute>}       />
             <Route path="/estimates"   element={<ProtectedRoute><PlanGate requires="solo"><EstimatesPage /></PlanGate></ProtectedRoute>} />
             <Route path="/clients"     element={<ProtectedRoute><ClientList /></ProtectedRoute>}     />
