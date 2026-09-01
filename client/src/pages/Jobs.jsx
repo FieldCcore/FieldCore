@@ -209,6 +209,9 @@ function FCWeekHeader({ date, weekStartDay, gutterWidth }) {
 // RBC slot for week header — returns nothing; FCWeekHeader owns that row.
 const NullHeader = () => null;
 
+// RBC toolbar slot in week view — CalendarToolbar is rendered externally above FCWeekHeader.
+const NullToolbar = () => null;
+
 // ─── Custom toolbar ───────────────────────────────────────────────────────────
 // scrollToNow is module-level so CalendarToolbar can call it without props injection.
 // Today merges navigation + scroll-to-current-time for day and week views.
@@ -349,6 +352,9 @@ const CAL_COMPONENTS = {
   },
 };
 
+// Week view: toolbar is external (renders above FCWeekHeader), so suppress it inside RBC.
+const CAL_COMPONENTS_WEEK = { ...CAL_COMPONENTS, toolbar: NullToolbar };
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Jobs() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -485,6 +491,17 @@ export default function Jobs() {
       return p;
     }, { replace: true });
   }, [setSearchParams]);
+
+  // ── Week navigation for externally-rendered toolbar ─────────────────────────
+  // Mirrors RBC's internal week navigation: startOfWeek(date) ± 7 days.
+  const handleWeekNav = useCallback((action) => {
+    setDate(prev => {
+      const wStart = startOfWeek(prev, { weekStartsOn: weekStartDay });
+      if (action === 'PREV') return addDays(wStart, -7);
+      if (action === 'NEXT') return addDays(wStart,  7);
+      return prev;
+    });
+  }, [weekStartDay]);
 
   // ── Auto-open drawer from ?job= URL param (runs once after initial load) ────
   const autoOpenDone = useRef(false);
@@ -819,6 +836,9 @@ export default function Jobs() {
         <CalendarErrorBoundary>
           <div className={`calendar-wrap${view === 'week' ? ' fc-week-view-active' : ''}`}>
             {view === 'week' && (
+              <CalendarToolbar date={date} view={view} onNavigate={handleWeekNav} onView={setView} />
+            )}
+            {view === 'week' && (
               <FCWeekHeader date={date} weekStartDay={weekStartDay} gutterWidth={gutterWidth} />
             )}
             <Calendar
@@ -838,7 +858,7 @@ export default function Jobs() {
               timeslots={4}
               selectable
               views={{ month: true, week: true, day: true, agenda: FieldCoreAgendaView }}
-              components={CAL_COMPONENTS}
+              components={view === 'week' ? CAL_COMPONENTS_WEEK : CAL_COMPONENTS}
               formats={{
                 timeGutterFormat: (d, culture, loc) => loc.format(d, 'h a', culture),
                 dayHeaderFormat:  (d, culture, loc) => loc.format(d, 'EEEE, MMMM d, yyyy', culture),
