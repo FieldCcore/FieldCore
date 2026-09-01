@@ -2954,7 +2954,7 @@ body {
 }
 
 .rbc-header { font-family: 'DM Mono', monospace !important; font-weight: 600 !important; font-size: 10px !important; color: var(--steel) !important; letter-spacing: .06em !important; text-transform: uppercase !important; padding: 10px 8px !important; border-bottom: 1.5px solid var(--lightgray) !important; background: var(--white) !important; }
-.rbc-header.rbc-today { color: var(--navy) !important; background: #FDFAF5 !important; }
+.rbc-month-header .rbc-header.rbc-today { color: var(--navy) !important; background: #FDFAF5 !important; }
 .rbc-month-view { border-radius: 0 0 12px 12px !important; overflow: hidden !important; border: 1px solid var(--lightgray) !important; border-top: none !important; }
 .rbc-month-header { border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid var(--lightgray); border-bottom: none; }
 .rbc-month-row { border-top: 1px solid var(--lightgray) !important; }
@@ -3055,7 +3055,7 @@ body {
 }
 /* Today: text-only highlight — no geometry change */
 .fc-week-dh--today .fc-week-dh-dow { color: var(--navy); }
-.fc-week-dh--today .fc-week-dh-num { color: var(--sand); font-weight: 800; }
+.fc-week-dh--today .fc-week-dh-num { color: var(--sand); }
 
 /* ── Calendar event cards — adaptive by duration ─────────── */
 .cal-event-card { display: flex; flex-direction: column; gap: 1px; overflow: hidden; height: 100%; }
