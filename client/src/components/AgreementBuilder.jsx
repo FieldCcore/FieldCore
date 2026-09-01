@@ -366,15 +366,15 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             />
           </section>
 
-          {/* Agreement name */}
+          {/* Recurring service name */}
           <section className="ab-section">
             <div className="ab-field">
-              <label className="ab-label">Agreement Name *</label>
+              <label className="ab-label">Recurring Service Name *</label>
               <input
                 className="ib-input"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Monthly AC Maintenance"
+                placeholder="e.g. Maintenance Detail"
               />
             </div>
           </section>

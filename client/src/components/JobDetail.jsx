@@ -369,6 +369,12 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                 MULTI-DAY
               </span>
             )}
+            {job.agreement_id && !job.is_multi_day && (
+              <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--off)', color: 'var(--slate)',
+                padding: '2px 8px', borderRadius: 99, letterSpacing: '.04em', border: '1px solid var(--lightgray)' }}>
+                RECURRING VISIT
+              </span>
+            )}
             {job.priority && job.priority !== 'normal' && (
               <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[job.priority],
                 background: job.priority === 'urgent' ? '#fef2f2' : 'var(--yellow-lt)',
@@ -903,26 +909,32 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
           </div>
         )}
 
-        {/* ── ACTION ROW: Edit · Open · Delete — one shared flex container ──── */}
+        {/* ── ACTION FOOTER: three-zone grid — Edit (left) · Open (center) · Delete (right) ── */}
         <div className="jd-action-row">
-          <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
-          <button
-            className="btn-secondary"
-            onClick={() => window.open(`/jobs?job=${job.id}`, '_blank', 'noopener')}
-            title="Open this job with a shareable URL"
-          >
-            Open Job ↗
-          </button>
-          {isAdmin && job.status !== 'complete' && (
-            <button className="btn-void" onClick={openDeleteModal}>
-              {job.agreement_id
-                ? 'Delete This Visit'
-                : job.is_multi_day
-                  ? 'Delete Multi-Day Job'
-                  : 'Delete Job'
-              }
+          <div className="jd-action-left">
+            <button className="btn-secondary" onClick={onEdit}>Edit Job</button>
+          </div>
+          <div className="jd-action-center">
+            <button
+              className="btn-secondary"
+              onClick={() => window.open(`/jobs?job=${job.id}`, '_blank', 'noopener')}
+              title="Open this job with a shareable URL"
+            >
+              Open Job ↗
             </button>
-          )}
+          </div>
+          <div className="jd-action-right">
+            {isAdmin && job.status !== 'complete' && (
+              <button className="btn-void" onClick={openDeleteModal}>
+                {job.agreement_id
+                  ? 'Delete This Visit'
+                  : job.is_multi_day
+                    ? 'Delete Multi-Day Job'
+                    : 'Delete Job'
+                }
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

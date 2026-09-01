@@ -606,12 +606,11 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   // Fall back to 60 min when no schedule has a duration (matches jobs.duration_minutes DEFAULT 60).
   const parentDuration = endMins > startMins ? endMins - startMins : 60;
 
-  // Service label: "Type (Asset)" per service line — asset identity in parentheses when present.
-  const makeLabel = (s) => {
-    const type = s.service_type || agreement.service_type || 'Service';
-    return s.asset_label ? `${type} (${s.asset_label})` : type;
-  };
-  const serviceLabel = subGroup.map(makeLabel).join(' · ');
+  // Visit title uses the canonical agreement name so the calendar shows a meaningful
+  // name ("Maintenance Detail") rather than a service list concatenation.
+  // Fallback: first child service name → 'Service Visit'.
+  const serviceLabel = agreement.name
+    || (subGroup[0]?.service_type || 'Service Visit');
 
   const scheduledAt = `${dateStr}T${parentStart}:00`;
 

@@ -2778,24 +2778,22 @@ body {
   color: var(--steel);
   margin-bottom: 8px;
 }
-/* Job Detail action row — Edit / Open / Delete in one shared flex container.
-   flex-wrap: wrap is intentional: the drawer is 344px usable (400px - 56px padding).
-   Three buttons at natural size need ~361px, so Delete drops to a second row.
-   justify-content: flex-end right-aligns both rows cleanly. */
+/* Job Detail action footer — three-zone grid.
+   Edit stays far left, Open Job anchored at center, Delete at far right.
+   Always one horizontal row at desktop drawer width. */
 .jd-action-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 8px;
-  justify-content: flex-end;
-  padding-top: 4px;
+  padding-top: 12px;
   margin-top: 16px;
-  flex-wrap: wrap;
+  border-top: 1px solid var(--lightgray);
 }
+.jd-action-left   { justify-self: start; }
+.jd-action-center { justify-self: center; }
+.jd-action-right  { justify-self: end; }
 .jd-action-row .btn-secondary,
-.jd-action-row .btn-void {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
+.jd-action-row .btn-void { white-space: nowrap; }
 .job-status-section  { background: var(--off); border-radius: 8px; padding: 14px; border: 1px solid var(--lightgray); margin-top: 10px; }
 .status-label        {
   font-family: 'DM Mono', monospace;
@@ -6699,10 +6697,11 @@ body {
   .status-btn { font-size: 11.5px; padding: 6px 10px; }
   /* Filter count badge: hide on tiny screens */
   .filter-count { display: none; }
-  /* Job Detail action row: intentional column stack, Delete last */
-  .jd-action-row { flex-direction: column; align-items: flex-start; justify-content: flex-start; }
+  /* Job Detail action footer: intentional full-width stack at narrow mobile widths */
+  .jd-action-row { grid-template-columns: 1fr; gap: 8px; }
+  .jd-action-left, .jd-action-center, .jd-action-right { justify-self: stretch; }
   .jd-action-row .btn-secondary,
-  .jd-action-row .btn-void { width: 100%; text-align: center; justify-content: center; white-space: nowrap; flex-shrink: 0; }
+  .jd-action-row .btn-void { width: 100%; text-align: center; justify-content: center; }
 }
 
 /* ═══════════════════════════════════════════════════════════
