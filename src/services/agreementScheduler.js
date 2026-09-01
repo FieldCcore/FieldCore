@@ -113,10 +113,12 @@ function toDateStr(d) {
 }
 
 /**
- * Parses a 'YYYY-MM-DD' string to a local-midnight Date.
+ * Parses a 'YYYY-MM-DD' string (or pg Date object) to a local-midnight Date.
+ * pg returns DATE columns as Date objects when type parsers are not overridden.
  */
 function fromDateStr(s) {
-  const [y, m, d] = s.split('-').map(Number);
+  if (s instanceof Date) return new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  const [y, m, d] = String(s).split('-').map(Number);
   return new Date(y, m - 1, d);
 }
 
@@ -623,7 +625,9 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   const startMins = Math.min(...subGroup.map(s => timeToMinutes(s.preferred_start_time)));
   const endMins   = Math.max(...subGroup.map(s => timeToMinutes(s.preferred_start_time) + (s.duration_minutes || 0)));
   const parentStart  = minutesToTime(startMins);
-  const parentDuration = endMins > startMins ? endMins - startMins : null;
+  // Fall back to 60 min when no schedule has a duration (matches jobs.duration_minutes DEFAULT 60).
+  // Passing explicit NULL would violate the NOT NULL constraint even though the default is 60.
+  const parentDuration = endMins > startMins ? endMins - startMins : 60;
 
   // Service label: "Type A · Type B" for multi-service visits.
   const serviceLabel = subGroup.length === 1
