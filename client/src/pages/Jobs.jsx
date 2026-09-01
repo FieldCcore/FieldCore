@@ -160,14 +160,17 @@ function MonthDayHeader({ label }) {
   return <div className="fc-month-dh">{(label || '').toUpperCase()}</div>;
 }
 
-// ─── Week/Day column header — DOW above date number, today highlighted ────────
+// ─── Week/Day column header — DOW above date number ──────────────────────────
 function WeekDayHeader({ date }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const isToday  = format(date, 'yyyy-MM-dd') === todayStr;
   return (
-    <div className={`fc-week-dh${isToday ? ' fc-week-dh--today' : ''}`}>
-      <span className="fc-week-dh-dow">{format(date, 'EEE').toUpperCase()}</span>
-      <span className="fc-week-dh-num">{format(date, 'd')}</span>
+    <div className="fc-week-header-cell">
+      {isToday && <span className="fc-week-today-dot" aria-label="Today" />}
+      <div className="fc-week-dh">
+        <span className="fc-week-dh-dow">{format(date, 'EEE').toUpperCase()}</span>
+        <span className="fc-week-dh-num">{format(date, 'd')}</span>
+      </div>
     </div>
   );
 }
