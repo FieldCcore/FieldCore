@@ -404,6 +404,8 @@ function newSchedule() {
     endDate:           '',
     endAfterOccurrences: '',
     preferredStartTime: '09:00',
+    durationMinutes:   '',
+    _durationAutoFilled: false,
   };
 }
 
@@ -452,6 +454,8 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
         updated.serviceDayOfMonth = '';
       // Clear end sub-fields when end condition type changes
       if (field === 'endCondition') { updated.endDate = ''; updated.endAfterOccurrences = ''; }
+      // Manual duration edit clears auto-fill flag
+      if (field === 'durationMinutes') updated._durationAutoFilled = false;
       return updated;
     }));
   }
@@ -539,6 +543,7 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
           end_date:              s.endCondition === 'date' ? (s.endDate || null) : null,
           end_after_occurrences: s.endCondition === 'occurrences' ? parseInt(s.endAfterOccurrences, 10) || null : null,
           preferred_start_time:  s.preferredStartTime || '09:00',
+          duration_minutes:      s.durationMinutes !== '' ? parseInt(s.durationMinutes, 10) : null,
         })),
       });
       onSaved(res.data);
@@ -640,8 +645,14 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
                     value={s.serviceType}
                     onChange={val => updateSchedule(idx, 'serviceType', val)}
                     onSelect={svc => {
-                      setSchedules(prev => prev.map((sc, i) => i !== idx ? sc : {
-                        ...sc, serviceType: svc.name, serviceId: svc.id,
+                      setSchedules(prev => prev.map((sc, i) => {
+                        if (i !== idx) return sc;
+                        const updates = { serviceType: svc.name, serviceId: svc.id };
+                        if (svc.duration_minutes && (!sc.durationMinutes || sc._durationAutoFilled)) {
+                          updates.durationMinutes = String(svc.duration_minutes);
+                          updates._durationAutoFilled = true;
+                        }
+                        return { ...sc, ...updates };
                       }));
                       if (!agrPlanPrice || parseFloat(agrPlanPrice) === 0)
                         setAgrPlanPrice(String(parseFloat(svc.price || 0).toFixed(2)));
@@ -721,6 +732,35 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
                     onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
                     data-testid={`agr-started-at-${idx}`}
                   />
+                </div>
+              </div>
+
+              {/* Start Time + Duration */}
+              <div className="ib-inline-agr-row">
+                <div className="ib-field ib-field--grow">
+                  <label className="ib-label">Start Time</label>
+                  <input
+                    className="ib-input"
+                    type="time"
+                    value={s.preferredStartTime}
+                    onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
+                    data-testid={`agr-start-time-${idx}`}
+                  />
+                </div>
+                <div className="ib-field ib-field--grow">
+                  <label className="ib-label">Duration (min)</label>
+                  <input
+                    className="ib-input"
+                    type="number"
+                    min="1"
+                    value={s.durationMinutes}
+                    onChange={e => updateSchedule(idx, 'durationMinutes', e.target.value)}
+                    placeholder="e.g. 60"
+                    data-testid={`agr-duration-${idx}`}
+                  />
+                  {s._durationAutoFilled && (
+                    <p className="ib-field-hint">Default from service catalog</p>
+                  )}
                 </div>
               </div>
 
