@@ -3014,7 +3014,38 @@ body {
 }
 .rbc-slot-selection { background: rgba(214,181,138,.2) !important; border: 1px solid var(--sand) !important; }
 
-/* ── Custom week/day column header — DOW above date number ─── */
+/* ── FieldCore-owned Week header — hides RBC's day/date row in week view ─── */
+/* Scoped to .fc-week-view-active so Month/Day/Agenda are unaffected. */
+.fc-week-view-active .rbc-time-header { display: none !important; }
+
+.fc-week-hdr {
+  display: flex;
+  align-items: stretch;
+  background: var(--white);
+  border-top: 1px solid var(--lightgray);
+  border-bottom: 1.5px solid var(--lightgray);
+  flex-shrink: 0;
+}
+.fc-week-hdr-gutter {
+  flex: 0 0 auto;
+  border-right: 1px solid var(--lightgray);
+  background: var(--white);
+}
+.fc-week-hdr-cell {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 4px;
+  gap: 3px;
+  min-width: 0;
+  position: relative;
+}
+.fc-week-hdr-cell + .fc-week-hdr-cell { border-left: 1px solid var(--lightgray); }
+.fc-week-hdr-cell--today { background: #FDFAF5; }
+
+/* ── Day view: RBC-hosted header still active (WeekDayHeader component) ──── */
 .rbc-time-header .rbc-header {
   display: flex !important;
   flex-direction: column !important;
@@ -3024,17 +3055,12 @@ body {
   border-bottom: 1.5px solid var(--lightgray) !important;
   background: var(--white) !important;
 }
-/* Fully neutralize RBC's today state — geometry must be identical to every other day. */
 .rbc-time-header .rbc-header.rbc-today {
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
   color: inherit !important;
-  overflow: visible !important;
-  clip-path: none !important;
-  transform: none !important;
 }
-/* Button fills the full cell. */
 .rbc-time-header .rbc-button-link {
   display: flex !important;
   flex: 1 !important;
@@ -3049,6 +3075,16 @@ body {
   flex: 1;
   width: 100%;
 }
+.fc-week-dh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 4px;
+  gap: 3px;
+}
+
+/* ── Shared: DOW label + date number (Week and Day headers) ─────────────── */
 .fc-week-today-dot {
   position: absolute;
   top: 6px;
@@ -3059,14 +3095,6 @@ body {
   border-radius: 999px;
   background: var(--sand);
   pointer-events: none;
-}
-.fc-week-dh {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 4px;
-  gap: 3px;
 }
 .fc-week-dh-dow {
   font-family: 'DM Mono', monospace;

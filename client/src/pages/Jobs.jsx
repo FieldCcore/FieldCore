@@ -161,6 +161,7 @@ function MonthDayHeader({ label }) {
 }
 
 // ─── Week/Day column header — DOW above date number ──────────────────────────
+// Used by Day view only. Week view uses FCWeekHeader (FieldCore-owned, outside RBC).
 function WeekDayHeader({ date }) {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const isToday  = format(date, 'yyyy-MM-dd') === todayStr;
@@ -174,6 +175,39 @@ function WeekDayHeader({ date }) {
     </div>
   );
 }
+
+// ─── FieldCore Week header — replaces RBC's broken week day/date row ──────────
+// RBC's .rbc-time-header is hidden in week view; this component renders above
+// the time grid and aligns with the 7 day columns via a measured gutter spacer.
+function FCWeekHeader({ date, weekStartDay, gutterWidth }) {
+  const todayStr  = format(new Date(), 'yyyy-MM-dd');
+  const weekStart = startOfWeek(date, { weekStartsOn: weekStartDay });
+  const days      = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  return (
+    <div className="fc-week-hdr" role="row" aria-label="Week day headers">
+      <div className="fc-week-hdr-gutter" style={{ width: gutterWidth }} aria-hidden="true" />
+      {days.map(day => {
+        const dayStr  = format(day, 'yyyy-MM-dd');
+        const isToday = dayStr === todayStr;
+        return (
+          <div
+            key={dayStr}
+            className={`fc-week-hdr-cell${isToday ? ' fc-week-hdr-cell--today' : ''}`}
+            role="columnheader"
+            aria-label={`${format(day, 'EEEE, MMMM d, yyyy')}${isToday ? ', Today' : ''}`}
+          >
+            {isToday && <span className="fc-week-today-dot" aria-hidden="true" />}
+            <span className="fc-week-dh-dow">{format(day, 'EEE').toUpperCase()}</span>
+            <span className="fc-week-dh-num">{format(day, 'd')}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// RBC slot for week header — returns nothing; FCWeekHeader owns that row.
+const NullHeader = () => null;
 
 // ─── Custom toolbar ───────────────────────────────────────────────────────────
 // scrollToNow is module-level so CalendarToolbar can call it without props injection.
@@ -307,7 +341,7 @@ const CAL_COMPONENTS = {
   },
   week: {
     event:  CalEventCard,
-    header: WeekDayHeader,
+    header: NullHeader,   // Week header is FieldCore-owned (FCWeekHeader); RBC row is hidden
   },
   day: {
     event:  CalEventCard,
@@ -344,6 +378,28 @@ export default function Jobs() {
   const [techFilter,      setTechFilter]      = useState(null);
 
   const viewScrolled = useRef(false);
+
+  // ── Measure RBC time-gutter width so FCWeekHeader can align its spacer ───────
+  const [gutterWidth, setGutterWidth] = useState(60);
+  useEffect(() => {
+    if (view !== 'week') return;
+    let raf;
+    let ro;
+    const measure = () => {
+      const gutter = document.querySelector('.rbc-time-view .rbc-time-gutter');
+      if (gutter) setGutterWidth(gutter.getBoundingClientRect().width);
+    };
+    raf = requestAnimationFrame(() => {
+      measure();
+      ro = new ResizeObserver(measure);
+      const el = document.querySelector('.rbc-time-view');
+      if (el) ro.observe(el);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [view]);
 
   const closeCreate = useCallback(() => {
     setSearchParams(prev => {
@@ -761,7 +817,10 @@ export default function Jobs() {
         </div>
       ) : (
         <CalendarErrorBoundary>
-          <div className="calendar-wrap">
+          <div className={`calendar-wrap${view === 'week' ? ' fc-week-view-active' : ''}`}>
+            {view === 'week' && (
+              <FCWeekHeader date={date} weekStartDay={weekStartDay} gutterWidth={gutterWidth} />
+            )}
             <Calendar
               localizer={localizer}
               events={events}
