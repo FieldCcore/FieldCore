@@ -528,6 +528,7 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
           service_type:          s.serviceType || null,
           service_id:            s.serviceId || null,
           asset_label:           s.assetLabel || null,
+          location_id:           s.serviceLocationId || null,
           service_address:       s.serviceAddress || null,
           cadence:               s.cadence,
           service_interval_days: s.cadence === 'custom' ? parseInt(s.svcIntervalDays, 10) : null,
@@ -559,7 +560,14 @@ export function InlineAgreementForm({ clientId: initialClientId, onSaved, onCanc
             <input
               className="ib-input"
               value={clientSearchQ}
-              onChange={e => { setClientSearchQ(e.target.value); searchClients(e.target.value); setResolvedClientId(null); setFormClientName(''); }}
+              onChange={e => {
+                setClientSearchQ(e.target.value);
+                searchClients(e.target.value);
+                setResolvedClientId(null);
+                setFormClientName('');
+                // Clear schedule locations so auto-select fires when a new client is picked
+                setSchedules(prev => prev.map(s => ({ ...s, serviceLocationId: null, serviceAddress: '' })));
+              }}
               placeholder="Search by name, company, email…"
               data-testid="agr-client-search"
             />

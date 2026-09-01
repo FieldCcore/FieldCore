@@ -349,8 +349,15 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                 </div>
               )}
               selected={selectedClient}
-              onSelect={setSelectedClient}
-              onClear={() => setSelectedClient(null)}
+              onSelect={c => {
+                setSelectedClient(c);
+                // Clear schedule locations so ClientLocationField auto-selects the new client's primary
+                setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
+              }}
+              onClear={() => {
+                setSelectedClient(null);
+                setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
+              }}
             />
           </section>
 

@@ -390,7 +390,25 @@ export default function JobForm({ job, defaultStart, defaultMultiDay = false, on
         <div className="ib-inline-agr-row">
           <div className="ib-field ib-field--grow">
             <label className="ib-label">Client *</label>
-            <select className="ib-select" value={form.client_id} onChange={set('client_id')}>
+            <select
+              className="ib-select"
+              value={form.client_id}
+              onChange={e => {
+                const newClientId = e.target.value;
+                setForm(prev => ({
+                  ...prev,
+                  client_id:       newClientId,
+                  // Clear location so ClientLocationField auto-selects the new client's primary
+                  location_id:     null,
+                  service_address: '',
+                  service_city:    '',
+                  service_state:   '',
+                  service_zip:     '',
+                  service_lat:     '',
+                  service_lng:     '',
+                }));
+              }}
+            >
               <option value="">Select client...</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
