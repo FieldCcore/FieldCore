@@ -1042,7 +1042,7 @@ async function createPeriodInvoice(agreement, period, client) {
          ORDER BY scheduled_at
          LIMIT $5
        )`,
-      [invoiceId, agreement.id, period.period_start, period.period_end, included]
+      [period.id, agreement.id, period.period_start, period.period_end, included]
     );
 
     // Mark extra jobs beyond the included count
@@ -1052,7 +1052,7 @@ async function createPeriodInvoice(agreement, period, client) {
          AND scheduled_at::date BETWEEN $3 AND $4
          AND status != 'cancelled'
          AND agreement_period_id IS NULL`,
-      [invoiceId, agreement.id, period.period_start, period.period_end]
+      [period.id, agreement.id, period.period_start, period.period_end]
     );
   } else {
     // No included count — mark all as covered
@@ -1062,7 +1062,7 @@ async function createPeriodInvoice(agreement, period, client) {
          AND scheduled_at::date BETWEEN $3 AND $4
          AND status != 'cancelled'
          AND agreement_period_id IS NULL`,
-      [invoiceId, agreement.id, period.period_start, period.period_end]
+      [period.id, agreement.id, period.period_start, period.period_end]
     );
   }
 
