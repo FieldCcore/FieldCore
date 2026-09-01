@@ -1,8 +1,11 @@
 import { useState, useCallback } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import Autocomplete, { highlight } from './Autocomplete';
 import ClientLocationField from './ClientLocationField';
+import CreationShell from './CreationShell';
+import CreationSection from './CreationSection';
+import CreationCard from './CreationCard';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -319,669 +322,655 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
     }
   }
 
+  const footer = (
+    <div className="ib-footer">
+      {saveError && <p className="ib-save-error">{saveError}</p>}
+      <div className="ib-footer-actions">
+        <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
+          Cancel
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={!canSave}
+          title={
+            !selectedClient           ? 'Select a client first'
+            : !name.trim()            ? 'Enter an agreement name'
+            : !schedulesValid         ? 'Fix schedule configuration'
+            : !(parseFloat(planPrice) > 0) ? 'Enter a plan price'
+            : ''
+          }
+        >
+          {saving ? 'Saving…' : existing ? 'Save Changes' : 'Create Agreement'}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="ab-overlay" onClick={onClose}>
-      <div className="ab-sheet" onClick={e => e.stopPropagation()}>
+    <CreationShell
+      title={existing ? 'Edit Agreement' : 'New Recurring Agreement'}
+      onClose={onClose}
+      footer={footer}
+    >
 
-        {/* Header */}
-        <div className="ab-header">
-          <h2 className="ab-title">{existing ? 'Edit Agreement' : 'New Recurring Agreement'}</h2>
-          <button className="ib-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        </div>
-
-        <div className="ab-body">
-
-          {/* Client */}
-          <section className="ab-section">
-            <p className="ib-section-label">Client</p>
-            <Autocomplete
-              inputId="ab-client-search"
-              label="Client search"
-              placeholder="Search by name, company, email, or address…"
-              fetchResults={fetchClients}
-              getKey={c => c.id}
-              getDisplayValue={c => c.name}
-              renderItem={(c, q) => (
-                <div className="ac-client-item">
-                  <span className="ac-client-name">{highlight(c.name, q)}</span>
-                  {c.email && <span className="ac-client-meta">{c.email}</span>}
-                </div>
-              )}
-              renderSelectedCard={c => (
-                <div className="ib-client-card">
-                  <div className="ib-client-card-name">{c.name}</div>
-                  {c.email && <div className="ib-client-card-detail">{c.email}</div>}
-                </div>
-              )}
-              selected={selectedClient}
-              onSelect={c => {
-                setSelectedClient(c);
-                // Clear schedule locations so ClientLocationField auto-selects the new client's primary
-                setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
-              }}
-              onClear={() => {
-                setSelectedClient(null);
-                setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
-              }}
-            />
-          </section>
-
-          {/* Recurring service name */}
-          <section className="ab-section">
-            <div className="ab-field">
-              <label className="ab-label">Recurring Service Name *</label>
-              <input
-                className="ib-input"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="e.g. Maintenance Detail"
-              />
+      {/* Client */}
+      <CreationSection label="Client">
+        <Autocomplete
+          inputId="ab-client-search"
+          label="Client search"
+          placeholder="Search by name, company, email, or address…"
+          fetchResults={fetchClients}
+          getKey={c => c.id}
+          getDisplayValue={c => c.name}
+          renderItem={(c, q) => (
+            <div className="ac-client-item">
+              <span className="ac-client-name">{highlight(c.name, q)}</span>
+              {c.email && <span className="ac-client-meta">{c.email}</span>}
             </div>
-          </section>
+          )}
+          renderSelectedCard={c => (
+            <div className="ib-client-card">
+              <div className="ib-client-card-name">{c.name}</div>
+              {c.email && <div className="ib-client-card-detail">{c.email}</div>}
+            </div>
+          )}
+          selected={selectedClient}
+          onSelect={c => {
+            setSelectedClient(c);
+            setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
+          }}
+          onClear={() => {
+            setSelectedClient(null);
+            setSchedules(prev => prev.map(s => ({ ...s, locationId: null, serviceAddress: '' })));
+          }}
+        />
+      </CreationSection>
 
-          {/* Agreement start date (billing anchor) */}
-          <section className="ab-section">
-            <label className="ab-label">Agreement Start Date</label>
-            <input
-              className="ib-input ib-input--date"
-              type="date"
-              value={startedAt}
-              onChange={e => setStartedAt(e.target.value)}
-            />
-          </section>
+      {/* Recurring service name */}
+      <CreationSection>
+        <div className="ib-field">
+          <label className="ib-label">Recurring Service Name *</label>
+          <input
+            className="ib-input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Maintenance Detail"
+          />
+        </div>
+      </CreationSection>
 
-          {/* SERVICE SCHEDULES */}
-          <section className="ab-section">
-            <p className="ib-section-label">Service Schedules</p>
+      {/* Agreement start date (billing anchor) */}
+      <CreationSection>
+        <div className="ib-field">
+          <label className="ib-label">Agreement Start Date</label>
+          <input
+            className="ib-input ib-input--date"
+            type="date"
+            value={startedAt}
+            onChange={e => setStartedAt(e.target.value)}
+          />
+        </div>
+      </CreationSection>
 
-            {schedules.map((sched, idx) => (
-              <div key={sched._id} className="ab-schedule-card">
-                <div className="ab-schedule-header">
-                  <span className="ab-schedule-num">Schedule {idx + 1}</span>
-                  {schedules.length > 1 && (
-                    <button
-                      className="ib-del-btn"
-                      onClick={() => removeSchedule(idx)}
-                      aria-label={`Remove schedule ${idx + 1}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
+      {/* SERVICE SCHEDULES */}
+      <CreationSection label="Service Schedules">
+        {schedules.map((sched, idx) => (
+          <CreationCard
+            key={sched._id}
+            label={`Schedule ${idx + 1}`}
+            showRemove={schedules.length > 1}
+            onRemove={() => removeSchedule(idx)}
+          >
 
-                {/* Service type — catalog autocomplete */}
-                <div className="ab-field">
-                  <label className="ab-label">Service Type</label>
-                  {sched._serviceTemplate ? (
-                    <Autocomplete
-                      inputId={`ab-svc-${sched._id}`}
-                      label="Service type"
-                      placeholder="Search service catalog…"
-                      fetchResults={fetchServices}
-                      getKey={s => s.id}
-                      getDisplayValue={s => s.name}
-                      renderItem={(s, q) => (
-                        <div className="ac-client-item">
-                          <span className="ac-client-name">{highlight(s.name, q)}</span>
-                          {s.category && <span className="ac-client-meta">{s.category}</span>}
-                        </div>
-                      )}
-                      renderSelectedCard={s => (
-                        <div className="ib-client-card">
-                          <div className="ib-client-card-name">{s.name}</div>
-                          {s.category && <div className="ib-client-card-detail">{s.category}</div>}
-                        </div>
-                      )}
-                      selected={sched._serviceTemplate}
-                      onSelect={tmpl => {
-                        setSchedules(prev => prev.map((s, i) => i === idx
-                          ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
-                              durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
-                          : s
-                        ));
-                      }}
-                      onClear={() => {
-                        setSchedules(prev => prev.map((s, i) => i === idx
-                          ? { ...s, _serviceTemplate: null, serviceType: '', serviceId: null }
-                          : s
-                        ));
-                      }}
-                    />
-                  ) : (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input
-                        className="ib-input"
-                        style={{ flex: 1 }}
-                        value={sched.serviceType}
-                        onChange={e => updateSchedule(idx, 'serviceType', e.target.value)}
-                        placeholder="e.g. Detail, Oil Change, Mowing"
-                      />
-                      <Autocomplete
-                        inputId={`ab-svc-search-${sched._id}`}
-                        label="Search catalog"
-                        placeholder="Search catalog…"
-                        fetchResults={fetchServices}
-                        getKey={s => s.id}
-                        getDisplayValue={s => s.name}
-                        renderItem={(s, q) => (
-                          <div className="ac-client-item">
-                            <span className="ac-client-name">{highlight(s.name, q)}</span>
-                            {s.category && <span className="ac-client-meta">{s.category}</span>}
-                          </div>
-                        )}
-                        selected={null}
-                        onSelect={tmpl => {
-                          setSchedules(prev => prev.map((s, i) => i === idx
-                            ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
-                                durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
-                            : s
-                          ));
-                        }}
-                        onClear={() => {}}
-                        className="ab-svc-autocomplete"
-                      />
+            {/* Service type — catalog autocomplete */}
+            <div className="ib-field">
+              <label className="ib-label">Service Type</label>
+              {sched._serviceTemplate ? (
+                <Autocomplete
+                  inputId={`ab-svc-${sched._id}`}
+                  label="Service type"
+                  placeholder="Search service catalog…"
+                  fetchResults={fetchServices}
+                  getKey={s => s.id}
+                  getDisplayValue={s => s.name}
+                  renderItem={(s, q) => (
+                    <div className="ac-client-item">
+                      <span className="ac-client-name">{highlight(s.name, q)}</span>
+                      {s.category && <span className="ac-client-meta">{s.category}</span>}
                     </div>
                   )}
-                </div>
-
-                {/* Asset / Vehicle label */}
-                <div className="ab-field">
-                  <label className="ab-label">Asset / Vehicle Label <span className="ab-hint">(optional)</span></label>
+                  renderSelectedCard={s => (
+                    <div className="ib-client-card">
+                      <div className="ib-client-card-name">{s.name}</div>
+                      {s.category && <div className="ib-client-card-detail">{s.category}</div>}
+                    </div>
+                  )}
+                  selected={sched._serviceTemplate}
+                  onSelect={tmpl => {
+                    setSchedules(prev => prev.map((s, i) => i === idx
+                      ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
+                          durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
+                      : s
+                    ));
+                  }}
+                  onClear={() => {
+                    setSchedules(prev => prev.map((s, i) => i === idx
+                      ? { ...s, _serviceTemplate: null, serviceType: '', serviceId: null }
+                      : s
+                    ));
+                  }}
+                />
+              ) : (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     className="ib-input"
-                    value={sched.assetLabel}
-                    onChange={e => updateSchedule(idx, 'assetLabel', e.target.value)}
-                    placeholder="e.g. Vehicle 1, Unit A"
+                    style={{ flex: 1 }}
+                    value={sched.serviceType}
+                    onChange={e => updateSchedule(idx, 'serviceType', e.target.value)}
+                    placeholder="e.g. Detail, Oil Change, Mowing"
                   />
-                </div>
-
-                {/* Service location — canonical location_id preferred over address string */}
-                <div className="ab-field">
-                  <label className="ab-label">Service Location <span className="ab-hint">(optional — used for visit grouping)</span></label>
-                  <ClientLocationField
-                    clientId={selectedClient?.id || null}
-                    locationId={sched.locationId}
-                    address={sched.serviceAddress}
-                    onSelect={({ location_id, address, city, state, zip, lat, lng }) => {
-                      setSchedules(prev => prev.map((s, i) => i === idx ? {
-                        ...s,
-                        locationId:     location_id || null,
-                        serviceAddress: address || '',
-                      } : s));
+                  <Autocomplete
+                    inputId={`ab-svc-search-${sched._id}`}
+                    label="Search catalog"
+                    placeholder="Search catalog…"
+                    fetchResults={fetchServices}
+                    getKey={s => s.id}
+                    getDisplayValue={s => s.name}
+                    renderItem={(s, q) => (
+                      <div className="ac-client-item">
+                        <span className="ac-client-name">{highlight(s.name, q)}</span>
+                        {s.category && <span className="ac-client-meta">{s.category}</span>}
+                      </div>
+                    )}
+                    selected={null}
+                    onSelect={tmpl => {
+                      setSchedules(prev => prev.map((s, i) => i === idx
+                        ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
+                            durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
+                        : s
+                      ));
                     }}
-                    onAddressChange={v => updateSchedule(idx, 'serviceAddress', v)}
+                    onClear={() => {}}
+                    className="ab-svc-autocomplete"
                   />
                 </div>
+              )}
+            </div>
 
-                {/* Cadence */}
-                <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
-                  <div className="ab-field ab-field--grow">
-                    <label className="ab-label">Service Cadence</label>
-                    <select
-                      className="ib-select"
-                      value={sched.cadence}
-                      onChange={e => updateSchedule(idx, 'cadence', e.target.value)}
-                    >
-                      {SERVICE_CADENCE_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {sched.cadence === 'custom' && (
-                    <div className="ab-field">
-                      <label className="ab-label">Interval (days)</label>
-                      <input
-                        className="ib-input"
-                        type="number"
-                        min="1"
-                        value={sched.serviceIntervalDays}
-                        onChange={e => updateSchedule(idx, 'serviceIntervalDays', e.target.value)}
-                        placeholder="e.g. 10"
-                      />
-                    </div>
-                  )}
-                </div>
+            {/* Asset / Vehicle label */}
+            <div className="ib-field">
+              <label className="ib-label">
+                Asset / Vehicle Label{' '}
+                <span className="ab-hint">(optional)</span>
+              </label>
+              <input
+                className="ib-input"
+                value={sched.assetLabel}
+                onChange={e => updateSchedule(idx, 'assetLabel', e.target.value)}
+                placeholder="e.g. Vehicle 1, Unit A"
+              />
+            </div>
 
-                {/* Preferred weekday for weekly cadences */}
-                {(sched.cadence === 'weekly' || sched.cadence === 'every_2_weeks' ||
-                  sched.cadence === 'every_3_weeks' || sched.cadence === 'every_4_weeks') && (
-                  <div className="ab-field" style={{ marginTop: 8 }}>
-                    <label className="ab-label">Preferred Weekday</label>
-                    <select
-                      className="ib-select"
-                      value={sched.preferredWeekday}
-                      onChange={e => updateSchedule(idx, 'preferredWeekday', e.target.value)}
-                    >
-                      {WEEKDAY_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Day of month for monthly */}
-                {sched.cadence === 'monthly' && (
-                  <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                    <label className="ab-label">Day of Month</label>
-                    <input
-                      className="ib-input"
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={sched.serviceDayOfMonth}
-                      onChange={e => updateSchedule(idx, 'serviceDayOfMonth', e.target.value)}
-                      placeholder={`${new Date((sched.startedAt || TODAY) + 'T00:00:00').getDate()} (from start date)`}
-                    />
-                  </div>
-                )}
-
-                {/* Schedule start date */}
-                <div className="ab-field" style={{ marginTop: 8 }}>
-                  <label className="ab-label">Schedule Start Date</label>
-                  <input
-                    className="ib-input ib-input--date"
-                    type="date"
-                    value={sched.startedAt}
-                    onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
-                  />
-                </div>
-
-                {/* Duration per visit */}
-                <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
-                  <div className="ab-field ab-field--sm">
-                    <label className="ab-label">Duration per Visit (minutes)</label>
-                    <input
-                      className="ib-input"
-                      type="number"
-                      min="15"
-                      max="1440"
-                      step="15"
-                      value={sched.durationMinutes}
-                      onChange={e => updateSchedule(idx, 'durationMinutes', e.target.value)}
-                      placeholder="e.g. 60"
-                    />
-                  </div>
-                  <div className="ab-field ab-field--grow">
-                    <label className="ab-label">Preferred Start Time</label>
-                    <input
-                      className="ib-input"
-                      type="time"
-                      value={sched.preferredStartTime}
-                      onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-              </div>
-            ))}
-
-            <button className="ab-add-li" onClick={addSchedule}>
-              <Plus size={13} /> Add Another Schedule
-            </button>
-          </section>
-
-          {/* END CONDITION */}
-          <section className="ab-section">
-            <p className="ib-section-label">End Condition</p>
-            <div className="ab-field">
-              <label className="ab-label">When does this agreement end?</label>
-              <select
-                className="ib-select"
-                value={endCondition}
-                onChange={e => {
-                  setEndCondition(e.target.value);
-                  setEndDate('');
-                  setEndAfterOccurrences('');
-                  setEndAfterPeriods('');
+            {/* Service location */}
+            <div className="ib-field">
+              <label className="ib-label">
+                Service Location{' '}
+                <span className="ab-hint">(optional — used for visit grouping)</span>
+              </label>
+              <ClientLocationField
+                clientId={selectedClient?.id || null}
+                locationId={sched.locationId}
+                address={sched.serviceAddress}
+                onSelect={({ location_id, address }) => {
+                  setSchedules(prev => prev.map((s, i) => i === idx ? {
+                    ...s,
+                    locationId:     location_id || null,
+                    serviceAddress: address || '',
+                  } : s));
                 }}
-              >
-                {END_CONDITION_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                onAddressChange={v => updateSchedule(idx, 'serviceAddress', v)}
+              />
             </div>
-            {endCondition === 'date' && (
-              <div className="ab-field" style={{ marginTop: 8 }}>
-                <label className="ab-label">End Date</label>
-                <input
-                  className="ib-input ib-input--date"
-                  type="date"
-                  value={endDate}
-                  min={startedAt}
-                  onChange={e => setEndDate(e.target.value)}
-                />
-              </div>
-            )}
-            {endCondition === 'occurrences' && (
-              <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                <label className="ab-label">After how many services?</label>
-                <input
-                  className="ib-input"
-                  type="number"
-                  min="1"
-                  value={endAfterOccurrences}
-                  onChange={e => setEndAfterOccurrences(e.target.value)}
-                  placeholder="e.g. 12"
-                />
-              </div>
-            )}
-            {endCondition === 'periods' && (
-              <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                <label className="ab-label">After how many billing periods?</label>
-                <input
-                  className="ib-input"
-                  type="number"
-                  min="1"
-                  value={endAfterPeriods}
-                  onChange={e => setEndAfterPeriods(e.target.value)}
-                  placeholder="e.g. 6"
-                />
-              </div>
-            )}
-          </section>
 
-          {/* BILLING SCHEDULE */}
-          <section className="ab-section">
-            <p className="ib-section-label">Billing Schedule</p>
-            <div className="ab-row ab-row--gap">
-              <div className="ab-field ab-field--grow">
-                <label className="ab-label">Billing Cadence</label>
+            {/* Cadence */}
+            <div className="ib-inline-agr-row">
+              <div className="ib-field ib-field--grow">
+                <label className="ib-label">Service Cadence</label>
                 <select
                   className="ib-select"
-                  value={billingCadence}
-                  onChange={e => setBillingCadence(e.target.value)}
+                  value={sched.cadence}
+                  onChange={e => updateSchedule(idx, 'cadence', e.target.value)}
                 >
-                  {BILLING_CADENCE_OPTIONS.map(o => (
+                  {SERVICE_CADENCE_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>
-              <div className="ab-field ab-field--grow">
-                <label className="ab-label">Billing Trigger</label>
-                <select
-                  className="ib-select"
-                  value={billingTrigger}
-                  onChange={e => setBillingTrigger(e.target.value)}
-                >
-                  {BILLING_TRIGGER_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
+              {sched.cadence === 'custom' && (
+                <div className="ib-field">
+                  <label className="ib-label">Interval (days)</label>
+                  <input
+                    className="ib-input"
+                    type="number"
+                    min="1"
+                    value={sched.serviceIntervalDays}
+                    onChange={e => updateSchedule(idx, 'serviceIntervalDays', e.target.value)}
+                    placeholder="e.g. 10"
+                  />
+                </div>
+              )}
             </div>
-            {billingTrigger === 'specific_day' && (
-              <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                <label className="ab-label">Day of Month</label>
+
+            {/* Preferred weekday for weekly cadences */}
+            {(sched.cadence === 'weekly' || sched.cadence === 'every_2_weeks' ||
+              sched.cadence === 'every_3_weeks' || sched.cadence === 'every_4_weeks') && (
+              <div className="ib-field">
+                <label className="ib-label">Preferred Weekday</label>
+                <select
+                  className="ib-select"
+                  value={sched.preferredWeekday}
+                  onChange={e => updateSchedule(idx, 'preferredWeekday', e.target.value)}
+                >
+                  {WEEKDAY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Day of month for monthly */}
+            {sched.cadence === 'monthly' && (
+              <div className="ib-field ib-field--sm">
+                <label className="ib-label">Day of Month</label>
                 <input
                   className="ib-input"
                   type="number"
                   min="1"
                   max="31"
-                  value={billingDay}
-                  onChange={e => setBillingDay(e.target.value)}
-                  placeholder="1–31"
-                />
-                <p className="ab-hint">Months with fewer days use the last day of that month.</p>
-              </div>
-            )}
-            {billingTrigger === 'days_before_first_service' && (
-              <div className="ab-field ab-field--sm" style={{ marginTop: 8 }}>
-                <label className="ab-label">Days Before First Service</label>
-                <input
-                  className="ib-input"
-                  type="number"
-                  min="1"
-                  value={daysBeforeService}
-                  onChange={e => setDaysBeforeService(e.target.value)}
-                  placeholder="e.g. 7"
+                  value={sched.serviceDayOfMonth}
+                  onChange={e => updateSchedule(idx, 'serviceDayOfMonth', e.target.value)}
+                  placeholder={`${new Date((sched.startedAt || TODAY) + 'T00:00:00').getDate()} (from start date)`}
                 />
               </div>
             )}
-          </section>
 
-          {/* SERVICE COVERAGE */}
-          <section className="ab-section">
-            <p className="ib-section-label">Service Coverage</p>
-            <div className="ab-row ab-row--gap">
-              <div className="ab-field">
-                <label className="ab-label">Included Services per Billing Period</label>
-                <input
-                  className="ib-input"
-                  type="number"
-                  min="1"
-                  value={includedServicesPerPeriod}
-                  onChange={e => setIncludedServicesPerPeriod(e.target.value)}
-                  placeholder="1"
-                />
-              </div>
-              <div className="ab-field ab-field--grow">
-                <label className="ab-label">If Services Exceed Included Limit</label>
-                <select
-                  className="ib-select"
-                  value={extraOccurrencePolicy}
-                  onChange={e => setExtraOccurrencePolicy(e.target.value)}
-                >
-                  {EXTRA_OCCURRENCE_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {extraOccurrencePolicy === 'charge_per_additional' && (
-              <div className="ab-field" style={{ marginTop: 8 }}>
-                <label className="ab-label">Additional Visit Price</label>
-                <div className="ib-price-wrap">
-                  <span className="ib-price-sym">$</span>
-                  <input
-                    className="ib-input ib-input--price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={additionalServicePrice}
-                    onChange={e => setAdditionalServicePrice(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="ab-field" style={{ marginTop: 8 }}>
-              <label className="ab-label">If a Service Is Missed</label>
-              <select
-                className="ib-select"
-                value={missedServicePolicy}
-                onChange={e => setMissedServicePolicy(e.target.value)}
-              >
-                {MISSED_POLICY_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="ab-coverage-example">
-              <strong>Example:</strong>{' '}
-              {schedules.length} schedule{schedules.length !== 1 ? 's' : ''}{' '}·{' '}
-              {BILLING_CADENCE_OPTIONS.find(o => o.value === billingCadence)?.label || billingCadence} billing
-              {' '}→ invoice on{' '}
-              {BILLING_TRIGGER_OPTIONS.find(o => o.value === billingTrigger)?.label?.toLowerCase() || billingTrigger}
-              {' '}covering{' '}
-              {includedServicesPerPeriod} service{parseInt(includedServicesPerPeriod, 10) !== 1 ? 's' : ''} at ${parseFloat(planPrice || 0).toFixed(2)}
-            </div>
-          </section>
-
-          {/* BILLING AMOUNT */}
-          <section className="ab-section">
-            <p className="ib-section-label">Billing Amount</p>
-            <div className="ab-row ab-row--gap">
-              <div className="ab-field">
-                <label className="ab-label">Amount per billing period *</label>
-                <div className="ib-price-wrap">
-                  <span className="ib-price-sym">$</span>
-                  <input
-                    className="ib-input ib-input--price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={planPrice}
-                    onChange={e => setPlanPrice(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Discount */}
-            <div className="ab-row ab-row--gap" style={{ marginTop: 8 }}>
-              <div className="ab-field">
-                <label className="ab-label">Discount</label>
-                <select
-                  className="ib-select"
-                  value={discountType}
-                  onChange={e => { setDiscountType(e.target.value); setDiscountValue(''); setDiscountName(''); }}
-                >
-                  {DISCOUNT_TYPE_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              {discountType !== 'none' && (
-                <>
-                  <div className="ab-field">
-                    <label className="ab-label">{discountType === 'percent' ? 'Percent off' : 'Amount off ($)'}</label>
-                    <div className="ib-price-wrap">
-                      {discountType === 'fixed' && <span className="ib-price-sym">$</span>}
-                      <input
-                        className={`ib-input${discountType === 'fixed' ? ' ib-input--price' : ''}`}
-                        type="number"
-                        min="0"
-                        step={discountType === 'percent' ? '1' : '0.01'}
-                        max={discountType === 'percent' ? '100' : undefined}
-                        value={discountValue}
-                        onChange={e => setDiscountValue(e.target.value)}
-                        placeholder={discountType === 'percent' ? '10' : '0.00'}
-                      />
-                      {discountType === 'percent' && <span style={{ marginLeft: 4, fontSize: '0.85rem', color: 'var(--slate)' }}>%</span>}
-                    </div>
-                  </div>
-                  <div className="ab-field ab-field--grow">
-                    <label className="ab-label">Discount Label (optional)</label>
-                    <input
-                      className="ib-input"
-                      value={discountName}
-                      onChange={e => setDiscountName(e.target.value)}
-                      placeholder="e.g. Loyalty discount"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Taxable */}
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Schedule start date */}
+            <div className="ib-field">
+              <label className="ib-label">Schedule Start Date</label>
               <input
-                type="checkbox"
-                id="ab-taxable"
-                checked={taxable}
-                onChange={e => setTaxable(e.target.checked)}
+                className="ib-input ib-input--date"
+                type="date"
+                value={sched.startedAt}
+                onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
               />
-              <label htmlFor="ab-taxable" className="ab-label" style={{ marginBottom: 0, cursor: 'pointer' }}>
-                Apply sales tax to this agreement
-              </label>
             </div>
-          </section>
 
-          {/* PAYMENT BEHAVIOR */}
-          <section className="ab-section">
-            <p className="ib-section-label">Payment Behavior</p>
-            <div className="ab-field">
-              <label className="ab-label">When an invoice is generated for this agreement</label>
-              <select
-                className="ib-select"
-                value={paymentBehavior}
-                onChange={e => setPaymentBehavior(e.target.value)}
-              >
-                {PAYMENT_BEHAVIOR_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-          </section>
-
-          {/* LINE ITEMS */}
-          <section className="ab-section">
-            <p className="ib-section-label">Line Items</p>
-            {lineItems.map((li, idx) => (
-              <div key={li._id} className="ab-li-row">
+            {/* Duration + Preferred Start Time */}
+            <div className="ib-inline-agr-row">
+              <div className="ib-field ib-field--sm">
+                <label className="ib-label">Duration per Visit (min)</label>
                 <input
-                  className="ib-input ab-li-name"
-                  value={li.name}
-                  onChange={e => updateLineItem(idx, 'name', e.target.value)}
-                  placeholder="Service description"
+                  className="ib-input"
+                  type="number"
+                  min="15"
+                  max="1440"
+                  step="15"
+                  value={sched.durationMinutes}
+                  onChange={e => updateSchedule(idx, 'durationMinutes', e.target.value)}
+                  placeholder="e.g. 60"
                 />
-                <div className="ib-price-wrap ab-li-price">
-                  <span className="ib-price-sym">$</span>
-                  <input
-                    className="ib-input ib-input--price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={li.amount}
-                    onChange={e => updateLineItem(idx, 'amount', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <button
-                  className="ib-del-btn"
-                  onClick={() => removeLineItem(idx)}
-                  disabled={lineItems.length === 1}
-                  aria-label="Remove line"
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
+              <div className="ib-field ib-field--grow">
+                <label className="ib-label">Preferred Start Time</label>
+                <input
+                  className="ib-input"
+                  type="time"
+                  value={sched.preferredStartTime}
+                  onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
+                />
+              </div>
+            </div>
+
+          </CreationCard>
+        ))}
+
+        <button className="ab-add-li" onClick={addSchedule}>
+          <Plus size={13} /> Add Another Schedule
+        </button>
+      </CreationSection>
+
+      {/* END CONDITION */}
+      <CreationSection label="End Condition">
+        <div className="ib-field">
+          <label className="ib-label">When does this agreement end?</label>
+          <select
+            className="ib-select"
+            value={endCondition}
+            onChange={e => {
+              setEndCondition(e.target.value);
+              setEndDate('');
+              setEndAfterOccurrences('');
+              setEndAfterPeriods('');
+            }}
+          >
+            {END_CONDITION_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-            <button className="ab-add-li" onClick={addLineItem}>
-              <Plus size={13} /> Add line item
-            </button>
-          </section>
-
-          {/* NOTES */}
-          <section className="ab-section">
-            <label className="ab-label">Internal Notes</label>
-            <textarea
-              className="ib-textarea"
-              rows={2}
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Notes visible to your team only…"
+          </select>
+        </div>
+        {endCondition === 'date' && (
+          <div className="ib-field ib-field--sm">
+            <label className="ib-label">End Date</label>
+            <input
+              className="ib-input ib-input--date"
+              type="date"
+              value={endDate}
+              min={startedAt}
+              onChange={e => setEndDate(e.target.value)}
             />
-          </section>
+          </div>
+        )}
+        {endCondition === 'occurrences' && (
+          <div className="ib-field ib-field--sm">
+            <label className="ib-label">After how many services?</label>
+            <input
+              className="ib-input"
+              type="number"
+              min="1"
+              value={endAfterOccurrences}
+              onChange={e => setEndAfterOccurrences(e.target.value)}
+              placeholder="e.g. 12"
+            />
+          </div>
+        )}
+        {endCondition === 'periods' && (
+          <div className="ib-field ib-field--sm">
+            <label className="ib-label">After how many billing periods?</label>
+            <input
+              className="ib-input"
+              type="number"
+              min="1"
+              value={endAfterPeriods}
+              onChange={e => setEndAfterPeriods(e.target.value)}
+              placeholder="e.g. 6"
+            />
+          </div>
+        )}
+      </CreationSection>
 
-        </div>{/* end .ab-body */}
-
-        {/* Footer */}
-        <div className="ib-footer">
-          {saveError && <p className="ib-save-error">{saveError}</p>}
-          <div className="ib-footer-actions">
-            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={!canSave}
-              title={
-                !selectedClient           ? 'Select a client first'
-                : !name.trim()            ? 'Enter an agreement name'
-                : !schedulesValid         ? 'Fix schedule configuration'
-                : !(parseFloat(planPrice) > 0) ? 'Enter a plan price'
-                : ''
-              }
+      {/* BILLING SCHEDULE */}
+      <CreationSection label="Billing Schedule">
+        <div className="ib-inline-agr-row">
+          <div className="ib-field ib-field--grow">
+            <label className="ib-label">Billing Cadence</label>
+            <select
+              className="ib-select"
+              value={billingCadence}
+              onChange={e => setBillingCadence(e.target.value)}
             >
-              {saving ? 'Saving…' : existing ? 'Save Changes' : 'Create Agreement'}
-            </button>
+              {BILLING_CADENCE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="ib-field ib-field--grow">
+            <label className="ib-label">Billing Trigger</label>
+            <select
+              className="ib-select"
+              value={billingTrigger}
+              onChange={e => setBillingTrigger(e.target.value)}
+            >
+              {BILLING_TRIGGER_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {billingTrigger === 'specific_day' && (
+          <div className="ib-field ib-field--sm">
+            <label className="ib-label">Day of Month</label>
+            <input
+              className="ib-input"
+              type="number"
+              min="1"
+              max="31"
+              value={billingDay}
+              onChange={e => setBillingDay(e.target.value)}
+              placeholder="1–31"
+            />
+            <p className="ab-hint">Months with fewer days use the last day of that month.</p>
+          </div>
+        )}
+        {billingTrigger === 'days_before_first_service' && (
+          <div className="ib-field ib-field--sm">
+            <label className="ib-label">Days Before First Service</label>
+            <input
+              className="ib-input"
+              type="number"
+              min="1"
+              value={daysBeforeService}
+              onChange={e => setDaysBeforeService(e.target.value)}
+              placeholder="e.g. 7"
+            />
+          </div>
+        )}
+      </CreationSection>
+
+      {/* SERVICE COVERAGE */}
+      <CreationSection label="Service Coverage">
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Included Services per Billing Period</label>
+            <input
+              className="ib-input"
+              type="number"
+              min="1"
+              value={includedServicesPerPeriod}
+              onChange={e => setIncludedServicesPerPeriod(e.target.value)}
+              placeholder="1"
+            />
+          </div>
+          <div className="ib-field ib-field--grow">
+            <label className="ib-label">If Services Exceed Included Limit</label>
+            <select
+              className="ib-select"
+              value={extraOccurrencePolicy}
+              onChange={e => setExtraOccurrencePolicy(e.target.value)}
+            >
+              {EXTRA_OCCURRENCE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {extraOccurrencePolicy === 'charge_per_additional' && (
+          <div className="ib-field">
+            <label className="ib-label">Additional Visit Price</label>
+            <div className="ib-price-wrap">
+              <span className="ib-price-sym">$</span>
+              <input
+                className="ib-input ib-input--price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={additionalServicePrice}
+                onChange={e => setAdditionalServicePrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        )}
+        <div className="ib-field">
+          <label className="ib-label">If a Service Is Missed</label>
+          <select
+            className="ib-select"
+            value={missedServicePolicy}
+            onChange={e => setMissedServicePolicy(e.target.value)}
+          >
+            {MISSED_POLICY_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="ab-coverage-example">
+          <strong>Example:</strong>{' '}
+          {schedules.length} schedule{schedules.length !== 1 ? 's' : ''}{' '}·{' '}
+          {BILLING_CADENCE_OPTIONS.find(o => o.value === billingCadence)?.label || billingCadence} billing
+          {' '}→ invoice on{' '}
+          {BILLING_TRIGGER_OPTIONS.find(o => o.value === billingTrigger)?.label?.toLowerCase() || billingTrigger}
+          {' '}covering{' '}
+          {includedServicesPerPeriod} service{parseInt(includedServicesPerPeriod, 10) !== 1 ? 's' : ''} at ${parseFloat(planPrice || 0).toFixed(2)}
+        </div>
+      </CreationSection>
+
+      {/* BILLING AMOUNT */}
+      <CreationSection label="Billing Amount">
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Amount per billing period *</label>
+            <div className="ib-price-wrap">
+              <span className="ib-price-sym">$</span>
+              <input
+                className="ib-input ib-input--price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={planPrice}
+                onChange={e => setPlanPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
           </div>
         </div>
 
-      </div>
-    </div>
+        {/* Discount */}
+        <div className="ib-inline-agr-row">
+          <div className="ib-field">
+            <label className="ib-label">Discount</label>
+            <select
+              className="ib-select"
+              value={discountType}
+              onChange={e => { setDiscountType(e.target.value); setDiscountValue(''); setDiscountName(''); }}
+            >
+              {DISCOUNT_TYPE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {discountType !== 'none' && (
+            <>
+              <div className="ib-field">
+                <label className="ib-label">{discountType === 'percent' ? 'Percent off' : 'Amount off ($)'}</label>
+                <div className="ib-price-wrap">
+                  {discountType === 'fixed' && <span className="ib-price-sym">$</span>}
+                  <input
+                    className={`ib-input${discountType === 'fixed' ? ' ib-input--price' : ''}`}
+                    type="number"
+                    min="0"
+                    step={discountType === 'percent' ? '1' : '0.01'}
+                    max={discountType === 'percent' ? '100' : undefined}
+                    value={discountValue}
+                    onChange={e => setDiscountValue(e.target.value)}
+                    placeholder={discountType === 'percent' ? '10' : '0.00'}
+                  />
+                  {discountType === 'percent' && <span style={{ marginLeft: 4, fontSize: '0.85rem', color: 'var(--slate)' }}>%</span>}
+                </div>
+              </div>
+              <div className="ib-field ib-field--grow">
+                <label className="ib-label">Discount Label (optional)</label>
+                <input
+                  className="ib-input"
+                  value={discountName}
+                  onChange={e => setDiscountName(e.target.value)}
+                  placeholder="e.g. Loyalty discount"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Taxable */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="checkbox"
+            id="ab-taxable"
+            checked={taxable}
+            onChange={e => setTaxable(e.target.checked)}
+          />
+          <label htmlFor="ab-taxable" className="ib-label" style={{ marginBottom: 0, cursor: 'pointer' }}>
+            Apply sales tax to this agreement
+          </label>
+        </div>
+      </CreationSection>
+
+      {/* PAYMENT BEHAVIOR */}
+      <CreationSection label="Payment Behavior">
+        <div className="ib-field">
+          <label className="ib-label">When an invoice is generated for this agreement</label>
+          <select
+            className="ib-select"
+            value={paymentBehavior}
+            onChange={e => setPaymentBehavior(e.target.value)}
+          >
+            {PAYMENT_BEHAVIOR_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      </CreationSection>
+
+      {/* LINE ITEMS */}
+      <CreationSection label="Line Items">
+        {lineItems.map((li, idx) => (
+          <div key={li._id} className="ab-li-row">
+            <input
+              className="ib-input ab-li-name"
+              value={li.name}
+              onChange={e => updateLineItem(idx, 'name', e.target.value)}
+              placeholder="Service description"
+            />
+            <div className="ib-price-wrap ab-li-price">
+              <span className="ib-price-sym">$</span>
+              <input
+                className="ib-input ib-input--price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={li.amount}
+                onChange={e => updateLineItem(idx, 'amount', e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <button
+              className="ib-del-btn"
+              onClick={() => removeLineItem(idx)}
+              disabled={lineItems.length === 1}
+              aria-label="Remove line"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <button className="ab-add-li" onClick={addLineItem}>
+          <Plus size={13} /> Add line item
+        </button>
+      </CreationSection>
+
+      {/* NOTES */}
+      <CreationSection>
+        <div className="ib-field">
+          <label className="ib-label">Internal Notes</label>
+          <textarea
+            className="ib-textarea"
+            rows={2}
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Notes visible to your team only…"
+          />
+        </div>
+      </CreationSection>
+
+    </CreationShell>
   );
 }

@@ -2784,6 +2784,7 @@ body {
 .jd-action-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
+  column-gap: 24px;
   align-items: center;
   padding-top: 12px;
   margin-top: 16px;
