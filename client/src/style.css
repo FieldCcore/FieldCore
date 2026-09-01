@@ -2778,7 +2778,10 @@ body {
   color: var(--steel);
   margin-bottom: 8px;
 }
-/* Job Detail action row — Edit / Open / Delete in one shared flex container */
+/* Job Detail action row — Edit / Open / Delete in one shared flex container.
+   flex-wrap: wrap is intentional: the drawer is 344px usable (400px - 56px padding).
+   Three buttons at natural size need ~361px, so Delete drops to a second row.
+   justify-content: flex-end right-aligns both rows cleanly. */
 .jd-action-row {
   display: flex;
   align-items: center;
@@ -2786,7 +2789,7 @@ body {
   justify-content: flex-end;
   padding-top: 4px;
   margin-top: 16px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .jd-action-row .btn-secondary,
 .jd-action-row .btn-void {

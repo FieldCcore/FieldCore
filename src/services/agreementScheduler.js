@@ -602,6 +602,8 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
 
   // If no occurrence-linked job exists, look for a legacy job (created before
   // the occurrence-row system) to adopt rather than creating a duplicate.
+  // The NOT EXISTS subquery filters on deleted_at IS NULL so that soft-deleted
+  // occurrences (from repair runs) don't wrongly block adoption of an existing job.
   if (!jobId) {
     const legacyRes = await client.query(
       `SELECT j.id FROM jobs j
@@ -609,7 +611,8 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
          AND j.scheduled_at::date = $2
          AND j.status NOT IN ('cancelled')
          AND NOT EXISTS (
-           SELECT 1 FROM agreement_schedule_occurrences aso WHERE aso.job_id = j.id
+           SELECT 1 FROM agreement_schedule_occurrences aso
+           WHERE aso.job_id = j.id AND aso.deleted_at IS NULL
          )
        ORDER BY j.created_at
        LIMIT 1`,
@@ -695,12 +698,15 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   }
 
   // Upsert occurrence rows for newly-linked schedules.
+  // deleted_at = NULL in the DO UPDATE un-deletes soft-deleted rows from repair runs,
+  // so subsequent cron passes correctly see them as already-linked.
   for (const schedule of newItems) {
     await client.query(
       `INSERT INTO agreement_schedule_occurrences
          (account_id, agreement_id, schedule_id, job_id, occurrence_date)
        VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (schedule_id, occurrence_date) DO UPDATE SET job_id = EXCLUDED.job_id`,
+       ON CONFLICT (schedule_id, occurrence_date) DO UPDATE
+         SET job_id = EXCLUDED.job_id, deleted_at = NULL`,
       [agreement.account_id, agreement.id, schedule.id, jobId, dateStr]
     );
   }

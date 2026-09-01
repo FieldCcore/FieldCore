@@ -212,7 +212,12 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
     setSchedules(prev => prev.map((s, i) => i === idx ? { ...s, [field]: val } : s));
   }
   function addSchedule() {
-    setSchedules(prev => [...prev, newSchedule({ startedAt })]);
+    const first = schedules[0] || {};
+    setSchedules(prev => [...prev, newSchedule({
+      startedAt,
+      locationId:     first.locationId     || null,
+      serviceAddress: first.serviceAddress || '',
+    })]);
   }
   function removeSchedule(idx) {
     setSchedules(prev => prev.filter((_, i) => i !== idx));
