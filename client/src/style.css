@@ -3016,7 +3016,12 @@ body {
 
 /* ── Custom week/day column header — DOW above date number ─── */
 .rbc-time-header .rbc-header {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 0 !important;
+  min-height: 68px !important;
   border-bottom: 1.5px solid var(--lightgray) !important;
   background: var(--white) !important;
 }
