@@ -594,11 +594,37 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   );
   const alreadyLinked = new Set(existingOcc.rows.map(r => r.schedule_id));
   const newItems = subGroup.filter(s => !alreadyLinked.has(s.id));
-  if (newItems.length === 0) return 0;
 
   // Reuse a job already linked to this visit group via occurrence rows.
   const existingJobRow = existingOcc.rows.find(r => r.job_id != null);
   let jobId = existingJobRow ? existingJobRow.job_id : null;
+
+  // Compute parent visit window: earliest start → latest end.
+  const startMins = Math.min(...subGroup.map(s => timeToMinutes(s.preferred_start_time)));
+  const endMins   = Math.max(...subGroup.map(s => timeToMinutes(s.preferred_start_time) + (s.duration_minutes || 0)));
+  const parentStart    = minutesToTime(startMins);
+  // Fall back to 60 min when no schedule has a duration (matches jobs.duration_minutes DEFAULT 60).
+  const parentDuration = endMins > startMins ? endMins - startMins : 60;
+
+  // Service label: "Type (Asset)" per service line — asset identity in parentheses when present.
+  const makeLabel = (s) => {
+    const type = s.service_type || agreement.service_type || 'Service';
+    return s.asset_label ? `${type} (${s.asset_label})` : type;
+  };
+  const serviceLabel = subGroup.map(makeLabel).join(' · ');
+
+  const scheduledAt = `${dateStr}T${parentStart}:00`;
+
+  // If all schedules are already linked, reconcile the label on the parent job and return.
+  if (newItems.length === 0) {
+    if (jobId) {
+      await client.query(
+        `UPDATE jobs SET service_type = $1, updated_at = NOW() WHERE id = $2 AND account_id = $3`,
+        [serviceLabel, jobId, agreement.account_id]
+      );
+    }
+    return 0;
+  }
 
   // If no occurrence-linked job exists, look for a legacy job (created before
   // the occurrence-row system) to adopt rather than creating a duplicate.
@@ -624,19 +650,6 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
     }
   }
 
-  // Compute parent visit window: earliest start → latest end.
-  const startMins = Math.min(...subGroup.map(s => timeToMinutes(s.preferred_start_time)));
-  const endMins   = Math.max(...subGroup.map(s => timeToMinutes(s.preferred_start_time) + (s.duration_minutes || 0)));
-  const parentStart  = minutesToTime(startMins);
-  // Fall back to 60 min when no schedule has a duration (matches jobs.duration_minutes DEFAULT 60).
-  // Passing explicit NULL would violate the NOT NULL constraint even though the default is 60.
-  const parentDuration = endMins > startMins ? endMins - startMins : 60;
-
-  // Service label: "Type A · Type B" for multi-service visits.
-  const serviceLabel = subGroup.length === 1
-    ? (subGroup[0].service_type || agreement.service_type || 'Service')
-    : subGroup.map(s => s.service_type || s.asset_label || 'Service').join(' · ');
-
   // Resolve location for job row (location_id → cl_* fields take precedence).
   const anchor = subGroup[0];
   const locationId = anchor.location_id || null;
@@ -646,8 +659,6 @@ async function processVisitGroup(agreement, client, dateStr, subGroup) {
   const serviceZip     = anchor.cl_zip     || null;
   const serviceLat     = anchor.cl_lat     || null;
   const serviceLng     = anchor.cl_lng     || null;
-
-  const scheduledAt = `${dateStr}T${parentStart}:00`;
 
   let created = 0;
   if (!jobId) {
