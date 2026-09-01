@@ -1939,6 +1939,39 @@ body {
 .ib-input:focus { border-color: var(--navy); }
 .ib-input--readonly { background: var(--offwhite); color: var(--slate); cursor: default; }
 
+/* Suppress browser-native spinner arrows on number inputs */
+.ib-input[type="number"]::-webkit-outer-spin-button,
+.ib-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ib-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* Mute native calendar/clock icons — keep them accessible but visually quiet */
+.ib-input[type="date"]::-webkit-calendar-picker-indicator,
+.ib-input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.3; cursor: pointer; }
+
+/* ── Field helper text ──────────────────────────────────── */
+.ib-field-hint {
+  font-size: 0.72rem;
+  color: var(--steel);
+  line-height: 1.3;
+}
+
+/* ── Catalog quick-fill hint button ─────────────────────── */
+.ib-catalog-hint {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--slate);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--lightgray);
+}
+.ib-catalog-hint:hover { color: var(--navy); text-decoration-color: var(--slate); }
+
 /* Select wrapper */
 .ib-select-wrap { position: relative; display: flex; align-items: center; }
 .ib-select {

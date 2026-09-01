@@ -98,6 +98,7 @@ function newSchedule(overrides = {}) {
     _id: Math.random().toString(36).slice(2),
     id: null,
     _serviceTemplate: null,
+    _showCatalog: false,
     serviceType: '',
     serviceId: null,
     assetLabel: '',
@@ -119,6 +120,7 @@ function scheduleFromApi(s) {
     _id: Math.random().toString(36).slice(2),
     id: s.id || null,
     _serviceTemplate: null,
+    _showCatalog: false,
     serviceType: s.service_type || '',
     serviceId: s.service_id || null,
     assetLabel: s.asset_label || '',
@@ -423,13 +425,19 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
             onRemove={() => removeSchedule(idx)}
           >
 
-            {/* Service type — catalog autocomplete */}
+            {/* Service / Package */}
             <div className="ib-field">
-              <label className="ib-label">Service Type</label>
-              {sched._serviceTemplate ? (
+              <label className="ib-label">Service / Package</label>
+              <input
+                className="ib-input"
+                value={sched.serviceType}
+                onChange={e => updateSchedule(idx, 'serviceType', e.target.value)}
+                placeholder="e.g. Full Detail, Maintenance Wash"
+              />
+              {sched._showCatalog ? (
                 <Autocomplete
-                  inputId={`ab-svc-${sched._id}`}
-                  label="Service type"
+                  inputId={`ab-svc-search-${sched._id}`}
+                  label="Search service catalog"
                   placeholder="Search service catalog…"
                   fetchResults={fetchServices}
                   getKey={s => s.id}
@@ -440,84 +448,45 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                       {s.category && <span className="ac-client-meta">{s.category}</span>}
                     </div>
                   )}
-                  renderSelectedCard={s => (
-                    <div className="ib-client-card">
-                      <div className="ib-client-card-name">{s.name}</div>
-                      {s.category && <div className="ib-client-card-detail">{s.category}</div>}
-                    </div>
-                  )}
-                  selected={sched._serviceTemplate}
+                  selected={null}
                   onSelect={tmpl => {
                     setSchedules(prev => prev.map((s, i) => i === idx
-                      ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
+                      ? { ...s, _showCatalog: false, _serviceTemplate: tmpl,
+                          serviceType: tmpl.name, serviceId: tmpl.id,
                           durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
                       : s
                     ));
                   }}
-                  onClear={() => {
-                    setSchedules(prev => prev.map((s, i) => i === idx
-                      ? { ...s, _serviceTemplate: null, serviceType: '', serviceId: null }
-                      : s
-                    ));
-                  }}
+                  onClear={() => updateSchedule(idx, '_showCatalog', false)}
                 />
               ) : (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    className="ib-input"
-                    style={{ flex: 1 }}
-                    value={sched.serviceType}
-                    onChange={e => updateSchedule(idx, 'serviceType', e.target.value)}
-                    placeholder="e.g. Detail, Oil Change, Mowing"
-                  />
-                  <Autocomplete
-                    inputId={`ab-svc-search-${sched._id}`}
-                    label="Search catalog"
-                    placeholder="Search catalog…"
-                    fetchResults={fetchServices}
-                    getKey={s => s.id}
-                    getDisplayValue={s => s.name}
-                    renderItem={(s, q) => (
-                      <div className="ac-client-item">
-                        <span className="ac-client-name">{highlight(s.name, q)}</span>
-                        {s.category && <span className="ac-client-meta">{s.category}</span>}
-                      </div>
-                    )}
-                    selected={null}
-                    onSelect={tmpl => {
-                      setSchedules(prev => prev.map((s, i) => i === idx
-                        ? { ...s, _serviceTemplate: tmpl, serviceType: tmpl.name, serviceId: tmpl.id,
-                            durationMinutes: tmpl.duration_minutes ? String(tmpl.duration_minutes) : s.durationMinutes }
-                        : s
-                      ));
-                    }}
-                    onClear={() => {}}
-                    className="ab-svc-autocomplete"
-                  />
-                </div>
+                <button
+                  type="button"
+                  className="ib-catalog-hint"
+                  onClick={() => updateSchedule(idx, '_showCatalog', true)}
+                >
+                  Search service catalog →
+                </button>
+              )}
+              {sched._serviceTemplate && (
+                <p className="ib-field-hint">From service catalog: {sched._serviceTemplate.name}</p>
               )}
             </div>
 
-            {/* Asset / Vehicle label */}
+            {/* Asset / Service For */}
             <div className="ib-field">
-              <label className="ib-label">
-                Asset / Vehicle Label{' '}
-                <span className="ab-hint">(optional)</span>
-              </label>
+              <label className="ib-label">Asset / Service For</label>
               <input
                 className="ib-input"
                 value={sched.assetLabel}
                 onChange={e => updateSchedule(idx, 'assetLabel', e.target.value)}
-                placeholder="e.g. Vehicle 1, Unit A"
+                placeholder="e.g. Porsche 911, Unit A — leave blank if not vehicle-specific"
               />
             </div>
 
-            {/* Service location */}
+            {/* Service Location */}
             <div className="ib-field">
-              <label className="ib-label">
-                Service Location{' '}
-                <span className="ab-hint">(optional — used for visit grouping)</span>
-              </label>
+              <label className="ib-label">Service Location</label>
               <ClientLocationField
                 clientId={selectedClient?.id || null}
                 locationId={sched.locationId}
@@ -531,12 +500,13 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                 }}
                 onAddressChange={v => updateSchedule(idx, 'serviceAddress', v)}
               />
+              <p className="ib-field-hint">Used for visit grouping when multiple schedules share a location</p>
             </div>
 
-            {/* Cadence */}
+            {/* Cadence + Start Date */}
             <div className="ib-inline-agr-row">
               <div className="ib-field ib-field--grow">
-                <label className="ib-label">Service Cadence</label>
+                <label className="ib-label">Cadence</label>
                 <select
                   className="ib-select"
                   value={sched.cadence}
@@ -547,39 +517,33 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                   ))}
                 </select>
               </div>
-              {sched.cadence === 'custom' && (
-                <div className="ib-field">
-                  <label className="ib-label">Interval (days)</label>
-                  <input
-                    className="ib-input"
-                    type="number"
-                    min="1"
-                    value={sched.serviceIntervalDays}
-                    onChange={e => updateSchedule(idx, 'serviceIntervalDays', e.target.value)}
-                    placeholder="e.g. 10"
-                  />
-                </div>
-              )}
+              <div className="ib-field ib-field--sm">
+                <label className="ib-label">Start Date</label>
+                <input
+                  className="ib-input ib-input--date"
+                  type="date"
+                  value={sched.startedAt}
+                  onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
+                />
+              </div>
             </div>
 
-            {/* Preferred weekday for weekly cadences */}
-            {(sched.cadence === 'weekly' || sched.cadence === 'every_2_weeks' ||
-              sched.cadence === 'every_3_weeks' || sched.cadence === 'every_4_weeks') && (
-              <div className="ib-field">
-                <label className="ib-label">Preferred Weekday</label>
-                <select
-                  className="ib-select"
-                  value={sched.preferredWeekday}
-                  onChange={e => updateSchedule(idx, 'preferredWeekday', e.target.value)}
-                >
-                  {WEEKDAY_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+            {/* Custom interval (conditional) */}
+            {sched.cadence === 'custom' && (
+              <div className="ib-field ib-field--sm">
+                <label className="ib-label">Interval (days)</label>
+                <input
+                  className="ib-input"
+                  type="number"
+                  min="1"
+                  value={sched.serviceIntervalDays}
+                  onChange={e => updateSchedule(idx, 'serviceIntervalDays', e.target.value)}
+                  placeholder="e.g. 10"
+                />
               </div>
             )}
 
-            {/* Day of month for monthly */}
+            {/* Day of month (monthly only) */}
             {sched.cadence === 'monthly' && (
               <div className="ib-field ib-field--sm">
                 <label className="ib-label">Day of Month</label>
@@ -595,21 +559,19 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
               </div>
             )}
 
-            {/* Schedule start date */}
-            <div className="ib-field">
-              <label className="ib-label">Schedule Start Date</label>
-              <input
-                className="ib-input ib-input--date"
-                type="date"
-                value={sched.startedAt}
-                onChange={e => updateSchedule(idx, 'startedAt', e.target.value)}
-              />
-            </div>
-
-            {/* Duration + Preferred Start Time */}
+            {/* Start Time + Duration */}
             <div className="ib-inline-agr-row">
-              <div className="ib-field ib-field--sm">
-                <label className="ib-label">Duration per Visit (min)</label>
+              <div className="ib-field ib-field--grow">
+                <label className="ib-label">Start Time</label>
+                <input
+                  className="ib-input"
+                  type="time"
+                  value={sched.preferredStartTime}
+                  onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
+                />
+              </div>
+              <div className="ib-field ib-field--grow">
+                <label className="ib-label">Duration (min)</label>
                 <input
                   className="ib-input"
                   type="number"
@@ -620,17 +582,29 @@ export default function AgreementBuilder({ existing = null, onClose, onSaved }) 
                   onChange={e => updateSchedule(idx, 'durationMinutes', e.target.value)}
                   placeholder="e.g. 60"
                 />
-              </div>
-              <div className="ib-field ib-field--grow">
-                <label className="ib-label">Preferred Start Time</label>
-                <input
-                  className="ib-input"
-                  type="time"
-                  value={sched.preferredStartTime}
-                  onChange={e => updateSchedule(idx, 'preferredStartTime', e.target.value)}
-                />
+                {sched._serviceTemplate?.duration_minutes &&
+                 String(sched._serviceTemplate.duration_minutes) === String(sched.durationMinutes) && (
+                  <p className="ib-field-hint">Default from service catalog</p>
+                )}
               </div>
             </div>
+
+            {/* Preferred Day (weekly cadences only) */}
+            {(sched.cadence === 'weekly' || sched.cadence === 'every_2_weeks' ||
+              sched.cadence === 'every_3_weeks' || sched.cadence === 'every_4_weeks') && (
+              <div className="ib-field">
+                <label className="ib-label">Preferred Day</label>
+                <select
+                  className="ib-select"
+                  value={sched.preferredWeekday}
+                  onChange={e => updateSchedule(idx, 'preferredWeekday', e.target.value)}
+                >
+                  {WEEKDAY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
           </CreationCard>
         ))}
