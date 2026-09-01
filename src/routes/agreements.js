@@ -409,18 +409,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ ...agreement, service_schedules: schRes.rows });
 
-    // Immediately generate jobs for the next 45-day window so the Calendar
-    // shows new recurring jobs without waiting for the nightly cron.
-    // Skipped in test environment to avoid double-generation against the test DB.
+    // Generate jobs synchronously BEFORE responding so the Calendar sees them
+    // immediately when the frontend calls loadJobs() after onSaved().
+    // Using setImmediate previously caused a race: the frontend fetched jobs
+    // before generation ran and saw nothing. Skipped in test environment.
     if (agreement.status === 'active' && process.env.NODE_ENV !== 'test') {
-      setImmediate(() => {
-        processAgreement(agreement).catch(err => {
-          console.error('[agreements] Background job generation failed:', agreement.id, err.message);
-        });
-      });
+      try {
+        await processAgreement(agreement);
+      } catch (genErr) {
+        // Non-fatal: agreement + schedules are committed. Nightly cron will catch up.
+        console.error('[agreements] Immediate job generation failed:', agreement.id, genErr.message);
+      }
     }
+
+    res.status(201).json({ ...agreement, service_schedules: schRes.rows });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
     res.status(500).json({ error: err.message });
