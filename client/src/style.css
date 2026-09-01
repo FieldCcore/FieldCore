@@ -3044,18 +3044,15 @@ body {
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--steel);
-  line-height: 1;
+  line-height: 1.2;
 }
 .fc-week-dh-num {
   font-family: 'Inter', sans-serif;
   font-size: 18px;
   font-weight: 700;
   color: var(--navy);
-  line-height: 1;
+  line-height: 1.2;
 }
-/* Today: text-only highlight — no geometry change */
-.fc-week-dh--today .fc-week-dh-dow { color: var(--navy); }
-.fc-week-dh--today .fc-week-dh-num { color: var(--sand); }
 
 /* ── Calendar event cards — adaptive by duration ─────────── */
 .cal-event-card { display: flex; flex-direction: column; gap: 1px; overflow: hidden; height: 100%; }
