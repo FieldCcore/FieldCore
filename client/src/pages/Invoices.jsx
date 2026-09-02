@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, SlidersHorizontal, X, Check, Mail, MoreHorizontal, ExternalLink, Trash2 } from 'lucide-react';
 import api from '../api';
 import InvoiceDetail from '../components/InvoiceDetail';
 import StatusBadge from '../components/StatusBadge';
@@ -125,6 +125,10 @@ export default function Invoices() {
   const [statusOpen, setStatusOpen]   = useState(false);
   const [dateOpen, setDateOpen]       = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [openMenuId, setOpenMenuId]   = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting]       = useState(false);
+  const [emailingId, setEmailingId]   = useState(null);
 
   const [params, setParams] = useState(() => initFromUrl(searchParams));
 
@@ -138,16 +142,18 @@ export default function Invoices() {
   const statusRef   = useRef(null);
   const dateRef     = useRef(null);
   const filtersRef  = useRef(null);
+  const menuRef     = useRef(null);
 
   useEffect(() => {
     function onMouseDown(e) {
       if (statusOpen  && statusRef.current  && !statusRef.current.contains(e.target))  setStatusOpen(false);
       if (dateOpen    && dateRef.current    && !dateRef.current.contains(e.target))     setDateOpen(false);
       if (filtersOpen && filtersRef.current && !filtersRef.current.contains(e.target)) setFiltersOpen(false);
+      if (openMenuId  && menuRef.current    && !menuRef.current.contains(e.target))     setOpenMenuId(null);
     }
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [statusOpen, dateOpen, filtersOpen]);
+  }, [statusOpen, dateOpen, filtersOpen, openMenuId]);
 
   function buildQs(p) {
     const qs = new URLSearchParams({
@@ -222,6 +228,15 @@ export default function Invoices() {
     if (searchParams.get('new') === '1') {
       navigate('/invoices/new', { replace: true });
     }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle ?invoice={id} — auto-open from direct link / Open in New Tab
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoice');
+    if (!invoiceId) return;
+    api.get(`/invoices/${invoiceId}`)
+      .then(r => setSelected(r.data))
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore search input from URL
@@ -313,6 +328,39 @@ export default function Invoices() {
     setDatePreset('all');
     setClientQuery('');
     setClientResults([]);
+  }
+
+  // ── Row action handlers ────────────────────────────────────────────────────
+
+  async function handleEmail(e, inv) {
+    e.stopPropagation();
+    setEmailingId(inv.id);
+    try {
+      await api.post(`/invoices/${inv.id}/send`);
+      setInvoices(prev => prev.map(i =>
+        i.id === inv.id ? { ...i, status: 'pending', sent_at: new Date().toISOString() } : i
+      ));
+    } catch (err) {
+      console.error('Send failed', err);
+    } finally {
+      setEmailingId(null);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/invoices/${deleteTarget.id}`);
+      setInvoices(prev => prev.filter(i => i.id !== deleteTarget.id));
+      setTotal(t => t - 1);
+      if (selected?.id === deleteTarget.id) setSelected(null);
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Delete failed', err);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // ── Derived state ─────────────────────────────────────────────────────────
@@ -841,6 +889,7 @@ export default function Invoices() {
                   <SortTh label="Status"    col="status"         currentSort={params.sort} currentOrder={params.order} onSort={handleSortChange} />
                   <SortTh label="Total"     col="amount"         currentSort={params.sort} currentOrder={params.order} onSort={handleSortChange} extraClass="inv-th-r" />
                   <SortTh label="Balance"   col="balance"        currentSort={params.sort} currentOrder={params.order} onSort={handleSortChange} extraClass="inv-th-r" />
+                  <th className="inv-th-actions" aria-hidden="true" />
                 </tr>
               </thead>
               <tbody>
@@ -862,6 +911,66 @@ export default function Invoices() {
                     <td><StatusBadge status={inv.is_past_due ? 'past_due' : inv.status} /></td>
                     <td className="inv-td-r">{fmtAmt(inv.amount)}</td>
                     <td className="inv-td-r">{inv.balance == null ? '—' : fmtAmt(inv.balance)}</td>
+                    <td className="inv-td-actions" onClick={e => e.stopPropagation()}>
+                      <div
+                        className={`inv-row-actions${openMenuId === inv.id ? ' inv-row-actions--open' : ''}`}
+                        onKeyDown={e => { if (e.key === 'Escape') setOpenMenuId(null); }}
+                      >
+                        {['draft', 'pending'].includes(inv.status) && (
+                          <div className="inv-action-tooltip-wrap">
+                            <button
+                              className="inv-action-btn"
+                              aria-label={inv.status === 'draft' ? 'Send Invoice' : 'Email Invoice'}
+                              disabled={emailingId === inv.id}
+                              onClick={e => handleEmail(e, inv)}
+                            >
+                              <Mail size={14} />
+                            </button>
+                            <span className="inv-action-tooltip">
+                              {inv.status === 'draft' ? 'Send Invoice' : 'Email Invoice'}
+                            </span>
+                          </div>
+                        )}
+                        <div
+                          className="inv-action-menu-wrap"
+                          ref={openMenuId === inv.id ? menuRef : null}
+                        >
+                          <button
+                            className="inv-action-btn"
+                            aria-label="More actions"
+                            aria-expanded={openMenuId === inv.id}
+                            aria-haspopup="menu"
+                            onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
+                          >
+                            <MoreHorizontal size={14} />
+                          </button>
+                          {openMenuId === inv.id && (
+                            <div className="inv-action-drop" role="menu">
+                              <a
+                                className="inv-action-drop-item"
+                                href={`/invoices?invoice=${inv.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                role="menuitem"
+                                onClick={() => setOpenMenuId(null)}
+                              >
+                                <ExternalLink size={13} />
+                                <span>Open in New Tab</span>
+                              </a>
+                              <div className="inv-action-drop-sep" />
+                              <button
+                                className="inv-action-drop-item inv-action-drop-item--danger"
+                                role="menuitem"
+                                onClick={() => { setDeleteTarget(inv); setOpenMenuId(null); }}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -899,6 +1008,41 @@ export default function Invoices() {
               onClose={() => setSelected(null)}
               onUpdate={handleUpdate}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ─────────────────────────── */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Delete Invoice?</h2>
+              <button className="btn-close" onClick={() => !deleting && setDeleteTarget(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 14, color: 'var(--navy)', marginBottom: 6 }}>
+                Invoice <strong>#{deleteTarget.invoice_number}</strong> for{' '}
+                <strong>{deleteTarget.client_name}</strong> will be permanently deleted.
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--slate)' }}>This cannot be undone.</p>
+              <div className="form-actions" style={{ marginTop: 24 }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-void"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting…' : 'Delete Invoice'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

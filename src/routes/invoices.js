@@ -1132,6 +1132,27 @@ router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (r
   }
 });
 
+// ─── DELETE /api/invoices/:id ────────────────────────────────────────────────
+router.delete('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT status FROM invoices WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (rows[0].status === 'paid') {
+      return res.status(400).json({ error: 'Cannot delete a paid invoice.' });
+    }
+    await pool.query(
+      `DELETE FROM invoices WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── POST /api/invoices/:id/payments — record manual payment ─────────────────
 router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const VALID_METHODS = ['cash', 'check', 'other'];
