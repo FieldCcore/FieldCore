@@ -8851,9 +8851,13 @@ tr:focus-within .inv-row-actions,
   font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500;
   text-transform: uppercase; letter-spacing: .08em; white-space: nowrap;
 }
-.prj-mat-type--material { background: #eff6ff; color: #1d4ed8; }
-.prj-mat-type--expense  { background: #fef3c7; color: #92400e; }
-.prj-mat-type--other    { background: var(--off); color: var(--steel); }
+.prj-mat-type--material     { background: #eff6ff; color: #1d4ed8; }
+.prj-mat-type--expense      { background: #fef3c7; color: #92400e; }
+.prj-mat-type--other        { background: var(--off); color: var(--steel); }
+.prj-mat-type--labor        { background: #f0fdf4; color: #166534; }
+.prj-mat-type--equipment    { background: #f5f3ff; color: #5b21b6; }
+.prj-mat-type--subcontractor{ background: #fff7ed; color: #9a3412; }
+.prj-mat-type--travel       { background: #f0f9ff; color: #075985; }
 .prj-mat-bill  { font-size: 12px; color: var(--steel); }
 .prj-mat-bill--yes {
   display: inline-block; padding: 2px 7px; border-radius: 10px;
@@ -8890,6 +8894,153 @@ tr:focus-within .inv-row-actions,
   font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700;
   color: var(--navy); font-variant-numeric: tabular-nums;
 }
+
+/* ── Project Health Bar ────────────────────────────────── */
+.prj-health-bar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+  border-left: 4px solid transparent;
+}
+.prj-health--on-track  { background: #f0fdf4; border-color: #22c55e; }
+.prj-health--attention { background: #fffbeb; border-color: #f59e0b; }
+.prj-health--behind    { background: #fef2f2; border-color: #ef4444; }
+.prj-health-left { display: flex; align-items: center; gap: 8px; }
+.prj-health-icon { font-size: 14px; }
+.prj-health--on-track  .prj-health-icon { color: #16a34a; }
+.prj-health--attention .prj-health-icon { color: #d97706; }
+.prj-health--behind    .prj-health-icon { color: #dc2626; }
+.prj-health-label {
+  font-size: 13px; font-weight: 700;
+}
+.prj-health--on-track  .prj-health-label { color: #16a34a; }
+.prj-health--attention .prj-health-label { color: #d97706; }
+.prj-health--behind    .prj-health-label { color: #dc2626; }
+.prj-health-reason {
+  font-size: 12px; color: var(--slate);
+}
+.prj-health-next {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.prj-health-next-label {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--steel);
+}
+.prj-health-next-wo  { font-size: 12px; font-weight: 600; color: var(--navy); }
+.prj-health-next-date{ font-size: 12px; color: var(--slate); }
+
+/* ── Asset Picker ──────────────────────────────────────── */
+.prj-asset-picker { position: relative; }
+.prj-asset-input-wrap {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--lightgray); border-radius: 6px;
+  padding: 0 10px; background: var(--white);
+  transition: border-color .12s;
+}
+.prj-asset-input-wrap:focus-within { border-color: var(--sand); }
+.prj-asset-search-icon { color: var(--steel); flex-shrink: 0; }
+.prj-asset-input {
+  flex: 1; border: none; outline: none; background: none;
+  font-size: 13px; color: var(--navy); padding: 8px 0;
+  font-family: 'Inter', sans-serif;
+}
+.prj-asset-drop {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.1);
+  overflow: hidden;
+}
+.prj-asset-drop-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 14px; background: none; border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; text-align: left;
+  transition: background .1s;
+}
+.prj-asset-drop-item:hover { background: var(--off); }
+.prj-asset-drop-name  { font-size: 13px; font-weight: 500; color: var(--navy); }
+.prj-asset-drop-sub   { font-size: 11px; color: var(--steel); }
+.prj-asset-drop-create{ color: var(--sand); font-weight: 600; gap: 6px; }
+.prj-asset-drop-create:hover { background: #fdf6ec; }
+.prj-asset-drop-empty { padding: 12px 14px; font-size: 12px; color: var(--steel); }
+.prj-asset-selected {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: #fdf6ec; border: 1px solid #e8d5b2; border-radius: 6px;
+}
+.prj-asset-selected-name { font-size: 13px; font-weight: 500; color: var(--navy); flex: 1; }
+.prj-asset-clear {
+  background: none; border: none; cursor: pointer; padding: 2px;
+  color: var(--steel); display: flex; align-items: center;
+  border-radius: 3px; transition: color .1s;
+}
+.prj-asset-clear:hover { color: var(--navy); }
+
+/* ── WO Asset display ──────────────────────────────────── */
+.prj-wo-asset {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  padding: 7px 12px; background: #fdf6ec; border: 1px solid #e8d5b2; border-radius: 6px;
+}
+.prj-wo-asset-label {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--steel);
+}
+.prj-wo-asset-val { font-size: 13px; font-weight: 500; color: var(--navy); }
+
+/* ── Financials sub-label ──────────────────────────────── */
+.prj-fin-sub { font-size: 10px; color: var(--steel); margin-top: 2px; display: block; }
+
+/* ── Budget section ────────────────────────────────────── */
+.prj-budget-edit-form { margin-bottom: 16px; }
+.prj-budget-edit-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;
+}
+@media (max-width: 640px) {
+  .prj-budget-edit-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.prj-budget-table td, .prj-budget-table th { vertical-align: middle; }
+/* Health badge on project list */
+.prj-health-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.prj-health-badge--on-track  { background: #dcfce7; color: #166534; }
+.prj-health-badge--attention { background: #fef3c7; color: #92400e; }
+.prj-health-badge--behind    { background: #fee2e2; color: #991b1b; }
+
+.prj-budget-badge {
+  display: inline-block; padding: 2px 7px; border-radius: 10px;
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+  background: var(--off); color: var(--steel);
+}
+.prj-budget-badge--over  { background: #fee2e2; color: #991b1b; }
+.prj-budget-badge--under { background: #dcfce7; color: #166534; }
+.prj-budget-badge--none  { background: transparent; color: var(--steel); }
+.prj-budget-total-row td { border-top: 2px solid var(--lightgray); padding-top: 8px; }
+
+/* ── Change Orders section ─────────────────────────────── */
+.prj-co-approved-banner {
+  padding: 10px 14px; background: #f0fdf4; border: 1px solid #86efac;
+  border-radius: 6px; font-size: 13px; color: #166534; margin-bottom: 12px;
+}
+.prj-co-form {
+  background: var(--off); border: 1px solid var(--lightgray);
+  border-radius: 8px; padding: 16px; margin-bottom: 16px;
+}
+.prj-co-status-select {
+  font-size: 12px; padding: 4px 8px; border: 1px solid var(--lightgray);
+  border-radius: 5px; background: var(--white); color: var(--navy);
+  font-family: 'Inter', sans-serif; cursor: pointer;
+}
+.prj-co-status {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.prj-co-status--draft            { background: var(--off); color: var(--steel); }
+.prj-co-status--pending_approval { background: #fffbeb; color: #92400e; }
+.prj-co-status--approved         { background: #dcfce7; color: #166534; }
+.prj-co-status--rejected         { background: #fee2e2; color: #991b1b; }
+.prj-co-status--cancelled        { background: var(--off); color: var(--steel); text-decoration: line-through; }
 
 /* ── Activity tab ──────────────────────────────────────── */
 .prj-activity-tab { display: flex; flex-direction: column; gap: 16px; }

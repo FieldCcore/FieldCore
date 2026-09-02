@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import JobTeamSelector from '../components/JobTeamSelector';
 import {
   ChevronLeft, Plus, X, Check, Trash2, ExternalLink,
-  ChevronDown, ChevronUp, Search,
+  ChevronDown, ChevronUp, Search, AlertTriangle,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +27,7 @@ const BILLING_LABELS = {
 };
 const ACTIVITY_ICONS = {
   created: '✦', status_changed: '⟳', work_order_added: '＋', cancelled: '✕', note: '◆',
+  change_order_added: '△', change_order_status: '◈',
 };
 const WO_STATUS_ORDER = [
   'unscheduled', 'draft', 'scheduled', 'in_progress', 'paused', 'complete', 'cancelled',
@@ -67,6 +68,11 @@ function fmtPhone(raw) {
   return `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6)}`;
 }
 
+function fmtCoNum(n) {
+  if (!n) return '?';
+  return 'CO-' + String(n).padStart(3, '0');
+}
+
 // ── Duration helpers ──────────────────────────────────────
 const MINS_PER_BDAY = 480; // 8-hour business day
 function minutesToParts(total) {
@@ -100,16 +106,140 @@ function DurationPicker({ value, onChange }) {
   );
 }
 
+// ── Asset Picker ──────────────────────────────────────────
+function AssetPicker({ value, assetName, onChange, clientId }) {
+  const [query, setQuery]       = useState('');
+  const [results, setResults]   = useState([]);
+  const [open, setOpen]         = useState(false);
+  const [creating, setCreating] = useState(false);
+  const inputRef = useRef(null);
+  const timer    = useRef(null);
+
+  useEffect(() => {
+    if (!open || !query.trim()) { setResults([]); return; }
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      try {
+        const params = { search: query.trim() };
+        if (clientId) params.client_id = clientId;
+        const r = await api.get('/assets', { params });
+        setResults(r.data || []);
+      } catch {}
+    }, 250);
+  }, [query, open, clientId]);
+
+  function select(asset) {
+    onChange(asset.id, asset.name);
+    setOpen(false);
+    setQuery('');
+    setResults([]);
+  }
+
+  function clear() { onChange(null, null); }
+
+  async function createAsset() {
+    if (!query.trim()) return;
+    setCreating(true);
+    try {
+      const r = await api.post('/assets', {
+        name: query.trim(),
+        client_id: clientId || null,
+      });
+      select(r.data);
+    } catch {}
+    setCreating(false);
+  }
+
+  if (value) {
+    return (
+      <div className="prj-asset-selected">
+        <span className="prj-asset-selected-name">{assetName || value}</span>
+        <button type="button" className="prj-asset-clear" onClick={clear} aria-label="Clear asset">
+          <X size={12} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="prj-asset-picker" style={{ position: 'relative' }}>
+      <div className="prj-asset-input-wrap">
+        <Search size={13} className="prj-asset-search-icon" />
+        <input
+          ref={inputRef}
+          className="prj-asset-input"
+          placeholder="Search or name a new asset…"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+        />
+      </div>
+      {open && (query.trim() || results.length > 0) && (
+        <div className="prj-asset-drop">
+          {results.map(a => (
+            <button key={a.id} type="button" className="prj-asset-drop-item" onMouseDown={() => select(a)}>
+              <span className="prj-asset-drop-name">{a.name}</span>
+              {a.unit_number && <span className="prj-asset-drop-sub">Unit {a.unit_number}</span>}
+              {a.asset_type  && <span className="prj-asset-drop-sub">{a.asset_type}</span>}
+            </button>
+          ))}
+          {query.trim() && (
+            <button type="button" className="prj-asset-drop-item prj-asset-drop-create" onMouseDown={createAsset} disabled={creating}>
+              <Plus size={12} /> {creating ? 'Creating…' : `Create "${query.trim()}"`}
+            </button>
+          )}
+          {!query.trim() && results.length === 0 && (
+            <div className="prj-asset-drop-empty">Type to search assets</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Project Health Card ───────────────────────────────────
+function ProjectHealthCard({ health, reason, nextAction }) {
+  if (!health) return null;
+  const config = {
+    on_track:  { label: 'On Track',         cls: 'prj-health--on-track',  icon: '●' },
+    attention: { label: 'Attention Needed',  cls: 'prj-health--attention', icon: '▲' },
+    behind:    { label: 'Behind',            cls: 'prj-health--behind',    icon: '■' },
+  };
+  const { label, cls, icon } = config[health] || config.on_track;
+
+  return (
+    <div className={`prj-health-bar ${cls}`}>
+      <div className="prj-health-left">
+        <span className="prj-health-icon">{icon}</span>
+        <span className="prj-health-label">{label}</span>
+        {reason && <span className="prj-health-reason">{reason}</span>}
+      </div>
+      {nextAction && (
+        <div className="prj-health-next">
+          <span className="prj-health-next-label">Next:</span>
+          <span className="prj-health-next-wo">{fmtWoNum(nextAction.work_order_number)} — {nextAction.title}</span>
+          {nextAction.scheduled_at && (
+            <span className="prj-health-next-date">{fmtDate(nextAction.scheduled_at)}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Overview Tab (V2 command center) ─────────────────────
 function OverviewTab({ project, users, onRefresh, onTabChange }) {
-  const [editing, setEditing]   = useState(false);
-  const [form, setForm]         = useState({});
-  const [saving, setSaving]     = useState(false);
+  const [editing, setEditing]     = useState(false);
+  const [form, setForm]           = useState({});
+  const [saving, setSaving]       = useState(false);
   const [formError, setFormError] = useState('');
   const [workOrders, setWorkOrders] = useState([]);
-  const [fin, setFin]           = useState(null);
-  const [activity, setActivity] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [fin, setFin]             = useState(null);
+  const [activity, setActivity]   = useState([]);
+  const [health, setHealth]       = useState(null);
+  const [nextAction, setNextAction] = useState(null);
+  const [loading, setLoading]     = useState(true);
   const { user } = useAuth();
   const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
 
@@ -118,10 +248,15 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
       api.get(`/projects/${project.id}/work-orders`),
       api.get(`/projects/${project.id}/financials`),
       api.get(`/projects/${project.id}/activity`),
-    ]).then(([woRes, finRes, actRes]) => {
+      api.get(`/projects/${project.id}/health`),
+    ]).then(([woRes, finRes, actRes, hlRes]) => {
       if (woRes.status  === 'fulfilled') setWorkOrders(woRes.value.data || []);
       if (finRes.status === 'fulfilled') setFin(finRes.value.data || null);
       if (actRes.status === 'fulfilled') setActivity(actRes.value.data || []);
+      if (hlRes.status  === 'fulfilled') {
+        setHealth(hlRes.value.data?.health || null);
+        setNextAction(hlRes.value.data?.next_action || null);
+      }
     }).finally(() => setLoading(false));
   }, [project.id]);
 
@@ -243,12 +378,12 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
   }
 
   // ── V2 command center ─────────────────────────────────
-  const totalWOs      = project.work_order_count      ?? 0;
-  const completedWOs  = project.completed_work_orders ?? 0;
-  const woPct         = totalWOs > 0 ? Math.round((completedWOs / totalWOs) * 100) : 0;
-  const contractValue = project.contract_value        ?? 0;
-  const invoiced      = fin?.total_invoiced            ?? 0;
-  const collected     = fin?.total_paid                ?? 0;
+  const totalWOs         = project.work_order_count      ?? 0;
+  const completedWOs     = project.completed_work_orders ?? 0;
+  const woPct            = totalWOs > 0 ? Math.round((completedWOs / totalWOs) * 100) : 0;
+  const contractValue    = fin?.current_project_value ?? project.contract_value ?? 0;
+  const invoiced         = fin?.total_invoiced         ?? 0;
+  const collected        = fin?.total_paid             ?? 0;
   const outstanding   = fin?.outstanding               ?? Math.max(0, invoiced - collected);
   const materialCost  = fin?.material_cost             ?? 0;
   const otherCost     = fin?.other_cost                ?? 0;
@@ -283,6 +418,9 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
 
   return (
     <div className="prj-overview">
+      {health && (
+        <ProjectHealthCard health={health} reason={null} nextAction={nextAction} />
+      )}
       {/* Row 1: KPI Cards */}
       <div className="prj-kpi-grid">
         <div className="prj-kpi-card">
@@ -300,7 +438,9 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
         <div className="prj-kpi-card">
           <div className="prj-kpi-title">Financial Summary</div>
           <div className="prj-kpi-main">{fmtMoney(contractValue)}</div>
-          <div className="prj-kpi-sub-label">Contract Value</div>
+          <div className="prj-kpi-sub-label">
+            {(fin?.approved_change_orders ?? 0) > 0 ? 'Current Project Value' : 'Contract Value'}
+          </div>
           <div className="prj-kpi-rows">
             <div className="prj-kpi-row"><span>Invoiced</span><span>{fmtMoney(invoiced)}</span></div>
             <div className="prj-kpi-row"><span>Collected</span><span>{fmtMoney(collected)}</span></div>
@@ -580,6 +720,8 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
       scheduled_time:   wo.scheduled_at     ? wo.scheduled_at.slice(11, 16) : '',
       duration_minutes: wo.duration_minutes || 0,
       instructions:     wo.instructions     || '',
+      asset_id:         wo.asset_id         || null,
+      asset_name:       wo.asset_name       || null,
     });
     setEditingWo(true);
   }
@@ -603,6 +745,7 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
         instructions:     woForm.instructions || null,
         tech_id:          primary?.userId     || null,
         assignment:       woForm.assignment,
+        asset_id:         woForm.asset_id     || null,
       });
       setEditingWo(false);
       onRefresh();
@@ -722,6 +865,15 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
               <div className="prj-wo-section">
                 <div className="prj-wo-section-label">Scope</div>
                 <div className="form-group">
+                  <label>Asset / Equipment</label>
+                  <AssetPicker
+                    value={woForm.asset_id}
+                    assetName={woForm.asset_name}
+                    onChange={(id, name) => setWoForm(p => ({ ...p, asset_id: id, asset_name: name }))}
+                    clientId={null}
+                  />
+                </div>
+                <div className="form-group">
                   <label>Description</label>
                   <textarea rows={2} value={woForm.description} onChange={e => setWoForm(p => ({ ...p, description: e.target.value }))} />
                 </div>
@@ -739,6 +891,12 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
             </form>
           ) : (
             <div className="prj-wo-details">
+              {wo.asset_name && (
+                <div className="prj-wo-asset">
+                  <span className="prj-wo-asset-label">Asset / Equipment</span>
+                  <span className="prj-wo-asset-val">{wo.asset_name}</span>
+                </div>
+              )}
               {wo.description && <p className="prj-wo-desc">{wo.description}</p>}
               {wo.instructions && (
                 <div className="prj-wo-instructions">
@@ -856,6 +1014,7 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
       status: 'draft', priority: 'normal',
       scheduled_date: '', scheduled_time: '',
       duration_minutes: 0, instructions: '',
+      asset_id: null, asset_name: null,
     });
     setError('');
     setShowForm(true);
@@ -894,6 +1053,7 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
         instructions:     form.instructions  || null,
         tech_id:          primary?.userId    || null,
         assignment:       form.assignment,
+        asset_id:         form.asset_id      || null,
       });
       setShowForm(false);
       load();
@@ -1019,6 +1179,15 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
             <div className="prj-wo-section">
               <div className="prj-wo-section-label">Scope</div>
               <div className="form-group">
+                <label>Asset / Equipment</label>
+                <AssetPicker
+                  value={form.asset_id}
+                  assetName={form.asset_name}
+                  onChange={(id, name) => setForm(p => ({ ...p, asset_id: id, asset_name: name }))}
+                  clientId={null}
+                />
+              </div>
+              <div className="form-group">
                 <label>Description</label>
                 <textarea rows={2} value={form.description} onChange={setField('description')} />
               </div>
@@ -1067,6 +1236,340 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
   );
 }
 
+// ── Budget / Change Orders constants ─────────────────────
+const BUDGET_CATEGORIES = [
+  { key: 'labor',          label: 'Labor' },
+  { key: 'materials',      label: 'Materials' },
+  { key: 'equipment',      label: 'Equipment' },
+  { key: 'subcontractors', label: 'Subcontractors' },
+  { key: 'travel',         label: 'Travel' },
+  { key: 'other',          label: 'Other' },
+];
+const CO_STATUS_LABELS = {
+  draft: 'Draft', pending_approval: 'Pending Approval',
+  approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled',
+};
+const CO_STATUSES = ['draft', 'pending_approval', 'approved', 'rejected', 'cancelled'];
+
+// ── Budget Section ────────────────────────────────────────
+function BudgetSection({ projectId, budget, onRefresh, isOwnerOrMgr }) {
+  const [editing, setEditing]       = useState(false);
+  const [budgetForm, setBudgetForm] = useState({});
+  const [saving, setSaving]         = useState(false);
+
+  function openEdit() {
+    const f = {};
+    for (const cat of BUDGET_CATEGORIES) {
+      const row = (budget || []).find(b => b.category === cat.key);
+      f[cat.key] = row?.budget_cents ? (row.budget_cents / 100).toFixed(2) : '';
+    }
+    setBudgetForm(f);
+    setEditing(true);
+  }
+
+  async function saveBudget(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const categories = BUDGET_CATEGORIES.map(cat => ({
+        category: cat.key,
+        budget_cents: budgetForm[cat.key] ? Math.round(parseFloat(budgetForm[cat.key]) * 100) : 0,
+      }));
+      await api.put(`/projects/${projectId}/budget`, { categories });
+      setEditing(false);
+      onRefresh();
+    } catch {}
+    setSaving(false);
+  }
+
+  const totalBudget = (budget || []).reduce((s, b) => s + (b.budget_cents || 0), 0);
+  const totalActual = (budget || []).reduce((s, b) => s + (b.actual_cents  || 0), 0);
+  const hasBudget   = totalBudget > 0;
+
+  return (
+    <div className="prj-section">
+      <div className="prj-section-header">
+        <span className="prj-section-title">Budget vs Actual</span>
+        {isOwnerOrMgr && !editing && (
+          <button className="tb-btn tb-ghost" onClick={openEdit}>
+            {hasBudget ? 'Edit Budget' : 'Set Budget'}
+          </button>
+        )}
+      </div>
+
+      {editing && (
+        <form className="prj-budget-edit-form" onSubmit={saveBudget}>
+          <div className="prj-budget-edit-grid">
+            {BUDGET_CATEGORIES.map(cat => (
+              <div key={cat.key} className="form-group">
+                <label>{cat.label} ($)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={budgetForm[cat.key] || ''}
+                  onChange={e => setBudgetForm(p => ({ ...p, [cat.key]: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="prj-form-actions">
+            <button type="submit" className="tb-btn tb-primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Budget'}
+            </button>
+            <button type="button" className="tb-btn tb-ghost" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      <div className="table-wrap">
+        <table className="table prj-budget-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th style={{ textAlign: 'right' }}>Budget</th>
+              <th style={{ textAlign: 'right' }}>Actual</th>
+              <th style={{ textAlign: 'right' }}>Remaining</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {BUDGET_CATEGORIES.map(cat => {
+              const row       = (budget || []).find(b => b.category === cat.key) || {};
+              const budgeted  = row.budget_cents || 0;
+              const actual    = row.actual_cents  || 0;
+              const remaining = budgeted - actual;
+              const isOver    = budgeted > 0 && actual > budgeted;
+              const isUnder   = budgeted > 0 && actual <= budgeted;
+              return (
+                <tr key={cat.key}>
+                  <td>{cat.label}</td>
+                  <td style={{ textAlign: 'right' }}>{budgeted ? fmtMoney(budgeted) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtMoney(actual)}</td>
+                  <td style={{ textAlign: 'right', color: isOver ? 'var(--danger,#c00)' : undefined }}>
+                    {budgeted ? fmtMoney(remaining) : '—'}
+                  </td>
+                  <td>
+                    {isOver  && <span className="prj-budget-badge prj-budget-badge--over">Over</span>}
+                    {isUnder && <span className="prj-budget-badge prj-budget-badge--under">Under</span>}
+                    {!budgeted && <span className="prj-budget-badge prj-budget-badge--none">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {hasBudget && (
+            <tfoot>
+              <tr className="prj-budget-total-row">
+                <td><strong>Total</strong></td>
+                <td style={{ textAlign: 'right' }}><strong>{fmtMoney(totalBudget)}</strong></td>
+                <td style={{ textAlign: 'right' }}><strong>{fmtMoney(totalActual)}</strong></td>
+                <td style={{ textAlign: 'right', color: totalActual > totalBudget ? 'var(--danger,#c00)' : undefined }}>
+                  <strong>{fmtMoney(totalBudget - totalActual)}</strong>
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Change Orders Section ─────────────────────────────────
+function ChangeOrdersSection({ projectId, changeOrders, onRefresh, isOwnerOrMgr }) {
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState({ title: '', description: '', amount: '' });
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  function openForm() {
+    setForm({ title: '', description: '', amount: '' });
+    setError('');
+    setShowForm(true);
+  }
+
+  async function createCo(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await api.post(`/projects/${projectId}/change-orders`, {
+        title:        form.title,
+        description:  form.description || null,
+        amount_cents: form.amount ? Math.round(parseFloat(form.amount) * 100) : 0,
+      });
+      setShowForm(false);
+      onRefresh();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create change order.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateStatus(coId, status) {
+    try {
+      await api.patch(`/projects/${projectId}/change-orders/${coId}`, { status });
+      onRefresh();
+    } catch {}
+  }
+
+  async function deleteCo(coId) {
+    try {
+      await api.delete(`/projects/${projectId}/change-orders/${coId}`);
+      setConfirmDeleteId(null);
+      onRefresh();
+    } catch {}
+  }
+
+  const approvedTotal = (changeOrders || [])
+    .filter(co => co.status === 'approved')
+    .reduce((s, co) => s + (co.amount_cents || 0), 0);
+
+  return (
+    <div className="prj-section">
+      <div className="prj-section-header">
+        <span className="prj-section-title">Change Orders</span>
+        {isOwnerOrMgr && !showForm && (
+          <button className="tb-btn tb-ghost" onClick={openForm}>
+            <Plus size={13} /> Add
+          </button>
+        )}
+      </div>
+
+      {approvedTotal > 0 && (
+        <div className="prj-co-approved-banner">
+          Approved change orders add <strong>{fmtMoney(approvedTotal)}</strong> to the contract value.
+        </div>
+      )}
+
+      {showForm && (
+        <div className="prj-co-form">
+          {error && <div className="prj-form-error">{error}</div>}
+          <form onSubmit={createCo}>
+            <div className="form-row">
+              <div className="form-group" style={{ flex: 3 }}>
+                <label>Title *</label>
+                <input
+                  value={form.title}
+                  onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                  required
+                  placeholder="e.g. Additional scope — foundation repair"
+                />
+              </div>
+              <div className="form-group">
+                <label>Amount ($)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.amount}
+                  onChange={e => setForm(p => ({ ...p, amount: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <textarea
+                rows={2}
+                value={form.description}
+                onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+                placeholder="Optional details…"
+              />
+            </div>
+            <div className="prj-form-actions">
+              <button type="submit" className="tb-btn tb-primary" disabled={saving}>
+                {saving ? 'Creating…' : 'Create Change Order'}
+              </button>
+              <button type="button" className="tb-btn tb-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {!(changeOrders?.length) && !showForm ? (
+        <div className="prj-mat-empty">
+          <p className="prj-mat-empty-primary">No change orders yet.</p>
+          <p className="prj-mat-empty-sub">Track scope changes and their impact on the contract value.</p>
+          {isOwnerOrMgr && (
+            <button className="tb-btn tb-ghost" onClick={openForm}>
+              <Plus size={13} /> Add Change Order
+            </button>
+          )}
+        </div>
+      ) : changeOrders?.length > 0 ? (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>CO #</th>
+                <th>Title</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+                <th>Status</th>
+                <th>Created</th>
+                {isOwnerOrMgr && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {changeOrders.map(co => (
+                <tr key={co.id}>
+                  <td className="prj-num">{fmtCoNum(co.change_order_number)}</td>
+                  <td>
+                    <strong>{co.title}</strong>
+                    {co.description && <div className="prj-mat-desc">{co.description}</div>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{fmtMoney(co.amount_cents)}</td>
+                  <td>
+                    {isOwnerOrMgr ? (
+                      <select
+                        className="prj-co-status-select"
+                        value={co.status}
+                        onChange={e => updateStatus(co.id, e.target.value)}
+                      >
+                        {CO_STATUSES.map(s => (
+                          <option key={s} value={s}>{CO_STATUS_LABELS[s]}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={`prj-co-status prj-co-status--${co.status}`}>
+                        {CO_STATUS_LABELS[co.status] || co.status}
+                      </span>
+                    )}
+                  </td>
+                  <td className="prj-mat-date">{fmtDate(co.created_at)}</td>
+                  {isOwnerOrMgr && (
+                    <td style={{ textAlign: 'right' }}>
+                      {co.status === 'draft' && (
+                        confirmDeleteId === co.id ? (
+                          <span className="prj-mat-confirm">
+                            Delete?{' '}
+                            <button className="prj-mat-confirm-yes" onClick={() => deleteCo(co.id)}>Yes</button>
+                            {' / '}
+                            <button className="prj-mat-confirm-no" onClick={() => setConfirmDeleteId(null)}>No</button>
+                          </span>
+                        ) : (
+                          <button
+                            className="prj-icon-btn prj-icon-btn--danger"
+                            onClick={() => setConfirmDeleteId(co.id)}
+                            aria-label="Delete change order"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Financials Tab ────────────────────────────────────────
 const EMPTY_MAT_FORM = {
   type: 'material', name: '', description: '', vendor: '',
@@ -1074,7 +1577,10 @@ const EMPTY_MAT_FORM = {
   cost_cents: '', price_cents: '',
   billable: false, purchase_date: '', job_id: '',
 };
-const MAT_TYPE_LABELS = { material: 'Material', expense: 'Expense', other: 'Other' };
+const MAT_TYPE_LABELS = {
+  material: 'Material', expense: 'Expense', other: 'Other',
+  labor: 'Labor', equipment: 'Equipment', subcontractor: 'Subcontractor', travel: 'Travel',
+};
 
 function MatForm({ form, onChange, workOrders, error, saving, onSubmit, onCancel, submitLabel }) {
   // form.cost_cents / price_cents hold dollar amounts as strings (user types "12.50")
@@ -1178,6 +1684,8 @@ function FinancialsTab({ projectId }) {
   const [fin, setFin]               = useState(null);
   const [mats, setMats]             = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
+  const [budget, setBudget]         = useState([]);
+  const [changeOrders, setChangeOrders] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [mode, setMode]             = useState(null); // null | 'add' | mat.id (editing)
   const [matForm, setMatForm]       = useState(EMPTY_MAT_FORM);
@@ -1189,14 +1697,18 @@ function FinancialsTab({ projectId }) {
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [fRes, mRes, woRes] = await Promise.allSettled([
+    const [fRes, mRes, woRes, budgetRes, coRes] = await Promise.allSettled([
       api.get(`/projects/${projectId}/financials`),
       api.get(`/projects/${projectId}/materials`),
       api.get(`/projects/${projectId}/work-orders`),
+      api.get(`/projects/${projectId}/budget`),
+      api.get(`/projects/${projectId}/change-orders`),
     ]);
-    if (fRes.status  === 'fulfilled') setFin(fRes.value.data);
-    if (mRes.status  === 'fulfilled') setMats(mRes.value.data);
-    if (woRes.status === 'fulfilled') setWorkOrders(woRes.value.data || []);
+    if (fRes.status      === 'fulfilled') setFin(fRes.value.data);
+    if (mRes.status      === 'fulfilled') setMats(mRes.value.data);
+    if (woRes.status     === 'fulfilled') setWorkOrders(woRes.value.data || []);
+    if (budgetRes.status === 'fulfilled') setBudget(budgetRes.value.data || []);
+    if (coRes.status     === 'fulfilled') setChangeOrders(coRes.value.data || []);
     setLoading(false);
   }, [projectId]);
 
@@ -1292,8 +1804,17 @@ function FinancialsTab({ projectId }) {
       {fin && (
         <div className="prj-fin-summary">
           <div className="prj-fin-metric">
-            <span className="prj-fin-label">Contract Value</span>
-            <span className="prj-fin-val">{fmtMoney(fin.contract_value)}</span>
+            <span className="prj-fin-label">
+              {(fin.approved_change_orders ?? 0) > 0 ? 'Current Project Value' : 'Contract Value'}
+            </span>
+            <span className="prj-fin-val">
+              {fmtMoney(fin.current_project_value ?? fin.contract_value)}
+            </span>
+            {(fin.approved_change_orders ?? 0) > 0 && (
+              <span className="prj-fin-sub">
+                {fmtMoney(fin.contract_value)} + {fmtMoney(fin.approved_change_orders)} in COs
+              </span>
+            )}
           </div>
           <div className="prj-fin-metric">
             <span className="prj-fin-label">Total Cost</span>
@@ -1433,6 +1954,20 @@ function FinancialsTab({ projectId }) {
           </div>
         ) : null}
       </div>
+
+      <BudgetSection
+        projectId={projectId}
+        budget={budget}
+        onRefresh={() => load(true)}
+        isOwnerOrMgr={isOwnerOrMgr}
+      />
+
+      <ChangeOrdersSection
+        projectId={projectId}
+        changeOrders={changeOrders}
+        onRefresh={() => load(true)}
+        isOwnerOrMgr={isOwnerOrMgr}
+      />
     </div>
   );
 }
@@ -1515,7 +2050,7 @@ const TABS = [
   { key: 'overview',    label: 'Overview' },
   { key: 'work-orders', label: 'Work Orders' },
   { key: 'financials',  label: 'Financials' },
-  { key: 'activity',   label: 'Files & Activity' },
+  { key: 'activity',   label: 'Files & History' },
 ];
 
 export default function ProjectWorkspace() {

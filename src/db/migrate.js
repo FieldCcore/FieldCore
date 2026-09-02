@@ -2519,6 +2519,78 @@ const MIGRATIONS = [
   `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS vendor        TEXT`,
   `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS purchase_date DATE`,
   `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS created_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
+
+  // ── PROJECTS FINAL ADDITIONS — Health, Assets, Budget, Change Orders ──────────
+
+  // Canonical reusable assets (client equipment/units, not fleet vehicles)
+  `CREATE TABLE IF NOT EXISTS assets (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     client_id     UUID REFERENCES clients(id) ON DELETE SET NULL,
+     name          TEXT NOT NULL,
+     asset_type    TEXT,
+     unit_number   TEXT,
+     serial_number TEXT,
+     vin           TEXT,
+     description   TEXT,
+     status        TEXT NOT NULL DEFAULT 'active'
+                     CHECK (status IN ('active','inactive','retired')),
+     notes         TEXT,
+     created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_assets_account ON assets(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_assets_client  ON assets(account_id, client_id)`,
+
+  // Associate a canonical asset with a work order (job with project_id)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS asset_id UUID REFERENCES assets(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_asset_id ON jobs(asset_id) WHERE asset_id IS NOT NULL`,
+
+  // Per-project budget by category (one row per category per project)
+  `CREATE TABLE IF NOT EXISTS project_budgets (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+     category     TEXT NOT NULL
+                    CHECK (category IN ('labor','materials','equipment','subcontractors','travel','other')),
+     budget_cents INT NOT NULL DEFAULT 0,
+     UNIQUE (project_id, category)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_project_budgets_project ON project_budgets(project_id)`,
+
+  // Change orders per project (preserve original contract value)
+  `CREATE TABLE IF NOT EXISTS project_change_orders (
+     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id          UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     project_id          UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+     change_order_number INT NOT NULL DEFAULT 1,
+     title               TEXT NOT NULL,
+     description         TEXT,
+     amount_cents        INT NOT NULL DEFAULT 0,
+     status              TEXT NOT NULL DEFAULT 'draft'
+                           CHECK (status IN ('draft','pending_approval','approved','rejected','cancelled')),
+     requested_at        TIMESTAMPTZ,
+     approved_at         TIMESTAMPTZ,
+     rejected_at         TIMESTAMPTZ,
+     created_by          UUID REFERENCES users(id) ON DELETE SET NULL,
+     approved_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_pco_project ON project_change_orders(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_pco_account ON project_change_orders(account_id)`,
+
+  // Atomic CO number per project
+  `CREATE TABLE IF NOT EXISTS change_order_number_sequences (
+     project_id  UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+     last_number INT NOT NULL DEFAULT 0
+   )`,
+
+  // Expand work_order_materials type to cover budget categories
+  `ALTER TABLE work_order_materials DROP CONSTRAINT IF EXISTS work_order_materials_type_check`,
+  `ALTER TABLE work_order_materials ADD CONSTRAINT work_order_materials_type_check
+     CHECK (type IN ('material','expense','other','labor','equipment','subcontractor','travel'))`,
 ];
 
 async function runMigrations() {

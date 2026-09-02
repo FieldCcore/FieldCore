@@ -310,7 +310,16 @@ export default function Projects() {
   }
 
   // Displayed service location string for the list
-  function fmtLocation(p) {
+  function listHealth(p) {
+  if (['completed', 'cancelled'].includes(p.status)) return null;
+  if (!p.end_date) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end   = new Date(p.end_date);
+  if (end < today) return 'behind';
+  if ((end - today) / 86400000 <= 7) return 'attention';
+  return 'on_track';
+}
+function fmtLocation(p) {
     const parts = [p.service_address, p.service_city, p.service_state].filter(Boolean);
     return parts.join(', ') || null;
   }
@@ -385,6 +394,7 @@ export default function Projects() {
                 <th style={{ minWidth: 220 }}>Project</th>
                 <th>Client</th>
                 <th>Status</th>
+                <th>Health</th>
                 <th>Project Manager</th>
                 <th>Start</th>
                 <th>Target End</th>
@@ -416,6 +426,20 @@ export default function Projects() {
 
                   <td>
                     <StatusBadge status={p.status}>{STATUS_LABELS[p.status]}</StatusBadge>
+                  </td>
+
+                  <td>
+                    {(() => {
+                      const h = listHealth(p);
+                      if (!h) return <span className="prj-muted">—</span>;
+                      const cfg = {
+                        on_track:  { label: 'On Track',  cls: 'prj-health-badge--on-track'  },
+                        attention: { label: 'Attention', cls: 'prj-health-badge--attention' },
+                        behind:    { label: 'Behind',    cls: 'prj-health-badge--behind'    },
+                      };
+                      const { label, cls } = cfg[h];
+                      return <span className={`prj-health-badge ${cls}`}>{label}</span>;
+                    })()}
                   </td>
 
                   <td>

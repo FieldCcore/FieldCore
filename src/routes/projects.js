@@ -38,6 +38,17 @@ async function nextProjectNumber(client, accountId) {
   return rows[0].last_number;
 }
 
+async function nextCoNumber(client, projectId) {
+  const { rows } = await client.query(`
+    INSERT INTO change_order_number_sequences (project_id, last_number)
+    VALUES ($1, 1)
+    ON CONFLICT (project_id) DO UPDATE
+      SET last_number = change_order_number_sequences.last_number + 1
+    RETURNING last_number
+  `, [projectId]);
+  return rows[0].last_number;
+}
+
 async function nextWorkOrderNumber(client, projectId) {
   const { rows } = await client.query(`
     INSERT INTO work_order_number_sequences (project_id, last_number)
@@ -289,6 +300,7 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
     const { rows } = await pool.query(`
       SELECT j.*,
              u.name AS tech_name,
+             a.name AS asset_name,
              COALESCE(t.task_count, 0)::int    AS task_count,
              COALESCE(t.complete_count, 0)::int AS complete_count,
              COALESCE(m.material_cost, 0)::int  AS material_cost,
@@ -296,6 +308,7 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
              COALESCE(tm.team_members, '[]'::json) AS team_members
       FROM jobs j
       LEFT JOIN users u ON u.id = j.tech_id
+      LEFT JOIN assets a ON a.id = j.asset_id
       LEFT JOIN (
         SELECT job_id,
                COUNT(*) AS task_count,
@@ -339,7 +352,7 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
     status = 'draft',
     scheduled_at, duration_minutes, priority = 'normal',
     service_address, service_city, service_state, service_zip,
-    location_id, instructions,
+    location_id, instructions, asset_id,
     tech_id: legacyTechId,
   } = req.body;
 
@@ -370,8 +383,8 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
         title, description, client_id, tech_id, status,
         scheduled_at, duration_minutes, priority,
         service_address, service_city, service_state, service_zip,
-        location_id, instructions, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        location_id, instructions, asset_id, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       RETURNING *
     `, [
       req.accountId, req.params.id, woNum,
@@ -380,7 +393,7 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
       scheduled_at || null, duration_minutes || null, priority,
       service_address || null, service_city || null,
       service_state || null, service_zip || null,
-      location_id || null, instructions || null, req.userId,
+      location_id || null, instructions || null, asset_id || null, req.userId,
     ]);
 
     const jobId = rows[0].id;
@@ -425,7 +438,7 @@ router.patch('/:id/work-orders/:woId', requireAuth, requireRole('owner', 'manage
     'title', 'description', 'tech_id', 'status', 'scheduled_at',
     'duration_minutes', 'priority',
     'service_address', 'service_city', 'service_state', 'service_zip',
-    'location_id', 'instructions',
+    'location_id', 'instructions', 'asset_id',
   ];
   const updates = [];
   const values  = [];
@@ -716,20 +729,18 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
     );
     if (!projRes.rows.length) return res.status(404).json({ error: 'Project not found.' });
 
-    const [matRes, invRes, woRes] = await Promise.all([
-      // Split costs by type: 'material' vs 'expense'/'other'
+    const [matRes, invRes, woRes, coRes] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(CASE WHEN type = 'material'
                             THEN cost_cents * quantity ELSE 0 END), 0)::int AS material_cost,
-          COALESCE(SUM(CASE WHEN type IN ('expense', 'other')
+          COALESCE(SUM(CASE WHEN type IN ('expense','other')
                             THEN cost_cents * quantity ELSE 0 END), 0)::int AS other_cost,
           COALESCE(SUM(cost_cents * quantity), 0)::int                       AS total_cost_raw,
           COALESCE(SUM(price_cents * quantity), 0)::int                      AS total_billable
         FROM work_order_materials WHERE project_id = $1 AND account_id = $2
       `, [req.params.id, req.accountId]),
 
-      // Exclude void invoices from invoiced total
       pool.query(`
         SELECT
           COALESCE(SUM(ROUND(amount * 100)), 0)::int AS total_invoiced,
@@ -743,37 +754,48 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
           COUNT(CASE WHEN status = 'complete' THEN 1 END)::int AS completed_count
         FROM jobs WHERE project_id = $1 AND account_id = $2 AND deleted_at IS NULL
       `, [req.params.id, req.accountId]),
+
+      // Approved change orders total
+      pool.query(`
+        SELECT COALESCE(SUM(amount_cents), 0)::int AS approved_co_total
+        FROM project_change_orders
+        WHERE project_id = $1 AND account_id = $2 AND status = 'approved'
+      `, [req.params.id, req.accountId]),
     ]);
 
-    const contractValue  = projRes.rows[0].contract_value ?? 0;
-    const materialCost   = matRes.rows[0].material_cost;
-    const otherCost      = matRes.rows[0].other_cost;
-    const totalCost      = materialCost + otherCost; // labor = 0 until time-tracking exists
-    const totalInvoiced  = invRes.rows[0].total_invoiced;
-    const totalPaid      = invRes.rows[0].total_paid;
-    const outstanding    = Math.max(0, totalInvoiced - totalPaid);
+    const originalContractValue = projRes.rows[0].contract_value ?? 0;
+    const approvedCOs            = coRes.rows[0].approved_co_total;
+    const currentProjectValue    = originalContractValue + approvedCOs;
+    const materialCost           = matRes.rows[0].material_cost;
+    const otherCost              = matRes.rows[0].other_cost;
+    const totalCost              = materialCost + otherCost;
+    const totalInvoiced          = invRes.rows[0].total_invoiced;
+    const totalPaid              = invRes.rows[0].total_paid;
+    const outstanding            = Math.max(0, totalInvoiced - totalPaid);
 
-    // Margin only meaningful when contract value is set AND there are costs
-    const grossMarginAmt = (contractValue > 0 || totalCost > 0)
-      ? contractValue - totalCost : null;
-    const grossMarginPct = contractValue > 0 && grossMarginAmt != null
-      ? Math.round((grossMarginAmt / contractValue) * 100) : null;
+    const grossMarginAmt = (currentProjectValue > 0 || totalCost > 0)
+      ? currentProjectValue - totalCost : null;
+    const grossMarginPct = currentProjectValue > 0 && grossMarginAmt != null
+      ? Math.round((grossMarginAmt / currentProjectValue) * 100) : null;
 
     res.json({
-      contract_value:        contractValue,
-      material_cost:         materialCost,
-      other_cost:            otherCost,
-      labor_cost:            null,   // no time-tracking integration yet
-      total_cost:            totalCost,
-      total_billable:        matRes.rows[0].total_billable,
-      total_invoiced:        totalInvoiced,
-      total_paid:            totalPaid,
-      outstanding:           outstanding,
-      gross_margin_amount:   grossMarginAmt,
-      gross_margin_pct:      grossMarginPct,
-      margin_basis:          'contract_value',
-      work_order_count:      woRes.rows[0].work_order_count,
-      completed_work_orders: woRes.rows[0].completed_count,
+      original_contract_value: originalContractValue,
+      approved_change_orders:  approvedCOs,
+      current_project_value:   currentProjectValue,
+      contract_value:          originalContractValue, // backward compat
+      material_cost:           materialCost,
+      other_cost:              otherCost,
+      labor_cost:              null,
+      total_cost:              totalCost,
+      total_billable:          matRes.rows[0].total_billable,
+      total_invoiced:          totalInvoiced,
+      total_paid:              totalPaid,
+      outstanding:             outstanding,
+      gross_margin_amount:     grossMarginAmt,
+      gross_margin_pct:        grossMarginPct,
+      margin_basis:            'current_project_value',
+      work_order_count:        woRes.rows[0].work_order_count,
+      completed_work_orders:   woRes.rows[0].completed_count,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -796,6 +818,326 @@ router.get('/:id/activity', requireAuth, requireRole('owner', 'manager', 'staff'
       LIMIT 100
     `, [req.params.id, req.accountId]);
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// PROJECT HEALTH + NEXT ACTION
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/projects/:id/health
+router.get('/:id/health', requireAuth, requireRole('owner', 'manager', 'staff'), cap, async (req, res) => {
+  try {
+    const [projRes, woRes] = await Promise.all([
+      pool.query(
+        `SELECT id, status, end_date FROM projects WHERE id = $1 AND account_id = $2`,
+        [req.params.id, req.accountId]
+      ),
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(CASE WHEN status NOT IN ('complete','cancelled')
+                          AND scheduled_at IS NOT NULL
+                          AND scheduled_at < NOW() THEN 1 END)::int AS overdue,
+          COUNT(CASE WHEN status NOT IN ('complete','cancelled') THEN 1 END)::int AS active
+        FROM jobs
+        WHERE project_id = $1 AND account_id = $2 AND deleted_at IS NULL
+      `, [req.params.id, req.accountId]),
+    ]);
+
+    if (!projRes.rows.length) return res.status(404).json({ error: 'Project not found.' });
+
+    const project   = projRes.rows[0];
+    const wo        = woRes.rows[0];
+    const today     = new Date().toISOString().slice(0, 10);
+    const endDate   = project.end_date ? project.end_date.slice(0, 10) : null;
+    const daysUntilEnd = endDate
+      ? Math.ceil((new Date(endDate) - new Date(today)) / 86400000)
+      : null;
+    const isOverdue     = endDate && endDate < today && !['completed', 'cancelled'].includes(project.status);
+    const overdueWOs    = wo.overdue;
+    const activeWOs     = wo.active;
+    const overdueRate   = activeWOs > 0 ? overdueWOs / activeWOs : 0;
+
+    let health, reason;
+    if (['completed', 'cancelled'].includes(project.status)) {
+      health = 'on_track';
+      reason = project.status === 'completed' ? 'Project is complete.' : 'Project is cancelled.';
+    } else if (isOverdue || overdueRate > 0.5) {
+      health = 'behind';
+      reason = isOverdue
+        ? 'Project end date has passed.'
+        : `${overdueWOs} of ${activeWOs} active work orders are past their scheduled date.`;
+    } else if (overdueWOs > 0 || (daysUntilEnd !== null && daysUntilEnd >= 0 && daysUntilEnd <= 7)) {
+      health = 'attention';
+      reason = overdueWOs > 0
+        ? `${overdueWOs} work order${overdueWOs > 1 ? 's' : ''} past scheduled date.`
+        : `Project ends in ${daysUntilEnd} day${daysUntilEnd === 1 ? '' : 's'}.`;
+    } else {
+      health = 'on_track';
+      reason = activeWOs === 0 ? 'No active work orders.' : 'All work orders on schedule.';
+    }
+
+    // Next action: next non-cancelled, non-complete WO
+    const nextRes = await pool.query(`
+      SELECT j.id, j.work_order_number, j.title, j.status, j.scheduled_at,
+             u.name AS tech_name
+      FROM jobs j
+      LEFT JOIN users u ON u.id = j.tech_id
+      WHERE j.project_id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL
+        AND j.status NOT IN ('complete','cancelled')
+      ORDER BY
+        CASE WHEN j.scheduled_at IS NOT NULL THEN 0 ELSE 1 END,
+        j.scheduled_at ASC NULLS LAST,
+        j.work_order_number ASC
+      LIMIT 1
+    `, [req.params.id, req.accountId]);
+
+    res.json({ health, reason, next_action: nextRes.rows[0] || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// BUDGET VS ACTUAL
+// ═══════════════════════════════════════════════════════════
+
+const BUDGET_CATEGORIES = ['labor', 'materials', 'equipment', 'subcontractors', 'travel', 'other'];
+
+// GET /api/projects/:id/budget
+router.get('/:id/budget', requireAuth, requireRole('owner', 'manager', 'staff'), cap, async (req, res) => {
+  try {
+    const check = await pool.query(
+      `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!check.rows.length) return res.status(404).json({ error: 'Project not found.' });
+
+    const [budgetRes, actualRes] = await Promise.all([
+      pool.query(
+        `SELECT category, budget_cents FROM project_budgets WHERE project_id = $1 AND account_id = $2`,
+        [req.params.id, req.accountId]
+      ),
+      pool.query(`
+        SELECT
+          CASE type
+            WHEN 'material'      THEN 'materials'
+            WHEN 'labor'         THEN 'labor'
+            WHEN 'equipment'     THEN 'equipment'
+            WHEN 'subcontractor' THEN 'subcontractors'
+            WHEN 'travel'        THEN 'travel'
+            ELSE 'other'
+          END AS category,
+          COALESCE(SUM(cost_cents * quantity), 0)::int AS actual_cents
+        FROM work_order_materials
+        WHERE project_id = $1 AND account_id = $2
+        GROUP BY 1
+      `, [req.params.id, req.accountId]),
+    ]);
+
+    const budgetMap = {};
+    for (const b of budgetRes.rows) budgetMap[b.category] = b.budget_cents;
+    const actualMap = {};
+    for (const a of actualRes.rows) actualMap[a.category] = a.actual_cents;
+
+    const categories = BUDGET_CATEGORIES.map(cat => ({
+      category:        cat,
+      budget_cents:    budgetMap[cat]  ?? 0,
+      actual_cents:    actualMap[cat]  ?? 0,
+      remaining_cents: (budgetMap[cat] ?? 0) - (actualMap[cat] ?? 0),
+    }));
+
+    res.json({
+      categories,
+      total_budget_cents:    categories.reduce((s, r) => s + r.budget_cents, 0),
+      total_actual_cents:    categories.reduce((s, r) => s + r.actual_cents, 0),
+      total_remaining_cents: categories.reduce((s, r) => s + r.remaining_cents, 0),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/projects/:id/budget — upsert all categories at once
+router.put('/:id/budget', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
+  const { categories } = req.body;
+  if (!Array.isArray(categories)) return res.status(400).json({ error: 'categories must be an array.' });
+
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    const check = await db.query(
+      `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!check.rows.length) {
+      await db.query('ROLLBACK');
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    for (const { category, budget_cents } of categories) {
+      if (!BUDGET_CATEGORIES.includes(category)) continue;
+      await db.query(`
+        INSERT INTO project_budgets (account_id, project_id, category, budget_cents)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (project_id, category) DO UPDATE SET budget_cents = $4
+      `, [req.accountId, req.params.id, category, parseInt(budget_cents) || 0]);
+    }
+
+    await db.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    db.release();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CHANGE ORDERS
+// ═══════════════════════════════════════════════════════════
+
+const VALID_CO_STATUSES = ['draft', 'pending_approval', 'approved', 'rejected', 'cancelled'];
+
+// GET /api/projects/:id/change-orders
+router.get('/:id/change-orders', requireAuth, requireRole('owner', 'manager', 'staff'), cap, async (req, res) => {
+  try {
+    const check = await pool.query(
+      `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!check.rows.length) return res.status(404).json({ error: 'Project not found.' });
+
+    const { rows } = await pool.query(`
+      SELECT co.*,
+             cb.name AS created_by_name,
+             ab.name AS approved_by_name
+      FROM project_change_orders co
+      LEFT JOIN users cb ON cb.id = co.created_by
+      LEFT JOIN users ab ON ab.id = co.approved_by
+      WHERE co.project_id = $1 AND co.account_id = $2
+      ORDER BY co.change_order_number ASC
+    `, [req.params.id, req.accountId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/change-orders
+router.post('/:id/change-orders', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
+  const { title, description, amount_cents = 0, status = 'draft', requested_at } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'Change order title is required.' });
+  if (!VALID_CO_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    const check = await db.query(
+      `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!check.rows.length) {
+      await db.query('ROLLBACK');
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    const coNum = await nextCoNumber(db, req.params.id);
+    const { rows } = await db.query(`
+      INSERT INTO project_change_orders
+        (account_id, project_id, change_order_number, title, description, amount_cents, status, requested_at, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING *
+    `, [
+      req.accountId, req.params.id, coNum, title.trim(), description || null,
+      parseInt(amount_cents) || 0, status, requested_at || null, req.userId,
+    ]);
+
+    await logActivity(db, {
+      accountId: req.accountId, projectId: req.params.id, userId: req.userId,
+      type: 'change_order_added',
+      body: `Change Order CO-${String(coNum).padStart(3, '0')} "${title.trim()}" added.`,
+    });
+
+    await db.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    db.release();
+  }
+});
+
+// PATCH /api/projects/:id/change-orders/:coId
+router.patch('/:id/change-orders/:coId', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
+  const { title, description, amount_cents, status, requested_at } = req.body;
+  const updates = [];
+  const values  = [];
+  let i = 1;
+
+  if (title        !== undefined) { updates.push(`title = $${i++}`);        values.push(title?.trim() || ''); }
+  if (description  !== undefined) { updates.push(`description = $${i++}`);  values.push(description || null); }
+  if (amount_cents !== undefined) { updates.push(`amount_cents = $${i++}`); values.push(parseInt(amount_cents) || 0); }
+  if (requested_at !== undefined) { updates.push(`requested_at = $${i++}`); values.push(requested_at || null); }
+  if (status !== undefined && VALID_CO_STATUSES.includes(status)) {
+    updates.push(`status = $${i++}`); values.push(status);
+    if (status === 'approved') {
+      updates.push(`approved_at = $${i++}`); values.push(new Date().toISOString());
+      updates.push(`approved_by = $${i++}`); values.push(req.userId);
+    }
+    if (status === 'rejected') {
+      updates.push(`rejected_at = $${i++}`); values.push(new Date().toISOString());
+    }
+  }
+  if (!updates.length) return res.status(400).json({ error: 'No valid fields to update.' });
+  updates.push(`updated_at = NOW()`);
+  values.push(req.params.coId, req.params.id, req.accountId);
+
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    const { rows } = await db.query(`
+      UPDATE project_change_orders SET ${updates.join(', ')}
+      WHERE id = $${i} AND project_id = $${i + 1} AND account_id = $${i + 2}
+      RETURNING *
+    `, values);
+    if (!rows.length) {
+      await db.query('ROLLBACK');
+      return res.status(404).json({ error: 'Change order not found.' });
+    }
+
+    if (status) {
+      await logActivity(db, {
+        accountId: req.accountId, projectId: req.params.id, userId: req.userId,
+        type: 'change_order_status',
+        body: `CO-${String(rows[0].change_order_number).padStart(3, '0')} "${rows[0].title}" marked ${status.replace(/_/g, ' ')}.`,
+      });
+    }
+
+    await db.query('COMMIT');
+    res.json(rows[0]);
+  } catch (err) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    db.release();
+  }
+});
+
+// DELETE /api/projects/:id/change-orders/:coId (draft only)
+router.delete('/:id/change-orders/:coId', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(`
+      DELETE FROM project_change_orders
+      WHERE id = $1 AND project_id = $2 AND account_id = $3 AND status = 'draft'
+    `, [req.params.coId, req.params.id, req.accountId]);
+    if (!rowCount) return res.status(404).json({ error: 'Change order not found or not in draft status.' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
