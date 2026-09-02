@@ -1,0 +1,36 @@
+﻿
+ RUN  v4.1.10 C:/Users/Kevin/fieldcore/client
+
+ ❯ src/domain/technicianStatusPresentation.test.js (45 tests | 1 failed) 62ms
+     × ≤ 30 min (stale threshold) → stale 25ms
+node.exe : 
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/domain/technicianStatusPresentation.test.js > GPS freshness thresholds > ≤ 30 min (stale threshold) → stale
+AssertionError: expected 'offline' to be 'stale' // Object.is equality
+
+Expected: "stale"
+Received: "offline"
+
+ ❯ src/domain/technicianStatusPresentation.test.js:99:20
+     97|   it('≤ 30 min (stale threshold) → stale', () => {
+     98|     const st = getTechStatus(TECH, [makeLoc(GPS_STALE_MS)], []);
+     99|     expect(st.key).toBe('stale');
+       |                    ^
+    100|   });
+    101|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 36 passed (37)
+      Tests  1 failed | 1316 passed (1317)
+   Start at  18:47:04
+   Duration  57.99s (transform 10.58s, setup 23.56s, import 59.69s, tests 114.69s, environment 161.44s)
+

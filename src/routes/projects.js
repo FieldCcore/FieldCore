@@ -69,12 +69,15 @@ router.get('/', requireAuth, requireRole('owner', 'manager', 'staff'), cap, asyn
       SELECT p.*,
              c.name   AS client_name,
              u.name   AS manager_name,
-             COALESCE(wo.cnt, 0)::int AS work_order_count
+             COALESCE(wo.cnt, 0)::int AS work_order_count,
+             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders
       FROM projects p
       LEFT JOIN clients c ON c.id = p.client_id
       LEFT JOIN users   u ON u.id = p.manager_id
       LEFT JOIN (
-        SELECT project_id, COUNT(*) AS cnt
+        SELECT project_id,
+               COUNT(*) AS cnt,
+               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt
         FROM jobs
         WHERE project_id IS NOT NULL AND deleted_at IS NULL
         GROUP BY project_id
@@ -146,15 +149,19 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager', 'staff'), cap, a
       SELECT p.*,
              c.name   AS client_name,
              c.email  AS client_email,
+             c.phone  AS client_phone,
              u.name   AS manager_name,
              cb.name  AS created_by_name,
-             COALESCE(wo.cnt, 0)::int AS work_order_count
+             COALESCE(wo.cnt, 0)::int AS work_order_count,
+             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders
       FROM projects p
       LEFT JOIN clients c  ON c.id  = p.client_id
       LEFT JOIN users   u  ON u.id  = p.manager_id
       LEFT JOIN users   cb ON cb.id = p.created_by
       LEFT JOIN (
-        SELECT project_id, COUNT(*) AS cnt
+        SELECT project_id,
+               COUNT(*) AS cnt,
+               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt
         FROM jobs WHERE project_id IS NOT NULL AND deleted_at IS NULL
         GROUP BY project_id
       ) wo ON wo.project_id = p.id
@@ -264,12 +271,19 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
     );
     if (!check.rows.length) return res.status(404).json({ error: 'Project not found.' });
 
+    const { status: statusFilter, priority: priorityFilter } = req.query;
+    const extraConditions = [];
+    if (statusFilter) extraConditions.push(`j.status = '${statusFilter.replace(/'/g, "''")}'`);
+    if (priorityFilter) extraConditions.push(`j.priority = '${priorityFilter.replace(/'/g, "''")}'`);
+    const extraWhere = extraConditions.length ? ' AND ' + extraConditions.join(' AND ') : '';
+
     const { rows } = await pool.query(`
       SELECT j.*,
              u.name AS tech_name,
              COALESCE(t.task_count, 0)::int    AS task_count,
              COALESCE(t.complete_count, 0)::int AS complete_count,
-             COALESCE(m.material_cost, 0)::int  AS material_cost
+             COALESCE(m.material_cost, 0)::int  AS material_cost,
+             COALESCE(m.price_total, 0)::int    AS material_price
       FROM jobs j
       LEFT JOIN users u ON u.id = j.tech_id
       LEFT JOIN (
@@ -279,10 +293,12 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
         FROM work_order_tasks GROUP BY job_id
       ) t ON t.job_id = j.id
       LEFT JOIN (
-        SELECT job_id, SUM(cost_cents * quantity)::int AS material_cost
+        SELECT job_id,
+               SUM(cost_cents  * quantity)::int AS material_cost,
+               SUM(price_cents * quantity)::int AS price_total
         FROM work_order_materials WHERE job_id IS NOT NULL GROUP BY job_id
       ) m ON m.job_id = j.id
-      WHERE j.project_id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL
+      WHERE j.project_id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL${extraWhere}
       ORDER BY j.work_order_number ASC NULLS LAST, j.created_at ASC
     `, [req.params.id, req.accountId]);
     res.json(rows);
