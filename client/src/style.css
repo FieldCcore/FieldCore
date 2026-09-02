@@ -1,7 +1,7 @@
 /* ============================================================
    FIELDCORE — Brand Design System
    Navy #1C2333 | Sand #D6B58A | Slate #5F667A | Steel #8A90A2
-   Fonts: Inter · DM Mono · Cormorant Garamond
+   Fonts: Inter · DM Mono
    ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -356,7 +356,7 @@ body {
   min-width: 0;
 }
 .tb-title {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 17px;
   color: var(--navy);
   line-height: 1.1;
@@ -744,7 +744,7 @@ body {
   gap: 8px;
 }
 .page-header h1 {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 22px;
   font-weight: 400;
   color: var(--navy);
@@ -905,7 +905,7 @@ body {
   flex-shrink: 0;
 }
 .modal-header h2 {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 17px;
   font-weight: 400;
   color: var(--navy);
@@ -1076,7 +1076,7 @@ body {
 /* ── Profile ─────────────────────────────────────────────── */
 .profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .profile-header h1 {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 26px;
   font-weight: 400;
   color: var(--navy);
@@ -1086,7 +1086,7 @@ body {
 .full-width   { grid-column: 1 / -1; }
 .section      { margin-top: 8px; }
 .section h2   {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 16px;
   font-weight: 400;
   color: var(--navy);
@@ -1128,7 +1128,7 @@ body {
 }
 .stat-value {
   display: block;
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 26px;
   font-weight: 400;
   color: var(--navy);
@@ -2990,7 +2990,7 @@ tr:focus-within .inv-row-actions,
 }
 .invoice-amount        {
   display: block;
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 42px;
   font-weight: 400;
   color: var(--navy);
@@ -3186,7 +3186,7 @@ tr:focus-within .inv-row-actions,
 .cal-nav-btn:hover { border-color: var(--slate); background: var(--sand-lt); }
 .cal-nav-arrow { padding: 6px 10px; display: flex; align-items: center; }
 .cal-toolbar-label {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 20px;
   color: var(--navy);
   font-weight: 400;
@@ -3635,7 +3635,7 @@ tr:focus-within .inv-row-actions,
 .messages-layout    { display: flex; height: calc(100vh - 52px - 44px); gap: 0; margin: -22px -24px; overflow: hidden; }
 .client-list-panel  { width: 300px; background: var(--white); border-right: 1px solid var(--lightgray); display: flex; flex-direction: column; flex-shrink: 0; }
 .panel-header       { padding: 16px; border-bottom: 1px solid var(--lightgray); display: flex; flex-direction: column; gap: 10px; }
-.panel-header h2    { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 400; color: var(--navy); }
+.panel-header h2    { font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 400; color: var(--navy); }
 .client-list-scroll { overflow-y: auto; flex: 1; }
 .client-list-item   { padding: 13px 16px; cursor: pointer; border-bottom: 1px solid var(--lightgray); }
 .client-list-item:hover  { background: var(--off); }
@@ -3676,7 +3676,7 @@ tr:focus-within .inv-row-actions,
 .booking-step  { width: 32px; height: 32px; border-radius: 50%; background: var(--lightgray); color: var(--steel); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .booking-step.active { background: var(--sand); color: var(--navy); }
 .booking-step.done   { background: var(--green); color: var(--white); }
-.booking-title    { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
+.booking-title    { font-family: 'Inter', sans-serif; font-size: 19px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
 .booking-subtitle { color: var(--steel); font-size: 14px; margin-bottom: 20px; }
 .booking-form  { display: flex; flex-direction: column; gap: 14px; }
 .booking-btn   { width: 100%; margin-top: 6px; padding: 14px; font-size: 15px; }
@@ -3714,7 +3714,7 @@ tr:focus-within .inv-row-actions,
 
 .booking-success   { text-align: center; }
 .success-icon      { width: 64px; height: 64px; background: var(--green-lt); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--green); margin: 0 auto 20px; }
-.booking-success h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 400; color: var(--navy); margin-bottom: 12px; }
+.booking-success h2 { font-family: 'Inter', sans-serif; font-size: 24px; font-weight: 400; color: var(--navy); margin-bottom: 12px; }
 .booking-success p  { color: var(--slate); line-height: 1.6; }
 
 /* ── Booking settings ────────────────────────────────────── */
@@ -3866,7 +3866,7 @@ tr:focus-within .inv-row-actions,
 }
 .dash-sc-header .dash-sc-l { margin-bottom: 0; }
 .dash-sc-v {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 26px;
   color: var(--navy);
   line-height: 1;
@@ -3966,7 +3966,7 @@ tr:focus-within .inv-row-actions,
   margin-bottom: 5px;
 }
 .rv-snap__total {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 30px;
   color: var(--navy);
   line-height: 1;
@@ -4213,7 +4213,7 @@ tr:focus-within .inv-row-actions,
   border-bottom: 1px solid var(--lightgray);
 }
 .dispatch-panel-title {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 16px;
   color: var(--navy);
   margin-bottom: 2px;
@@ -5239,7 +5239,7 @@ tr:focus-within .inv-row-actions,
 }
 .rev-month-row:last-child { border-bottom: none; }
 .rev-month-lbl    { font-weight: 600; color: var(--navy); }
-.rev-month-rev    { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--navy); }
+.rev-month-rev    { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--navy); }
 .rev-month-jobs   { font-size: 10px; color: var(--steel); }
 .rev-month-growth { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 700; }
 
@@ -6398,7 +6398,7 @@ tr:focus-within .inv-row-actions,
 .caller-lbl { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sand); flex: 1; }
 .caller-x   { font-size: 17px; color: rgba(255,255,255,.35); background: none; border: none; cursor: pointer; line-height: 1; }
 .caller-body  { padding: 14px; }
-.caller-name  { font-family: 'Cormorant Garamond', serif; font-size: 20px; color: var(--navy); margin-bottom: 2px; }
+.caller-name  { font-family: 'Inter', sans-serif; font-size: 20px; color: var(--navy); margin-bottom: 2px; }
 .caller-info  { font-size: 11.5px; color: var(--steel); margin-bottom: 12px; }
 .caller-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 10px; }
 .caller-cell  { background: var(--off); border-radius: 6px; padding: 8px 10px; }
@@ -6593,7 +6593,7 @@ tr:focus-within .inv-row-actions,
 .login-logo span { color: var(--sand); }
 .login-tm { font-size: 8px; color: var(--sand); vertical-align: super; }
 .login-title {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 28px;
   font-weight: 400;
   color: var(--white);
@@ -7179,7 +7179,7 @@ tr:focus-within .inv-row-actions,
   font-family: 'Inter', sans-serif;
 }
 .fc-stat-number {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 28px;
   font-weight: 600;
   color: var(--navy);
@@ -7483,7 +7483,7 @@ tr:focus-within .inv-row-actions,
   align-items: center;
 }
 .kpi-card__value {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 26px;
   color: var(--navy);
   line-height: 1;
