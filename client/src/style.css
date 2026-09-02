@@ -8936,17 +8936,17 @@ tr:focus-within .inv-row-actions,
 .prj-client-item-sub  { font-size: 11px; color: var(--steel); display: block; }
 
 /* ── Projects V2 — Overview KPI cards ──────────────────── */
-.prj-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.prj-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .prj-kpi-card {
   background: #fff; border: 1px solid var(--lightgray); border-radius: 10px;
-  padding: 16px; display: flex; flex-direction: column; gap: 8px;
+  padding: 20px; display: flex; flex-direction: column;
 }
-.prj-kpi-title       { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--steel); }
-.prj-kpi-main        { font-size: 24px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.prj-kpi-title       { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--steel); margin-bottom: 10px; }
+.prj-kpi-main        { font-size: 26px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 3px; }
 .prj-kpi-main--green { color: #16A34A; }
 .prj-kpi-main--red   { color: #DC2626; }
-.prj-kpi-sub-label   { font-size: 11px; color: var(--steel); }
-.prj-kpi-rows        { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.prj-kpi-sub-label   { font-size: 11px; color: var(--steel); margin-bottom: 12px; }
+.prj-kpi-rows        { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .prj-kpi-row         { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--slate); }
 .prj-kpi-row span:last-child { font-variant-numeric: tabular-nums; color: var(--navy); }
 .prj-kpi-link {
@@ -8954,11 +8954,11 @@ tr:focus-within .inv-row-actions,
   cursor: pointer; padding: 0; text-align: left; margin-top: auto;
 }
 .prj-kpi-link:hover { text-decoration: underline; }
-.prj-kpi-progress    { height: 4px; border-radius: 2px; background: var(--lightgray); overflow: hidden; }
+.prj-kpi-progress    { height: 4px; border-radius: 2px; background: var(--lightgray); overflow: hidden; margin-bottom: 12px; }
 .prj-kpi-progress-fill { height: 100%; border-radius: 2px; background: var(--sand); transition: width .3s; }
 .prj-kpi-progress-fill--red { background: #DC2626; }
 
-.prj-overview-row       { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.prj-overview-row       { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
 .prj-overview-row--2col { grid-template-columns: 1fr 1fr; }
 
 .prj-ov-section {
