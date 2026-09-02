@@ -2511,6 +2511,14 @@ const MIGRATIONS = [
   // meaningful service_type — their context comes from the parent project and title.
   // Drop the NOT NULL so WOs can be created without supplying a fake value.
   `ALTER TABLE jobs ALTER COLUMN service_type DROP NOT NULL`,
+
+  // Expand work_order_materials with full lifecycle fields required by the Materials & Expenses spec
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS type          TEXT NOT NULL DEFAULT 'material'`,
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS description   TEXT`,
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS billable      BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS vendor        TEXT`,
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS purchase_date DATE`,
+  `ALTER TABLE work_order_materials ADD COLUMN IF NOT EXISTS created_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
 ];
 
 async function runMigrations() {

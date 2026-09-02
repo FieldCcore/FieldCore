@@ -610,25 +610,53 @@ router.get('/:id/materials', requireAuth, requireRole('owner', 'manager', 'staff
 
 // POST /api/projects/:id/materials
 router.post('/:id/materials', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
-  const { name, quantity = 1, unit = 'each', cost_cents = 0, price_cents = 0, job_id } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Material name is required.' });
+  const {
+    name, type = 'material', description, vendor,
+    quantity = 1, unit = 'each',
+    cost_cents = 0, price_cents = 0,
+    billable = false, purchase_date, job_id,
+  } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Item name is required.' });
+
+  const projCheck = await pool.query(
+    `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+    [req.params.id, req.accountId]
+  );
+  if (!projCheck.rows.length) return res.status(404).json({ error: 'Project not found.' });
+
   try {
     const { rows } = await pool.query(`
       INSERT INTO work_order_materials
-        (account_id, project_id, job_id, name, quantity, unit, cost_cents, price_cents)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
-    `, [req.accountId, req.params.id, job_id || null,
-        name.trim(), quantity, unit,
-        parseInt(cost_cents) || 0, parseInt(price_cents) || 0]);
+        (account_id, project_id, job_id, type, name, description, vendor,
+         quantity, unit, cost_cents, price_cents, billable, purchase_date, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
+    `, [
+      req.accountId, req.params.id, job_id || null,
+      type || 'material', name.trim(), description || null, vendor || null,
+      parseFloat(quantity) || 1, unit || 'each',
+      Math.round(parseFloat(cost_cents)) || 0,
+      billable ? (Math.round(parseFloat(price_cents)) || 0) : 0,
+      billable === true || billable === 'true',
+      purchase_date || null, req.userId,
+    ]);
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Materials create]', err.message);
+    res.status(500).json({ error: "We couldn't add this item. Your information has been preserved. Please try again." });
   }
 });
 
 // PATCH /api/projects/:id/materials/:matId
 router.patch('/:id/materials/:matId', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
-  const MAT_FIELDS = ['name', 'quantity', 'unit', 'cost_cents', 'price_cents', 'job_id'];
+  const MAT_FIELDS = [
+    'name', 'type', 'description', 'vendor',
+    'quantity', 'unit', 'cost_cents', 'price_cents',
+    'billable', 'purchase_date', 'job_id',
+  ];
+  const INT_FIELDS  = new Set(['cost_cents', 'price_cents']);
+  const FLOAT_FIELDS = new Set(['quantity']);
+  const BOOL_FIELDS  = new Set(['billable']);
+
   const updates = [];
   const values  = [];
   let i = 1;
@@ -636,7 +664,11 @@ router.patch('/:id/materials/:matId', requireAuth, requireRole('owner', 'manager
   for (const f of MAT_FIELDS) {
     if (req.body[f] !== undefined) {
       updates.push(`${f} = $${i++}`);
-      values.push(req.body[f] ?? null);
+      let v = req.body[f] ?? null;
+      if (INT_FIELDS.has(f))   v = Math.round(parseFloat(v)) || 0;
+      if (FLOAT_FIELDS.has(f)) v = parseFloat(v) || 1;
+      if (BOOL_FIELDS.has(f))  v = v === true || v === 'true';
+      values.push(v);
     }
   }
   if (!updates.length) return res.status(400).json({ error: 'No fields to update.' });
@@ -648,10 +680,11 @@ router.patch('/:id/materials/:matId', requireAuth, requireRole('owner', 'manager
       UPDATE work_order_materials SET ${updates.join(', ')}
       WHERE id = $${i} AND project_id = $${i + 1} AND account_id = $${i + 2} RETURNING *
     `, values);
-    if (!rows.length) return res.status(404).json({ error: 'Material not found.' });
+    if (!rows.length) return res.status(404).json({ error: 'Item not found.' });
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Materials update]', err.message);
+    res.status(500).json({ error: "We couldn't save this item. Please try again." });
   }
 });
 
@@ -662,10 +695,11 @@ router.delete('/:id/materials/:matId', requireAuth, requireRole('owner', 'manage
       DELETE FROM work_order_materials
       WHERE id = $1 AND project_id = $2 AND account_id = $3
     `, [req.params.matId, req.params.id, req.accountId]);
-    if (!rowCount) return res.status(404).json({ error: 'Material not found.' });
+    if (!rowCount) return res.status(404).json({ error: 'Item not found.' });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Materials delete]', err.message);
+    res.status(500).json({ error: "We couldn't delete this item. Please try again." });
   }
 });
 
@@ -692,8 +726,8 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
 
       pool.query(`
         SELECT
-          COALESCE(SUM(total_cents), 0)::int AS total_invoiced,
-          COALESCE(SUM(CASE WHEN status = 'paid' THEN total_cents ELSE 0 END), 0)::int AS total_paid
+          COALESCE(SUM(ROUND(amount * 100)), 0)::int AS total_invoiced,
+          COALESCE(SUM(CASE WHEN status = 'paid' THEN ROUND(amount * 100) ELSE 0 END), 0)::int AS total_paid
         FROM invoices WHERE project_id = $1 AND account_id = $2
       `, [req.params.id, req.accountId]),
 

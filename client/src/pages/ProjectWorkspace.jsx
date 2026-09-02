@@ -744,6 +744,18 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
                   <p>{wo.instructions}</p>
                 </div>
               )}
+              {wo.material_cost > 0 && (
+                <div className="prj-wo-mat-cost">
+                  <span className="prj-wo-mat-label">Material Cost</span>
+                  <span className="prj-wo-mat-val">{fmtMoney(wo.material_cost)}</span>
+                  {wo.material_price > 0 && (
+                    <>
+                      <span className="prj-wo-mat-label" style={{ marginLeft: 12 }}>Billable</span>
+                      <span className="prj-wo-mat-val">{fmtMoney(wo.material_price)}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1054,49 +1066,204 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
 }
 
 // ── Financials Tab ────────────────────────────────────────
+const EMPTY_MAT_FORM = {
+  type: 'material', name: '', description: '', vendor: '',
+  quantity: '1', unit: 'each',
+  cost_cents: '', price_cents: '',
+  billable: false, purchase_date: '', job_id: '',
+};
+const MAT_TYPE_LABELS = { material: 'Material', expense: 'Expense', other: 'Other' };
+
+function MatForm({ form, onChange, workOrders, error, saving, onSubmit, onCancel, submitLabel }) {
+  // form.cost_cents / price_cents hold dollar amounts as strings (user types "12.50")
+  // multiply qty × unit_dollar × 100 to get cents for fmtMoney
+  const costTotal  = Math.round((parseFloat(form.quantity) || 0) * (parseFloat(form.cost_cents)  || 0) * 100);
+  const priceTotal = Math.round((parseFloat(form.quantity) || 0) * (parseFloat(form.price_cents) || 0) * 100);
+  return (
+    <div className="prj-mat-form">
+      {error && <div className="prj-form-error">{error}</div>}
+      <form onSubmit={onSubmit}>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Type</label>
+            <select value={form.type} onChange={onChange('type')}>
+              {Object.entries(MAT_TYPE_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: 2 }}>
+            <label>Item Name *</label>
+            <input value={form.name} onChange={onChange('name')} required
+              placeholder={form.type === 'expense' ? 'e.g. Fuel, Parking' : 'e.g. PVC fittings'} />
+          </div>
+          <div className="form-group">
+            <label>Vendor</label>
+            <input value={form.vendor} onChange={onChange('vendor')} placeholder="e.g. Home Depot" />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Qty</label>
+            <input type="number" min="0" step="0.001" value={form.quantity} onChange={onChange('quantity')} />
+          </div>
+          <div className="form-group">
+            <label>Unit</label>
+            <input value={form.unit} onChange={onChange('unit')} placeholder="each, sq ft…" />
+          </div>
+          <div className="form-group">
+            <label>Unit Cost ($)</label>
+            <input type="number" min="0" step="0.01" value={form.cost_cents}
+              onChange={onChange('cost_cents')} placeholder="0.00" />
+          </div>
+          <div className="form-group prj-mat-total-group">
+            <label>Total Cost</label>
+            <span className="prj-mat-total">{fmtMoney(Math.round(costTotal * 100))}</span>
+          </div>
+        </div>
+        <div className="form-row prj-mat-billable-row">
+          <div className="form-group prj-mat-check-group">
+            <label className="prj-mat-check-label">
+              <input type="checkbox" checked={form.billable} onChange={onChange('billable')} />
+              Billable to customer
+            </label>
+          </div>
+          {form.billable && (
+            <>
+              <div className="form-group">
+                <label>Customer Unit Price ($)</label>
+                <input type="number" min="0" step="0.01" value={form.price_cents}
+                  onChange={onChange('price_cents')} placeholder="0.00" />
+              </div>
+              <div className="form-group prj-mat-total-group">
+                <label>Customer Total</label>
+                <span className="prj-mat-total">{fmtMoney(Math.round(priceTotal * 100))}</span>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Work Order</label>
+            <select value={form.job_id} onChange={onChange('job_id')}>
+              <option value="">— Project-level (no WO) —</option>
+              {workOrders.map(wo => (
+                <option key={wo.id} value={wo.id}>{fmtWoNum(wo.work_order_number)} — {wo.title}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Purchase Date</label>
+            <input type="date" value={form.purchase_date} onChange={onChange('purchase_date')} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Description</label>
+          <input value={form.description} onChange={onChange('description')} placeholder="Optional notes" />
+        </div>
+        <div className="prj-form-actions">
+          <button type="submit" className="tb-btn tb-primary" disabled={saving}>
+            {saving ? 'Saving…' : submitLabel}
+          </button>
+          <button type="button" className="tb-btn tb-ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function FinancialsTab({ projectId }) {
-  const [fin, setFin]           = useState(null);
-  const [mats, setMats]         = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [showMat, setShowMat]   = useState(false);
-  const [matForm, setMatForm]   = useState({ name: '', quantity: 1, unit: 'each', cost_cents: '', price_cents: '' });
-  const [savingMat, setSavingMat] = useState(false);
-  const [matError, setMatError] = useState('');
+  const [fin, setFin]               = useState(null);
+  const [mats, setMats]             = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [mode, setMode]             = useState(null); // null | 'add' | mat.id (editing)
+  const [matForm, setMatForm]       = useState(EMPTY_MAT_FORM);
+  const [savingMat, setSavingMat]   = useState(false);
+  const [matError, setMatError]     = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { user } = useAuth();
   const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [fRes, mRes] = await Promise.all([
-        api.get(`/projects/${projectId}/financials`),
-        api.get(`/projects/${projectId}/materials`),
-      ]);
-      setFin(fRes.data);
-      setMats(mRes.data);
-    } catch {}
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    const [fRes, mRes, woRes] = await Promise.allSettled([
+      api.get(`/projects/${projectId}/financials`),
+      api.get(`/projects/${projectId}/materials`),
+      api.get(`/projects/${projectId}/work-orders`),
+    ]);
+    if (fRes.status  === 'fulfilled') setFin(fRes.value.data);
+    if (mRes.status  === 'fulfilled') setMats(mRes.value.data);
+    if (woRes.status === 'fulfilled') setWorkOrders(woRes.value.data || []);
     setLoading(false);
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
 
+  function openAdd() {
+    setMatForm(EMPTY_MAT_FORM);
+    setMatError('');
+    setMode('add');
+  }
+
+  function openEdit(m) {
+    setMatForm({
+      type:          m.type         || 'material',
+      name:          m.name         || '',
+      description:   m.description  || '',
+      vendor:        m.vendor       || '',
+      quantity:      String(m.quantity ?? 1),
+      unit:          m.unit         || 'each',
+      cost_cents:    m.cost_cents  != null ? (m.cost_cents  / 100).toFixed(2) : '',
+      price_cents:   m.price_cents != null ? (m.price_cents / 100).toFixed(2) : '',
+      billable:      m.billable     || false,
+      purchase_date: m.purchase_date ? m.purchase_date.slice(0, 10) : '',
+      job_id:        m.job_id       || '',
+    });
+    setMatError('');
+    setMode(m.id);
+  }
+
+  function handleChange(field) {
+    return e => {
+      const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      setMatForm(p => ({ ...p, [field]: val }));
+    };
+  }
+
+  function buildPayload(form) {
+    return {
+      type:          form.type,
+      name:          form.name,
+      description:   form.description  || null,
+      vendor:        form.vendor        || null,
+      quantity:      parseFloat(form.quantity)   || 1,
+      unit:          form.unit,
+      cost_cents:    form.cost_cents    ? Math.round(parseFloat(form.cost_cents)  * 100) : 0,
+      price_cents:   form.billable && form.price_cents
+                       ? Math.round(parseFloat(form.price_cents) * 100) : 0,
+      billable:      form.billable,
+      purchase_date: form.purchase_date || null,
+      job_id:        form.job_id        || null,
+    };
+  }
+
   async function saveMat(e) {
     e.preventDefault();
+    if (savingMat) return;
     setSavingMat(true);
     setMatError('');
     try {
-      await api.post(`/projects/${projectId}/materials`, {
-        name:        matForm.name,
-        quantity:    parseFloat(matForm.quantity) || 1,
-        unit:        matForm.unit,
-        cost_cents:  matForm.cost_cents  ? Math.round(parseFloat(matForm.cost_cents)  * 100) : 0,
-        price_cents: matForm.price_cents ? Math.round(parseFloat(matForm.price_cents) * 100) : 0,
-      });
-      setShowMat(false);
-      setMatForm({ name: '', quantity: 1, unit: 'each', cost_cents: '', price_cents: '' });
-      load();
+      if (mode === 'add') {
+        await api.post(`/projects/${projectId}/materials`, buildPayload(matForm));
+      } else {
+        await api.patch(`/projects/${projectId}/materials/${mode}`, buildPayload(matForm));
+      }
+      setMode(null);
+      load(true);
     } catch (err) {
-      setMatError(err.response?.data?.error || 'Failed to save.');
+      setMatError(err.response?.data?.error ||
+        "We couldn't save this item. Your information has been preserved. Please try again.");
     } finally {
       setSavingMat(false);
     }
@@ -1105,17 +1272,16 @@ function FinancialsTab({ projectId }) {
   async function deleteMat(id) {
     try {
       await api.delete(`/projects/${projectId}/materials/${id}`);
-      load();
-    } catch {}
-  }
-
-  function setMat(field) {
-    return e => setMatForm(p => ({ ...p, [field]: e.target.value }));
+      setConfirmDeleteId(null);
+      load(true);
+    } catch (err) {
+      alert(err.response?.data?.error || "We couldn't delete this item. Please try again.");
+    }
   }
 
   if (loading) return <div className="prj-state">Loading…</div>;
 
-  const margin = fin ? fin.contract_value - fin.total_material_cost : 0;
+  const margin = fin ? fin.contract_value - (fin.total_material_cost ?? 0) : 0;
 
   return (
     <div className="prj-fin-tab">
@@ -1130,7 +1296,7 @@ function FinancialsTab({ projectId }) {
             <span className="prj-fin-val">{fmtMoney(fin.total_material_cost)}</span>
           </div>
           <div className="prj-fin-metric">
-            <span className="prj-fin-label">Billable Materials</span>
+            <span className="prj-fin-label">Billable Amount</span>
             <span className="prj-fin-val">{fmtMoney(fin.total_material_price)}</span>
           </div>
           <div className="prj-fin-metric">
@@ -1153,85 +1319,103 @@ function FinancialsTab({ projectId }) {
       <div className="prj-section">
         <div className="prj-section-header">
           <span className="prj-section-title">Materials & Expenses</span>
-          {isOwnerOrMgr && (
-            <button className="tb-btn tb-ghost" onClick={() => setShowMat(s => !s)}>
+          {isOwnerOrMgr && mode === null && (
+            <button className="tb-btn tb-ghost" onClick={openAdd}>
               <Plus size={13} /> Add
             </button>
           )}
         </div>
 
-        {showMat && (
-          <div className="prj-mat-form">
-            {matError && <div className="prj-form-error">{matError}</div>}
-            <form onSubmit={saveMat}>
-              <div className="form-row">
-                <div className="form-group" style={{ flex: 2 }}>
-                  <label>Item Name *</label>
-                  <input value={matForm.name} onChange={setMat('name')} required placeholder="e.g. Tile adhesive" />
-                </div>
-                <div className="form-group">
-                  <label>Qty</label>
-                  <input type="number" min="0" step="0.001" value={matForm.quantity} onChange={setMat('quantity')} />
-                </div>
-                <div className="form-group">
-                  <label>Unit</label>
-                  <input value={matForm.unit} onChange={setMat('unit')} placeholder="each, sq ft…" />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Cost ($)</label>
-                  <input type="number" min="0" step="0.01" value={matForm.cost_cents} onChange={setMat('cost_cents')} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>Billable Price ($)</label>
-                  <input type="number" min="0" step="0.01" value={matForm.price_cents} onChange={setMat('price_cents')} placeholder="0.00" />
-                </div>
-              </div>
-              <div className="prj-form-actions">
-                <button type="submit" className="tb-btn tb-primary" disabled={savingMat}>
-                  {savingMat ? 'Saving…' : 'Add Item'}
-                </button>
-                <button type="button" className="tb-btn tb-ghost" onClick={() => setShowMat(false)}>Cancel</button>
-              </div>
-            </form>
-          </div>
+        {(mode === 'add' || (mode && mode !== null)) && (
+          <MatForm
+            form={matForm}
+            onChange={handleChange}
+            workOrders={workOrders}
+            error={matError}
+            saving={savingMat}
+            onSubmit={saveMat}
+            onCancel={() => setMode(null)}
+            submitLabel={mode === 'add' ? 'Add Item' : 'Save Changes'}
+          />
         )}
 
-        {mats.length === 0 ? (
-          <p className="prj-state">No materials or expenses logged yet.</p>
-        ) : (
+        {mats.length === 0 && mode === null ? (
+          <div className="prj-mat-empty">
+            <p className="prj-mat-empty-primary">No materials or expenses yet.</p>
+            <p className="prj-mat-empty-sub">Track project purchases, parts, supplies, and other costs here.</p>
+            {isOwnerOrMgr && (
+              <button className="tb-btn tb-ghost" onClick={openAdd}>
+                <Plus size={13} /> Add Material / Expense
+              </button>
+            )}
+          </div>
+        ) : mats.length > 0 ? (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
+                  <th>Date</th>
+                  <th>Type</th>
                   <th>Item</th>
+                  <th>Vendor</th>
                   <th>Work Order</th>
-                  <th>Qty</th>
-                  <th>Unit</th>
-                  <th style={{ textAlign: 'right' }}>Cost</th>
-                  <th style={{ textAlign: 'right' }}>Billable</th>
+                  <th style={{ textAlign: 'right' }}>Qty</th>
+                  <th style={{ textAlign: 'right' }}>Unit Cost</th>
+                  <th style={{ textAlign: 'right' }}>Total Cost</th>
+                  <th>Billable</th>
+                  <th style={{ textAlign: 'right' }}>Customer</th>
                   {isOwnerOrMgr && <th />}
                 </tr>
               </thead>
               <tbody>
                 {mats.map(m => (
-                  <tr key={m.id}>
-                    <td><strong>{m.name}</strong></td>
+                  <tr key={m.id} className={mode === m.id ? 'prj-mat-row--editing' : ''}>
+                    <td className="prj-mat-date">
+                      {fmtDate(m.purchase_date || m.created_at)}
+                    </td>
+                    <td>
+                      <span className={`prj-mat-type prj-mat-type--${m.type || 'material'}`}>
+                        {MAT_TYPE_LABELS[m.type] || m.type}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{m.name}</strong>
+                      {m.description && <div className="prj-mat-desc">{m.description}</div>}
+                    </td>
+                    <td>{m.vendor || '—'}</td>
                     <td>{m.work_order_number ? fmtWoNum(m.work_order_number) : '—'}</td>
-                    <td>{m.quantity}</td>
-                    <td>{m.unit}</td>
+                    <td style={{ textAlign: 'right' }}>{m.quantity}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtMoney(m.cost_cents)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtMoney(Math.round(m.cost_cents * m.quantity))}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(Math.round(m.price_cents * m.quantity))}</td>
+                    <td>
+                      {m.billable
+                        ? <span className="prj-mat-bill prj-mat-bill--yes">Yes</span>
+                        : <span className="prj-mat-bill">—</span>}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {m.billable ? fmtMoney(Math.round(m.price_cents * m.quantity)) : '—'}
+                    </td>
                     {isOwnerOrMgr && (
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="prj-icon-btn prj-icon-btn--danger"
-                          onClick={() => deleteMat(m.id)}
-                          aria-label="Delete"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {confirmDeleteId === m.id ? (
+                          <span className="prj-mat-confirm">
+                            Delete?{' '}
+                            <button className="prj-mat-confirm-yes" onClick={() => deleteMat(m.id)}>Yes</button>
+                            {' / '}
+                            <button className="prj-mat-confirm-no" onClick={() => setConfirmDeleteId(null)}>No</button>
+                          </span>
+                        ) : (
+                          <>
+                            <button className="prj-icon-btn" title="Edit"
+                              onClick={() => { openEdit(m); }}>
+                              Edit
+                            </button>
+                            <button className="prj-icon-btn prj-icon-btn--danger" title="Delete"
+                              onClick={() => setConfirmDeleteId(m.id)} aria-label="Delete">
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -1239,7 +1423,7 @@ function FinancialsTab({ projectId }) {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
