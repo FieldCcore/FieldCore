@@ -1064,9 +1064,13 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
       [payLink, inv.id]
     );
 
-    if (inv.client_email) {
-      generateInvoicePdfBuffer({ ...inv, payment_link: payLink }).then(pdfBuf => {
-        email.send({
+    let emailWarning = null;
+    if (!inv.client_email) {
+      emailWarning = 'No email address on file for this client.';
+    } else {
+      try {
+        const pdfBuf = await generateInvoicePdfBuffer({ ...inv, payment_link: payLink });
+        await email.send({
           to:      inv.client_email,
           subject: `Invoice from ${inv.business_name} — $${parseFloat(inv.amount).toFixed(2)}`,
           html:    email.invoiceHtml(inv.client_name, inv.service_type, inv.amount, payLink, inv.business_name, inv.tax_amount),
@@ -1076,7 +1080,10 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
             contentType: 'application/pdf',
           }],
         });
-      }).catch(err => console.error('[Invoice PDF]', err.message));
+      } catch (emailErr) {
+        console.error('[Invoice email]', emailErr.message);
+        emailWarning = 'Invoice marked as sent but email delivery failed. Check SMTP settings.';
+      }
     }
 
     notify.create(req.accountId, 'invoice_sent',
@@ -1085,7 +1092,7 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
       '/invoices'
     );
 
-    res.json({ success: true, payment_link: payLink });
+    res.json({ success: true, payment_link: payLink, ...(emailWarning ? { email_warning: emailWarning } : {}) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

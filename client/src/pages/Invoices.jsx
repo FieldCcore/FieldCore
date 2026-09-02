@@ -129,6 +129,8 @@ export default function Invoices() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting]       = useState(false);
   const [emailingId, setEmailingId]   = useState(null);
+  const [emailSentId, setEmailSentId] = useState(null);
+  const [emailError, setEmailError]   = useState(null);
 
   const [params, setParams] = useState(() => initFromUrl(searchParams));
 
@@ -137,12 +139,13 @@ export default function Invoices() {
   const [clientResults, setClientResults] = useState([]);
   const clientDebRef = useRef(null);
 
-  const abortRef    = useRef(null);
-  const debounceRef = useRef(null);
-  const statusRef   = useRef(null);
-  const dateRef     = useRef(null);
-  const filtersRef  = useRef(null);
-  const menuRef     = useRef(null);
+  const abortRef      = useRef(null);
+  const debounceRef   = useRef(null);
+  const statusRef     = useRef(null);
+  const dateRef       = useRef(null);
+  const filtersRef    = useRef(null);
+  const menuRef       = useRef(null);
+  const emailSentTimer = useRef(null);
 
   useEffect(() => {
     function onMouseDown(e) {
@@ -335,13 +338,22 @@ export default function Invoices() {
   async function handleEmail(e, inv) {
     e.stopPropagation();
     setEmailingId(inv.id);
+    setEmailError(null);
     try {
-      await api.post(`/invoices/${inv.id}/send`);
+      const { data } = await api.post(`/invoices/${inv.id}/send`);
       setInvoices(prev => prev.map(i =>
         i.id === inv.id ? { ...i, status: 'pending', sent_at: new Date().toISOString() } : i
       ));
+      if (data.email_warning) {
+        setEmailError(data.email_warning);
+      } else {
+        setEmailSentId(inv.id);
+        clearTimeout(emailSentTimer.current);
+        emailSentTimer.current = setTimeout(() => setEmailSentId(null), 2500);
+      }
     } catch (err) {
-      console.error('Send failed', err);
+      const msg = err.response?.data?.error || 'Failed to send invoice.';
+      setEmailError(msg);
     } finally {
       setEmailingId(null);
     }
@@ -858,6 +870,16 @@ export default function Invoices() {
         </div>
       )}
 
+      {/* ── Email error banner ────────────────────────────────── */}
+      {emailError && (
+        <div className="inv-email-error">
+          <span>{emailError}</span>
+          <button className="inv-email-error-close" onClick={() => setEmailError(null)} aria-label="Dismiss">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* ── Content ───────────────────────────────────────────── */}
       {loading ? (
         <div className="inv-state">Loading…</div>
@@ -919,15 +941,15 @@ export default function Invoices() {
                         {['draft', 'pending'].includes(inv.status) && (
                           <div className="inv-action-tooltip-wrap">
                             <button
-                              className="inv-action-btn"
+                              className={`inv-action-btn${emailSentId === inv.id ? ' inv-action-btn--sent' : ''}`}
                               aria-label={inv.status === 'draft' ? 'Send Invoice' : 'Email Invoice'}
                               disabled={emailingId === inv.id}
                               onClick={e => handleEmail(e, inv)}
                             >
-                              <Mail size={14} />
+                              {emailSentId === inv.id ? <Check size={14} /> : <Mail size={14} />}
                             </button>
                             <span className="inv-action-tooltip">
-                              {inv.status === 'draft' ? 'Send Invoice' : 'Email Invoice'}
+                              {emailSentId === inv.id ? 'Sent!' : inv.status === 'draft' ? 'Send Invoice' : 'Email Invoice'}
                             </span>
                           </div>
                         )}
