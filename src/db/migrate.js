@@ -2424,6 +2424,85 @@ const MIGRATIONS = [
 
   // Calendar week start preference per business (0=Sunday, 1=Monday)
   `ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS week_start_day SMALLINT DEFAULT 0`,
+
+  // ── PROJECTS V2 — Enhanced schema ────────────────────────────────────────
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_number INT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS manager_id UUID REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_value INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_model TEXT DEFAULT 'fixed'
+     CHECK (billing_model IN ('fixed','time_materials','cost_plus'))`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_address TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_city TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_state TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_zip TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES client_locations(id) ON DELETE SET NULL`,
+
+  // Atomic PRJ-XXXX number generator (one row per account)
+  `CREATE TABLE IF NOT EXISTS project_number_sequences (
+     account_id  UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+     last_number INT NOT NULL DEFAULT 0
+   )`,
+
+  // Work Orders = Jobs with project_id (Calendar/Dispatch integration is automatic)
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id) WHERE project_id IS NOT NULL`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS work_order_number INT`,
+
+  // Per-project WO-NNN number generator (one row per project)
+  `CREATE TABLE IF NOT EXISTS work_order_number_sequences (
+     project_id  UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+     last_number INT NOT NULL DEFAULT 0
+   )`,
+
+  // Work order task checklists
+  `CREATE TABLE IF NOT EXISTS work_order_tasks (
+     id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     job_id       UUID        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+     title        TEXT        NOT NULL,
+     is_complete  BOOLEAN     NOT NULL DEFAULT false,
+     completed_at TIMESTAMPTZ,
+     completed_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+     sort_order   INT         NOT NULL DEFAULT 0,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_work_order_tasks_job     ON work_order_tasks(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_work_order_tasks_account ON work_order_tasks(account_id)`,
+
+  // Materials and expenses per project (optionally linked to a specific work order)
+  `CREATE TABLE IF NOT EXISTS work_order_materials (
+     id          UUID           PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id  UUID           NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     project_id  UUID           NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+     job_id      UUID           REFERENCES jobs(id) ON DELETE SET NULL,
+     name        TEXT           NOT NULL,
+     quantity    NUMERIC(10,3)  NOT NULL DEFAULT 1,
+     unit        TEXT           DEFAULT 'each',
+     cost_cents  INT            NOT NULL DEFAULT 0,
+     price_cents INT            NOT NULL DEFAULT 0,
+     created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+     updated_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_wom_project ON work_order_materials(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_wom_account ON work_order_materials(account_id)`,
+
+  // Project activity feed (auto-logged events + manual notes)
+  `CREATE TABLE IF NOT EXISTS project_activity (
+     id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     project_id UUID        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+     user_id    UUID        REFERENCES users(id) ON DELETE SET NULL,
+     type       TEXT        NOT NULL DEFAULT 'note',
+     body       TEXT        NOT NULL,
+     metadata   JSONB,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_project_activity_project ON project_activity(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_project_activity_account ON project_activity(account_id)`,
+
+  // Link invoices to projects
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id) WHERE project_id IS NOT NULL`,
 ];
 
 async function runMigrations() {

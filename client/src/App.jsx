@@ -75,7 +75,8 @@ import MobileDemo      from './pages/MobileDemo';
 import Account         from './pages/Account';
 import Communications  from './pages/Communications';
 import Requests        from './pages/Requests';
-import Projects        from './pages/Projects';
+import Projects          from './pages/Projects';
+import ProjectWorkspace  from './pages/ProjectWorkspace';
 import EntitySwitcher  from './components/EntitySwitcher';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -111,6 +112,7 @@ const PAGE_TITLES = {
   '/communications':     'Communications',
   '/requests':           'Requests',
   '/projects':           'Projects',
+  '/projects/:id':       'Project',
   '/team':               'Team Management',
   '/fleet':              'Fleet',
   '/booking':            'Settings & Rules',
@@ -131,6 +133,7 @@ const IcoTeam     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IcoSettings = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 14h.01M10 14h4"/></svg>;
 const IcoLogout   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const IcoProjects = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path d="M8 13h8M8 17h5"/></svg>;
 
 // Arrow-key navigation for role="menu" panels
 function panelKeyNav(e) {
@@ -465,8 +468,11 @@ function AppShell() {
     );
   }
 
-  const isClientProfile = pathname.startsWith('/clients/');
-  const pageTitle = isClientProfile ? 'Client Profile' : (PAGE_TITLES[pathname] || 'FieldCore');
+  const isClientProfile  = pathname.startsWith('/clients/');
+  const isProjectWorkspace = pathname.startsWith('/projects/');
+  const pageTitle = isClientProfile ? 'Client Profile'
+    : isProjectWorkspace ? 'Project'
+    : (PAGE_TITLES[pathname] || 'FieldCore');
 
   const ni = (to, end, Icon, label, badge) => (
     <NavLink
@@ -505,6 +511,7 @@ function AppShell() {
                 {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
                 {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
                 {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
+                {(isOwner || isManager) && ni('/projects', false, IcoProjects, 'Projects', null)}
 
                 {/* Finance — owner + manager see all; staff sees invoices only */}
                 {(isOwner || isManager || isStaff) && (
@@ -615,6 +622,7 @@ function AppShell() {
             <Route path="/communications" element={<ProtectedRoute><Communications /></ProtectedRoute>} />
             <Route path="/requests"      element={<ProtectedRoute><Requests /></ProtectedRoute>}      />
             <Route path="/projects"      element={<ProtectedRoute><PlanGate requires="pro"><Projects /></PlanGate></ProtectedRoute>} />
+            <Route path="/projects/:id"  element={<ProtectedRoute><PlanGate requires="pro"><ProjectWorkspace /></PlanGate></ProtectedRoute>} />
             <Route path="/messages"    element={<Navigate to="/communications" replace />} />
             <Route path="/phone"       element={<Navigate to="/communications" replace />} />
             <Route path="/team"        element={<ProtectedRoute><Team /></ProtectedRoute>}           />
