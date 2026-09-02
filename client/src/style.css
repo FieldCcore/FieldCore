@@ -8625,7 +8625,7 @@ tr:focus-within .inv-row-actions,
 .prj-metric { display: flex; flex-direction: column; gap: 2px; padding: 0 16px; }
 .prj-metric:first-child { padding-left: 0; }
 .prj-metric-sep { width: 1px; background: var(--lightgray); align-self: stretch; margin: 0 4px; }
-.prj-metric-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--steel); }
+.prj-metric-label { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); }
 .prj-metric-value { font-size: 15px; font-weight: 700; color: var(--navy); }
 
 .prj-overview-grid {
@@ -8651,16 +8651,16 @@ tr:focus-within .inv-row-actions,
 }
 .prj-info-row:last-child { border-bottom: none; }
 .prj-info-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--steel); width: 80px; flex-shrink: 0;
+  font-family: 'DM Mono', monospace; font-size: 9.5px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: .10em; color: var(--steel); width: 84px; flex-shrink: 0;
 }
 .prj-info-val { font-size: 13px; color: var(--navy); }
 .prj-description { margin: 0; font-size: 13px; color: var(--slate); line-height: 1.55; }
 
 .prj-overview-edit .prj-section { margin-bottom: 20px; }
 .prj-section-title {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--steel); margin-bottom: 12px;
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: .10em; color: var(--steel); margin-bottom: 12px;
 }
 .prj-section-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -8740,7 +8740,7 @@ tr:focus-within .inv-row-actions,
 /* ── Tasks ─────────────────────────────────────────────── */
 .prj-tasks { margin-top: 14px; border-top: 1px solid var(--lightgray); padding-top: 12px; }
 .prj-tasks-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.prj-tasks-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--steel); }
+.prj-tasks-title { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); }
 .prj-tasks-empty { font-size: 12px; color: var(--steel); margin: 4px 0; }
 
 .prj-task {
@@ -8793,7 +8793,7 @@ tr:focus-within .inv-row-actions,
 }
 .prj-fin-metric:first-child { padding-left: 0; }
 .prj-fin-metric:last-child  { border-right: none; }
-.prj-fin-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--steel); }
+.prj-fin-label { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); }
 .prj-fin-val   { font-size: 16px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
 .prj-fin-val--green { color: var(--green); }
 .prj-fin-val--red   { color: var(--red); }
@@ -8941,8 +8941,8 @@ tr:focus-within .inv-row-actions,
   background: #fff; border: 1px solid var(--lightgray); border-radius: 10px;
   padding: 20px; display: flex; flex-direction: column;
 }
-.prj-kpi-title       { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--steel); margin-bottom: 10px; }
-.prj-kpi-main        { font-size: 26px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 3px; }
+.prj-kpi-title       { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); margin-bottom: 10px; }
+.prj-kpi-main        { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 3px; }
 .prj-kpi-main--green { color: #16A34A; }
 .prj-kpi-main--red   { color: #DC2626; }
 .prj-kpi-sub-label   { font-size: 11px; color: var(--steel); margin-bottom: 12px; }
@@ -8966,7 +8966,7 @@ tr:focus-within .inv-row-actions,
   padding: 16px; display: flex; flex-direction: column; gap: 10px;
 }
 .prj-ov-section-head  { display: flex; align-items: center; justify-content: space-between; }
-.prj-ov-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--navy); }
+.prj-ov-section-title { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--navy); }
 .prj-ov-section-link  { font-size: 11px; color: var(--sand); background: none; border: none; cursor: pointer; padding: 0; }
 .prj-ov-section-link:hover { text-decoration: underline; }
 
@@ -8974,7 +8974,7 @@ tr:focus-within .inv-row-actions,
 .prj-upcoming-row   { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--lightgray); gap: 12px; }
 .prj-upcoming-row:last-child { border-bottom: none; }
 .prj-upcoming-info  { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-.prj-upcoming-num   { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--sand); }
+.prj-upcoming-num   { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--sand); }
 .prj-upcoming-name  { font-size: 13px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prj-upcoming-meta  { font-size: 11px; color: var(--steel); }
 .prj-upcoming-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
@@ -9003,7 +9003,7 @@ tr:focus-within .inv-row-actions,
 .prj-team-name { font-size: 13px; font-weight: 600; color: var(--navy); display: block; }
 .prj-team-role { font-size: 11px; color: var(--steel); display: block; }
 
-.prj-priority         { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-radius: 4px; padding: 2px 6px; }
+.prj-priority         { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; border-radius: 4px; padding: 2px 6px; }
 .prj-priority--urgent { background: #FEE2E2; color: #DC2626; }
 .prj-priority--high   { background: #FEF3C7; color: #B45309; }
 .prj-priority--normal { background: #DBEAFE; color: #1D4ED8; }
