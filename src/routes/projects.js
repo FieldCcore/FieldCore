@@ -7,6 +7,15 @@ const { requireCapability }        = require('../services/entitlements');
 const ALLOWED_STATUSES = ['draft', 'active', 'on_hold', 'completed', 'cancelled'];
 const BILLING_MODELS   = ['fixed', 'time_materials', 'cost_plus'];
 
+// Translate DB errors to user-friendly messages — never expose raw SQL
+function woDbError(err) {
+  const msg = err.message || '';
+  if (msg.includes('not-null constraint')) return 'A required field is missing. Please fill in all required fields and try again.';
+  if (msg.includes('foreign key constraint')) return 'One or more selected values no longer exist. Please refresh and try again.';
+  if (msg.includes('unique constraint') || msg.includes('duplicate key')) return 'A work order with this information already exists.';
+  return 'An unexpected error occurred. Please try again.';
+}
+
 // Inline capability guard so each route stays readable
 const cap = async (req, res, next) => {
   try {
@@ -393,7 +402,8 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
     res.status(201).json(rows[0]);
   } catch (err) {
     await db.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('[WO create]', err.message);
+    res.status(500).json({ error: woDbError(err) });
   } finally {
     db.release();
   }
@@ -478,7 +488,8 @@ router.patch('/:id/work-orders/:woId', requireAuth, requireRole('owner', 'manage
     res.json(result);
   } catch (err) {
     await db.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('[WO update]', err.message);
+    res.status(500).json({ error: woDbError(err) });
   } finally {
     db.release();
   }

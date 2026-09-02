@@ -2506,6 +2506,11 @@ const MIGRATIONS = [
 
   // Work Orders (jobs with project_id) need created_by for audit attribution
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL`,
+
+  // service_type is a standalone-job concept (dispatch category). Work Orders don't have a
+  // meaningful service_type — their context comes from the parent project and title.
+  // Drop the NOT NULL so WOs can be created without supplying a fake value.
+  `ALTER TABLE jobs ALTER COLUMN service_type DROP NOT NULL`,
 ];
 
 async function runMigrations() {
