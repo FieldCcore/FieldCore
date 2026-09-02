@@ -8626,7 +8626,7 @@ tr:focus-within .inv-row-actions,
 .prj-metric:first-child { padding-left: 0; }
 .prj-metric-sep { width: 1px; background: var(--lightgray); align-self: stretch; margin: 0 4px; }
 .prj-metric-label { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); }
-.prj-metric-value { font-size: 15px; font-weight: 700; color: var(--navy); }
+.prj-metric-value { font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700; color: var(--navy); }
 
 .prj-overview-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
@@ -8794,7 +8794,7 @@ tr:focus-within .inv-row-actions,
 .prj-fin-metric:first-child { padding-left: 0; }
 .prj-fin-metric:last-child  { border-right: none; }
 .prj-fin-label { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); }
-.prj-fin-val   { font-size: 16px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+.prj-fin-val   { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
 .prj-fin-val--green { color: var(--green); }
 .prj-fin-val--red   { color: var(--red); }
 
@@ -8942,7 +8942,7 @@ tr:focus-within .inv-row-actions,
   padding: 20px; display: flex; flex-direction: column;
 }
 .prj-kpi-title       { font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .10em; color: var(--steel); margin-bottom: 10px; }
-.prj-kpi-main        { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 3px; }
+.prj-kpi-main        { font-family: 'Inter', sans-serif; font-size: 26px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 3px; }
 .prj-kpi-main--green { color: #16A34A; }
 .prj-kpi-main--red   { color: #DC2626; }
 .prj-kpi-sub-label   { font-size: 11px; color: var(--steel); margin-bottom: 12px; }
