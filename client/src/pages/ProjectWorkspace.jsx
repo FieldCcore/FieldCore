@@ -53,6 +53,13 @@ function initials(name) {
   if (!name) return '?';
   return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
+function fmtPhone(raw) {
+  if (!raw) return '—';
+  const d = String(raw).replace(/\D/g, '');
+  const n = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
+  if (n.length !== 10) return raw;
+  return `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6)}`;
+}
 
 // ── Overview Tab (V2 command center) ─────────────────────
 function OverviewTab({ project, users, onRefresh, onTabChange }) {
@@ -205,8 +212,9 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
   const collected     = fin?.total_paid                ?? 0;
   const outstanding   = Math.max(0, invoiced - collected);
   const matCost       = fin?.total_material_cost       ?? 0;
+  const hasCostData   = matCost > 0;
   const marginDollars = contractValue - matCost;
-  const marginPct     = contractValue > 0
+  const marginPct     = contractValue > 0 && hasCostData
     ? Math.round((marginDollars / contractValue) * 100)
     : null;
 
@@ -278,11 +286,13 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
 
         <div className="prj-kpi-card">
           <div className="prj-kpi-title">Project Margin</div>
-          <div className={`prj-kpi-main${marginDollars < 0 ? ' prj-kpi-main--red' : marginDollars > 0 && contractValue > 0 ? ' prj-kpi-main--green' : ''}`}>
-            {marginPct != null ? `${marginPct}%` : '—'}
+          <div className={`prj-kpi-main${!hasCostData ? '' : marginDollars < 0 ? ' prj-kpi-main--red' : marginDollars > 0 ? ' prj-kpi-main--green' : ''}`}>
+            {hasCostData && marginPct != null ? `${marginPct}%` : '—'}
           </div>
-          <div className="prj-kpi-sub-label">{fmtMoney(marginDollars)} gross margin</div>
-          {marginPct != null && (
+          <div className="prj-kpi-sub-label">
+            {hasCostData ? `${fmtMoney(marginDollars)} gross margin` : 'Add costs to see margin'}
+          </div>
+          {hasCostData && marginPct != null && (
             <div className="prj-kpi-progress">
               <div
                 className={`prj-kpi-progress-fill${marginPct < 0 ? ' prj-kpi-progress-fill--red' : ''}`}
@@ -398,7 +408,7 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
               {project.client_phone && (
                 <div className="prj-info-row">
                   <span className="prj-info-label">Phone</span>
-                  <span className="prj-info-val">{project.client_phone}</span>
+                  <span className="prj-info-val">{fmtPhone(project.client_phone)}</span>
                 </div>
               )}
               <div className="prj-info-row">
@@ -1236,7 +1246,13 @@ export default function ProjectWorkspace() {
             <h1 className="prj-ws-title">{project.name}</h1>
             <div className="prj-ws-meta">
               {project.client_name && <span>{project.client_name}</span>}
-              {project.manager_name && <span>· {project.manager_name}</span>}
+              {project.service_address && <span>· {project.service_address}</span>}
+              {project.start_date && (
+                <span>
+                  · {fmtDate(project.start_date)}{project.end_date ? ` – ${fmtDate(project.end_date)}` : ''}
+                </span>
+              )}
+              {project.manager_name && <span>· PM: {project.manager_name}</span>}
             </div>
           </div>
           <StatusBadge status={project.status}>{STATUS_LABELS[project.status]}</StatusBadge>

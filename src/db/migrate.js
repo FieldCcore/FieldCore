@@ -2503,6 +2503,9 @@ const MIGRATIONS = [
   // Link invoices to projects
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id) WHERE project_id IS NOT NULL`,
+
+  // Work Orders (jobs with project_id) need created_by for audit attribution
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL`,
 ];
 
 async function runMigrations() {

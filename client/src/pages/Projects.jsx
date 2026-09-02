@@ -1,9 +1,11 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, X, MoreHorizontal, ExternalLink, Edit2, FolderX, Plus } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
+import ClientLocationField from '../components/ClientLocationField';
 
 // ── Helpers ───────────────────────────────────────────────
 const STATUSES = ['draft', 'active', 'on_hold', 'completed', 'cancelled'];
@@ -33,11 +35,67 @@ function initials(name) {
   return name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// ── Portal client search dropdown ─────────────────────────
+// Renders outside the drawer's overflow container so it's never clipped.
+function ClientPortalDrop({ anchorRef, results, onSelect, visible }) {
+  const [rect, setRect] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!visible || !anchorRef.current) { setRect(null); return; }
+    const r = anchorRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 2, left: r.left, width: r.width });
+  }, [visible, results, anchorRef]);
+
+  if (!visible || !results.length || !rect) return null;
+
+  return createPortal(
+    <div style={{
+      position: 'fixed',
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+      background: '#fff',
+      border: '1px solid var(--lightgray)',
+      borderRadius: 8,
+      boxShadow: '0 4px 20px rgba(28,35,51,.14)',
+      overflow: 'hidden',
+      maxHeight: 220,
+      overflowY: 'auto',
+    }}>
+      {results.map((c, i) => (
+        <button
+          key={c.id}
+          type="button"
+          onMouseDown={() => onSelect(c)}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: 2,
+            padding: '9px 12px', width: '100%', background: 'none',
+            border: 'none',
+            borderBottom: i < results.length - 1 ? '1px solid var(--lightgray)' : 'none',
+            cursor: 'pointer', textAlign: 'left', transition: 'background .1s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--offwhite)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</span>
+          {c.email && <span style={{ fontSize: 11, color: 'var(--steel)' }}>{c.email}</span>}
+          {c.phone && !c.email && <span style={{ fontSize: 11, color: 'var(--steel)' }}>{c.phone}</span>}
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+}
+
 const EMPTY_FORM = {
-  name: '', description: '', client_id: '', client_name: '',
+  name: '', description: '',
+  client_id: '', client_name: '',
   status: 'active', billing_model: 'fixed',
   contract_value: '', manager_id: '',
-  start_date: '', end_date: '', service_address: '', location_id: null,
+  start_date: '', end_date: '',
+  service_address: '', service_city: '', service_state: '', service_zip: '',
+  location_id: null,
 };
 
 export default function Projects() {
@@ -58,13 +116,14 @@ export default function Projects() {
   const [formError,  setFormError]  = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
 
-  // Client autocomplete in form
-  const [clientQuery,   setClientQuery]   = useState('');
-  const [clientResults, setClientResults] = useState([]);
+  // Client autocomplete
+  const [clientQuery,    setClientQuery]    = useState('');
+  const [clientResults,  setClientResults]  = useState([]);
   const [showClientDrop, setShowClientDrop] = useState(false);
-  const clientTimer = useRef(null);
+  const clientTimer  = useRef(null);
+  const clientInputRef = useRef(null);
 
-  const menuRef    = useRef(null);
+  const menuRef     = useRef(null);
   const searchTimer = useRef(null);
   const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
 
@@ -88,7 +147,7 @@ export default function Projects() {
     }
   }, [isOwnerOrMgr]);
 
-  // ── Outside click — close menu ────────────────────────
+  // Close menu on outside click
   useEffect(() => {
     if (!openMenuId) return;
     function handler(e) {
@@ -97,6 +156,18 @@ export default function Projects() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenuId]);
+
+  // Close client drop on outside click
+  useEffect(() => {
+    if (!showClientDrop) return;
+    function handler(e) {
+      if (clientInputRef.current && !clientInputRef.current.contains(e.target)) {
+        setShowClientDrop(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showClientDrop]);
 
   function handleSearchChange(val) {
     setSearch(val);
@@ -113,17 +184,40 @@ export default function Projects() {
     clientTimer.current = setTimeout(async () => {
       try {
         const r = await api.get(`/clients/search?q=${encodeURIComponent(val)}`);
-        setClientResults(r.data || []);
-        setShowClientDrop(true);
+        const results = r.data || [];
+        setClientResults(results);
+        setShowClientDrop(results.length > 0);
       } catch {}
     }, 250);
   }
 
   function selectClient(c) {
-    setForm(p => ({ ...p, client_id: c.id, client_name: c.name }));
+    setForm(p => ({
+      ...p,
+      client_id:       c.id,
+      client_name:     c.name,
+      // Clear location so ClientLocationField auto-loads the client's primary location
+      location_id:     null,
+      service_address: '',
+      service_city:    '',
+      service_state:   '',
+      service_zip:     '',
+    }));
     setClientQuery(c.name);
     setClientResults([]);
     setShowClientDrop(false);
+  }
+
+  // ── Location selection (from ClientLocationField) ─────
+  function handleLocationSelect({ location_id, address, city, state, zip }) {
+    setForm(p => ({
+      ...p,
+      location_id:     location_id || null,
+      service_address: address     || '',
+      service_city:    city        || '',
+      service_state:   state       || '',
+      service_zip:     zip         || '',
+    }));
   }
 
   // ── Form open ─────────────────────────────────────────
@@ -152,6 +246,9 @@ export default function Projects() {
       start_date:      p.start_date      ? p.start_date.slice(0, 10) : '',
       end_date:        p.end_date        ? p.end_date.slice(0, 10)   : '',
       service_address: p.service_address || '',
+      service_city:    p.service_city    || '',
+      service_state:   p.service_state   || '',
+      service_zip:     p.service_zip     || '',
       location_id:     p.location_id     || null,
     });
     setClientQuery(p.client_name || '');
@@ -177,6 +274,9 @@ export default function Projects() {
         start_date:      form.start_date      || null,
         end_date:        form.end_date        || null,
         service_address: form.service_address || null,
+        service_city:    form.service_city    || null,
+        service_state:   form.service_state   || null,
+        service_zip:     form.service_zip     || null,
         location_id:     form.location_id     || null,
       };
       if (formMode === 'create') {
@@ -207,6 +307,12 @@ export default function Projects() {
 
   function set(field) {
     return e => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  }
+
+  // Displayed service location string for the list
+  function fmtLocation(p) {
+    const parts = [p.service_address, p.service_city, p.service_state].filter(Boolean);
+    return parts.join(', ') || null;
   }
 
   // ── Render ────────────────────────────────────────────
@@ -296,15 +402,14 @@ export default function Projects() {
                   className="clickable-row prj-table-row"
                   onClick={() => nav(`/projects/${p.id}`)}
                 >
-                  {/* Project — hierarchy cell */}
                   <td>
                     <div className="prj-project-cell">
                       {fmtPrjNum(p.project_number) && (
                         <span className="prj-project-num">{fmtPrjNum(p.project_number)}</span>
                       )}
                       <span className="prj-project-name">{p.name}</span>
-                      {p.service_address && (
-                        <span className="prj-project-loc">{p.service_address}</span>
+                      {fmtLocation(p) && (
+                        <span className="prj-project-loc">{fmtLocation(p)}</span>
                       )}
                     </div>
                   </td>
@@ -315,7 +420,6 @@ export default function Projects() {
                     <StatusBadge status={p.status}>{STATUS_LABELS[p.status]}</StatusBadge>
                   </td>
 
-                  {/* Project Manager — avatar + name */}
                   <td>
                     {p.manager_name ? (
                       <div className="prj-mgr-cell">
@@ -330,7 +434,6 @@ export default function Projects() {
                   <td className="prj-date">{fmtDate(p.start_date)}</td>
                   <td className="prj-date">{fmtDate(p.end_date)}</td>
 
-                  {/* Progress */}
                   <td>
                     {p.work_order_count > 0 ? (
                       <div className="prj-progress-wrap">
@@ -341,9 +444,7 @@ export default function Projects() {
                           <div
                             className="prj-progress-fill"
                             style={{
-                              width: `${p.work_order_count > 0
-                                ? Math.round(((p.completed_work_orders ?? 0) / p.work_order_count) * 100)
-                                : 0}%`
+                              width: `${Math.round(((p.completed_work_orders ?? 0) / p.work_order_count) * 100)}%`
                             }}
                           />
                         </div>
@@ -357,7 +458,6 @@ export default function Projects() {
                     {fmtMoney(p.contract_value)}
                   </td>
 
-                  {/* Actions */}
                   <td className="prj-td-actions" onClick={e => e.stopPropagation()}>
                     <div className={`prj-row-actions${openMenuId === p.id ? ' prj-row-actions--open' : ''}`}>
                       <div className="prj-action-menu-wrap" ref={openMenuId === p.id ? menuRef : null}>
@@ -437,31 +537,23 @@ export default function Projects() {
                 <input value={form.name} onChange={set('name')} required placeholder="e.g. Equipment Demobilization" />
               </div>
 
-              {/* Client autocomplete */}
-              <div className="form-group" style={{ position: 'relative' }}>
+              {/* Client — portal autocomplete so it's never clipped by overflow */}
+              <div className="form-group">
                 <label>Client</label>
                 <input
+                  ref={clientInputRef}
                   value={clientQuery}
                   onChange={e => handleClientInput(e.target.value)}
-                  onFocus={() => clientQuery && setShowClientDrop(clientResults.length > 0)}
-                  placeholder="Search clients…"
+                  onFocus={() => clientResults.length > 0 && setShowClientDrop(true)}
+                  placeholder="Search by name, email, or phone…"
                   autoComplete="off"
                 />
-                {showClientDrop && clientResults.length > 0 && (
-                  <div className="prj-client-drop">
-                    {clientResults.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="prj-client-item"
-                        onMouseDown={() => selectClient(c)}
-                      >
-                        <span className="prj-client-item-name">{c.name}</span>
-                        {c.email && <span className="prj-client-item-sub">{c.email}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <ClientPortalDrop
+                  anchorRef={clientInputRef}
+                  results={clientResults}
+                  onSelect={selectClient}
+                  visible={showClientDrop}
+                />
               </div>
 
               <div className="form-row">
@@ -512,13 +604,21 @@ export default function Projects() {
                 </div>
               </div>
 
+              {/* Project location — uses shared ClientLocationField */}
               <div className="form-group">
-                <label>Project Location / Address</label>
-                <input
-                  value={form.service_address}
-                  onChange={set('service_address')}
-                  placeholder="e.g. Fort Lauderdale, FL"
+                <label>Project Location</label>
+                <ClientLocationField
+                  clientId={form.client_id || null}
+                  locationId={form.location_id}
+                  address={form.service_address}
+                  onSelect={handleLocationSelect}
+                  onAddressChange={v => setForm(p => ({ ...p, service_address: v, location_id: null }))}
                 />
+                {(form.service_city || form.service_state) && (
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+                    {[form.service_city, form.service_state, form.service_zip].filter(Boolean).join(', ')}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
