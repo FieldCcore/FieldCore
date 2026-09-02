@@ -717,18 +717,24 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
     if (!projRes.rows.length) return res.status(404).json({ error: 'Project not found.' });
 
     const [matRes, invRes, woRes] = await Promise.all([
+      // Split costs by type: 'material' vs 'expense'/'other'
       pool.query(`
         SELECT
-          COALESCE(SUM(cost_cents  * quantity), 0)::int AS total_material_cost,
-          COALESCE(SUM(price_cents * quantity), 0)::int AS total_material_price
+          COALESCE(SUM(CASE WHEN type = 'material'
+                            THEN cost_cents * quantity ELSE 0 END), 0)::int AS material_cost,
+          COALESCE(SUM(CASE WHEN type IN ('expense', 'other')
+                            THEN cost_cents * quantity ELSE 0 END), 0)::int AS other_cost,
+          COALESCE(SUM(cost_cents * quantity), 0)::int                       AS total_cost_raw,
+          COALESCE(SUM(price_cents * quantity), 0)::int                      AS total_billable
         FROM work_order_materials WHERE project_id = $1 AND account_id = $2
       `, [req.params.id, req.accountId]),
 
+      // Exclude void invoices from invoiced total
       pool.query(`
         SELECT
           COALESCE(SUM(ROUND(amount * 100)), 0)::int AS total_invoiced,
           COALESCE(SUM(CASE WHEN status = 'paid' THEN ROUND(amount * 100) ELSE 0 END), 0)::int AS total_paid
-        FROM invoices WHERE project_id = $1 AND account_id = $2
+        FROM invoices WHERE project_id = $1 AND account_id = $2 AND status != 'void'
       `, [req.params.id, req.accountId]),
 
       pool.query(`
@@ -739,13 +745,34 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
       `, [req.params.id, req.accountId]),
     ]);
 
+    const contractValue  = projRes.rows[0].contract_value ?? 0;
+    const materialCost   = matRes.rows[0].material_cost;
+    const otherCost      = matRes.rows[0].other_cost;
+    const totalCost      = materialCost + otherCost; // labor = 0 until time-tracking exists
+    const totalInvoiced  = invRes.rows[0].total_invoiced;
+    const totalPaid      = invRes.rows[0].total_paid;
+    const outstanding    = Math.max(0, totalInvoiced - totalPaid);
+
+    // Margin only meaningful when contract value is set AND there are costs
+    const grossMarginAmt = (contractValue > 0 || totalCost > 0)
+      ? contractValue - totalCost : null;
+    const grossMarginPct = contractValue > 0 && grossMarginAmt != null
+      ? Math.round((grossMarginAmt / contractValue) * 100) : null;
+
     res.json({
-      contract_value:       projRes.rows[0].contract_value || 0,
-      total_material_cost:  matRes.rows[0].total_material_cost,
-      total_material_price: matRes.rows[0].total_material_price,
-      total_invoiced:       invRes.rows[0].total_invoiced,
-      total_paid:           invRes.rows[0].total_paid,
-      work_order_count:     woRes.rows[0].work_order_count,
+      contract_value:        contractValue,
+      material_cost:         materialCost,
+      other_cost:            otherCost,
+      labor_cost:            null,   // no time-tracking integration yet
+      total_cost:            totalCost,
+      total_billable:        matRes.rows[0].total_billable,
+      total_invoiced:        totalInvoiced,
+      total_paid:            totalPaid,
+      outstanding:           outstanding,
+      gross_margin_amount:   grossMarginAmt,
+      gross_margin_pct:      grossMarginPct,
+      margin_basis:          'contract_value',
+      work_order_count:      woRes.rows[0].work_order_count,
       completed_work_orders: woRes.rows[0].completed_count,
     });
   } catch (err) {

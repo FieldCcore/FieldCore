@@ -114,15 +114,15 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
   const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       api.get(`/projects/${project.id}/work-orders`),
       api.get(`/projects/${project.id}/financials`),
       api.get(`/projects/${project.id}/activity`),
     ]).then(([woRes, finRes, actRes]) => {
-      setWorkOrders(woRes.data || []);
-      setFin(finRes.data || null);
-      setActivity(actRes.data || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+      if (woRes.status  === 'fulfilled') setWorkOrders(woRes.value.data || []);
+      if (finRes.status === 'fulfilled') setFin(finRes.value.data || null);
+      if (actRes.status === 'fulfilled') setActivity(actRes.value.data || []);
+    }).finally(() => setLoading(false));
   }, [project.id]);
 
   function openEdit() {
@@ -249,13 +249,15 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
   const contractValue = project.contract_value        ?? 0;
   const invoiced      = fin?.total_invoiced            ?? 0;
   const collected     = fin?.total_paid                ?? 0;
-  const outstanding   = Math.max(0, invoiced - collected);
-  const matCost       = fin?.total_material_cost       ?? 0;
-  const hasCostData   = matCost > 0;
-  const marginDollars = contractValue - matCost;
-  const marginPct     = contractValue > 0 && hasCostData
-    ? Math.round((marginDollars / contractValue) * 100)
-    : null;
+  const outstanding   = fin?.outstanding               ?? Math.max(0, invoiced - collected);
+  const materialCost  = fin?.material_cost             ?? 0;
+  const otherCost     = fin?.other_cost                ?? 0;
+  const totalCost     = fin?.total_cost                ?? (materialCost + otherCost);
+  // labor_cost is null until time-tracking exists — treat as 0 for totals
+  const hasCostData   = totalCost > 0;
+  const marginDollars = fin?.gross_margin_amount       ?? null;
+  const marginPct     = fin?.gross_margin_pct          ?? null;
+  const showMargin    = hasCostData && marginDollars != null;
 
   const upcoming = [...workOrders]
     .filter(wo => wo.scheduled_at && !['complete', 'cancelled'].includes(wo.status))
@@ -311,12 +313,12 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
 
         <div className="prj-kpi-card">
           <div className="prj-kpi-title">Cost Summary</div>
-          <div className="prj-kpi-main">{fmtMoney(matCost)}</div>
+          <div className="prj-kpi-main">{fmtMoney(totalCost)}</div>
           <div className="prj-kpi-sub-label">Total Cost</div>
           <div className="prj-kpi-rows">
-            <div className="prj-kpi-row"><span>Material Cost</span><span>{fmtMoney(matCost)}</span></div>
-            <div className="prj-kpi-row"><span>Labor Cost</span><span>—</span></div>
-            <div className="prj-kpi-row"><span>Other</span><span>—</span></div>
+            <div className="prj-kpi-row"><span>Materials</span><span>{fmtMoney(materialCost)}</span></div>
+            <div className="prj-kpi-row"><span>Other</span><span>{fmtMoney(otherCost)}</span></div>
+            <div className="prj-kpi-row"><span>Labor</span><span>—</span></div>
           </div>
           <button className="prj-kpi-link" onClick={() => onTabChange('financials')}>
             View financials →
@@ -325,13 +327,13 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
 
         <div className="prj-kpi-card">
           <div className="prj-kpi-title">Project Margin</div>
-          <div className={`prj-kpi-main${!hasCostData ? '' : marginDollars < 0 ? ' prj-kpi-main--red' : marginDollars > 0 ? ' prj-kpi-main--green' : ''}`}>
-            {hasCostData && marginPct != null ? `${marginPct}%` : '—'}
+          <div className={`prj-kpi-main${!showMargin ? '' : marginDollars < 0 ? ' prj-kpi-main--red' : ' prj-kpi-main--green'}`}>
+            {showMargin && marginPct != null ? `${marginPct}%` : '—'}
           </div>
           <div className="prj-kpi-sub-label">
-            {hasCostData ? `${fmtMoney(marginDollars)} gross margin` : 'Add costs to see margin'}
+            {showMargin ? `${fmtMoney(marginDollars)} gross margin` : 'Add costs to see margin'}
           </div>
-          {hasCostData && marginPct != null && (
+          {showMargin && marginPct != null && (
             <div className="prj-kpi-progress">
               <div
                 className={`prj-kpi-progress-fill${marginPct < 0 ? ' prj-kpi-progress-fill--red' : ''}`}
@@ -1281,7 +1283,9 @@ function FinancialsTab({ projectId }) {
 
   if (loading) return <div className="prj-state">Loading…</div>;
 
-  const margin = fin ? fin.contract_value - (fin.total_material_cost ?? 0) : 0;
+  // All values come from the authoritative backend financials endpoint
+  const finMarginAmt = fin?.gross_margin_amount ?? null;
+  const finHasCost   = (fin?.total_cost ?? 0) > 0;
 
   return (
     <div className="prj-fin-tab">
@@ -1292,12 +1296,12 @@ function FinancialsTab({ projectId }) {
             <span className="prj-fin-val">{fmtMoney(fin.contract_value)}</span>
           </div>
           <div className="prj-fin-metric">
-            <span className="prj-fin-label">Material Cost</span>
-            <span className="prj-fin-val">{fmtMoney(fin.total_material_cost)}</span>
+            <span className="prj-fin-label">Total Cost</span>
+            <span className="prj-fin-val">{fmtMoney(fin.total_cost)}</span>
           </div>
           <div className="prj-fin-metric">
             <span className="prj-fin-label">Billable Amount</span>
-            <span className="prj-fin-val">{fmtMoney(fin.total_material_price)}</span>
+            <span className="prj-fin-val">{fmtMoney(fin.total_billable)}</span>
           </div>
           <div className="prj-fin-metric">
             <span className="prj-fin-label">Invoiced</span>
@@ -1309,9 +1313,13 @@ function FinancialsTab({ projectId }) {
           </div>
           <div className="prj-fin-metric">
             <span className="prj-fin-label">Est. Margin</span>
-            <span className={`prj-fin-val${margin < 0 ? ' prj-fin-val--red' : ' prj-fin-val--green'}`}>
-              {fmtMoney(margin)}
-            </span>
+            {finHasCost && finMarginAmt != null ? (
+              <span className={`prj-fin-val${finMarginAmt < 0 ? ' prj-fin-val--red' : ' prj-fin-val--green'}`}>
+                {fmtMoney(finMarginAmt)}
+              </span>
+            ) : (
+              <span className="prj-fin-val" style={{ color: 'var(--steel)' }}>—</span>
+            )}
           </div>
         </div>
       )}
