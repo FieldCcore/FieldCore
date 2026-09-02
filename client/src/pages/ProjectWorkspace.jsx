@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import JobTeamSelector from '../components/JobTeamSelector';
 import {
   ChevronLeft, Plus, X, Check, Trash2, ExternalLink,
   ChevronDown, ChevronUp, Search,
@@ -16,6 +17,11 @@ const STATUS_LABELS = {
 const WO_STATUSES = [
   'unscheduled', 'draft', 'scheduled', 'in_progress', 'paused', 'complete', 'cancelled',
 ];
+const WO_STATUS_LABELS = {
+  unscheduled: 'Unscheduled', draft: 'Draft', scheduled: 'Scheduled',
+  in_progress: 'In Progress', paused: 'Paused', complete: 'Completed', cancelled: 'Cancelled',
+};
+const WO_CREATE_STATUSES = ['draft', 'scheduled', 'in_progress', 'paused', 'complete', 'cancelled'];
 const BILLING_LABELS = {
   fixed: 'Fixed Price', time_materials: 'Time & Materials', cost_plus: 'Cost Plus',
 };
@@ -59,6 +65,39 @@ function fmtPhone(raw) {
   const n = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
   if (n.length !== 10) return raw;
   return `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6)}`;
+}
+
+// ── Duration helpers ──────────────────────────────────────
+const MINS_PER_BDAY = 480; // 8-hour business day
+function minutesToParts(total) {
+  const t = Math.max(0, total || 0);
+  return { d: Math.floor(t / MINS_PER_BDAY), h: Math.floor((t % MINS_PER_BDAY) / 60), m: t % 60 };
+}
+function DurationPicker({ value, onChange }) {
+  const { d, h, m } = minutesToParts(value);
+  function upd(nd, nh, nm) {
+    onChange(
+      Math.max(0, parseInt(nd) || 0) * MINS_PER_BDAY +
+      Math.min(23, Math.max(0, parseInt(nh) || 0)) * 60 +
+      Math.min(59, Math.max(0, parseInt(nm) || 0))
+    );
+  }
+  return (
+    <div className="prj-dur-picker">
+      <div className="prj-dur-unit">
+        <input type="number" min="0" max="99" value={d} onChange={e => upd(e.target.value, h, m)} />
+        <span>days</span>
+      </div>
+      <div className="prj-dur-unit">
+        <input type="number" min="0" max="23" value={h} onChange={e => upd(d, e.target.value, m)} />
+        <span>hrs</span>
+      </div>
+      <div className="prj-dur-unit">
+        <input type="number" min="0" max="59" value={m} onChange={e => upd(d, h, e.target.value)} />
+        <span>min</span>
+      </div>
+    </div>
+  );
 }
 
 // ── Overview Tab (V2 command center) ─────────────────────
@@ -329,7 +368,7 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
                         <span className="prj-upcoming-meta">{wo.tech_name || 'Unassigned'}</span>
                       </div>
                       <div className="prj-upcoming-right">
-                        <StatusBadge status={wo.status}>{wo.status?.replace(/_/g, ' ')}</StatusBadge>
+                        <StatusBadge status={wo.status}>{WO_STATUS_LABELS[wo.status] ?? wo.status?.replace(/_/g, ' ')}</StatusBadge>
                         <span className="prj-upcoming-meta">{fmtDate(wo.scheduled_at)}</span>
                       </div>
                     </div>
@@ -522,13 +561,22 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
 
   function openEditWo() {
     setWoForm({
-      title:            wo.title            || '',
-      description:      wo.description      || '',
-      tech_id:          wo.tech_id          || '',
-      status:           wo.status           || 'unscheduled',
+      title:        wo.title        || '',
+      description:  wo.description  || '',
+      assignment: {
+        members: (wo.team_members || []).map(m => ({
+          userId:         m.user_id,
+          memberName:     m.member_name,
+          assignmentRole: m.assignment_role || 'technician',
+          isPrimary:      m.is_primary,
+        })),
+        crewId: null,
+      },
+      status:           wo.status           || 'draft',
       priority:         wo.priority         || 'normal',
-      scheduled_at:     wo.scheduled_at     ? wo.scheduled_at.slice(0, 16) : '',
-      duration_minutes: wo.duration_minutes || '',
+      scheduled_date:   wo.scheduled_at     ? wo.scheduled_at.slice(0, 10) : '',
+      scheduled_time:   wo.scheduled_at     ? wo.scheduled_at.slice(11, 16) : '',
+      duration_minutes: wo.duration_minutes || 0,
       instructions:     wo.instructions     || '',
     });
     setEditingWo(true);
@@ -537,12 +585,22 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
   async function saveWo(e) {
     e.preventDefault();
     setSavingWo(true);
+    const members = woForm.assignment?.members || [];
+    const primary = members.find(m => m.isPrimary) || members[0] || null;
+    const scheduled_at = woForm.scheduled_date
+      ? (woForm.scheduled_time ? `${woForm.scheduled_date}T${woForm.scheduled_time}` : woForm.scheduled_date)
+      : null;
     try {
       await api.patch(`/projects/${projectId}/work-orders/${wo.id}`, {
-        ...woForm,
-        tech_id:          woForm.tech_id          || null,
-        scheduled_at:     woForm.scheduled_at     || null,
-        duration_minutes: woForm.duration_minutes ? parseInt(woForm.duration_minutes) : null,
+        title:            woForm.title,
+        description:      woForm.description  || null,
+        status:           woForm.status,
+        priority:         woForm.priority,
+        scheduled_at,
+        duration_minutes: woForm.duration_minutes || null,
+        instructions:     woForm.instructions || null,
+        tech_id:          primary?.userId     || null,
+        assignment:       woForm.assignment,
       });
       setEditingWo(false);
       onRefresh();
@@ -569,11 +627,15 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
         </button>
         <span className="prj-wo-num">{fmtWoNum(wo.work_order_number)}</span>
         <span className="prj-wo-title">{wo.title}</span>
-        <StatusBadge status={wo.status}>{wo.status?.replace(/_/g, ' ')}</StatusBadge>
+        <StatusBadge status={wo.status}>{WO_STATUS_LABELS[wo.status] ?? wo.status?.replace(/_/g, ' ')}</StatusBadge>
         {wo.priority && wo.priority !== 'normal' && (
           <span className={`prj-priority prj-priority--${wo.priority}`}>{wo.priority}</span>
         )}
-        {wo.tech_name && <span className="prj-wo-tech">{wo.tech_name}</span>}
+        {(wo.team_members?.length > 0 ? wo.team_members.map(m => m.member_name).join(', ') : wo.tech_name) && (
+          <span className="prj-wo-tech">
+            {wo.team_members?.length > 0 ? wo.team_members.map(m => m.member_name).join(', ') : wo.tech_name}
+          </span>
+        )}
         {wo.task_count > 0 && (
           <span className="prj-wo-task-badge">{wo.complete_count}/{wo.task_count} tasks</span>
         )}
@@ -599,58 +661,76 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
         <div className="prj-wo-body">
           {editingWo ? (
             <form onSubmit={saveWo} className="prj-wo-edit-form">
-              <div className="form-row">
+              <div className="prj-wo-section">
+                <div className="prj-wo-section-label">Work Order Details</div>
                 <div className="form-group">
                   <label>Title *</label>
                   <input value={woForm.title} onChange={e => setWoForm(p => ({ ...p, title: e.target.value }))} required />
                 </div>
-                <div className="form-group">
-                  <label>Status</label>
-                  <select value={woForm.status} onChange={e => setWoForm(p => ({ ...p, status: e.target.value }))}>
-                    {WO_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-                  </select>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Status</label>
+                    <select value={woForm.status} onChange={e => setWoForm(p => ({ ...p, status: e.target.value }))}>
+                      {WO_CREATE_STATUSES.map(s => (
+                        <option key={s} value={s}>{WO_STATUS_LABELS[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Priority</label>
+                    <select value={woForm.priority} onChange={e => setWoForm(p => ({ ...p, priority: e.target.value }))}>
+                      {['low', 'normal', 'high', 'urgent'].map(p => (
+                        <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
-              <div className="form-row">
+              <div className="prj-wo-section">
+                <div className="prj-wo-section-label">Assignment</div>
                 <div className="form-group">
-                  <label>Assigned Tech</label>
-                  <select value={woForm.tech_id} onChange={e => setWoForm(p => ({ ...p, tech_id: e.target.value }))}>
-                    <option value="">— Unassigned —</option>
-                    {users.filter(u => u.role === 'tech').map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Priority</label>
-                  <select value={woForm.priority} onChange={e => setWoForm(p => ({ ...p, priority: e.target.value }))}>
-                    {['low', 'normal', 'high', 'urgent'].map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+                  <JobTeamSelector
+                    value={woForm.assignment}
+                    onChange={v => setWoForm(p => ({ ...p, assignment: v }))}
+                    techs={users}
+                    crews={[]}
+                  />
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Scheduled At</label>
-                  <input type="datetime-local" value={woForm.scheduled_at} onChange={e => setWoForm(p => ({ ...p, scheduled_at: e.target.value }))} />
+              <div className="prj-wo-section">
+                <div className="prj-wo-section-label">Schedule</div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Date</label>
+                    <input type="date" value={woForm.scheduled_date}
+                      onChange={e => setWoForm(p => ({ ...p, scheduled_date: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Start Time</label>
+                    <input type="time" value={woForm.scheduled_time}
+                      onChange={e => setWoForm(p => ({ ...p, scheduled_time: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="form-group">
-                  <label>Duration (min)</label>
-                  <input type="number" min="0" value={woForm.duration_minutes} onChange={e => setWoForm(p => ({ ...p, duration_minutes: e.target.value }))} />
+                  <label>Duration</label>
+                  <DurationPicker value={woForm.duration_minutes}
+                    onChange={v => setWoForm(p => ({ ...p, duration_minutes: v }))} />
                 </div>
               </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea rows={2} value={woForm.description} onChange={e => setWoForm(p => ({ ...p, description: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Tech Instructions</label>
-                <textarea rows={2} value={woForm.instructions} onChange={e => setWoForm(p => ({ ...p, instructions: e.target.value }))} />
+              <div className="prj-wo-section">
+                <div className="prj-wo-section-label">Scope</div>
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea rows={2} value={woForm.description} onChange={e => setWoForm(p => ({ ...p, description: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>Tech Instructions</label>
+                  <textarea rows={2} value={woForm.instructions} onChange={e => setWoForm(p => ({ ...p, instructions: e.target.value }))} />
+                </div>
               </div>
               <div className="prj-form-actions">
                 <button type="submit" className="tb-btn tb-primary" disabled={savingWo}>
-                  {savingWo ? 'Saving…' : 'Save'}
+                  {savingWo ? 'Saving…' : 'Save Changes'}
                 </button>
                 <button type="button" className="tb-btn tb-ghost" onClick={() => setEditingWo(false)}>Cancel</button>
               </div>
@@ -717,17 +797,22 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr }) {
 
 // ── Work Orders Tab (V2 — with filters) ──────────────────
 function WorkOrdersTab({ projectId, users, onRefresh }) {
-  const [workOrders, setWorkOrders]       = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [showForm, setShowForm]           = useState(false);
-  const [form, setForm]                   = useState({});
-  const [saving, setSaving]               = useState(false);
-  const [error, setError]                 = useState('');
-  const [filterStatus, setFilterStatus]   = useState('');
+  const [workOrders, setWorkOrders]         = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [showForm, setShowForm]             = useState(false);
+  const [form, setForm]                     = useState({});
+  const [saving, setSaving]                 = useState(false);
+  const [error, setError]                   = useState('');
+  const [filterStatus, setFilterStatus]     = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [search, setSearch]               = useState('');
+  const [search, setSearch]                 = useState('');
+  const [crews, setCrews]                   = useState([]);
   const { user } = useAuth();
   const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
+
+  useEffect(() => {
+    api.get('/crews').then(r => setCrews(r.data || [])).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -752,27 +837,49 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
 
   function openNew() {
     setForm({
-      title: '', description: '', tech_id: '', status: 'unscheduled',
-      priority: 'normal', scheduled_at: '', duration_minutes: '', instructions: '',
+      title: '', description: '',
+      assignment: { members: [], crewId: null },
+      status: 'draft', priority: 'normal',
+      scheduled_date: '', scheduled_time: '',
+      duration_minutes: 0, instructions: '',
     });
     setError('');
     setShowForm(true);
   }
 
-  function set(field) {
+  function setField(field) {
     return e => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  }
+
+  function handleScheduledDate(val) {
+    setForm(p => ({
+      ...p,
+      scheduled_date: val,
+      status: val && p.status === 'draft' ? 'scheduled'
+        : (!val && p.status === 'scheduled' ? 'draft' : p.status),
+    }));
   }
 
   async function save(e) {
     e.preventDefault();
     setSaving(true);
     setError('');
+    const members = form.assignment?.members || [];
+    const primary = members.find(m => m.isPrimary) || members[0] || null;
+    const scheduled_at = form.scheduled_date
+      ? (form.scheduled_time ? `${form.scheduled_date}T${form.scheduled_time}` : form.scheduled_date)
+      : null;
     try {
       await api.post(`/projects/${projectId}/work-orders`, {
-        ...form,
-        tech_id:          form.tech_id          || null,
-        scheduled_at:     form.scheduled_at     || null,
-        duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
+        title:            form.title,
+        description:      form.description   || null,
+        status:           form.status,
+        priority:         form.priority,
+        scheduled_at,
+        duration_minutes: form.duration_minutes || null,
+        instructions:     form.instructions  || null,
+        tech_id:          primary?.userId    || null,
+        assignment:       form.assignment,
       });
       setShowForm(false);
       load();
@@ -832,56 +939,81 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
 
       {showForm && (
         <div className="prj-wo-form-card">
-          <div className="prj-section-title">New Work Order</div>
           {error && <div className="prj-form-error">{error}</div>}
           <form onSubmit={save}>
-            <div className="form-group">
-              <label>Title *</label>
-              <input value={form.title} onChange={set('title')} required placeholder="e.g. Demo existing flooring" />
-            </div>
-            <div className="form-row">
+            {/* ── Details ── */}
+            <div className="prj-wo-section">
+              <div className="prj-wo-section-label">Work Order Details</div>
               <div className="form-group">
-                <label>Status</label>
-                <select value={form.status} onChange={set('status')}>
-                  {WO_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-                </select>
+                <label>Title *</label>
+                <input value={form.title} onChange={setField('title')} required placeholder="e.g. Replace bunk lights on Unit 1008" />
               </div>
-              <div className="form-group">
-                <label>Priority</label>
-                <select value={form.priority} onChange={set('priority')}>
-                  {['low', 'normal', 'high', 'urgent'].map(p => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Assigned Tech</label>
-                <select value={form.tech_id} onChange={set('tech_id')}>
-                  <option value="">— Unassigned —</option>
-                  {users.filter(u => u.role === 'tech').map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Scheduled At</label>
-                <input type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} />
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Status</label>
+                  <select value={form.status} onChange={setField('status')}>
+                    {WO_CREATE_STATUSES.map(s => (
+                      <option key={s} value={s}>{WO_STATUS_LABELS[s]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Priority</label>
+                  <select value={form.priority} onChange={setField('priority')}>
+                    {['low', 'normal', 'high', 'urgent'].map(p => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-            <div className="form-group">
-              <label>Duration (minutes)</label>
-              <input type="number" min="0" value={form.duration_minutes} onChange={set('duration_minutes')} placeholder="e.g. 120" />
+
+            {/* ── Assignment ── */}
+            <div className="prj-wo-section">
+              <div className="prj-wo-section-label">Assignment</div>
+              <div className="form-group">
+                <JobTeamSelector
+                  value={form.assignment}
+                  onChange={v => setForm(p => ({ ...p, assignment: v }))}
+                  techs={users}
+                  crews={crews}
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label>Description</label>
-              <textarea rows={2} value={form.description} onChange={set('description')} />
+
+            {/* ── Schedule ── */}
+            <div className="prj-wo-section">
+              <div className="prj-wo-section-label">Schedule</div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Date</label>
+                  <input type="date" value={form.scheduled_date} onChange={e => handleScheduledDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Start Time</label>
+                  <input type="time" value={form.scheduled_time} onChange={setField('scheduled_time')} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Duration</label>
+                <DurationPicker value={form.duration_minutes}
+                  onChange={v => setForm(p => ({ ...p, duration_minutes: v }))} />
+              </div>
             </div>
-            <div className="form-group">
-              <label>Tech Instructions</label>
-              <textarea rows={2} value={form.instructions} onChange={set('instructions')} />
+
+            {/* ── Scope ── */}
+            <div className="prj-wo-section">
+              <div className="prj-wo-section-label">Scope</div>
+              <div className="form-group">
+                <label>Description</label>
+                <textarea rows={2} value={form.description} onChange={setField('description')} />
+              </div>
+              <div className="form-group">
+                <label>Tech Instructions</label>
+                <textarea rows={2} value={form.instructions} onChange={setField('instructions')} />
+              </div>
             </div>
+
             <div className="prj-form-actions">
               <button type="submit" className="tb-btn tb-primary" disabled={saving}>
                 {saving ? 'Creating…' : 'Create Work Order'}

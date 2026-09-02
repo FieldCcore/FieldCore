@@ -283,7 +283,8 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
              COALESCE(t.task_count, 0)::int    AS task_count,
              COALESCE(t.complete_count, 0)::int AS complete_count,
              COALESCE(m.material_cost, 0)::int  AS material_cost,
-             COALESCE(m.price_total, 0)::int    AS material_price
+             COALESCE(m.price_total, 0)::int    AS material_price,
+             COALESCE(tm.team_members, '[]'::json) AS team_members
       FROM jobs j
       LEFT JOIN users u ON u.id = j.tech_id
       LEFT JOIN (
@@ -298,6 +299,21 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
                SUM(price_cents * quantity)::int AS price_total
         FROM work_order_materials WHERE job_id IS NOT NULL GROUP BY job_id
       ) m ON m.job_id = j.id
+      LEFT JOIN (
+        SELECT ja.job_id,
+               json_agg(
+                 json_build_object(
+                   'user_id',        ja.user_id,
+                   'member_name',    au.name,
+                   'assignment_role',ja.assignment_role,
+                   'is_primary',     ja.is_primary
+                 ) ORDER BY ja.is_primary DESC, au.name
+               ) AS team_members
+        FROM job_assignments ja
+        JOIN users au ON au.id = ja.user_id
+        WHERE ja.account_id = $2 AND ja.removed_at IS NULL
+        GROUP BY ja.job_id
+      ) tm ON tm.job_id = j.id
       WHERE j.project_id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL${extraWhere}
       ORDER BY j.work_order_number ASC NULLS LAST, j.created_at ASC
     `, [req.params.id, req.accountId]);
@@ -310,13 +326,19 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
 // POST /api/projects/:id/work-orders
 router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
   const {
-    title, description, tech_id, status = 'unscheduled',
+    title, description, assignment,
+    status = 'draft',
     scheduled_at, duration_minutes, priority = 'normal',
     service_address, service_city, service_state, service_zip,
     location_id, instructions,
+    tech_id: legacyTechId,
   } = req.body;
 
   if (!title?.trim()) return res.status(400).json({ error: 'Work order title is required.' });
+
+  const members       = assignment?.members || [];
+  const primaryMember = members.find(m => m.isPrimary) || members[0] || null;
+  const effectiveTechId = primaryMember?.userId || legacyTechId || null;
 
   const db = await pool.connect();
   try {
@@ -345,12 +367,21 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
     `, [
       req.accountId, req.params.id, woNum,
       title.trim(), description || null,
-      proj.client_id, tech_id || null, status,
+      proj.client_id, effectiveTechId, status,
       scheduled_at || null, duration_minutes || null, priority,
       service_address || null, service_city || null,
       service_state || null, service_zip || null,
       location_id || null, instructions || null, req.userId,
     ]);
+
+    const jobId = rows[0].id;
+    for (const m of members) {
+      await db.query(`
+        INSERT INTO job_assignments
+          (account_id, job_id, user_id, assignment_role, is_primary, status, assigned_at, assigned_by)
+        VALUES ($1, $2, $3, $4, $5, 'accepted', NOW(), $6)
+      `, [req.accountId, jobId, m.userId, m.assignmentRole || 'technician', m.isPrimary || false, req.userId]);
+    }
 
     await logActivity(db, {
       accountId: req.accountId, projectId: req.params.id, userId: req.userId,
@@ -370,6 +401,16 @@ router.post('/:id/work-orders', requireAuth, requireRole('owner', 'manager'), ca
 
 // PATCH /api/projects/:id/work-orders/:woId
 router.patch('/:id/work-orders/:woId', requireAuth, requireRole('owner', 'manager'), cap, async (req, res) => {
+  const { assignment } = req.body;
+  const members = assignment?.members || [];
+
+  // Derive tech_id from primary assignee for Dispatch backward compat
+  if (assignment) {
+    const primary = members.find(m => m.isPrimary) || members[0] || null;
+    if (primary) req.body.tech_id = primary.userId;
+    else if (members.length === 0) req.body.tech_id = null;
+  }
+
   const WO_FIELDS = [
     'title', 'description', 'tech_id', 'status', 'scheduled_at',
     'duration_minutes', 'priority',
@@ -386,20 +427,60 @@ router.patch('/:id/work-orders/:woId', requireAuth, requireRole('owner', 'manage
       values.push(req.body[f] ?? null);
     }
   }
-  if (!updates.length) return res.status(400).json({ error: 'No valid fields to update.' });
-  updates.push(`updated_at = NOW()`);
-  values.push(req.params.woId, req.params.id, req.accountId);
+  if (!updates.length && !assignment) return res.status(400).json({ error: 'No valid fields to update.' });
 
+  const db = await pool.connect();
   try {
-    const { rows } = await pool.query(`
-      UPDATE jobs SET ${updates.join(', ')}
-      WHERE id = $${i} AND project_id = $${i + 1} AND account_id = $${i + 2} AND deleted_at IS NULL
-      RETURNING *
-    `, values);
-    if (!rows.length) return res.status(404).json({ error: 'Work order not found.' });
-    res.json(rows[0]);
+    await db.query('BEGIN');
+
+    let result;
+    if (updates.length) {
+      updates.push(`updated_at = NOW()`);
+      values.push(req.params.woId, req.params.id, req.accountId);
+      const { rows } = await db.query(`
+        UPDATE jobs SET ${updates.join(', ')}
+        WHERE id = $${i} AND project_id = $${i + 1} AND account_id = $${i + 2} AND deleted_at IS NULL
+        RETURNING *
+      `, values);
+      if (!rows.length) {
+        await db.query('ROLLBACK');
+        return res.status(404).json({ error: 'Work order not found.' });
+      }
+      result = rows[0];
+    } else {
+      const { rows } = await db.query(
+        `SELECT * FROM jobs WHERE id = $1 AND project_id = $2 AND account_id = $3 AND deleted_at IS NULL`,
+        [req.params.woId, req.params.id, req.accountId]
+      );
+      if (!rows.length) {
+        await db.query('ROLLBACK');
+        return res.status(404).json({ error: 'Work order not found.' });
+      }
+      result = rows[0];
+    }
+
+    if (assignment) {
+      await db.query(
+        `UPDATE job_assignments SET removed_at = NOW(), removed_by = $1
+         WHERE job_id = $2 AND account_id = $3 AND removed_at IS NULL`,
+        [req.userId, req.params.woId, req.accountId]
+      );
+      for (const m of members) {
+        await db.query(`
+          INSERT INTO job_assignments
+            (account_id, job_id, user_id, assignment_role, is_primary, status, assigned_at, assigned_by)
+          VALUES ($1, $2, $3, $4, $5, 'accepted', NOW(), $6)
+        `, [req.accountId, req.params.woId, m.userId, m.assignmentRole || 'technician', m.isPrimary || false, req.userId]);
+      }
+    }
+
+    await db.query('COMMIT');
+    res.json(result);
   } catch (err) {
+    await db.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    db.release();
   }
 });
 

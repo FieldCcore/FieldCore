@@ -8677,8 +8677,25 @@ tr:focus-within .inv-row-actions,
 .prj-wo-form-card {
   background: var(--white); border: 1px solid var(--lightgray);
   border-radius: var(--r-lg); padding: 18px 20px;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 0;
 }
+.prj-wo-section { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--off); }
+.prj-wo-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.prj-wo-section-label {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .10em; color: var(--steel);
+  margin-bottom: 12px;
+}
+.prj-dur-picker { display: flex; gap: 10px; flex-wrap: wrap; }
+.prj-dur-unit   { display: flex; align-items: center; gap: 6px; }
+.prj-dur-unit input {
+  width: 56px; padding: 10px 8px; text-align: center;
+  border: 1.5px solid var(--lightgray); border-radius: 6px;
+  font-family: 'Inter', sans-serif; font-size: 14px; color: var(--navy);
+  background: var(--white); outline: none; transition: border-color .15s;
+}
+.prj-dur-unit input:focus { border-color: var(--sand); }
+.prj-dur-unit span { font-size: 13px; color: var(--slate); }
 
 .prj-wo-list { display: flex; flex-direction: column; gap: 6px; }
 .prj-wo-row {
