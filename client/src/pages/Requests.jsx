@@ -122,12 +122,10 @@ export default function Requests() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — shell topbar already shows "Requests"; H1 kept hidden for a11y */}
+      <h1 className="sr-only">Requests</h1>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--navy)' }}>Requests</h2>
-          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 2 }}>Inbound leads and service requests</div>
-        </div>
+        <div style={{ fontSize: 12, color: 'var(--steel)' }}>Inbound leads and service requests</div>
         <button className="tb-btn tb-primary" onClick={openNew}>+ New Request</button>
       </div>
 

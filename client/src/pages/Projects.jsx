@@ -319,12 +319,10 @@ export default function Projects() {
   return (
     <div className="prj-list-wrap">
 
-      {/* Header */}
+      {/* Header — shell topbar already shows "Projects"; H1 kept hidden for a11y */}
+      <h1 className="sr-only">Projects</h1>
       <div className="prj-list-header">
-        <div>
-          <h2 className="prj-list-title">Projects</h2>
-          <div className="prj-list-subtitle">Manage complex work, work orders, teams, and costs.</div>
-        </div>
+        <div className="prj-list-subtitle">Manage complex work, work orders, teams, and costs.</div>
         {isOwnerOrMgr && (
           <button className="tb-btn tb-primary" onClick={openNew}>
             <Plus size={14} /> New Project
