@@ -202,11 +202,9 @@ export default function Fleet() {
   return (
     <div>
       {/* Page header */}
+      <h1 className="sr-only">Fleet</h1>
       <div className="page-header">
-        <div>
-          <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 3 }}>Fleet</div>
-          <div style={{ fontSize: 13, color: 'var(--slate)' }}>Manage vehicles, GPS locations, and camera feeds</div>
-        </div>
+        <div style={{ fontSize: 13, color: 'var(--slate)' }}>Manage vehicles, GPS locations, and camera feeds</div>
         {canEdit && (
           <button className="btn-primary" onClick={openAdd}>+ Add Vehicle</button>
         )}

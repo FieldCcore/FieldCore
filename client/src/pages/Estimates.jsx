@@ -303,11 +303,9 @@ export default function EstimatesPage() {
 
   return (
     <div>
+      <h1 className="sr-only">Estimates</h1>
       <div className="page-header">
-        <div>
-          <div style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 3 }}>Estimates</div>
-          <div style={{ fontSize: 13, color: 'var(--slate)' }}>Send estimates with e-signature to clients</div>
-        </div>
+        <div style={{ fontSize: 13, color: 'var(--slate)' }}>Send estimates with e-signature to clients</div>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
       </div>
 
