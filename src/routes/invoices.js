@@ -287,6 +287,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
     let finalSubject            = subject || null;
     let finalClientMessage      = client_message || null;
     let baseLineItems           = [];
+    let finalExistingDraftId    = null;
 
     if (source_type === 'JOB') {
       if (!job_id) {
@@ -307,7 +308,7 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         return res.status(400).json({ error: 'Job must be complete before invoicing' });
       }
       const dupRes = await client.query(
-        `SELECT id, status FROM invoices WHERE job_id = $1 AND account_id = $2`,
+        `SELECT id, status, invoice_number FROM invoices WHERE job_id = $1 AND account_id = $2`,
         [job_id, req.accountId]
       );
       const activeInvoice = dupRes.rows.find(r => r.status === 'pending' || r.status === 'paid');
@@ -315,16 +316,11 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'An invoice already exists for this job' });
       }
-      // Void any draft auto-invoices so the new invoice is the canonical one
-      const draftIds = dupRes.rows.filter(r => r.status === 'draft').map(r => r.id);
-      if (draftIds.length > 0) {
-        await client.query(
-          `UPDATE invoices SET status = 'void', updated_at = NOW() WHERE id = ANY($1::uuid[])`,
-          [draftIds]
-        );
-      }
+      const existingDraft = dupRes.rows.find(r => r.status === 'draft') || null;
       finalClientId = job.client_id;
       finalJobId    = job_id;
+      // Store draft ID so INSERT block can UPDATE instead (unique constraint on job_id)
+      if (existingDraft) finalExistingDraftId = existingDraft.id;
       baseLineItems = Array.isArray(reqLineItems) && reqLineItems.length > 0
         ? reqLineItems
         : [{
@@ -489,31 +485,72 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
           ? computeDueDate(payment_terms, finalIssuedDate)
           : null);
 
-    const { rows } = await client.query(
-      `INSERT INTO invoices (
-         account_id, job_id, client_id, source_type, source_estimate_id, source_agreement_id,
-         invoice_number,
-         amount, tax_amount, subtotal, discount_type, discount_value, discount_amount, discount_label,
-         line_items, subject, issued_date, payment_terms, due_date,
-         client_message, internal_notes, terms, payment_options, status, created_by
-       ) VALUES (
-         $1,$2,$3,$4,$5,$6,
-         $7,
-         $8,$9,$10,$11,$12,$13,$14,
-         $15,$16,$17,$18,$19,
-         $20,$21,$22,$23,$24,$25
-       ) RETURNING *`,
-      [
-        req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, finalSourceAgreementId,
-        invoiceNumber,
-        total, taxAmount, subtotal,
-        discount_type || null, parseFloat(discount_value) || null, discountAmount || null, discount_label || null,
-        JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
-        finalClientMessage, internal_notes || null, terms || null,
-        payment_options ? JSON.stringify(payment_options) : '{}',
-        status, req.userId,
-      ]
-    );
+    let rows;
+    if (finalExistingDraftId) {
+      // Job already has a draft auto-invoice; UPDATE it in-place to respect the unique job_id constraint
+      const updateRes = await client.query(
+        `UPDATE invoices SET
+           source_type    = $2,
+           status         = $3,
+           amount         = $4,
+           tax_amount     = $5,
+           subtotal       = $6,
+           discount_type  = $7,
+           discount_value = $8,
+           discount_amount= $9,
+           discount_label = $10,
+           line_items     = $11,
+           subject        = $12,
+           issued_date    = $13,
+           payment_terms  = $14,
+           due_date       = $15,
+           client_message = $16,
+           internal_notes = $17,
+           terms          = $18,
+           payment_options= $19,
+           invoice_number = COALESCE(invoice_number, $20),
+           balance        = $4,
+           updated_at     = NOW()
+         WHERE id = $1 AND account_id = $21
+         RETURNING *`,
+        [
+          finalExistingDraftId, source_type, status, total, taxAmount, subtotal,
+          discount_type || null, parseFloat(discount_value) || null, discountAmount || null, discount_label || null,
+          JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
+          finalClientMessage, internal_notes || null, terms || null,
+          payment_options ? JSON.stringify(payment_options) : '{}',
+          invoiceNumber, req.accountId,
+        ]
+      );
+      rows = updateRes.rows;
+    } else {
+      const insertRes = await client.query(
+        `INSERT INTO invoices (
+           account_id, job_id, client_id, source_type, source_estimate_id, source_agreement_id,
+           invoice_number,
+           amount, tax_amount, subtotal, discount_type, discount_value, discount_amount, discount_label,
+           line_items, subject, issued_date, payment_terms, due_date,
+           client_message, internal_notes, terms, payment_options, status, created_by
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,
+           $7,
+           $8,$9,$10,$11,$12,$13,$14,
+           $15,$16,$17,$18,$19,
+           $20,$21,$22,$23,$24,$25
+         ) RETURNING *`,
+        [
+          req.accountId, finalJobId, finalClientId, source_type, finalSourceEstimateId, finalSourceAgreementId,
+          invoiceNumber,
+          total, taxAmount, subtotal,
+          discount_type || null, parseFloat(discount_value) || null, discountAmount || null, discount_label || null,
+          JSON.stringify(validItems), finalSubject, finalIssuedDate, payment_terms, finalDueDate,
+          finalClientMessage, internal_notes || null, terms || null,
+          payment_options ? JSON.stringify(payment_options) : '{}',
+          status, req.userId,
+        ]
+      );
+      rows = insertRes.rows;
+    }
 
     // Initialize stored balance = invoice amount
     await client.query(
