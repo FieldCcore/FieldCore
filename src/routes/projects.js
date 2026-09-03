@@ -321,10 +321,12 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
     if (!check.rows.length) return res.status(404).json({ error: 'Project not found.' });
 
     const { status: statusFilter, priority: priorityFilter } = req.query;
-    const extraConditions = [];
-    if (statusFilter) extraConditions.push(`j.status = '${statusFilter.replace(/'/g, "''")}'`);
-    if (priorityFilter) extraConditions.push(`j.priority = '${priorityFilter.replace(/'/g, "''")}'`);
-    const extraWhere = extraConditions.length ? ' AND ' + extraConditions.join(' AND ') : '';
+    const VALID_WO_STATUSES   = ['unscheduled','draft','scheduled','in_progress','paused','complete','cancelled'];
+    const VALID_WO_PRIORITIES = ['low','normal','high','urgent'];
+    const qParams = [req.params.id, req.accountId];
+    const conditions = ['j.project_id = $1', 'j.account_id = $2', 'j.deleted_at IS NULL'];
+    if (statusFilter   && VALID_WO_STATUSES.includes(statusFilter))   { qParams.push(statusFilter);   conditions.push(`j.status = $${qParams.length}`); }
+    if (priorityFilter && VALID_WO_PRIORITIES.includes(priorityFilter)) { qParams.push(priorityFilter); conditions.push(`j.priority = $${qParams.length}`); }
 
     const { rows } = await pool.query(`
       SELECT j.*,
@@ -365,9 +367,9 @@ router.get('/:id/work-orders', requireAuth, requireRole('owner', 'manager', 'sta
         WHERE ja.account_id = $2 AND ja.removed_at IS NULL
         GROUP BY ja.job_id
       ) tm ON tm.job_id = j.id
-      WHERE j.project_id = $1 AND j.account_id = $2 AND j.deleted_at IS NULL${extraWhere}
+      WHERE ${conditions.join(' AND ')}
       ORDER BY j.work_order_number ASC NULLS LAST, j.created_at ASC
-    `, [req.params.id, req.accountId]);
+    `, qParams);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -881,7 +883,7 @@ router.get('/:id/financials', requireAuth, requireRole('owner', 'manager'), cap,
     const currentProjectValue    = originalContractValue + approvedCOs;
     const materialCost           = matRes.rows[0].material_cost;
     const otherCost              = matRes.rows[0].other_cost;
-    const totalCost              = materialCost + otherCost;
+    const totalCost              = matRes.rows[0].total_cost_raw; // sum of ALL types incl. labor/equipment/subcontractor/travel
     const totalInvoiced          = invRes.rows[0].total_invoiced;
     const totalPaid              = invRes.rows[0].total_paid;
     const outstanding            = Math.max(0, totalInvoiced - totalPaid);

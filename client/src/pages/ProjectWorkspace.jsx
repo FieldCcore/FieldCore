@@ -891,7 +891,7 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
   const [editingWo, setEditingWo]   = useState(false);
   const [woForm, setWoForm]         = useState({});
   const [savingWo, setSavingWo]     = useState(false);
-  const nav = useNavigate();
+  const [woError, setWoError]       = useState('');
 
   async function loadTasks() {
     try {
@@ -959,12 +959,16 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
       asset_id:         wo.asset_id         || null,
       asset_name:       wo.asset_name       || null,
     });
+    setWoError('');
     setEditingWo(true);
+    setExpanded(true); // form renders inside {expanded && ...}
   }
 
   async function saveWo(e) {
     e.preventDefault();
+    if (savingWo) return;
     setSavingWo(true);
+    setWoError('');
     const members = woForm.assignment?.members || [];
     const primary = members.find(m => m.isPrimary) || members[0] || null;
     const scheduled_at = woForm.scheduled_date
@@ -985,8 +989,11 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
       });
       setEditingWo(false);
       onRefresh();
-    } catch {}
-    setSavingWo(false);
+    } catch (err) {
+      setWoError(err.response?.data?.error || "We couldn't save this work order. Your changes are preserved. Please try again.");
+    } finally {
+      setSavingWo(false);
+    }
   }
 
   async function deleteWo() {
@@ -994,7 +1001,9 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
     try {
       await api.delete(`/projects/${projectId}/work-orders/${wo.id}`);
       onRefresh();
-    } catch {}
+    } catch (err) {
+      alert(err.response?.data?.error || "We couldn't delete this work order. Please try again.");
+    }
   }
 
   const completedTasks = tasks.filter(t => t.is_complete).length;
@@ -1052,6 +1061,7 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
         <div className="prj-wo-body">
           {editingWo ? (
             <form onSubmit={saveWo} className="prj-wo-edit-form">
+              {woError && <div className="prj-form-error" style={{ marginBottom: 12 }}>{woError}</div>}
               <div className="prj-wo-section">
                 <div className="prj-wo-section-label">Work Order Details</div>
                 <div className="form-group">
