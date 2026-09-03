@@ -2292,6 +2292,192 @@ function ActivityTab({ projectId }) {
   );
 }
 
+// ── Generic Confirm Modal ─────────────────────────────────
+function ConfirmModal({ title, children, onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false }) {
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function handleConfirm() {
+    setBusy(true);
+    try { await onConfirm(); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="prj-confirm-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="prj-confirm-modal" role="dialog" aria-modal="true">
+        <div className="prj-confirm-header">
+          <span className="prj-confirm-title">{title}</span>
+          <button className="prj-share-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        </div>
+        <div className="prj-confirm-body">{children}</div>
+        <div className="prj-confirm-footer">
+          <button className="tb-btn tb-ghost" onClick={onClose} disabled={busy}>{cancelLabel}</button>
+          <button
+            className={`tb-btn ${danger ? 'tb-danger' : 'tb-primary'}`}
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Project Status Selector ───────────────────────────────
+const PROJECT_STATUSES = ['draft', 'active', 'on_hold', 'completed', 'cancelled'];
+const REOPEN_STATUSES  = new Set(['completed', 'cancelled']);
+
+function ProjectStatusSelector({ project, onStatusChange }) {
+  const [open,    setOpen]    = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [confirm, setConfirm] = useState(null); // { type, newStatus, unresolvedCount? }
+  const [error,   setError]   = useState('');
+  const btnRef  = useRef(null);
+  const dropRef = useRef(null);
+
+  // Close dropdown on outside click or Escape
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e)    { if (e.key === 'Escape') setOpen(false); }
+    function onClick(e)  {
+      if (!btnRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('keydown',  onKey);
+    document.addEventListener('mousedown', onClick);
+    return () => {
+      document.removeEventListener('keydown',  onKey);
+      document.removeEventListener('mousedown', onClick);
+    };
+  }, [open]);
+
+  function pickStatus(newStatus) {
+    if (newStatus === project.status) { setOpen(false); return; }
+    setOpen(false);
+
+    if (newStatus === 'completed') {
+      const unresolved = (project.work_order_count || 0) - (project.resolved_work_orders || 0);
+      if (unresolved > 0) {
+        setConfirm({ type: 'complete', newStatus, unresolvedCount: unresolved });
+        return;
+      }
+    }
+    if (newStatus === 'cancelled') {
+      setConfirm({ type: 'cancel', newStatus });
+      return;
+    }
+    if (REOPEN_STATUSES.has(project.status) && (newStatus === 'active' || newStatus === 'draft')) {
+      setConfirm({ type: 'reopen', newStatus });
+      return;
+    }
+    commitStatus(newStatus);
+  }
+
+  async function commitStatus(newStatus) {
+    setSaving(true);
+    setError('');
+    setConfirm(null);
+    try {
+      await api.patch(`/projects/${project.id}`, { status: newStatus });
+      await onStatusChange();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update status. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="prj-status-sel">
+        <button
+          ref={btnRef}
+          className={`prj-status-btn prj-status-btn--${project.status}`}
+          onClick={() => setOpen(o => !o)}
+          disabled={saving}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`Change project status. Current status: ${STATUS_LABELS[project.status]}.`}
+        >
+          {saving ? 'Saving…' : STATUS_LABELS[project.status]}
+          <ChevronDown size={11} className={`prj-status-caret${open ? ' prj-status-caret--open' : ''}`} />
+        </button>
+
+        {error && <div className="prj-status-error">{error}</div>}
+
+        {open && (
+          <div ref={dropRef} className="prj-status-drop" role="listbox">
+            {PROJECT_STATUSES.map(s => (
+              <button
+                key={s}
+                type="button"
+                role="option"
+                aria-selected={s === project.status}
+                className={`prj-status-drop-item${s === project.status ? ' prj-status-drop-item--current' : ''}`}
+                onClick={() => pickStatus(s)}
+              >
+                <span className={`prj-status-dot prj-status-dot--${s}`} />
+                {STATUS_LABELS[s]}
+                {s === project.status && <Check size={12} className="prj-status-drop-check" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {confirm?.type === 'complete' && (
+        <ConfirmModal
+          title="Complete Project?"
+          confirmLabel="Complete Anyway"
+          onClose={() => setConfirm(null)}
+          onConfirm={() => commitStatus(confirm.newStatus)}
+        >
+          <p style={{ marginBottom: 8 }}>
+            <strong>{confirm.unresolvedCount} work order{confirm.unresolvedCount !== 1 ? 's are' : ' is'} still incomplete.</strong>
+          </p>
+          <p>Completing this project will mark it as completed, but will <strong>not</strong> automatically complete those work orders.</p>
+        </ConfirmModal>
+      )}
+
+      {confirm?.type === 'cancel' && (
+        <ConfirmModal
+          title="Cancel Project?"
+          confirmLabel="Cancel Project"
+          cancelLabel="Keep Project"
+          danger
+          onClose={() => setConfirm(null)}
+          onConfirm={() => commitStatus(confirm.newStatus)}
+        >
+          <p>This will mark the project as cancelled. Existing work orders, invoices, files, expenses, payments, and history will be preserved.</p>
+          <p style={{ marginTop: 8 }}>This does not automatically cancel associated work orders.</p>
+        </ConfirmModal>
+      )}
+
+      {confirm?.type === 'reopen' && (
+        <ConfirmModal
+          title="Reopen Project?"
+          confirmLabel="Reopen Project"
+          onClose={() => setConfirm(null)}
+          onConfirm={() => commitStatus(confirm.newStatus)}
+        >
+          <p>This will change <strong>{fmtPrjNum(project.project_number)}</strong> from <strong>{STATUS_LABELS[project.status]}</strong> to <strong>{STATUS_LABELS[confirm.newStatus]}</strong>. Existing project data and work orders will remain unchanged.</p>
+        </ConfirmModal>
+      )}
+    </>
+  );
+}
+
 // ── Main Workspace ────────────────────────────────────────
 const TABS = [
   { key: 'overview',    label: 'Overview' },
@@ -2304,6 +2490,7 @@ export default function ProjectWorkspace() {
   const { id } = useParams();
   const nav    = useNavigate();
   const { user } = useAuth();
+  const isOwnerOrMgr = ['owner', 'manager'].includes(user?.role);
 
   const [project, setProject] = useState(null);
   const [users,   setUsers]   = useState([]);
@@ -2361,7 +2548,11 @@ export default function ProjectWorkspace() {
               {project.manager_name && <span>· PM: {project.manager_name}</span>}
             </div>
           </div>
-          <StatusBadge status={project.status}>{STATUS_LABELS[project.status]}</StatusBadge>
+          {isOwnerOrMgr ? (
+            <ProjectStatusSelector project={project} onStatusChange={loadProject} />
+          ) : (
+            <StatusBadge status={project.status}>{STATUS_LABELS[project.status]}</StatusBadge>
+          )}
         </div>
 
         <div className="prj-tabs">

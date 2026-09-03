@@ -90,14 +90,16 @@ router.get('/', requireAuth, requireRole('owner', 'manager', 'staff'), cap, asyn
              c.name   AS client_name,
              u.name   AS manager_name,
              COALESCE(wo.cnt, 0)::int AS work_order_count,
-             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders
+             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders,
+             COALESCE(wo.resolved_cnt, 0)::int AS resolved_work_orders
       FROM projects p
       LEFT JOIN clients c ON c.id = p.client_id
       LEFT JOIN users   u ON u.id = p.manager_id
       LEFT JOIN (
         SELECT project_id,
                COUNT(*) AS cnt,
-               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt
+               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt,
+               COUNT(CASE WHEN status IN ('complete', 'cancelled') THEN 1 END) AS resolved_cnt
         FROM jobs
         WHERE project_id IS NOT NULL AND deleted_at IS NULL
         GROUP BY project_id
@@ -173,7 +175,8 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager', 'staff'), cap, a
              u.name   AS manager_name,
              cb.name  AS created_by_name,
              COALESCE(wo.cnt, 0)::int AS work_order_count,
-             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders
+             COALESCE(wo.completed_cnt, 0)::int AS completed_work_orders,
+             COALESCE(wo.resolved_cnt, 0)::int AS resolved_work_orders
       FROM projects p
       LEFT JOIN clients c  ON c.id  = p.client_id
       LEFT JOIN users   u  ON u.id  = p.manager_id
@@ -181,7 +184,8 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager', 'staff'), cap, a
       LEFT JOIN (
         SELECT project_id,
                COUNT(*) AS cnt,
-               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt
+               COUNT(CASE WHEN status = 'complete' THEN 1 END) AS completed_cnt,
+               COUNT(CASE WHEN status IN ('complete', 'cancelled') THEN 1 END) AS resolved_cnt
         FROM jobs WHERE project_id IS NOT NULL AND deleted_at IS NULL
         GROUP BY project_id
       ) wo ON wo.project_id = p.id
@@ -220,6 +224,17 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), cap, async (r
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
+
+    // Capture old status before overwriting so the audit log can show From → To
+    let oldStatus = null;
+    if (req.body.status !== undefined) {
+      const { rows: cur } = await db.query(
+        `SELECT status FROM projects WHERE id = $1 AND account_id = $2`,
+        [req.params.id, req.accountId]
+      );
+      oldStatus = cur[0]?.status ?? null;
+    }
+
     const { rows } = await db.query(`
       UPDATE projects SET ${updates.join(', ')}
       WHERE id = $${i} AND account_id = $${i + 1}
@@ -232,9 +247,23 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), cap, async (r
     }
 
     if (req.body.status !== undefined) {
+      const SL = { draft: 'Draft', active: 'Active', on_hold: 'On Hold', completed: 'Completed', cancelled: 'Cancelled' };
+      const fromL = SL[oldStatus] || oldStatus || '?';
+      const toL   = SL[req.body.status] || req.body.status;
+      let body;
+      if (req.body.status === 'completed') {
+        body = `Project marked as completed (${fromL} → ${toL}).`;
+      } else if (req.body.status === 'cancelled') {
+        body = `Project cancelled (${fromL} → ${toL}).`;
+      } else if (oldStatus === 'completed' || oldStatus === 'cancelled') {
+        body = `Project reopened (${fromL} → ${toL}).`;
+      } else {
+        body = `Status changed from ${fromL} to ${toL}.`;
+      }
       await logActivity(db, {
         accountId: req.accountId, projectId: req.params.id, userId: req.userId,
-        type: 'status_changed', body: `Status changed to ${req.body.status}.`,
+        type: 'status_changed', body,
+        metadata: { old_status: oldStatus, new_status: req.body.status },
       });
     }
 

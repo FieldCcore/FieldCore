@@ -9042,6 +9042,90 @@ tr:focus-within .inv-row-actions,
 .prj-co-status--rejected         { background: #fee2e2; color: #991b1b; }
 .prj-co-status--cancelled        { background: var(--off); color: var(--steel); text-decoration: line-through; }
 
+/* ── Project Status Selector ────────────────────────────── */
+.prj-status-sel   { position: relative; flex-shrink: 0; }
+.prj-status-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px 4px 11px;
+  border-radius: 99px; border: 1.5px solid transparent;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  font-family: 'Inter', sans-serif; cursor: pointer; white-space: nowrap;
+  transition: filter .12s, border-color .12s;
+}
+.prj-status-btn:hover        { filter: brightness(.94); border-color: rgba(0,0,0,.1); }
+.prj-status-btn:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+.prj-status-btn:disabled     { opacity: .7; cursor: default; }
+.prj-status-btn--draft     { background: var(--off);       color: var(--slate); }
+.prj-status-btn--active    { background: var(--green-lt);  color: var(--green); }
+.prj-status-btn--on_hold   { background: var(--yellow-lt); color: var(--amber); }
+.prj-status-btn--completed { background: var(--green-lt);  color: var(--green); }
+.prj-status-btn--cancelled { background: var(--red-lt);    color: var(--red); }
+.prj-status-caret { transition: transform .15s; }
+.prj-status-caret--open { transform: rotate(180deg); }
+.prj-status-error {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  font-size: 11px; color: var(--red); white-space: nowrap;
+  background: var(--red-lt); border-radius: 5px; padding: 3px 8px;
+}
+.prj-status-drop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 300;
+  background: var(--white); border: 1px solid var(--lightgray);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  overflow: hidden; min-width: 160px;
+}
+.prj-status-drop-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 14px; background: none; border: none; cursor: pointer;
+  font-size: 13px; font-family: 'Inter', sans-serif; color: var(--navy);
+  transition: background .1s; text-align: left;
+}
+.prj-status-drop-item:hover         { background: var(--off); }
+.prj-status-drop-item--current      { font-weight: 600; }
+.prj-status-drop-check              { margin-left: auto; color: var(--navy); }
+.prj-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.prj-status-dot--draft     { background: var(--steel); }
+.prj-status-dot--active    { background: var(--green); }
+.prj-status-dot--on_hold   { background: var(--amber); }
+.prj-status-dot--completed { background: var(--green); }
+.prj-status-dot--cancelled { background: var(--red); }
+
+/* ── Confirm Modal ───────────────────────────────────────── */
+.prj-confirm-overlay {
+  position: fixed; inset: 0; z-index: 1100;
+  background: rgba(28,35,51,.45); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.prj-confirm-modal {
+  background: var(--white); border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  width: 100%; max-width: 440px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.prj-confirm-header {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 14px; border-bottom: 1px solid var(--lightgray); gap: 12px;
+}
+.prj-confirm-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+.prj-confirm-body  {
+  padding: 18px 20px; font-size: 13.5px; color: var(--navy); line-height: 1.6;
+}
+.prj-confirm-footer {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 14px 20px; border-top: 1px solid var(--lightgray);
+}
+.tb-danger {
+  background: var(--red); color: #fff; border: none;
+  padding: 8px 16px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: 'Inter', sans-serif; transition: filter .12s;
+}
+.tb-danger:hover    { filter: brightness(.9); }
+.tb-danger:disabled { opacity: .6; cursor: default; }
+
 /* ── Share Work Order Modal ────────────────────────────── */
 .prj-share-overlay {
   position: fixed; inset: 0; z-index: 1000;
