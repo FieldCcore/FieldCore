@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import JobTeamSelector from '../components/JobTeamSelector';
 import {
@@ -648,15 +648,22 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
 // ── Share Work Order Modal ────────────────────────────────
 function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
   const [query, setQuery]       = useState('');
-  const [selected, setSelected] = useState([]);
-  const [open, setOpen]         = useState(false);
+  const [selected, setSelected] = useState(new Set());
   const [sharing, setSharing]   = useState(false);
   const [copied, setCopied]     = useState(false);
   const [success, setSuccess]   = useState(null);
   const [error, setError]       = useState('');
-  const inputRef = useRef(null);
+  const inputRef   = useRef(null);
+  const overlayRef = useRef(null);
 
-  // Close on Escape
+  // Scroll lock + initial focus
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    inputRef.current?.focus();
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  // Escape closes
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
@@ -665,27 +672,50 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
 
   const woNum = fmtWoNum(wo.work_order_number);
 
-  const filtered = (users || []).filter(u =>
-    u.id !== currentUserId &&
-    !selected.find(s => s.id === u.id) &&
-    (
-      !query.trim() ||
-      u.name?.toLowerCase().includes(query.toLowerCase()) ||
-      u.email?.toLowerCase().includes(query.toLowerCase()) ||
-      u.role?.toLowerCase().includes(query.toLowerCase())
-    )
-  );
+  // Deduplicated + sorted eligible users (exclude self)
+  const eligible = useMemo(() => {
+    const seen = new Set();
+    return (users || [])
+      .filter(u => {
+        if (u.id === currentUserId) return false;
+        if (seen.has(u.id)) return false;
+        seen.add(u.id);
+        return true;
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [users, currentUserId]);
 
-  function selectUser(u) {
-    setSelected(p => [...p, u]);
-    setQuery('');
-    setOpen(false);
-    inputRef.current?.focus();
+  // Detect name collisions so we can show email for disambiguation
+  const nameCounts = useMemo(() => {
+    const counts = {};
+    eligible.forEach(u => { counts[u.name] = (counts[u.name] || 0) + 1; });
+    return counts;
+  }, [eligible]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return eligible;
+    return eligible.filter(u =>
+      u.name?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.role?.toLowerCase().includes(q)
+    );
+  }, [eligible, query]);
+
+  function toggleUser(u) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(u.id)) next.delete(u.id);
+      else next.add(u.id);
+      return next;
+    });
   }
 
-  function removeUser(id) {
-    setSelected(p => p.filter(u => u.id !== id));
+  function removeChip(id) {
+    setSelected(prev => { const next = new Set(prev); next.delete(id); return next; });
   }
+
+  const selectedUsers = eligible.filter(u => selected.has(u.id));
 
   async function copyLink() {
     const url = `${window.location.origin}/projects/${projectId}?tab=work-orders`;
@@ -696,14 +726,13 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
     } catch {}
   }
 
-  async function share(e) {
-    e.preventDefault();
-    if (!selected.length || sharing) return;
+  async function share() {
+    if (!selected.size || sharing) return;
     setSharing(true);
     setError('');
     try {
       const res = await api.post(`/projects/${projectId}/work-orders/${wo.id}/share`, {
-        user_ids: selected.map(u => u.id),
+        user_ids: [...selected],
       });
       const n = res.data.shared_with?.length ?? 0;
       const f = res.data.failed_count ?? 0;
@@ -721,9 +750,20 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
     }
   }
 
+  const shareLabel = sharing ? 'Sharing…' : selected.size > 0 ? `Share with ${selected.size}` : 'Share';
+
   return (
-    <div className="prj-share-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true" aria-label="Share Work Order">
+    <div
+      className="prj-share-overlay"
+      ref={overlayRef}
+      onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Share Work Order"
+    >
       <div className="prj-share-modal">
+
+        {/* HEADER — fixed */}
         <div className="prj-share-header">
           <div>
             <div className="prj-share-title">Share Work Order</div>
@@ -732,27 +772,23 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
           <button className="prj-share-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
 
-        {success ? (
-          <div className="prj-share-body">
+        {/* BODY — scrollable */}
+        <div className="prj-share-body">
+          {success ? (
             <div className="prj-share-success">
               <span className="prj-share-success-icon">✓</span>
               <span>{success}</span>
             </div>
-          </div>
-        ) : (
-          <form onSubmit={share}>
-            <div className="prj-share-body">
-              {error && <div className="prj-form-error" style={{ marginBottom: 12 }}>{error}</div>}
+          ) : (
+            <>
+              {error && <div className="prj-form-error" style={{ marginBottom: 4 }}>{error}</div>}
 
-              <div className="prj-share-section-label">Share with team</div>
-
-              {/* Selected chips */}
-              {selected.length > 0 && (
+              {selectedUsers.length > 0 && (
                 <div className="prj-share-chips">
-                  {selected.map(u => (
+                  {selectedUsers.map(u => (
                     <span key={u.id} className="prj-share-chip">
                       {u.name}
-                      <button type="button" className="prj-share-chip-x" onClick={() => removeUser(u.id)} aria-label={`Remove ${u.name}`}>
+                      <button type="button" className="prj-share-chip-x" onClick={() => removeChip(u.id)} aria-label={`Remove ${u.name}`}>
                         <X size={11} />
                       </button>
                     </span>
@@ -760,65 +796,85 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
                 </div>
               )}
 
-              {/* User search */}
-              <div className="prj-share-search-wrap" style={{ position: 'relative' }}>
-                <UserPlus size={13} className="prj-share-search-icon" />
+              <div className="prj-share-search-wrap">
+                <Search size={13} className="prj-share-search-icon" />
                 <input
                   ref={inputRef}
                   className="prj-share-search"
                   placeholder="Search by name, email, or role…"
                   value={query}
-                  onChange={e => { setQuery(e.target.value); setOpen(true); }}
-                  onFocus={() => setOpen(true)}
-                  onBlur={() => setTimeout(() => setOpen(false), 150)}
+                  onChange={e => setQuery(e.target.value)}
                   autoComplete="off"
                 />
-                {open && filtered.length > 0 && (
-                  <div className="prj-share-drop">
-                    {filtered.slice(0, 8).map(u => (
-                      <button key={u.id} type="button" className="prj-share-drop-item" onMouseDown={() => selectUser(u)}>
-                        <span className="prj-share-drop-avatar">{(u.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
-                        <span className="prj-share-drop-info">
-                          <span className="prj-share-drop-name">{u.name}</span>
-                          {u.role && <span className="prj-share-drop-role">{u.role}</span>}
+              </div>
+
+              <div className="prj-share-list">
+                {filtered.length === 0 ? (
+                  <div className="prj-share-list-empty">
+                    {query.trim() ? 'No matching team members' : 'No team members to share with'}
+                  </div>
+                ) : (
+                  filtered.map(u => {
+                    const isSelected  = selected.has(u.id);
+                    const showEmail   = nameCounts[u.name] > 1;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        className={`prj-share-row${isSelected ? ' prj-share-row--selected' : ''}`}
+                        onClick={() => toggleUser(u)}
+                      >
+                        <span className="prj-share-avatar">{initials(u.name)}</span>
+                        <span className="prj-share-row-info">
+                          <span className="prj-share-row-name">{u.name}</span>
+                          {showEmail && u.email ? (
+                            <span className="prj-share-row-meta">{u.email}</span>
+                          ) : u.role ? (
+                            <span className="prj-share-row-meta" style={{ textTransform: 'capitalize' }}>{u.role}</span>
+                          ) : null}
                         </span>
+                        {isSelected && <Check size={15} className="prj-share-check" />}
                       </button>
-                    ))}
-                  </div>
-                )}
-                {open && query.trim() && filtered.length === 0 && (
-                  <div className="prj-share-drop">
-                    <div className="prj-share-drop-empty">No matching team members</div>
-                  </div>
+                    );
+                  })
                 )}
               </div>
 
               <p className="prj-share-note">
                 Recipients will be notified and can open this work order. Sharing does not change technician assignment.
               </p>
-            </div>
+            </>
+          )}
+        </div>
 
-            <div className="prj-share-footer">
+        {/* FOOTER — fixed */}
+        <div className="prj-share-footer">
+          {success ? (
+            <>
+              <div style={{ flex: 1 }} />
+              <button type="button" className="tb-btn tb-primary" onClick={onClose}>Done</button>
+            </>
+          ) : (
+            <>
               <button type="button" className="tb-btn tb-ghost prj-share-copy" onClick={copyLink}>
                 <Link size={13} />
                 {copied ? 'Copied!' : 'Copy Link'}
               </button>
               <div className="prj-share-footer-right">
                 <button type="button" className="tb-btn tb-ghost" onClick={onClose}>Cancel</button>
-                <button type="submit" className="tb-btn tb-primary" disabled={!selected.length || sharing}>
-                  {sharing ? 'Sharing…' : 'Share'}
+                <button
+                  type="button"
+                  className="tb-btn tb-primary"
+                  disabled={!selected.size || sharing}
+                  onClick={share}
+                >
+                  {shareLabel}
                 </button>
               </div>
-            </div>
-          </form>
-        )}
+            </>
+          )}
+        </div>
 
-        {success && (
-          <div className="prj-share-footer">
-            <div style={{ flex: 1 }} />
-            <button type="button" className="tb-btn tb-primary" onClick={onClose}>Done</button>
-          </div>
-        )}
       </div>
     </div>
   );
