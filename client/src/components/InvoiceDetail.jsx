@@ -188,7 +188,17 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           </div>
         )}
 
-        {invoice.service_type && <div className="detail-row"><label>Service</label><span>{invoice.service_type}</span></div>}
+        {invoice.service_type && (
+          <div className="detail-row">
+            <label>{invoice.job_id ? 'Linked Job' : 'Service'}</label>
+            <span>
+              {invoice.service_type}
+              {invoice.job_id && invoice.scheduled_at
+                ? ` · ${format(new Date(invoice.scheduled_at), 'MMM d, yyyy')}`
+                : ''}
+            </span>
+          </div>
+        )}
         <div className="detail-row"><label>Created</label><span>{format(new Date(invoice.created_at), 'MMM d, yyyy')}</span></div>
         {invoice.sent_at && <div className="detail-row"><label>Sent</label><span>{format(new Date(invoice.sent_at), 'MMM d, yyyy h:mm a')}</span></div>}
         {invoice.payment_terms && (

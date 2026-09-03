@@ -1014,6 +1014,63 @@ describe('POST /api/invoices — JOB source still works', () => {
   });
 });
 
+// ── Link-to-Job relationship persistence ─────────────────────────────────────
+
+describe('Link-to-Job — canonical relationship persistence and security', () => {
+  let persistedInvoiceId;
+
+  it('POST with JOB source stores canonical job_id — GET /:id returns same job_id', async () => {
+    // Create a fresh complete job for this test so it has no existing invoice
+    const { rows: [freshJob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+       VALUES ($1,$2,$3,'Persist Test','complete',25000,$4,30) RETURNING id`,
+      [accountId, clientId, techId, TODAY + 'T09:00:00Z']
+    );
+
+    // Step 1: Create invoice linked to job
+    const createRes = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'JOB', job_id: freshJob.id })
+      .expect(201);
+
+    persistedInvoiceId = createRes.body.id;
+    expect(createRes.body.job_id).toBe(freshJob.id);
+    expect(createRes.body.status).toBe('draft');
+
+    // Step 2: Retrieve invoice — verify relationship survived the round-trip
+    const getRes = await request(app)
+      .get(`/api/invoices/${persistedInvoiceId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(getRes.body.job_id).toBe(freshJob.id);
+    expect(getRes.body.client_id).toBe(clientId);
+    expect(getRes.body.source_type).toBe('JOB');
+    // Confirm relationship is canonical UUID, not text-matched
+    expect(getRes.body.job_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('POST with another tenant\'s job_id returns 404 (cross-tenant job rejection)', async () => {
+    // Create a job in the OTHER account
+    const { rows: [foreignJob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, service_type, status, amount, scheduled_at, duration_minutes)
+       VALUES ($1,(SELECT id FROM clients WHERE account_id=$1 LIMIT 1),'Foreign Job','complete',10000,$2,30) RETURNING id`,
+      [otherAccountId, TODAY + 'T09:00:00Z']
+    );
+    if (!foreignJob) return; // skip if other account has no client
+
+    // Primary account submits the foreign job's UUID
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'JOB', job_id: foreignJob.id })
+      .expect(404);
+
+    expect(res.body.error).toMatch(/not found/i);
+  });
+});
+
 // ── GET /api/invoices/eligible-estimates ──────────────────────────────────────
 
 describe('GET /api/invoices/eligible-estimates — auth', () => {

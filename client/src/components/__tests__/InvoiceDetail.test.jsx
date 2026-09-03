@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import InvoiceDetail from '../InvoiceDetail';
 
 vi.mock('../../api', () => ({
@@ -53,7 +54,11 @@ function setup(invoice, detailOverrides = {}) {
   api.get.mockResolvedValueOnce({ data: { ...inv, ...detailOverrides } });
   const onClose  = vi.fn();
   const onUpdate = vi.fn();
-  render(<InvoiceDetail invoice={inv} onClose={onClose} onUpdate={onUpdate} />);
+  render(
+    <MemoryRouter>
+      <InvoiceDetail invoice={inv} onClose={onClose} onUpdate={onUpdate} />
+    </MemoryRouter>
+  );
   return { onClose, onUpdate };
 }
 
@@ -200,5 +205,71 @@ describe('Regression INV-010 — add line item button label', () => {
     setup();
     await waitFor(() => screen.getByText('Add Line Item'));
     expect(screen.queryByText('+ Add')).toBeNull();
+  });
+});
+
+// ── Link-to-Job relationship display ──────────────────────────────────────────
+
+describe('Link-to-Job — relationship hydration in InvoiceDetail', () => {
+  it('shows "Linked Job" label when invoice has a job_id', async () => {
+    setup(
+      { job_id: 'j-001' },
+      { job_id: 'j-001', service_type: 'HVAC Repair', scheduled_at: '2026-08-01T10:00:00Z' }
+    );
+    await waitFor(() => screen.getByText('Linked Job'));
+    expect(screen.getByText('Linked Job')).toBeInTheDocument();
+  });
+
+  it('includes job service type in the Linked Job row', async () => {
+    setup(
+      { job_id: 'j-001' },
+      { job_id: 'j-001', service_type: 'HVAC Repair', scheduled_at: '2026-08-01T10:00:00Z' }
+    );
+    await waitFor(() => screen.getByText('Linked Job'));
+    const detail = document.querySelector('.invoice-meta');
+    expect(detail.textContent).toContain('HVAC Repair');
+  });
+
+  it('shows "Service" label (not Linked Job) when no job_id', async () => {
+    setup({}, { job_id: null, service_type: 'Plumbing' });
+    await waitFor(() => screen.getByText('Invoice #1042'));
+    const labels = Array.from(document.querySelectorAll('.detail-row label')).map(l => l.textContent);
+    expect(labels).not.toContain('Linked Job');
+    expect(labels).toContain('Service');
+  });
+
+  it('project relationship row shows PRJ-XXXX format when project_number present', async () => {
+    setup(
+      { project_id: 'p-001' },
+      { project_id: 'p-001', project_name: 'Roof Redo', project_number: 7 }
+    );
+    await waitFor(() => screen.getByText(/PRJ-0007/));
+    expect(screen.getByText(/PRJ-0007 · Roof Redo/)).toBeInTheDocument();
+  });
+
+  it('project relationship row shows only name when no project_number', async () => {
+    setup(
+      { project_id: 'p-001' },
+      { project_id: 'p-001', project_name: 'Big Job', project_number: null }
+    );
+    await waitFor(() => screen.getByText('Big Job'));
+    expect(screen.getByText('Big Job')).toBeInTheDocument();
+  });
+
+  it('work order row shows WO-XXX when work_order_number present', async () => {
+    setup(
+      { job_id: 'j-001' },
+      { job_id: 'j-001', work_order_number: 3, work_order_title: 'Ductwork', service_type: 'HVAC' }
+    );
+    await waitFor(() => screen.getByText('Work Order'));
+    expect(document.querySelector('.invoice-meta').textContent).toContain('WO-003');
+    expect(document.querySelector('.invoice-meta').textContent).toContain('Ductwork');
+  });
+
+  it('no project row shown when project_id and project_name absent', async () => {
+    setup({}, { project_id: null, project_name: null });
+    await waitFor(() => screen.getByText('Invoice #1042'));
+    const labels = Array.from(document.querySelectorAll('.detail-row label')).map(l => l.textContent);
+    expect(labels).not.toContain('Project');
   });
 });
