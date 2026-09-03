@@ -1,7 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
+import { ChevronDown, Search, Check, MoreHorizontal, Send } from 'lucide-react';
 import api from '../api';
 import StatusBadge from '../components/StatusBadge';
+
+const STATUS_OPTS = [
+  { value: 'all',      label: 'All statuses' },
+  { value: 'draft',    label: 'Draft' },
+  { value: 'sent',     label: 'Sent' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'expired',  label: 'Expired / Declined' },
+];
+const STATUS_GROUPS = {
+  draft:    ['draft'],
+  sent:     ['sent'],
+  accepted: ['signed', 'accepted', 'approved'],
+  expired:  ['expired', 'declined', 'cancelled', 'canceled'],
+};
+const DATE_OPTS = [
+  { value: 'all',   label: 'All time' },
+  { value: 'today', label: 'Today' },
+  { value: 'week',  label: 'This week' },
+  { value: 'month', label: 'This month' },
+];
+
+function SortTh({ col, label, sortCol, sortDir, onSort, className = '' }) {
+  const active = sortCol === col;
+  const icon = active ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+  return (
+    <th
+      className={`inv-th-sortable${className ? ` ${className}` : ''}`}
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      onClick={() => onSort(col)}
+      tabIndex={0}
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSort(col)}
+    >
+      {label}
+      <span className={`inv-sort-icon${active ? ' inv-sort-icon--active' : ''}`}>{icon}</span>
+    </th>
+  );
+}
 
 function fmt$(n) { return `$${parseFloat(n || 0).toFixed(2)}`; }
 function fmtDt(d) { return d ? format(new Date(d), 'MMM d, yyyy') : '—'; }
@@ -280,13 +318,35 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
 
 // ─── Main Estimates Page ────────────────────────────────────────────────────
 export default function EstimatesPage() {
-  const [estimates, setEstimates] = useState([]);
-  const [loading, setLoading]     = useState(true);
+  const [estimates,  setEstimates]  = useState([]);
+  const [loading,    setLoading]    = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected]   = useState(null);
+  const [selected,   setSelected]   = useState(null);
+
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter,   setDateFilter]   = useState('all');
+  const [search,       setSearch]       = useState('');
+  const [sortCol,      setSortCol]      = useState('created_at');
+  const [sortDir,      setSortDir]      = useState('desc');
+  const [statusOpen,   setStatusOpen]   = useState(false);
+  const [dateOpen,     setDateOpen]     = useState(false);
+  const [moreOpen,     setMoreOpen]     = useState(null);
+
+  const statusRef = useRef(null);
+  const dateRef   = useRef(null);
 
   useEffect(() => {
     api.get('/estimates').then(r => setEstimates(r.data)).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    function handle(e) {
+      if (statusRef.current && !statusRef.current.contains(e.target)) setStatusOpen(false);
+      if (dateRef.current   && !dateRef.current.contains(e.target))   setDateOpen(false);
+      setMoreOpen(null);
+    }
+    document.addEventListener('click', handle);
+    return () => document.removeEventListener('click', handle);
   }, []);
 
   function handleCreated(est) { setEstimates(prev => [est, ...prev]); }
@@ -295,11 +355,90 @@ export default function EstimatesPage() {
     if (selected?.id === updated.id) setSelected(updated);
   }
 
-  if (loading) return <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading…</div>;
+  function handleSort(col) {
+    setSortDir(sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : 'asc');
+    setSortCol(col);
+  }
+
+  async function doSend(est) {
+    try {
+      const r = await api.post(`/estimates/${est.id}/send`);
+      handleUpdate({ ...est, status: 'sent', sent_at: new Date().toISOString(), sign_url: r.data.sign_url });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to send.');
+    }
+  }
+
+  async function doExpire(est) {
+    if (!confirm('Expire this estimate?')) return;
+    try {
+      await api.post(`/estimates/${est.id}/void`);
+      handleUpdate({ ...est, status: 'expired' });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to expire estimate.');
+    }
+  }
+
+  // Client-side filtering
+  const now        = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekStart  = new Date(todayStart);
+  weekStart.setDate(todayStart.getDate() - todayStart.getDay());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const q = search.trim().toLowerCase();
+
+  const filtered = estimates.filter(est => {
+    if (statusFilter !== 'all') {
+      const group = STATUS_GROUPS[statusFilter];
+      if (!group || !group.includes(est.status)) return false;
+    }
+    if (dateFilter !== 'all') {
+      const d = new Date(est.created_at);
+      if (dateFilter === 'today' && d < todayStart) return false;
+      if (dateFilter === 'week'  && d < weekStart)  return false;
+      if (dateFilter === 'month' && d < monthStart) return false;
+    }
+    if (q) {
+      if (!(est.client_name || '').toLowerCase().includes(q) &&
+          !(est.title || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (sortCol === 'amount') {
+      av = parseFloat(av || 0); bv = parseFloat(bv || 0);
+    } else if (sortCol === 'created_at' || sortCol === 'valid_until') {
+      av = av ? new Date(av).getTime() : 0;
+      bv = bv ? new Date(bv).getTime() : 0;
+    } else {
+      av = (av || '').toString().toLowerCase();
+      bv = (bv || '').toString().toLowerCase();
+    }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
 
   const countAccepted = estimates.filter(e => ['accepted','approved','signed'].includes(e.status)).length;
-  const countPending  = estimates.filter(e => ['draft','sent','pending'].includes(e.status)).length;
+  const countPending  = estimates.filter(e => ['draft','sent'].includes(e.status)).length;
   const countExpired  = estimates.filter(e => ['expired','declined','cancelled','canceled'].includes(e.status)).length;
+
+  const statusCounts = {
+    all:      estimates.length,
+    draft:    estimates.filter(e => e.status === 'draft').length,
+    sent:     estimates.filter(e => e.status === 'sent').length,
+    accepted: estimates.filter(e => ['signed','accepted','approved'].includes(e.status)).length,
+    expired:  estimates.filter(e => ['expired','declined','cancelled','canceled'].includes(e.status)).length,
+  };
+
+  if (loading) return (
+    <div style={{ padding: 40, color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>Loading…</div>
+  );
+
+  const hasEstimates = estimates.length > 0;
 
   return (
     <div>
@@ -309,7 +448,7 @@ export default function EstimatesPage() {
         <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
       </div>
 
-      {estimates.length > 0 && (
+      {hasEstimates && (
         <div className="dash-stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <div className="dash-sc">
             <div className="dash-sc-header"><div className="dash-sc-l">Total</div></div>
@@ -334,47 +473,187 @@ export default function EstimatesPage() {
         </div>
       )}
 
-      <div className="dash-card">
-        <div className="dash-ch">
-          <span className="dash-cht">All Estimates</span>
-          {estimates.length > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--steel)' }}>{estimates.length} total</span>
-          )}
-        </div>
+      {hasEstimates && (
+        <>
+          <div className="inv-workspace-header">
+            <span className="inv-workspace-title">All Estimates</span>
+            <span className="inv-workspace-count">
+              {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
+            </span>
+          </div>
 
-        {estimates.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>No estimates yet</div>
-            <div style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 20 }}>Create your first estimate and send it for digital signature.</div>
-            <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New Estimate</button>
+          <div className="inv-toolbar">
+            <div className="inv-toolbar-filters">
+
+              {/* Status dropdown */}
+              <div className="inv-filter-group" ref={statusRef}>
+                <button
+                  className={`inv-filter-trigger${statusFilter !== 'all' ? ' inv-filter-trigger--active' : ''}`}
+                  onClick={e => { e.stopPropagation(); setStatusOpen(o => !o); setDateOpen(false); }}
+                >
+                  <span className="inv-filter-trigger-key">Status</span>
+                  <span className="inv-filter-trigger-sep">|</span>
+                  <span>{STATUS_OPTS.find(o => o.value === statusFilter)?.label}</span>
+                  <ChevronDown size={12} />
+                </button>
+                {statusOpen && (
+                  <div className="inv-filter-dropdown">
+                    {STATUS_OPTS.map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`inv-dropdown-item${statusFilter === opt.value ? ' active' : ''}`}
+                        onClick={e => { e.stopPropagation(); setStatusFilter(opt.value); setStatusOpen(false); }}
+                      >
+                        <span className="inv-filter-check">
+                          {statusFilter === opt.value ? <Check size={12} /> : null}
+                        </span>
+                        <span>{opt.label}</span>
+                        <span className="inv-dropdown-count">{statusCounts[opt.value]}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Date dropdown */}
+              <div className="inv-filter-group" ref={dateRef}>
+                <button
+                  className={`inv-filter-trigger${dateFilter !== 'all' ? ' inv-filter-trigger--active' : ''}`}
+                  onClick={e => { e.stopPropagation(); setDateOpen(o => !o); setStatusOpen(false); }}
+                >
+                  <span className="inv-filter-trigger-key">Created</span>
+                  <span className="inv-filter-trigger-sep">|</span>
+                  <span>{DATE_OPTS.find(o => o.value === dateFilter)?.label}</span>
+                  <ChevronDown size={12} />
+                </button>
+                {dateOpen && (
+                  <div className="inv-filter-dropdown">
+                    {DATE_OPTS.map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`inv-dropdown-item${dateFilter === opt.value ? ' active' : ''}`}
+                        onClick={e => { e.stopPropagation(); setDateFilter(opt.value); setDateOpen(false); }}
+                      >
+                        <span className="inv-filter-check">
+                          {dateFilter === opt.value ? <Check size={12} /> : null}
+                        </span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="inv-search-wrap">
+              <Search size={14} className="inv-search-icon" />
+              <input
+                className="inv-search"
+                placeholder="Search client or subject…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="dash-card">
+        {!hasEstimates ? (
+          <div className="inv-empty" style={{ textAlign: 'center' }}>
+            <div className="inv-empty-primary">No estimates yet</div>
+            <div className="inv-empty-secondary">Create your first estimate and send it for digital signature.</div>
+            <button className="btn-primary" style={{ marginTop: 16 }} onClick={() => setShowCreate(true)}>+ New Estimate</button>
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="inv-empty" style={{ textAlign: 'center' }}>
+            <div className="inv-empty-primary">No estimates match these filters</div>
+            <div className="inv-empty-secondary">Try clearing the status or date filter, or adjust your search.</div>
           </div>
         ) : (
           <div className="table-wrap">
             <table className="table" style={{ border: 'none', borderRadius: 0 }}>
               <thead>
                 <tr>
-                  {['Client', 'Title', 'Amount', 'Status', 'Created', 'Valid Until', ''].map(h => (
-                    <th key={h}>{h}</th>
-                  ))}
+                  <SortTh col="client_name" label="Client"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <th>Est #</th>
+                  <SortTh col="title"       label="Subject"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh col="created_at"  label="Created"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh col="valid_until" label="Expires"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <th>Status</th>
+                  <SortTh col="amount"      label="Total"    sortCol={sortCol} sortDir={sortDir} onSort={handleSort} className="inv-th-r" />
+                  <th className="inv-th-actions" />
                 </tr>
               </thead>
               <tbody>
-                {estimates.map(est => (
-                  <tr key={est.id} className="clickable-row" onClick={() => setSelected(est)}>
-                    <td><strong>{est.client_name}</strong></td>
-                    <td>{est.title}</td>
-                    <td style={{ fontFamily: 'DM Mono, monospace', fontVariantNumeric: 'tabular-nums' }}>{fmt$(est.amount)}</td>
-                    <td><StatusBadge status={est.status} /></td>
-                    <td>{fmtDt(est.created_at)}</td>
-                    <td>{est.valid_until ? fmtDt(est.valid_until) : '—'}</td>
+                {sorted.map(est => (
+                  <tr
+                    key={est.id}
+                    className="clickable-row"
+                    onClick={() => setSelected(est)}
+                    tabIndex={0}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setSelected(est)}
+                  >
                     <td>
-                      <button
-                        className="btn-secondary"
-                        style={{ fontSize: 11, padding: '4px 10px' }}
-                        onClick={e => { e.stopPropagation(); setSelected(est); }}
-                      >
-                        Open
-                      </button>
+                      <span className="inv-client-name">{est.client_name}</span>
+                      {est.client_email && <span className="inv-client-sub">{est.client_email}</span>}
+                    </td>
+                    <td>
+                      <span className="inv-num">#{est.id.slice(-6).toUpperCase()}</span>
+                    </td>
+                    <td>{est.title}</td>
+                    <td>{fmtDt(est.created_at)}</td>
+                    <td>{est.valid_until ? fmtDt(est.valid_until) : <span style={{ color: 'var(--steel)' }}>—</span>}</td>
+                    <td><StatusBadge status={est.status} /></td>
+                    <td className="inv-td-r">
+                      <span className="inv-num">{fmt$(est.amount)}</span>
+                    </td>
+                    <td className="inv-td-actions" onClick={e => e.stopPropagation()}>
+                      <div className={`inv-row-actions${moreOpen === est.id ? ' inv-row-actions--open' : ''}`}>
+                        {['draft','sent'].includes(est.status) && est.client_email && (
+                          <div className="inv-action-tooltip-wrap">
+                            <button
+                              className="inv-action-btn"
+                              aria-label={est.status === 'sent' ? 'Resend estimate' : 'Send estimate'}
+                              onClick={e => { e.stopPropagation(); doSend(est); }}
+                            >
+                              <Send size={14} />
+                            </button>
+                            <span className="inv-action-tooltip">{est.status === 'sent' ? 'Resend' : 'Send'}</span>
+                          </div>
+                        )}
+                        <div className="inv-action-menu-wrap">
+                          <button
+                            className="inv-action-btn"
+                            aria-label="More actions"
+                            onClick={e => { e.stopPropagation(); setMoreOpen(o => o === est.id ? null : est.id); }}
+                          >
+                            <MoreHorizontal size={14} />
+                          </button>
+                          {moreOpen === est.id && (
+                            <div className="inv-action-drop" onClick={e => e.stopPropagation()}>
+                              <button
+                                className="inv-action-drop-item"
+                                onClick={() => { setSelected(est); setMoreOpen(null); }}
+                              >
+                                Open
+                              </button>
+                              {['draft','sent'].includes(est.status) && (
+                                <>
+                                  <div className="inv-action-drop-sep" />
+                                  <button
+                                    className="inv-action-drop-item inv-action-drop-item--danger"
+                                    onClick={() => { setMoreOpen(null); doExpire(est); }}
+                                  >
+                                    Expire
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
