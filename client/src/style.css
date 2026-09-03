@@ -3312,6 +3312,15 @@ tr:focus-within .inv-row-actions,
   font-weight: 500;
 }
 .detail-row:last-child { border-bottom: none; }
+.inv-detail-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+  color: var(--navy); text-decoration: underline;
+  text-decoration-color: transparent; text-underline-offset: 2px;
+  transition: color 0.12s, text-decoration-color 0.12s;
+  text-align: left;
+}
+.inv-detail-link:hover { color: var(--steel); text-decoration-color: var(--steel); }
 .detail-row label {
   font-family: 'Inter', sans-serif;
   font-weight: 500;
@@ -7247,6 +7256,10 @@ tr:focus-within .inv-row-actions,
   .modal-lg { width: 100% !important; }
   .modal-header { padding: 24px 20px 14px; }
   .modal-body { overflow: visible; padding: 0 20px 24px; flex: none; }
+
+  /* Invoice search: full-width on mobile */
+  .inv-search-wrap { flex: 1 1 100%; }
+  .inv-search { width: 100%; }
 
   /* Form actions: stack on mobile */
   .form-actions { flex-direction: column-reverse; }

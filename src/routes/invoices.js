@@ -987,10 +987,16 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
               c.name AS client_name, c.email AS client_email, c.phone AS client_phone,
               c.address AS client_address, c.city AS client_city, c.state AS client_state,
               c.zip AS client_zip, c.stripe_payment_method_id, c.card_on_file,
-              j.service_type, j.scheduled_at, j.tech_id
+              j.service_type, j.scheduled_at, j.tech_id,
+              j.project_id AS job_project_id,
+              j.work_order_number,
+              j.title AS work_order_title,
+              p.name AS project_name,
+              p.project_number
        FROM invoices i
        JOIN clients c ON c.id = i.client_id
        LEFT JOIN jobs j ON j.id = i.job_id
+       LEFT JOIN projects p ON p.id = COALESCE(i.project_id, j.project_id)
        WHERE i.id = $1 AND i.account_id = $2`,
       [req.params.id, req.accountId]
     );

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
@@ -22,6 +23,7 @@ const PAYMENT_TERMS_LABELS = {
 };
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdate }) {
+  const navigate = useNavigate();
   const [invoice, setInvoice]             = useState(initialInvoice);
   const [loading, setLoading]             = useState(false);
   const [sending, setSending]             = useState(false);
@@ -158,6 +160,34 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       <div className="invoice-meta">
         <div className="detail-row"><label>Client</label><span>{invoice.client_name}</span></div>
         {invoice.client_email && <div className="detail-row"><label>Email</label><span>{invoice.client_email}</span></div>}
+
+        {/* Canonical project relationship */}
+        {invoice.project_name && (invoice.project_id || invoice.job_project_id) && (
+          <div className="detail-row">
+            <label>Project</label>
+            <button
+              type="button"
+              className="inv-detail-link"
+              onClick={() => { onClose(); navigate(`/projects/${invoice.project_id || invoice.job_project_id}`); }}
+            >
+              {invoice.project_number
+                ? `PRJ-${String(invoice.project_number).padStart(4, '0')} · ${invoice.project_name}`
+                : invoice.project_name}
+            </button>
+          </div>
+        )}
+
+        {/* Work order (job with project_id) */}
+        {invoice.work_order_number && (
+          <div className="detail-row">
+            <label>Work Order</label>
+            <span>
+              WO-{String(invoice.work_order_number).padStart(3, '0')}
+              {invoice.work_order_title ? ` · ${invoice.work_order_title}` : ''}
+            </span>
+          </div>
+        )}
+
         {invoice.service_type && <div className="detail-row"><label>Service</label><span>{invoice.service_type}</span></div>}
         <div className="detail-row"><label>Created</label><span>{format(new Date(invoice.created_at), 'MMM d, yyyy')}</span></div>
         {invoice.sent_at && <div className="detail-row"><label>Sent</label><span>{format(new Date(invoice.sent_at), 'MMM d, yyyy h:mm a')}</span></div>}
