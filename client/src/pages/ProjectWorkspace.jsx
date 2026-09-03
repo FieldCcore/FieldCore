@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import JobTeamSelector from '../components/JobTeamSelector';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import AssetAutocomplete from '../components/AssetAutocomplete';
 import {
   ChevronLeft, Plus, X, Check, Trash2, Share2,
   ChevronDown, ChevronUp, Search, Pencil, Link,
@@ -103,98 +104,6 @@ function DurationPicker({ value, onChange }) {
         <input type="number" min="0" max="59" value={m} onChange={e => upd(d, h, e.target.value)} />
         <span>min</span>
       </div>
-    </div>
-  );
-}
-
-// ── Asset Picker ──────────────────────────────────────────
-function AssetPicker({ value, assetName, onChange, clientId }) {
-  const [query, setQuery]       = useState('');
-  const [results, setResults]   = useState([]);
-  const [open, setOpen]         = useState(false);
-  const [creating, setCreating] = useState(false);
-  const inputRef = useRef(null);
-  const timer    = useRef(null);
-
-  useEffect(() => {
-    if (!open || !query.trim()) { setResults([]); return; }
-    clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      try {
-        const params = { search: query.trim() };
-        if (clientId) params.client_id = clientId;
-        const r = await api.get('/assets', { params });
-        setResults(r.data || []);
-      } catch {}
-    }, 250);
-  }, [query, open, clientId]);
-
-  function select(asset) {
-    onChange(asset.id, asset.name);
-    setOpen(false);
-    setQuery('');
-    setResults([]);
-  }
-
-  function clear() { onChange(null, null); }
-
-  async function createAsset() {
-    if (!query.trim()) return;
-    setCreating(true);
-    try {
-      const r = await api.post('/assets', {
-        name: query.trim(),
-        client_id: clientId || null,
-      });
-      select(r.data);
-    } catch {}
-    setCreating(false);
-  }
-
-  if (value) {
-    return (
-      <div className="prj-asset-selected">
-        <span className="prj-asset-selected-name">{assetName || value}</span>
-        <button type="button" className="prj-asset-clear" onClick={clear} aria-label="Clear asset">
-          <X size={12} />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="prj-asset-picker" style={{ position: 'relative' }}>
-      <div className="prj-asset-input-wrap">
-        <Search size={13} className="prj-asset-search-icon" />
-        <input
-          ref={inputRef}
-          className="prj-asset-input"
-          placeholder="Search or name a new asset…"
-          value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-        />
-      </div>
-      {open && (query.trim() || results.length > 0) && (
-        <div className="prj-asset-drop">
-          {results.map(a => (
-            <button key={a.id} type="button" className="prj-asset-drop-item" onMouseDown={() => select(a)}>
-              <span className="prj-asset-drop-name">{a.name}</span>
-              {a.unit_number && <span className="prj-asset-drop-sub">Unit {a.unit_number}</span>}
-              {a.asset_type  && <span className="prj-asset-drop-sub">{a.asset_type}</span>}
-            </button>
-          ))}
-          {query.trim() && (
-            <button type="button" className="prj-asset-drop-item prj-asset-drop-create" onMouseDown={createAsset} disabled={creating}>
-              <Plus size={12} /> {creating ? 'Creating…' : `Create "${query.trim()}"`}
-            </button>
-          )}
-          {!query.trim() && results.length === 0 && (
-            <div className="prj-asset-drop-empty">Type to search assets</div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -890,7 +799,7 @@ function ShareModal({ wo, projectId, users, currentUserId, onClose }) {
 }
 
 // ── Work Order row ────────────────────────────────────────
-function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUserId }) {
+function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUserId, clientId }) {
   const [expanded, setExpanded]     = useState(false);
   const [showShare, setShowShare]   = useState(false);
   const [tasks, setTasks]           = useState([]);
@@ -1131,11 +1040,11 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
                 <div className="prj-wo-section-label">Scope</div>
                 <div className="form-group">
                   <label>Asset / Equipment</label>
-                  <AssetPicker
+                  <AssetAutocomplete
                     value={woForm.asset_id}
                     assetName={woForm.asset_name}
                     onChange={(id, name) => setWoForm(p => ({ ...p, asset_id: id, asset_name: name }))}
-                    clientId={null}
+                    clientId={clientId}
                   />
                 </div>
                 <div className="form-group">
@@ -1233,7 +1142,7 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
 }
 
 // ── Work Orders Tab (V2 — with filters) ──────────────────
-function WorkOrdersTab({ projectId, users, onRefresh }) {
+function WorkOrdersTab({ projectId, users, onRefresh, clientId }) {
   const [workOrders, setWorkOrders]         = useState([]);
   const [loading, setLoading]               = useState(true);
   const [showForm, setShowForm]             = useState(false);
@@ -1445,11 +1354,11 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
               <div className="prj-wo-section-label">Scope</div>
               <div className="form-group">
                 <label>Asset / Equipment</label>
-                <AssetPicker
+                <AssetAutocomplete
                   value={form.asset_id}
                   assetName={form.asset_name}
                   onChange={(id, name) => setForm(p => ({ ...p, asset_id: id, asset_name: name }))}
-                  clientId={null}
+                  clientId={clientId}
                 />
               </div>
               <div className="form-group">
@@ -1493,6 +1402,7 @@ function WorkOrdersTab({ projectId, users, onRefresh }) {
               users={users}
               isOwnerOrMgr={isOwnerOrMgr}
               currentUserId={user?.id}
+              clientId={clientId}
               onRefresh={load}
             />
           ))}
@@ -2597,7 +2507,7 @@ export default function ProjectWorkspace() {
           />
         )}
         {tab === 'work-orders' && (
-          <WorkOrdersTab projectId={id} users={users} onRefresh={loadProject} />
+          <WorkOrdersTab projectId={id} users={users} onRefresh={loadProject} clientId={project?.client_id || null} />
         )}
         {tab === 'financials' && (
           <FinancialsTab projectId={id} />

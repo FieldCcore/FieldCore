@@ -8928,50 +8928,125 @@ tr:focus-within .inv-row-actions,
 .prj-health-next-wo  { font-size: 12px; font-weight: 600; color: var(--navy); }
 .prj-health-next-date{ font-size: 12px; color: var(--slate); }
 
-/* ── Asset Picker ──────────────────────────────────────── */
-.prj-asset-picker { position: relative; }
-.prj-asset-input-wrap {
-  display: flex; align-items: center; gap: 6px;
-  border: 1px solid var(--lightgray); border-radius: 6px;
-  padding: 0 10px; background: var(--white);
-  transition: border-color .12s;
+/* ── Asset Autocomplete (canonical shared component) ─── */
+.asset-ac-wrap { position: relative; width: 100%; }
+.asset-ac-input-row { position: relative; display: flex; align-items: center; }
+.asset-ac-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--steel); pointer-events: none; flex-shrink: 0; z-index: 1;
 }
-.prj-asset-input-wrap:focus-within { border-color: var(--sand); }
-.prj-asset-search-icon { color: var(--steel); flex-shrink: 0; }
-.prj-asset-input {
-  flex: 1; border: none; outline: none; background: none;
-  font-size: 13px; color: var(--navy); padding: 8px 0;
-  font-family: 'Inter', sans-serif;
+/* Use higher specificity so left-padding wins over .form-group input */
+.asset-ac-wrap .asset-ac-input {
+  width: 100%; padding: 10px 12px 10px 32px;
+  border: 1.5px solid var(--lightgray); border-radius: 6px;
+  font-family: 'Inter', sans-serif; font-size: 14px; color: var(--navy);
+  background: var(--white); outline: none; transition: border-color 0.15s;
 }
-.prj-asset-drop {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+.asset-ac-wrap .asset-ac-input:focus { border-color: var(--sand); }
+.asset-ac-wrap .asset-ac-input::placeholder { color: var(--steel); }
+.asset-ac-drop {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 9999;
   background: var(--white); border: 1px solid var(--lightgray);
-  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.1);
-  overflow: hidden;
+  border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.13);
+  max-height: 300px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(95,102,122,.25) transparent;
 }
-.prj-asset-drop-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
+.asset-ac-state {
+  padding: 12px 14px; font-size: 13px; color: var(--steel); font-family: 'Inter', sans-serif;
+}
+.asset-ac-state--error { color: var(--red); }
+.asset-ac-retry {
+  display: inline; margin-left: 6px; font-size: 12px; color: var(--blue);
+  background: none; border: none; cursor: pointer; padding: 0; font-family: 'Inter', sans-serif;
+  text-decoration: underline;
+}
+.asset-ac-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%;
   padding: 9px 14px; background: none; border: none; cursor: pointer;
-  font-family: 'Inter', sans-serif; text-align: left;
+  text-align: left; border-bottom: 1px solid var(--off); font-family: 'Inter', sans-serif;
   transition: background .1s;
 }
-.prj-asset-drop-item:hover { background: var(--off); }
-.prj-asset-drop-name  { font-size: 13px; font-weight: 500; color: var(--navy); }
-.prj-asset-drop-sub   { font-size: 11px; color: var(--steel); }
-.prj-asset-drop-create{ color: var(--sand); font-weight: 600; gap: 6px; }
-.prj-asset-drop-create:hover { background: #fdf6ec; }
-.prj-asset-drop-empty { padding: 12px 14px; font-size: 12px; color: var(--steel); }
-.prj-asset-selected {
+.asset-ac-item:last-of-type { border-bottom: none; }
+.asset-ac-item:hover, .asset-ac-item--active { background: var(--off); }
+.asset-ac-item-name { font-size: 13px; font-weight: 500; color: var(--navy); }
+.asset-ac-item-meta {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  font-size: 11px; color: var(--steel); font-family: 'Inter', sans-serif;
+}
+.asset-ac-empty { padding: 10px 14px; }
+.asset-ac-empty-msg {
+  display: block; font-size: 13px; color: var(--steel);
+  margin-bottom: 8px; font-family: 'Inter', sans-serif;
+}
+.asset-ac-add-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0; background: none; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--sand);
+  font-family: 'Inter', sans-serif; transition: color .1s;
+}
+.asset-ac-add-btn:hover { color: var(--sand-dark); }
+.asset-ac-add-row {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  padding: 9px 14px; background: none; border: none; border-top: 1px solid var(--off);
+  cursor: pointer; font-size: 12px; font-weight: 600; color: var(--sand);
+  font-family: 'Inter', sans-serif; text-align: left; transition: background .1s;
+}
+.asset-ac-add-row:hover { background: #fdf6ec; }
+.asset-ac-selected {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   background: #fdf6ec; border: 1px solid #e8d5b2; border-radius: 6px;
+  min-height: 44px;
 }
-.prj-asset-selected-name { font-size: 13px; font-weight: 500; color: var(--navy); flex: 1; }
-.prj-asset-clear {
-  background: none; border: none; cursor: pointer; padding: 2px;
-  color: var(--steel); display: flex; align-items: center;
-  border-radius: 3px; transition: color .1s;
+.asset-ac-selected-name {
+  font-size: 14px; font-weight: 500; color: var(--navy); flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: 'Inter', sans-serif;
 }
-.prj-asset-clear:hover { color: var(--navy); }
+.asset-ac-clear {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex-shrink: 0;
+  background: none; border: none; cursor: pointer; border-radius: 50%;
+  color: var(--steel); padding: 0; transition: background .1s, color .1s;
+}
+.asset-ac-clear:hover { background: #e8d5b2; color: var(--navy); }
+
+/* Add-asset inline form inside the dropdown */
+.asset-add-form {
+  padding: 14px 16px; border-top: 1px solid var(--lightgray);
+  background: var(--offwhite);
+}
+.asset-add-title {
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .10em;
+  color: var(--slate); margin-bottom: 10px;
+}
+.asset-add-error { color: var(--red); font-size: 12px; margin-bottom: 8px; font-family: 'Inter', sans-serif; }
+.asset-add-fields { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+.asset-add-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.asset-add-input, .asset-add-select {
+  width: 100%; padding: 7px 10px;
+  border: 1.5px solid var(--lightgray); border-radius: 6px;
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--navy);
+  background: var(--white); outline: none; transition: border-color 0.15s;
+}
+.asset-add-input:focus, .asset-add-select:focus { border-color: var(--sand); }
+.asset-add-input::placeholder { color: var(--steel); }
+.asset-add-actions { display: flex; gap: 7px; }
+.asset-add-cancel {
+  flex: 1; padding: 7px 10px; border: 1px solid var(--lightgray);
+  border-radius: 6px; background: var(--white); cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--slate);
+  font-family: 'Inter', sans-serif; transition: background .1s;
+}
+.asset-add-cancel:hover { background: var(--off); }
+.asset-add-save {
+  flex: 2; padding: 7px 10px; border: none; border-radius: 6px;
+  background: var(--navy); color: var(--sand); cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: 'Inter', sans-serif;
+  transition: opacity .1s;
+}
+.asset-add-save:hover { opacity: .88; }
+.asset-add-save:disabled { opacity: .55; cursor: default; }
 
 /* ── WO Asset display ──────────────────────────────────── */
 .prj-wo-asset {
