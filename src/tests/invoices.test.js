@@ -993,7 +993,24 @@ describe('POST /api/invoices — JOB source still works', () => {
     expect(res.body.status).toBe('draft');
   });
 
-  it('409 when job is already invoiced', async () => {
+  it('201 on second draft post — updates existing draft (unique job_id constraint)', async () => {
+    // eligibleJobId already has a draft from the previous test — should UPDATE, not 409
+    const res = await request(app)
+      .post('/api/invoices')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ source_type: 'JOB', job_id: eligibleJobId, subject: 'Revised Draft' })
+      .expect(201);
+
+    expect(res.body.job_id).toBe(eligibleJobId);
+    expect(res.body.status).toBe('draft');
+  });
+
+  it('409 when job has a pending (sent) invoice', async () => {
+    // Promote the existing draft to pending first
+    await pool.query(
+      `UPDATE invoices SET status = 'pending' WHERE job_id = $1 AND account_id = $2`,
+      [eligibleJobId, accountId]
+    );
     const res = await request(app)
       .post('/api/invoices')
       .set('Authorization', `Bearer ${token}`)
@@ -1001,6 +1018,11 @@ describe('POST /api/invoices — JOB source still works', () => {
       .expect(409);
 
     expect(res.body.error).toMatch(/already/i);
+    // Restore to draft so subsequent tests aren't affected
+    await pool.query(
+      `UPDATE invoices SET status = 'draft' WHERE job_id = $1 AND account_id = $2`,
+      [eligibleJobId, accountId]
+    );
   });
 
   it('400 when source_type is invalid', async () => {
