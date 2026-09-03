@@ -307,12 +307,21 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         return res.status(400).json({ error: 'Job must be complete before invoicing' });
       }
       const dupRes = await client.query(
-        `SELECT id FROM invoices WHERE job_id = $1 AND account_id = $2`,
+        `SELECT id, status FROM invoices WHERE job_id = $1 AND account_id = $2`,
         [job_id, req.accountId]
       );
-      if (dupRes.rows.length > 0) {
+      const activeInvoice = dupRes.rows.find(r => r.status === 'pending' || r.status === 'paid');
+      if (activeInvoice) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'An invoice already exists for this job' });
+      }
+      // Void any draft auto-invoices so the new invoice is the canonical one
+      const draftIds = dupRes.rows.filter(r => r.status === 'draft').map(r => r.id);
+      if (draftIds.length > 0) {
+        await client.query(
+          `UPDATE invoices SET status = 'void', updated_at = NOW() WHERE id = ANY($1::uuid[])`,
+          [draftIds]
+        );
       }
       finalClientId = job.client_id;
       finalJobId    = job_id;
@@ -860,7 +869,7 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
            SELECT 1 FROM invoices inv
            WHERE inv.job_id = j.id
              AND inv.account_id = $1
-             AND inv.status NOT IN ('void')
+             AND inv.status IN ('pending', 'paid')
          )${whereExtra}
        ORDER BY j.scheduled_at DESC
        LIMIT 100`,

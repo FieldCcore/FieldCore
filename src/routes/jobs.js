@@ -1374,8 +1374,8 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
       const taxAmount  = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
       const total      = subtotal + taxAmount;
       await pool.query(
-        `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
-         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+        `INSERT INTO invoices (account_id, job_id, client_id, source_type, status, amount, tax_amount, line_items)
+         VALUES ($1,$2,$3,'JOB','draft',$4,$5,$6) ON CONFLICT DO NOTHING`,
         [req.accountId, updated.id, updated.client_id, total, taxAmount, JSON.stringify(lineItems)]
       ).catch(() => {});
     }
@@ -1429,8 +1429,8 @@ router.post('/:id/complete', requireAuth, requireRole('owner', 'manager'), async
       const taxAmount  = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
       const total      = subtotal + taxAmount;
       await pool.query(
-        `INSERT INTO invoices (account_id, job_id, client_id, amount, tax_amount, line_items)
-         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+        `INSERT INTO invoices (account_id, job_id, client_id, source_type, status, amount, tax_amount, line_items)
+         VALUES ($1,$2,$3,'JOB','draft',$4,$5,$6) ON CONFLICT DO NOTHING`,
         [req.accountId, updated.id, updated.client_id, total, taxAmount, JSON.stringify(lineItems)]
       ).catch(() => {});
     }
