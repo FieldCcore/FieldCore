@@ -897,7 +897,18 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
     const { rows } = await pool.query(
       `SELECT j.id, j.service_type, j.amount, j.scheduled_at, j.service_address AS address,
               j.client_id,
-              c.name AS client_name, c.email AS client_email
+              c.name AS client_name, c.email AS client_email,
+              COALESCE(
+                (SELECT json_agg(json_build_object(
+                   'name',        js.service_name,
+                   'description', COALESCE(js.service_notes, ''),
+                   'quantity',    js.quantity,
+                   'price_cents', js.price_cents
+                 ) ORDER BY js.sort_order)
+                 FROM job_services js
+                 WHERE js.job_id = j.id AND js.account_id = j.account_id),
+                '[]'::json
+              ) AS line_items
        FROM jobs j
        JOIN clients c ON c.id = j.client_id
        WHERE j.account_id = $1

@@ -269,15 +269,29 @@ export default function NewInvoicePage() {
     setShowJobPicker(false);
     setJobQuery('');
     setSubject(j.service_type || 'For Services Rendered');
-    setLineItems([{
-      _id:        'job-line',
-      service_id: null,
-      name:       j.service_type || 'Service',
-      description:'',
-      quantity:   '1',
-      unit_price: parseFloat(j.amount || 0).toFixed(2),
-      taxable:    taxRate > 0,
-    }]);
+
+    const svcs = Array.isArray(j.line_items) && j.line_items.length > 0 ? j.line_items : null;
+    setLineItems(
+      svcs
+        ? svcs.map((svc, idx) => ({
+            _id:        `job-line-${idx}`,
+            service_id: null,
+            name:       svc.name || j.service_type || 'Service',
+            description:svc.description || '',
+            quantity:   String(parseFloat(svc.quantity) || 1),
+            unit_price: ((svc.price_cents || 0) / 100).toFixed(2),
+            taxable:    taxRate > 0,
+          }))
+        : [{
+            _id:        'job-line',
+            service_id: null,
+            name:       j.service_type || 'Service',
+            description:'',
+            quantity:   '1',
+            unit_price: parseFloat(j.amount || 0).toFixed(2),
+            taxable:    taxRate > 0,
+          }]
+    );
   }
 
   function clearJob() {

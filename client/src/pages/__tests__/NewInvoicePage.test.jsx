@@ -26,6 +26,7 @@ const JOB_A = {
   id: 'j-aaa', service_type: 'HVAC Repair', amount: '500.00',
   scheduled_at: '2026-08-01T10:00:00Z', client_id: 'c-aaa',
   client_name: 'Alpha Corp', address: '1 Alpha Rd',
+  line_items: [{ name: 'HVAC Repair', description: '', quantity: '1', price_cents: 50000 }],
 };
 
 const CREATED_INVOICE = {
