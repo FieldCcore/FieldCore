@@ -361,6 +361,15 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, marginBottom: 4 }}>
+        {invoice.status === 'draft' && (
+          <button
+            className="btn-secondary"
+            style={{ fontSize: 13 }}
+            onClick={() => { onClose(); navigate(`/invoices/new?edit=${invoice.id}`); }}
+          >
+            Edit Invoice
+          </button>
+        )}
         <button className="btn-secondary" onClick={handleDownloadPdf} style={{ fontSize: 13 }}>
           Download PDF
         </button>

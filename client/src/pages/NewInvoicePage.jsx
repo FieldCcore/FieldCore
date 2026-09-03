@@ -152,12 +152,17 @@ function ServiceSearch({ value, onChange, onServiceSelect }) {
 export default function NewInvoicePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit') || null;
   const saveDropRef = useRef(null);
 
   // Settings loaded on mount
   const [taxRate,       setTaxRate]       = useState(0);
   const [previewNumber, setPreviewNumber] = useState(null);
   const [previewNumErr, setPreviewNumErr] = useState(false);
+
+  // Edit mode: the invoice being edited
+  const [editInvoice, setEditInvoice] = useState(null);
+  const [editLoading, setEditLoading] = useState(!!editId);
 
   // Client
   const [selectedClient, setSelectedClient] = useState(null);
@@ -196,17 +201,79 @@ export default function NewInvoicePage() {
   const [saveDropOpen,  setSaveDropOpen]  = useState(false);
   const [collectInvoice, setCollectInvoice] = useState(null);
 
-  // Load settings
+  // Load settings (and draft invoice if editing)
   useEffect(() => {
-    api.get('/invoices/settings')
+    const settingsPromise = api.get('/invoices/settings')
       .then(r => {
         const d = r.data;
         setTaxRate(d.tax_rate || 0);
-        setPreviewNumber(d.next_number != null ? d.next_number : null);
-        if (d.default_terms) setTerms(d.default_terms);
+        if (!editId && d.next_number != null) setPreviewNumber(d.next_number);
+        if (!editId && d.default_terms) setTerms(d.default_terms);
       })
-      .catch(() => setPreviewNumErr(true));
-  }, []);
+      .catch(() => { if (!editId) setPreviewNumErr(true); });
+
+    if (!editId) return;
+
+    // Load the draft invoice and hydrate all fields
+    Promise.all([
+      settingsPromise,
+      api.get(`/invoices/${editId}`),
+    ]).then(([, r]) => {
+      const inv = r.data;
+      if (inv.status !== 'draft') {
+        navigate('/invoices', { replace: true });
+        return;
+      }
+      setEditInvoice(inv);
+      setSubject(inv.subject || 'For Services Rendered');
+      setIssuedDate(inv.issued_date ? inv.issued_date.slice(0, 10) : TODAY);
+      setPaymentTerms(inv.payment_terms || 'due_on_receipt');
+      setDueDate(inv.due_date ? inv.due_date.slice(0, 10) : '');
+      setClientMessage(inv.client_message || '');
+      setTerms(inv.terms || '');
+      setInternalNotes(inv.internal_notes || '');
+      setDiscountType(inv.discount_type || 'none');
+      setDiscountValue(inv.discount_value != null ? String(inv.discount_value) : '');
+      setDiscountLabel(inv.discount_label || '');
+      setSelectedClient({
+        id:      inv.client_id,
+        name:    inv.client_name,
+        email:   inv.client_email,
+        phone:   inv.client_phone,
+        address: inv.client_address,
+        city:    inv.client_city,
+        state:   inv.client_state,
+        zip:     inv.client_zip,
+      });
+      if (inv.job_id) {
+        setSelectedJob({
+          id:           inv.job_id,
+          service_type: inv.service_type || inv.subject,
+          amount:       inv.amount,
+          scheduled_at: inv.scheduled_at,
+          client_id:    inv.client_id,
+          client_name:  inv.client_name,
+          client_email: inv.client_email,
+        });
+      }
+      const items = Array.isArray(inv.line_items) && inv.line_items.length > 0
+        ? inv.line_items.map((item, i) => ({
+            _id:        `edit-line-${i}`,
+            service_id: item.service_id || null,
+            name:       item.name || item.description || 'Service',
+            description:item.description || '',
+            quantity:   String(parseFloat(item.quantity) || 1),
+            unit_price: String(parseFloat(item.unit_price ?? item.amount) || 0),
+            taxable:    item.taxable !== false,
+          }))
+        : [newLineItem()];
+      setLineItems(items);
+    }).catch(() => {
+      navigate('/invoices', { replace: true });
+    }).finally(() => {
+      setEditLoading(false);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close save dropdown on outside click
   useEffect(() => {
@@ -271,27 +338,50 @@ export default function NewInvoicePage() {
     setSubject(j.service_type || 'For Services Rendered');
 
     const svcs = Array.isArray(j.line_items) && j.line_items.length > 0 ? j.line_items : null;
-    setLineItems(
-      svcs
-        ? svcs.map((svc, idx) => ({
-            _id:        `job-line-${idx}`,
-            service_id: null,
-            name:       svc.name || j.service_type || 'Service',
-            description:svc.description || '',
-            quantity:   String(parseFloat(svc.quantity) || 1),
-            unit_price: ((svc.price_cents || 0) / 100).toFixed(2),
-            taxable:    taxRate > 0,
-          }))
-        : [{
-            _id:        'job-line',
-            service_id: null,
-            name:       j.service_type || 'Service',
-            description:'',
-            quantity:   '1',
-            unit_price: parseFloat(j.amount || 0).toFixed(2),
-            taxable:    taxRate > 0,
-          }]
-    );
+    const jobAmount = parseFloat(j.amount || 0);
+
+    if (svcs) {
+      // Verify job_services prices are consistent with jobs.amount (the authoritative booked price).
+      // If they diverge, jobs.amount wins — job_services.price_cents may reflect stale catalog pricing.
+      const lineItemsTotal = svcs.reduce((sum, svc) => {
+        const qty = parseFloat(svc.quantity) || 1;
+        const price = (svc.price_cents || 0) / 100;
+        return sum + qty * price;
+      }, 0);
+      const consistent = Math.abs(lineItemsTotal - jobAmount) < 0.01;
+
+      setLineItems(
+        consistent
+          ? svcs.map((svc, idx) => ({
+              _id:        `job-line-${idx}`,
+              service_id: null,
+              name:       svc.name || j.service_type || 'Service',
+              description:svc.description || '',
+              quantity:   String(parseFloat(svc.quantity) || 1),
+              unit_price: ((svc.price_cents || 0) / 100).toFixed(2),
+              taxable:    taxRate > 0,
+            }))
+          : [{
+              _id:        'job-line',
+              service_id: null,
+              name:       j.service_type || 'Service',
+              description:'',
+              quantity:   '1',
+              unit_price: jobAmount.toFixed(2),
+              taxable:    taxRate > 0,
+            }]
+      );
+    } else {
+      setLineItems([{
+        _id:        'job-line',
+        service_id: null,
+        name:       j.service_type || 'Service',
+        description:'',
+        quantity:   '1',
+        unit_price: jobAmount.toFixed(2),
+        taxable:    taxRate > 0,
+      }]);
+    }
   }
 
   function clearJob() {
@@ -355,6 +445,46 @@ export default function NewInvoicePage() {
 
     setSaving(true);
     try {
+      const lineItemsPayload = lineItems.map(item => ({
+        service_id:  item.service_id || null,
+        name:        item.name.trim(),
+        description: item.description.trim(),
+        quantity:    parseFloat(item.quantity) || 1,
+        unit_price:  parseFloat(item.unit_price) || 0,
+        taxable:     item.taxable,
+        line_total:  lineTotal(item),
+      }));
+
+      let res;
+
+      if (editId) {
+        // Update existing draft in-place — preserves id, invoice_number, job_id, client_id
+        const editPayload = {
+          subject:        subject.trim() || 'For Services Rendered',
+          issued_date:    issuedDate,
+          payment_terms:  paymentTerms,
+          due_date:       dueDate || null,
+          line_items:     lineItemsPayload,
+          discount_type:  discountType !== 'none' ? discountType : null,
+          discount_value: discountType !== 'none' ? parseFloat(discountValue) || 0 : null,
+          discount_label: discountLabel.trim() || null,
+          client_message: clientMessage.trim() || null,
+          terms:          terms.trim() || null,
+          internal_notes: internalNotes.trim() || null,
+        };
+        res = await api.put(`/invoices/${editId}`, editPayload);
+
+        if (action === 'send') {
+          await api.post(`/invoices/${editId}/send`);
+        }
+        if (action === 'collect') {
+          setCollectInvoice(res.data);
+          return;
+        }
+        navigate('/invoices');
+        return;
+      }
+
       const invoiceStatus = action === 'send' || action === 'collect' ? 'pending' : 'draft';
       const payload = {
         source_type:    selectedJob ? 'JOB' : 'MANUAL',
@@ -363,15 +493,7 @@ export default function NewInvoicePage() {
         issued_date:    issuedDate,
         payment_terms:  paymentTerms,
         due_date:       dueDate || undefined,
-        line_items:     lineItems.map(item => ({
-          service_id:  item.service_id || null,
-          name:        item.name.trim(),
-          description: item.description.trim(),
-          quantity:    parseFloat(item.quantity) || 1,
-          unit_price:  parseFloat(item.unit_price) || 0,
-          taxable:     item.taxable,
-          line_total:  lineTotal(item),
-        })),
+        line_items:     lineItemsPayload,
         discount_type:  discountType !== 'none' ? discountType : null,
         discount_value: discountType !== 'none' ? parseFloat(discountValue) || 0 : null,
         discount_label: discountLabel.trim() || null,
@@ -381,7 +503,7 @@ export default function NewInvoicePage() {
         status:         invoiceStatus,
       };
 
-      const res = await api.post('/invoices', payload);
+      res = await api.post('/invoices', payload);
 
       if (action === 'send') {
         await api.post(`/invoices/${res.data.id}/send`);
@@ -402,7 +524,7 @@ export default function NewInvoicePage() {
       } else if (msg.includes('client')) {
         setSaveError('Please select a valid client.');
       } else {
-        setSaveError(err.response?.data?.error || 'Could not create invoice. Try again.');
+        setSaveError(err.response?.data?.error || 'Could not save invoice. Try again.');
       }
     } finally {
       setSaving(false);
@@ -420,14 +542,22 @@ export default function NewInvoicePage() {
     );
   }
 
+  if (editLoading) {
+    return <div className="niw-page" style={{ padding: 32, color: 'var(--slate)' }}>Loading invoice…</div>;
+  }
+
   return (
     <div className="niw-page">
 
       {/* ── Page header ───────────────────────────────────────── */}
       <div className="niw-header">
         <div className="niw-header-left">
-          <h1 className="niw-title">New Invoice</h1>
-          {!previewNumErr && previewNumber != null && (
+          <h1 className="niw-title">
+            {editInvoice
+              ? `Edit Invoice #${editInvoice.invoice_number ?? editInvoice.invoice_number_display}`
+              : 'New Invoice'}
+          </h1>
+          {!editInvoice && !previewNumErr && previewNumber != null && (
             <span className="niw-preview-num">Preview #{previewNumber}</span>
           )}
         </div>
@@ -542,7 +672,7 @@ export default function NewInvoicePage() {
               <p className="niw-card-title" style={{ margin: 0 }}>
                 Link to Job <span className="niw-optional">(optional)</span>
               </p>
-              {!selectedJob && !showJobPicker && (
+              {!editId && !selectedJob && !showJobPicker && (
                 <button
                   className="niw-link-btn"
                   onClick={() => {
@@ -556,7 +686,7 @@ export default function NewInvoicePage() {
                   Link Job
                 </button>
               )}
-              {showJobPicker && !selectedJob && (
+              {!editId && showJobPicker && !selectedJob && (
                 <button
                   className="niw-link-cancel"
                   onClick={() => { setShowJobPicker(false); setJobQuery(''); setEligibleJobs([]); }}
@@ -579,17 +709,19 @@ export default function NewInvoicePage() {
                   </div>
                   <div className="niw-job-card-right">
                     <span className="niw-job-card-amount">{fmt(selectedJob.amount)}</span>
-                    <button
-                      className="niw-job-unlink"
-                      onClick={() => {
-                        clearJob();
-                        setSubject('For Services Rendered');
-                        setLineItems([newLineItem()]);
-                      }}
-                      aria-label="Unlink job"
-                    >
-                      <X size={14} />
-                    </button>
+                    {!editId && (
+                      <button
+                        className="niw-job-unlink"
+                        onClick={() => {
+                          clearJob();
+                          setSubject('For Services Rendered');
+                          setLineItems([newLineItem()]);
+                        }}
+                        aria-label="Unlink job"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -812,7 +944,9 @@ export default function NewInvoicePage() {
               <input
                 className="niw-input niw-input--readonly"
                 type="text"
-                value={previewNumber != null ? `#${previewNumber}` : 'Auto-assigned'}
+                value={editInvoice
+                  ? `#${editInvoice.invoice_number ?? editInvoice.invoice_number_display}`
+                  : previewNumber != null ? `#${previewNumber}` : 'Auto-assigned'}
                 readOnly
               />
             </div>

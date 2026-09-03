@@ -1357,6 +1357,106 @@ router.get('/eligible-agreements', requireAuth, requireRole('owner', 'manager'),
   }
 });
 
+// ─── PUT /api/invoices/:id — update a draft invoice in-place ─────────────────
+router.put('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const {
+    subject,
+    line_items: reqLineItems,
+    discount_type,
+    discount_value,
+    discount_label,
+    payment_terms = 'due_on_receipt',
+    due_date,
+    issued_date,
+    client_message,
+    internal_notes,
+    terms,
+  } = req.body;
+
+  try {
+    const [invoiceRes, settingsRes] = await Promise.all([
+      pool.query(`SELECT * FROM invoices WHERE id = $1 AND account_id = $2`, [req.params.id, req.accountId]),
+      pool.query(`SELECT COALESCE(tax_rate, 0) AS tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
+    ]);
+    const invoice = invoiceRes.rows[0];
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft invoices can be edited' });
+    }
+
+    const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+
+    const existingItems = (() => {
+      try { return JSON.parse(invoice.line_items || '[]'); } catch { return []; }
+    })();
+    const baseLineItems = Array.isArray(reqLineItems) && reqLineItems.length > 0
+      ? reqLineItems
+      : existingItems;
+
+    if (baseLineItems.length === 0) {
+      return res.status(400).json({ error: 'At least one line item is required' });
+    }
+
+    const { validItems, subtotal, discountAmount, taxAmount, total } =
+      computeTotals(baseLineItems, discount_type, discount_value, taxRate);
+
+    const finalIssuedDate = issued_date || invoice.issued_date;
+    const finalDueDate = due_date !== undefined
+      ? (due_date || null)
+      : (payment_terms !== 'due_on_receipt' && payment_terms !== 'custom'
+          ? computeDueDate(payment_terms, finalIssuedDate)
+          : null);
+
+    const { rows } = await pool.query(
+      `UPDATE invoices
+       SET subject         = $1,
+           issued_date     = $2,
+           payment_terms   = $3,
+           due_date        = $4,
+           line_items      = $5,
+           discount_type   = $6,
+           discount_value  = $7,
+           discount_amount = $8,
+           discount_label  = $9,
+           client_message  = $10,
+           internal_notes  = $11,
+           terms           = $12,
+           amount          = $13,
+           subtotal        = $14,
+           tax_amount      = $15,
+           balance         = $13,
+           updated_by      = $16,
+           updated_at      = NOW()
+       WHERE id = $17 AND account_id = $18
+       RETURNING *`,
+      [
+        subject ?? invoice.subject,
+        finalIssuedDate,
+        payment_terms,
+        finalDueDate,
+        JSON.stringify(validItems),
+        discount_type || null,
+        discount_value != null ? parseFloat(discount_value) || null : null,
+        discountAmount || null,
+        discount_label || null,
+        client_message ?? null,
+        internal_notes ?? null,
+        terms ?? null,
+        total,
+        subtotal,
+        taxAmount,
+        req.userId,
+        req.params.id,
+        req.accountId,
+      ]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/invoices/:id ────────────────────────────────────────────────────
 router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
