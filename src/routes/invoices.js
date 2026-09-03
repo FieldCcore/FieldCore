@@ -1558,32 +1558,35 @@ router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (
       return res.status(400).json({ error: 'Receipt is only available for paid invoices.' });
     }
 
+    const targetPaymentId = req.query.payment_id || null;
+
     // Query canonical payment_allocations → payments records for this invoice
     const { rows: allocRows } = await pool.query(
-      `SELECT pa.payment_id,
+      `SELECT pa.payment_id, pa.created_at AS pa_created_at,
               p.amount  AS payment_amount, p.method, p.reference, p.note,
               p.payment_date, p.created_at AS pmt_created_at,
               pa2.invoice_id    AS alloc_invoice_id,
               COALESCE(i2.invoice_number::text, UPPER(LEFT(i2.id::text,8))) AS alloc_inv_num_display,
               i2.amount   AS alloc_inv_total,
-              i2.balance  AS alloc_inv_balance,
               i2.subject  AS alloc_inv_subject,
               j2.service_type AS alloc_svc_type,
-              pa2.amount  AS alloc_pa_amount
+              pa2.amount  AS alloc_pa_amount,
+              pa2.created_at AS alloc_created_at
        FROM payment_allocations pa
-       JOIN payments p             ON p.id  = pa.payment_id
+       JOIN payments p              ON p.id  = pa.payment_id
        JOIN payment_allocations pa2 ON pa2.payment_id = pa.payment_id
-       JOIN invoices i2            ON i2.id = pa2.invoice_id
-       LEFT JOIN jobs j2           ON j2.id = i2.job_id
+       JOIN invoices i2             ON i2.id = pa2.invoice_id
+       LEFT JOIN jobs j2            ON j2.id = i2.job_id
        WHERE pa.invoice_id = $1 AND p.account_id = $2
+         AND ($3::uuid IS NULL OR pa.payment_id = $3)
        ORDER BY p.payment_date, p.created_at, pa2.invoice_id`,
-      [req.params.id, req.accountId]
+      [req.params.id, req.accountId, targetPaymentId]
     );
 
     let pmts = [];
     if (allocRows.length > 0) {
       const pmtMap = new Map();
-      allocRows.forEach(r => {
+      for (const r of allocRows) {
         if (!pmtMap.has(r.payment_id)) {
           pmtMap.set(r.payment_id, {
             id:           r.payment_id,
@@ -1596,6 +1599,29 @@ router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (
             allocations:  [],
           });
         }
+
+        // Compute historical balance: invoice.amount minus all allocations
+        // (payment + deposit) applied on or before this specific allocation's timestamp
+        let historicalBalance = parseFloat(inv.amount || 0);
+        if (targetPaymentId && r.payment_id === targetPaymentId) {
+          const ts = r.alloc_created_at || r.pa_created_at;
+          const { rows: hRows } = await pool.query(
+            `SELECT
+               COALESCE((SELECT SUM(pa3.amount) FROM payment_allocations pa3
+                         WHERE pa3.invoice_id = $1 AND pa3.account_id = $2
+                           AND pa3.created_at <= $3), 0)
+               +
+               COALESCE((SELECT SUM(da.amount) FROM deposit_allocations da
+                         WHERE da.invoice_id = $1 AND da.account_id = $2
+                           AND da.voided_at IS NULL AND da.created_at <= $3), 0)
+             AS total_applied`,
+            [req.params.id, req.accountId, ts]
+          );
+          historicalBalance = Math.max(0,
+            parseFloat(inv.amount || 0) - parseFloat(hRows[0]?.total_applied || 0)
+          );
+        }
+
         pmtMap.get(r.payment_id).allocations.push({
           invoice_id:             r.alloc_invoice_id,
           invoice_number_display: r.alloc_inv_num_display,
@@ -1603,12 +1629,12 @@ router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (
           service_type:           r.alloc_svc_type,
           allocated_amount:       r.alloc_pa_amount,
           invoice_total:          r.alloc_inv_total,
-          current_balance:        r.alloc_inv_balance,
+          current_balance:        targetPaymentId ? historicalBalance : (inv.balance ?? 0),
         });
-      });
+      }
       pmts = Array.from(pmtMap.values());
-    } else {
-      // Fallback: synthesize from invoice fields (manual or Stripe card-on-file path)
+    } else if (!targetPaymentId) {
+      // Fallback for non-filtered requests: paths 1 & 2 (manual/Stripe card-on-file)
       const method = inv.stripe_payment_intent_id ? 'CARD' : (inv.paid_method || 'other');
       const paid   = parseFloat(inv.amount || 0) - parseFloat(inv.balance ?? 0);
       pmts = [{
@@ -1629,6 +1655,10 @@ router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (
           current_balance:        inv.balance ?? 0,
         }],
       }];
+    }
+
+    if (!pmts.length) {
+      return res.status(404).json({ error: 'Payment not found for this invoice' });
     }
 
     const pdfBuf = await generateReceiptPdfBuffer(inv, pmts);
@@ -1719,12 +1749,44 @@ router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'),
       });
     }
 
+    // Deposit credit events
+    const { rows: depAllocRows } = await pool.query(
+      `SELECT da.id, da.amount, da.created_at, da.voided_at, da.deposit_id,
+              d.collected_at, j.service_type,
+              u.name AS actor_name
+       FROM deposit_allocations da
+       JOIN deposits d ON d.id = da.deposit_id
+       LEFT JOIN jobs j ON j.id = d.job_id
+       LEFT JOIN users u ON u.id = da.created_by
+       WHERE da.invoice_id = $1 AND da.account_id = $2
+       ORDER BY da.created_at ASC`,
+      [req.params.id, req.accountId]
+    );
+    depAllocRows.forEach(r => {
+      events.push({
+        type:           r.voided_at ? 'deposit_credit_voided' : 'deposit_credit',
+        source:         'deposit',
+        payment_id:     null,
+        deposit_id:     r.deposit_id,
+        date:           r.created_at,
+        amount:         parseFloat(r.amount),
+        method:         null,
+        method_label:   r.service_type ? `Deposit · ${r.service_type}` : 'Deposit Credit',
+        reference:      null,
+        note:           r.voided_at ? 'Voided' : null,
+        transaction_id: null,
+        status:         r.voided_at ? 'voided' : 'completed',
+        actor_name:     r.actor_name || null,
+      });
+    });
+
     // Void event — invoice-level financial event
     if (inv.status === 'void') {
       events.push({
         type:           'void',
         source:         'manual',
         payment_id:     null,
+        deposit_id:     null,
         date:           inv.updated_at,
         amount:         null,
         method:         null,
@@ -1746,6 +1808,144 @@ router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/invoices/:id/available-deposits ────────────────────────────────
+router.get('/:id/available-deposits', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows: invRows } = await pool.query(
+      `SELECT client_id FROM invoices WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!invRows.length) return res.status(404).json({ error: 'Not found' });
+    const { client_id } = invRows[0];
+
+    const { rows } = await pool.query(
+      `SELECT d.id, d.amount, d.collected_at, j.service_type,
+              COALESCE((
+                SELECT SUM(da.amount) FROM deposit_allocations da
+                WHERE da.deposit_id = d.id AND da.voided_at IS NULL
+              ), 0) AS applied_amount
+       FROM deposits d
+       LEFT JOIN jobs j ON j.id = d.job_id
+       WHERE d.account_id = $1 AND d.client_id = $2 AND d.status = 'collected'
+       ORDER BY d.collected_at DESC`,
+      [req.accountId, client_id]
+    );
+
+    const available = rows
+      .map(r => ({ ...r, available: parseFloat(r.amount) - parseFloat(r.applied_amount) }))
+      .filter(r => r.available > 0.001);
+
+    res.json(available);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/invoices/:id/apply-deposit ─────────────────────────────────────
+router.post('/:id/apply-deposit', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { deposit_id, amount } = req.body;
+  if (!deposit_id) return res.status(400).json({ error: 'deposit_id is required' });
+  const alloc = parseFloat(amount);
+  if (!alloc || alloc <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    // Lock and verify invoice
+    const { rows: invRows } = await dbClient.query(
+      `SELECT id, amount, COALESCE(balance, amount) AS balance, status, client_id
+       FROM invoices WHERE id = $1 AND account_id = $2
+       FOR UPDATE`,
+      [req.params.id, req.accountId]
+    );
+    if (!invRows.length) { await dbClient.query('ROLLBACK'); return res.status(404).json({ error: 'Invoice not found' }); }
+    const inv = invRows[0];
+
+    if (!['pending','partially_paid'].includes(inv.status)) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invoice is not open for payment' });
+    }
+    if (alloc > parseFloat(inv.balance) + 0.001) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: `Amount $${alloc.toFixed(2)} exceeds invoice balance $${parseFloat(inv.balance).toFixed(2)}` });
+    }
+
+    // Lock deposit row to prevent concurrent double-application
+    const { rows: depLock } = await dbClient.query(
+      `SELECT id FROM deposits WHERE id = $1 AND account_id = $2 FOR UPDATE`,
+      [deposit_id, req.accountId]
+    );
+    if (!depLock.length) { await dbClient.query('ROLLBACK'); return res.status(404).json({ error: 'Deposit not found' }); }
+
+    // Verify deposit eligibility and available balance
+    const { rows: depRows } = await dbClient.query(
+      `SELECT d.amount, d.status, d.client_id,
+              COALESCE((SELECT SUM(da.amount) FROM deposit_allocations da
+                        WHERE da.deposit_id = d.id AND da.voided_at IS NULL), 0) AS applied_amount
+       FROM deposits d WHERE d.id = $1 AND d.account_id = $2`,
+      [deposit_id, req.accountId]
+    );
+    const dep = depRows[0];
+
+    if (dep.status !== 'collected') {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: 'Deposit is not available (not yet collected)' });
+    }
+    if (dep.client_id !== inv.client_id) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: 'Deposit does not belong to this invoice\'s client' });
+    }
+    const available = parseFloat(dep.amount) - parseFloat(dep.applied_amount);
+    if (alloc > available + 0.001) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({ error: `Amount $${alloc.toFixed(2)} exceeds available deposit balance $${available.toFixed(2)}` });
+    }
+
+    // Check for existing non-voided allocation (idempotency guard)
+    const { rows: dupRows } = await dbClient.query(
+      `SELECT id FROM deposit_allocations
+       WHERE deposit_id = $1 AND invoice_id = $2 AND voided_at IS NULL`,
+      [deposit_id, req.params.id]
+    );
+    if (dupRows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(409).json({ error: 'This deposit has already been applied to this invoice' });
+    }
+
+    // Insert allocation record
+    await dbClient.query(
+      `INSERT INTO deposit_allocations (account_id, deposit_id, invoice_id, amount, created_by)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.accountId, deposit_id, req.params.id, alloc, req.userId]
+    );
+
+    // Update invoice balance/status
+    const newBalance = Math.max(0, parseFloat(inv.balance) - alloc);
+    const newStatus  = newBalance <= 0.001 ? 'paid' : 'partially_paid';
+    const paidAt     = newStatus === 'paid' ? new Date().toISOString() : null;
+
+    const { rows: updRows } = await dbClient.query(
+      `UPDATE invoices
+       SET balance = $1, status = $2, paid_at = COALESCE(paid_at, $3)
+       WHERE id = $4 AND account_id = $5
+       RETURNING *`,
+      [newBalance, newStatus, paidAt, req.params.id, req.accountId]
+    );
+
+    await dbClient.query('COMMIT');
+    res.json({ success: true, invoice: updRows[0] });
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'This deposit has already been applied to this invoice' });
+    }
+    res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
   }
 });
 
@@ -1818,7 +2018,7 @@ router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async
 
     const { rows: updated } = await pool.query(
       `UPDATE invoices
-       SET status = 'paid', paid_at = $1, paid_method = $2, payment_note = $3
+       SET status = 'paid', balance = 0, paid_at = $1, paid_method = $2, payment_note = $3
        WHERE id = $4 AND account_id = $5
        RETURNING *`,
       [paymentDate, method, combinedNote, req.params.id, req.accountId]

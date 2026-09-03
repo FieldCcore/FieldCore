@@ -36,6 +36,11 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const [newAmt,   setNewAmt]             = useState('');
   const [savingLines, setSavingLines]     = useState(false);
   const [history,  setHistory]            = useState(null);
+  const [availableDeposits, setAvailableDeposits] = useState([]);
+  const [showDepositPanel,  setShowDepositPanel]  = useState(false);
+  const [depositId,  setDepositId]  = useState('');
+  const [depositAmt, setDepositAmt] = useState('');
+  const [applyingDep, setApplyingDep] = useState(false);
 
   useEffect(() => {
     api.get(`/invoices/${initialInvoice.id}`).then(r => {
@@ -52,6 +57,14 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     api.get(`/invoices/${invoice.id}/payment-history`)
       .then(r => setHistory(r.data))
       .catch(() => setHistory({ events: [], balance: 0, invoice_status: invoice.status }));
+  }, [invoice.id, invoice.status, invoice.balance]);
+
+  useEffect(() => {
+    const open = invoice.status === 'pending' || invoice.status === 'partially_paid';
+    if (!open) { setAvailableDeposits([]); return; }
+    api.get(`/invoices/${invoice.id}/available-deposits`)
+      .then(r => setAvailableDeposits(r.data || []))
+      .catch(() => setAvailableDeposits([]));
   }, [invoice.id, invoice.status, invoice.balance]);
 
   async function saveLineItems(items) {
@@ -131,15 +144,18 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     }
   }
 
-  async function handleDownloadReceipt() {
+  async function handleDownloadReceipt(paymentId = null) {
     try {
-      const res = await api.get(`/invoices/${invoice.id}/receipt`, { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const url = paymentId
+        ? `/invoices/${invoice.id}/receipt?payment_id=${paymentId}`
+        : `/invoices/${invoice.id}/receipt`;
+      const res = await api.get(url, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const a   = document.createElement('a');
-      a.href     = url;
+      a.href     = blobUrl;
       a.download = `receipt-${invoice.invoice_number || invoice.id.slice(0, 8)}.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
     } catch (_) {
       setError('Could not download receipt.');
     }
@@ -169,7 +185,30 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     api.get(`/invoices/${invoice.id}`).then(r => setInvoice(r.data));
   }
 
+  async function handleApplyDeposit() {
+    if (!depositId || !depositAmt || parseFloat(depositAmt) <= 0) return;
+    setApplyingDep(true);
+    setError('');
+    try {
+      const res = await api.post(`/invoices/${invoice.id}/apply-deposit`, {
+        deposit_id: depositId,
+        amount: parseFloat(depositAmt),
+      });
+      const updated = res.data.invoice;
+      setInvoice(updated);
+      onUpdate(updated);
+      setShowDepositPanel(false);
+      setDepositId('');
+      setDepositAmt('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not apply deposit.');
+    } finally {
+      setApplyingDep(false);
+    }
+  }
+
   const isPending = invoice.status === 'pending';
+  const isOpen    = invoice.status === 'pending' || invoice.status === 'partially_paid';
 
   // INV-006: Use canonical stored values — never derive subtotal backward from amount
   const subtotal      = parseFloat(invoice.subtotal ?? invoice.amount ?? 0);
@@ -332,7 +371,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         )}
       </div>
 
-      {isPending && (
+      {isOpen && (
         <div className="invoice-action-bar">
           <button className="btn-primary" onClick={() => setShowCollectWs(true)}>
             Collect Payment
@@ -360,7 +399,67 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
               {sending ? 'Sending…' : invoice.client_email ? 'Send Invoice' : 'Generate Link'}
             </button>
           )}
+          {availableDeposits.length > 0 && (
+            <button className="btn-secondary" onClick={() => setShowDepositPanel(s => !s)}>
+              {showDepositPanel ? 'Cancel' : 'Apply Deposit'}
+            </button>
+          )}
           <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
+        </div>
+      )}
+
+      {showDepositPanel && isOpen && (
+        <div style={{ marginTop: 12, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#8A90A2', marginBottom: 10 }}>
+            Apply Deposit Credit
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 220px' }}>
+              <label style={{ fontSize: 12, color: '#5F667A', display: 'block', marginBottom: 4 }}>Deposit</label>
+              <select
+                value={depositId}
+                onChange={e => {
+                  setDepositId(e.target.value);
+                  const dep = availableDeposits.find(d => d.id === e.target.value);
+                  if (dep) {
+                    const avail = parseFloat(dep.amount) - parseFloat(dep.applied_amount);
+                    const bal   = parseFloat(invoice.balance ?? invoice.amount);
+                    setDepositAmt(Math.min(avail, bal).toFixed(2));
+                  }
+                }}
+                style={{ width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}
+              >
+                <option value="">— select deposit —</option>
+                {availableDeposits.map(d => {
+                  const avail = (parseFloat(d.amount) - parseFloat(d.applied_amount)).toFixed(2);
+                  return (
+                    <option key={d.id} value={d.id}>
+                      {d.service_type || 'Deposit'} · ${avail} available
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div style={{ flex: '0 1 130px' }}>
+              <label style={{ fontSize: 12, color: '#5F667A', display: 'block', marginBottom: 4 }}>Amount ($)</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={depositAmt}
+                onChange={e => setDepositAmt(e.target.value)}
+                style={{ width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}
+              />
+            </div>
+            <button
+              className="btn-primary"
+              onClick={handleApplyDeposit}
+              disabled={applyingDep || !depositId || !depositAmt || parseFloat(depositAmt) <= 0}
+              style={{ flexShrink: 0 }}
+            >
+              {applyingDep ? 'Applying…' : 'Apply'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -420,11 +519,16 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
                         (invoice.status === 'paid' || invoice.status === 'partially_paid') && (
                         <button
                           className="btn-secondary"
-                          onClick={handleDownloadReceipt}
+                          onClick={() => handleDownloadReceipt(evt.source === 'workspace' ? evt.payment_id : null)}
                           style={{ fontSize: 11, padding: '2px 8px', marginTop: 6 }}
                         >
                           Download Receipt
                         </button>
+                      )}
+                      {evt.type === 'deposit_credit' && (
+                        <span style={{ fontSize: 11, color: '#15803d', marginTop: 4, display: 'block' }}>
+                          Credit applied
+                        </span>
                       )}
                     </div>
                   </div>
@@ -448,7 +552,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         />
       )}
 
-      {showCardSetup && isPending && invoice.client_id && (
+      {showCardSetup && isOpen && invoice.client_id && (
         <div className="card-setup-section">
           <h3>Save Card for {invoice.client_name}</h3>
           {stripePromise ? (

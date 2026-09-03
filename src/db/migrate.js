@@ -2595,6 +2595,32 @@ const MIGRATIONS = [
   // ── WORK ORDER SHARE — per-user notification targeting ───────────────────────
   `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(account_id, user_id)`,
+
+  // ── DEPOSIT ALLOCATIONS — partial deposit application to invoices ─────────────
+  // Tracks how collected deposits are applied against invoice balances.
+  // One row per deposit→invoice application event. voided_at marks cancelled rows
+  // without deleting history. UNIQUE (deposit_id, invoice_id) prevents duplicate
+  // application of the same deposit to the same invoice.
+  `CREATE TABLE IF NOT EXISTS deposit_allocations (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     deposit_id   UUID NOT NULL REFERENCES deposits(id) ON DELETE RESTRICT,
+     invoice_id   UUID NOT NULL REFERENCES invoices(id),
+     amount       NUMERIC(10,2) NOT NULL CHECK (amount > 0),
+     created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     voided_at    TIMESTAMPTZ,
+     voided_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+     UNIQUE (deposit_id, invoice_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_deposit_alloc_deposit ON deposit_allocations(deposit_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_deposit_alloc_invoice ON deposit_allocations(invoice_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_deposit_alloc_account ON deposit_allocations(account_id)`,
+
+  // ── INVOICE BALANCE BACKFILL — ensure balance=0 for fully-paid invoices ──────
+  // Stripe card-on-file and manual payment paths set status='paid' but historically
+  // did not set balance=0. Back-fill to ensure KPI queries using balance are accurate.
+  `UPDATE invoices SET balance = 0 WHERE status = 'paid' AND (balance IS NULL OR balance > 0)`,
 ];
 
 async function runMigrations() {

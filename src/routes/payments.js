@@ -60,7 +60,8 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
     });
 
     await pool.query(
-      `UPDATE invoices SET status = 'paid', stripe_payment_intent_id = $1 WHERE id = $2 AND account_id = $3`,
+      `UPDATE invoices SET status = 'paid', balance = 0, stripe_payment_intent_id = $1
+       WHERE id = $2 AND account_id = $3`,
       [paymentIntent.id, invoice_id, req.accountId]
     );
 
@@ -231,12 +232,15 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    // Verify all invoices belong to this client and account
+    // Verify all invoices belong to this client and account — FOR UPDATE prevents
+    // concurrent requests from both reading the same stale balance and both passing
+    // overapplication validation before either commits.
     const invoiceIds = allocations.map(a => a.invoice_id);
     const invRes = await dbClient.query(
       `SELECT id, amount, COALESCE(balance, amount) AS balance, status
        FROM invoices
-       WHERE id = ANY($1) AND account_id = $2 AND client_id = $3`,
+       WHERE id = ANY($1) AND account_id = $2 AND client_id = $3
+       FOR UPDATE`,
       [invoiceIds, req.accountId, client_id]
     );
     if (invRes.rows.length !== invoiceIds.length) {
