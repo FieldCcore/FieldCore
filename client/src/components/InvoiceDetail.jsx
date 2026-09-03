@@ -35,6 +35,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const [newName,  setNewName]            = useState('');
   const [newAmt,   setNewAmt]             = useState('');
   const [savingLines, setSavingLines]     = useState(false);
+  const [history,  setHistory]            = useState(null);
 
   useEffect(() => {
     api.get(`/invoices/${initialInvoice.id}`).then(r => {
@@ -45,6 +46,13 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       setLineItems(items);
     }).catch(() => {});
   }, [initialInvoice.id]);
+
+  useEffect(() => {
+    setHistory(null);
+    api.get(`/invoices/${invoice.id}/payment-history`)
+      .then(r => setHistory(r.data))
+      .catch(() => setHistory({ events: [], balance: 0, invoice_status: invoice.status }));
+  }, [invoice.id, invoice.status, invoice.balance]);
 
   async function saveLineItems(items) {
     setSavingLines(true);
@@ -355,6 +363,77 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           <button className="btn-void" onClick={handleVoid} disabled={loading}>Void</button>
         </div>
       )}
+
+      {/* ── Payment History ────────────────────────────────────────────────── */}
+      {(() => {
+        const fmtEvtDate = d => {
+          if (!d) return '';
+          if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            const [y, m, day] = d.split('-').map(Number);
+            return format(new Date(y, m - 1, day), 'MMM d, yyyy');
+          }
+          return format(new Date(d), 'MMM d, yyyy');
+        };
+        return (
+          <div style={{ marginTop: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#8A90A2', marginBottom: 10, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              Payment History
+            </div>
+            {history === null ? (
+              <p style={{ fontSize: 13, color: '#8A90A2', margin: 0 }}>Loading…</p>
+            ) : history.events.length === 0 ? (
+              <p style={{ fontSize: 13, color: '#8A90A2', margin: 0 }}>No payments recorded yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {history.events.map((evt, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', marginTop: 5, flexShrink: 0, background: evt.status === 'completed' ? '#15803d' : '#8A90A2' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>
+                          {evt.type === 'void' ? 'Invoice Voided' : evt.method_label}
+                        </span>
+                        {evt.amount != null && (
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                            ${parseFloat(evt.amount).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#5F667A', marginTop: 2 }}>
+                        {fmtEvtDate(evt.date)}
+                        {evt.actor_name ? ` · ${evt.actor_name}` : ''}
+                      </div>
+                      {evt.reference && (
+                        <div style={{ fontSize: 11, color: '#8A90A2', marginTop: 2, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                          Ref: {evt.reference}
+                        </div>
+                      )}
+                      {evt.note && (
+                        <div style={{ fontSize: 11, color: '#8A90A2', marginTop: 2 }}>{evt.note}</div>
+                      )}
+                      {evt.transaction_id && evt.transaction_id !== evt.reference && (
+                        <div style={{ fontSize: 10.5, color: '#adb5bd', marginTop: 2, fontFamily: 'monospace' }}>
+                          TXN {evt.transaction_id.slice(0, 20)}
+                        </div>
+                      )}
+                      {evt.type === 'payment' && evt.status === 'completed' &&
+                        (invoice.status === 'paid' || invoice.status === 'partially_paid') && (
+                        <button
+                          className="btn-secondary"
+                          onClick={handleDownloadReceipt}
+                          style={{ fontSize: 11, padding: '2px 8px', marginTop: 6 }}
+                        >
+                          Download Receipt
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {showCollectWs && (
         <CollectPaymentWorkspace

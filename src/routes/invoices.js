@@ -1643,6 +1643,112 @@ router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (
   }
 });
 
+// ─── GET /api/invoices/:id/payment-history ───────────────────────────────────
+router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows: invRows } = await pool.query(
+      `SELECT i.id, i.status, i.amount, i.balance, i.paid_method, i.paid_at,
+              i.payment_note, i.stripe_payment_intent_id, i.updated_at, i.updated_by,
+              u.name AS updated_by_name
+       FROM invoices i
+       LEFT JOIN users u ON u.id = i.updated_by
+       WHERE i.id = $1 AND i.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!invRows.length) return res.status(404).json({ error: 'Not found' });
+    const inv = invRows[0];
+
+    const METHOD_LABELS = {
+      CARD: 'Credit/Debit Card', ACH: 'Bank Payment (ACH)',
+      CASH: 'Cash', CHECK: 'Check',
+      CASHAPP: 'Cash App', PAYPAL: 'PayPal', VENMO: 'Venmo', ZELLE: 'Zelle',
+      EXTERNAL_CARD: 'Credit/Debit Card', EXTERNAL_ACH: 'Bank Payment (ACH)', OTHER: 'Other',
+      cash: 'Cash', check: 'Check', other: 'Other',
+    };
+
+    const events = [];
+
+    // Path 3 (canonical): payment_allocations → payments
+    const { rows: allocRows } = await pool.query(
+      `SELECT pa.amount AS allocated_amount,
+              p.id AS payment_id, p.method, p.payment_date, p.reference, p.note,
+              p.provider_transaction_id, p.created_at AS payment_created_at,
+              u.name AS actor_name
+       FROM payment_allocations pa
+       JOIN payments p ON p.id = pa.payment_id
+       LEFT JOIN users u ON u.id = p.created_by
+       WHERE pa.invoice_id = $1 AND pa.account_id = $2
+       ORDER BY p.payment_date ASC, p.created_at ASC`,
+      [req.params.id, req.accountId]
+    );
+
+    if (allocRows.length > 0) {
+      allocRows.forEach(r => {
+        events.push({
+          type:         'payment',
+          source:       'workspace',
+          payment_id:   r.payment_id,
+          date:         r.payment_date,
+          amount:       parseFloat(r.allocated_amount),
+          method:       r.method,
+          method_label: METHOD_LABELS[r.method] || r.method,
+          reference:    r.reference || null,
+          note:         r.note || null,
+          transaction_id: r.provider_transaction_id || null,
+          status:       'completed',
+          actor_name:   r.actor_name || null,
+        });
+      });
+    } else if (inv.paid_at || inv.stripe_payment_intent_id || inv.paid_method) {
+      // Paths 1 & 2: synthesize from invoice fields
+      const method = inv.stripe_payment_intent_id ? 'CARD' : (inv.paid_method || 'other');
+      const paid   = Math.max(0, parseFloat(inv.amount || 0) - parseFloat(inv.balance ?? 0));
+      events.push({
+        type:           'payment',
+        source:         inv.stripe_payment_intent_id ? 'stripe' : 'manual',
+        payment_id:     null,
+        date:           inv.paid_at,
+        amount:         paid,
+        method,
+        method_label:   METHOD_LABELS[method] || method,
+        reference:      inv.stripe_payment_intent_id || null,
+        note:           inv.payment_note || null,
+        transaction_id: inv.stripe_payment_intent_id || null,
+        status:         'completed',
+        actor_name:     inv.updated_by_name || null,
+      });
+    }
+
+    // Void event — invoice-level financial event
+    if (inv.status === 'void') {
+      events.push({
+        type:           'void',
+        source:         'manual',
+        payment_id:     null,
+        date:           inv.updated_at,
+        amount:         null,
+        method:         null,
+        method_label:   null,
+        reference:      null,
+        note:           null,
+        transaction_id: null,
+        status:         'voided',
+        actor_name:     inv.updated_by_name || null,
+      });
+    }
+
+    events.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+    res.json({
+      events,
+      balance:        parseFloat(inv.balance ?? inv.amount ?? 0),
+      invoice_status: inv.status,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── PATCH /api/invoices/:id/void ────────────────────────────────────────────
 router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
