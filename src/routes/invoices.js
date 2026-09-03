@@ -278,6 +278,179 @@ async function generateInvoicePdfBuffer(inv) {
   });
 }
 
+// ─── Receipt PDF ──────────────────────────────────────────────────────────────
+
+const RECEIPT_METHOD_LABELS = {
+  CARD:'Credit/Debit Card', ACH:'Bank Payment (ACH)', CASH:'Cash', CHECK:'Check',
+  CASHAPP:'Cash App', PAYPAL:'PayPal', VENMO:'Venmo', ZELLE:'Zelle',
+  EXTERNAL_CARD:'Credit/Debit Card', EXTERNAL_ACH:'Bank Payment (ACH)', OTHER:'Other',
+  cash:'Cash', check:'Check', other:'Other',
+};
+
+async function generateReceiptPdfBuffer(inv, pmts) {
+  const NAVY  = '#1C2333';
+  const SLATE = '#5F667A';
+  const STEEL = '#8A90A2';
+  const DIV   = '#e5e0d8';
+  const GREEN = '#15803d';
+
+  const fmt   = n => `$${parseFloat(n || 0).toFixed(2)}`;
+  const fmtDt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+
+  let logoBuf = null;
+  if (inv.logo_url) logoBuf = await fetchLogoBuffer(inv.logo_url).catch(() => null);
+
+  const totalPaid = pmts.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const receiptDate = pmts.length ? (pmts[0].payment_date || pmts[0].created_at) : inv.paid_at;
+
+  return new Promise((resolve, reject) => {
+    const doc  = new PDFDoc({ margin: 50, size: 'LETTER' });
+    const bufs = [];
+    doc.on('data',  c => bufs.push(c));
+    doc.on('end',   () => resolve(Buffer.concat(bufs)));
+    doc.on('error', reject);
+
+    const M = 50, R = 562;
+
+    // ── HEADER ────────────────────────────────────────────────────────────────
+    const LCW = 255, RCX = 325, RCW = R - RCX;
+
+    let ly = M;
+    if (logoBuf) {
+      try { doc.image(logoBuf, M, ly, { fit: [130, 60] }); ly += 68; }
+      catch (_) { logoBuf = null; }
+    }
+    if (!logoBuf) {
+      doc.font('Helvetica-Bold').fontSize(16).fillColor(NAVY)
+         .text(inv.business_name || 'Your Business', M, ly, { width: LCW, lineBreak: false });
+      ly += 22;
+    }
+    const bizCity = [inv.business_city, inv.business_state, inv.business_zip].filter(Boolean).join(', ');
+    [inv.business_address, bizCity, inv.business_phone, inv.business_email, inv.business_website]
+      .filter(Boolean).forEach(ln => {
+        doc.font('Helvetica').fontSize(9).fillColor(SLATE).text(ln, M, ly, { width: LCW, lineBreak: false });
+        ly += 12;
+      });
+
+    let ry = M;
+    doc.font('Helvetica-Bold').fontSize(20).fillColor(NAVY)
+       .text('PAYMENT RECEIPT', RCX, ry, { width: RCW, align: 'right', lineBreak: false });
+    ry += 28;
+    [
+      [fmtDt(receiptDate),                              'Date'],
+      [inv.invoice_number_display || inv.invoice_number ? `#${inv.invoice_number}` : '—', 'Invoice'],
+    ].forEach(([val, lbl]) => {
+      doc.font('Helvetica').fontSize(9).fillColor(STEEL).text(lbl, RCX, ry, { width: 52, lineBreak: false });
+      doc.font('Helvetica').fontSize(9).fillColor(NAVY).text(val, RCX + 55, ry, { width: RCW - 55, align: 'right', lineBreak: false });
+      ry += 13;
+    });
+
+    doc.x = M; doc.y = Math.max(ly, ry) + 18;
+
+    // ── DIVIDER ───────────────────────────────────────────────────────────────
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 14;
+
+    // ── BILL TO ───────────────────────────────────────────────────────────────
+    let by = doc.y;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(STEEL).text('BILL TO', M, by, { width: R - M, lineBreak: false }); by += 12;
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(NAVY).text(inv.client_name || '', M, by, { width: R - M, lineBreak: false }); by += 15;
+    const clientCityLine = [inv.client_city, inv.client_state, inv.client_zip].filter(Boolean).join(', ');
+    [inv.client_address, clientCityLine, inv.client_phone, inv.client_email]
+      .filter(Boolean).forEach(ln => {
+        doc.font('Helvetica').fontSize(9).fillColor(SLATE).text(ln, M, by, { width: R - M, lineBreak: false }); by += 12;
+      });
+    doc.x = M; doc.y = by + 18;
+
+    // ── PAYMENT SECTION(S) ────────────────────────────────────────────────────
+    function detailRow(label, value) {
+      const y = doc.y;
+      doc.font('Helvetica').fontSize(10).fillColor(STEEL).text(label, M, y, { width: 160, lineBreak: false });
+      doc.font('Helvetica').fontSize(10).fillColor(NAVY).text(value, M + 165, y, { width: R - M - 165, lineBreak: false });
+      doc.x = M; doc.y = y + 14;
+    }
+
+    pmts.forEach((pmt, pmtIdx) => {
+      if (pmtIdx > 0) {
+        doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+        doc.x = M; doc.y += 14;
+      }
+
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(STEEL)
+         .text('PAYMENT DETAILS', M, doc.y, { width: R - M, lineBreak: false });
+      doc.x = M; doc.y += 14;
+
+      detailRow('Amount Paid', fmt(pmt.amount));
+      detailRow('Payment Method', RECEIPT_METHOD_LABELS[pmt.method] || pmt.method || 'Other');
+      if (pmt.payment_date) detailRow('Date', fmtDt(pmt.payment_date));
+      if (pmt.reference)    detailRow('Reference', pmt.reference);
+      if (pmt.note)         detailRow('Note', pmt.note);
+      if (pmt.id)           detailRow('Transaction ID', pmt.id.slice(0, 8).toUpperCase());
+
+      doc.x = M; doc.y += 10;
+
+      // ── ALLOCATION TABLE ───────────────────────────────────────────────────
+      if (pmt.allocations && pmt.allocations.length > 0) {
+        doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+        doc.x = M; doc.y += 8;
+
+        const C1 = M,        C1W = 65;
+        const C2 = M + 70,   C2W = 190;
+        const C3 = M + 265,  C3W = 85;
+        const C4 = M + 355,  C4W = 85;
+        const C5 = M + 445,  C5W = R - (M + 445);
+
+        const thY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(STEEL);
+        doc.text('INVOICE', C1, thY, { width: C1W, lineBreak: false });
+        doc.text('DESCRIPTION', C2, thY, { width: C2W, lineBreak: false });
+        doc.text('APPLIED', C3, thY, { width: C3W, align: 'right', lineBreak: false });
+        doc.text('INV. TOTAL', C4, thY, { width: C4W, align: 'right', lineBreak: false });
+        doc.text('BALANCE', C5, thY, { width: C5W, align: 'right', lineBreak: false });
+        doc.x = M; doc.y = thY + 12;
+        doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.3).stroke();
+        doc.x = M; doc.y += 6;
+
+        pmt.allocations.forEach(alloc => {
+          const rowY = doc.y;
+          const bal  = parseFloat(alloc.current_balance ?? 0);
+          doc.font('Helvetica').fontSize(9.5).fillColor(NAVY);
+          doc.text(`#${alloc.invoice_number_display}`, C1, rowY, { width: C1W, lineBreak: false });
+          doc.text(alloc.subject || alloc.service_type || 'Service', C2, rowY, { width: C2W, lineBreak: false });
+          doc.text(fmt(alloc.allocated_amount), C3, rowY, { width: C3W, align: 'right', lineBreak: false });
+          doc.text(fmt(alloc.invoice_total),    C4, rowY, { width: C4W, align: 'right', lineBreak: false });
+          doc.font('Helvetica').fontSize(9.5).fillColor(bal <= 0.001 ? GREEN : SLATE);
+          doc.text(fmt(bal), C5, rowY, { width: C5W, align: 'right', lineBreak: false });
+          doc.x = M; doc.y = rowY + 14;
+        });
+        doc.x = M; doc.y += 6;
+      }
+    });
+
+    // ── TOTAL PAID ────────────────────────────────────────────────────────────
+    const TLX = M + 310, TLW = 130, TVX = TLX + TLW + 8, TVW = R - TVX;
+    doc.moveTo(TLX, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 8;
+    const totY = doc.y;
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(NAVY).text('Total Paid', TLX, totY, { width: TLW, lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(GREEN).text(fmt(totalPaid), TVX, totY, { width: TVW, align: 'right', lineBreak: false });
+    doc.x = M; doc.y = totY + 20;
+
+    // ── CONFIRMATION ──────────────────────────────────────────────────────────
+    doc.x = M; doc.y += 16;
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 10;
+    doc.font('Helvetica').fontSize(9.5).fillColor(SLATE)
+       .text('Thank you for your payment. This receipt confirms your payment was received.',
+             M, doc.y, { width: R - M, align: 'center' });
+    doc.x = M; doc.y += 16;
+    doc.font('Helvetica').fontSize(8.5).fillColor(STEEL)
+       .text(inv.business_name || 'Your Business', M, doc.y, { width: R - M, align: 'center', lineBreak: false });
+
+    doc.end();
+  });
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function fmtPeriod(start, end) {
@@ -1344,6 +1517,122 @@ router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req,
     const inv    = rows[0];
     const pdfBuf = await generateInvoicePdfBuffer(inv);
     const fname  = `invoice-${inv.invoice_number || inv.id.slice(0, 8)}.pdf`;
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${fname}"`,
+    });
+    res.send(pdfBuf);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/invoices/:id/receipt ───────────────────────────────────────────
+router.get('/:id/receipt', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT i.*,
+              COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text,8))) AS invoice_number_display,
+              c.name    AS client_name,  c.email AS client_email, c.phone AS client_phone,
+              c.address AS client_address, c.city AS client_city,
+              c.state   AS client_state,  c.zip  AS client_zip,
+              COALESCE(bp.business_name, a.name) AS business_name,
+              bp.phone   AS business_phone,
+              bp.address AS business_address, bp.city AS business_city,
+              bp.state   AS business_state,   bp.zip  AS business_zip,
+              bp.logo_url, bp.website AS business_website,
+              (SELECT email FROM users
+               WHERE account_id = i.account_id AND role = 'owner'
+               ORDER BY created_at LIMIT 1) AS business_email
+       FROM invoices i
+       JOIN clients  c  ON c.id  = i.client_id
+       JOIN accounts a  ON a.id  = i.account_id
+       LEFT JOIN business_profiles bp ON bp.account_id = i.account_id
+       WHERE i.id = $1 AND i.account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const inv = rows[0];
+
+    if (!['paid', 'partially_paid'].includes(inv.status)) {
+      return res.status(400).json({ error: 'Receipt is only available for paid invoices.' });
+    }
+
+    // Query canonical payment_allocations → payments records for this invoice
+    const { rows: allocRows } = await pool.query(
+      `SELECT pa.payment_id,
+              p.amount  AS payment_amount, p.method, p.reference, p.note,
+              p.payment_date, p.created_at AS pmt_created_at,
+              pa2.invoice_id    AS alloc_invoice_id,
+              COALESCE(i2.invoice_number::text, UPPER(LEFT(i2.id::text,8))) AS alloc_inv_num_display,
+              i2.amount   AS alloc_inv_total,
+              i2.balance  AS alloc_inv_balance,
+              i2.subject  AS alloc_inv_subject,
+              j2.service_type AS alloc_svc_type,
+              pa2.amount  AS alloc_pa_amount
+       FROM payment_allocations pa
+       JOIN payments p             ON p.id  = pa.payment_id
+       JOIN payment_allocations pa2 ON pa2.payment_id = pa.payment_id
+       JOIN invoices i2            ON i2.id = pa2.invoice_id
+       LEFT JOIN jobs j2           ON j2.id = i2.job_id
+       WHERE pa.invoice_id = $1 AND p.account_id = $2
+       ORDER BY p.payment_date, p.created_at, pa2.invoice_id`,
+      [req.params.id, req.accountId]
+    );
+
+    let pmts = [];
+    if (allocRows.length > 0) {
+      const pmtMap = new Map();
+      allocRows.forEach(r => {
+        if (!pmtMap.has(r.payment_id)) {
+          pmtMap.set(r.payment_id, {
+            id:           r.payment_id,
+            amount:       r.payment_amount,
+            method:       r.method,
+            reference:    r.reference,
+            note:         r.note,
+            payment_date: r.payment_date,
+            created_at:   r.pmt_created_at,
+            allocations:  [],
+          });
+        }
+        pmtMap.get(r.payment_id).allocations.push({
+          invoice_id:             r.alloc_invoice_id,
+          invoice_number_display: r.alloc_inv_num_display,
+          subject:                r.alloc_inv_subject,
+          service_type:           r.alloc_svc_type,
+          allocated_amount:       r.alloc_pa_amount,
+          invoice_total:          r.alloc_inv_total,
+          current_balance:        r.alloc_inv_balance,
+        });
+      });
+      pmts = Array.from(pmtMap.values());
+    } else {
+      // Fallback: synthesize from invoice fields (manual or Stripe card-on-file path)
+      const method = inv.stripe_payment_intent_id ? 'CARD' : (inv.paid_method || 'other');
+      const paid   = parseFloat(inv.amount || 0) - parseFloat(inv.balance ?? 0);
+      pmts = [{
+        id:           inv.stripe_payment_intent_id || null,
+        amount:       Math.max(0, paid),
+        method,
+        reference:    inv.payment_note || null,
+        note:         null,
+        payment_date: inv.paid_at,
+        created_at:   inv.paid_at || inv.updated_at,
+        allocations:  [{
+          invoice_id:             inv.id,
+          invoice_number_display: inv.invoice_number_display || String(inv.invoice_number || ''),
+          subject:                inv.subject,
+          service_type:           inv.service_type,
+          allocated_amount:       Math.max(0, paid),
+          invoice_total:          inv.amount,
+          current_balance:        inv.balance ?? 0,
+        }],
+      }];
+    }
+
+    const pdfBuf = await generateReceiptPdfBuffer(inv, pmts);
+    const fname  = `receipt-${inv.invoice_number || inv.id.slice(0, 8)}.pdf`;
     res.set({
       'Content-Type':        'application/pdf',
       'Content-Disposition': `attachment; filename="${fname}"`,

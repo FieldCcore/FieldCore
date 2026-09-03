@@ -123,6 +123,20 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     }
   }
 
+  async function handleDownloadReceipt() {
+    try {
+      const res = await api.get(`/invoices/${invoice.id}/receipt`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = `receipt-${invoice.invoice_number || invoice.id.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      setError('Could not download receipt.');
+    }
+  }
+
   async function handleVoid() {
     if (!window.confirm('Void this invoice?')) return;
     setLoading(true);
@@ -299,10 +313,15 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, marginBottom: 4 }}>
         <button className="btn-secondary" onClick={handleDownloadPdf} style={{ fontSize: 13 }}>
           Download PDF
         </button>
+        {(invoice.status === 'paid' || invoice.status === 'partially_paid') && (
+          <button className="btn-secondary" onClick={handleDownloadReceipt} style={{ fontSize: 13 }}>
+            Download Receipt
+          </button>
+        )}
       </div>
 
       {isPending && (
