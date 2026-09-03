@@ -5,127 +5,274 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const email  = require('../services/email');
 const notify = require('../services/notify');
 const PDFDoc = require('pdfkit');
+const https  = require('https');
+const http   = require('http');
 
-function generateInvoicePdfBuffer(inv) {
+function fetchLogoBuffer(url) {
+  return new Promise(resolve => {
+    try {
+      const proto = url.startsWith('https') ? https : http;
+      const req = proto.get(url, { timeout: 5000 }, res => {
+        if (res.statusCode !== 200) return resolve(null);
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end',  () => resolve(Buffer.concat(chunks)));
+      });
+      req.on('error',   () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    } catch (_) { resolve(null); }
+  });
+}
+
+async function generateInvoicePdfBuffer(inv) {
+  const NAVY  = '#1C2333';
+  const SLATE = '#5F667A';
+  const STEEL = '#8A90A2';
+  const DIV   = '#e5e0d8';
+  const GREEN = '#15803d';
+  const AMBER = '#b45309';
+
+  const TERMS = {
+    due_on_receipt: 'Due on Receipt',
+    net_7: 'Net 7', net_15: 'Net 15', net_30: 'Net 30',
+    net_45: 'Net 45', net_60: 'Net 60', net_90: 'Net 90',
+  };
+
+  const fmt   = n => `$${parseFloat(n || 0).toFixed(2)}`;
+  const fmtDt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+  const fmtQ  = v => { const n = parseFloat(v); return isNaN(n) ? '1' : n % 1 === 0 ? `${n}` : n.toFixed(2); };
+
+  const total    = parseFloat(inv.amount || 0);
+  const subtotal = parseFloat(inv.subtotal ?? total);
+  const taxAmt   = parseFloat(inv.tax_amount || 0);
+  const discAmt  = parseFloat(inv.discount_amount || 0);
+  const balance  = parseFloat(inv.balance ?? inv.amount ?? 0);
+  const amtPaid  = Math.max(0, parseFloat((total - balance).toFixed(2)));
+  const invNum   = inv.invoice_number
+    ? `#${inv.invoice_number}`
+    : (inv.invoice_number_display || inv.id.slice(0, 8).toUpperCase());
+
+  const lineItems = Array.isArray(inv.line_items) && inv.line_items.length > 0
+    ? inv.line_items
+    : [{ name: inv.service_type || inv.subject || 'Service', quantity: 1, unit_price: subtotal, line_total: subtotal }];
+
+  const hasTax = lineItems.some(li => li.taxable) || taxAmt > 0;
+
+  let logoBuf = null;
+  if (inv.logo_url) logoBuf = await fetchLogoBuffer(inv.logo_url).catch(() => null);
+
+  function jobRef() {
+    if (inv.work_order_number && inv.project_number)
+      return `PRJ-${String(inv.project_number).padStart(4, '0')} · WO-${String(inv.work_order_number).padStart(3, '0')}${inv.work_order_title ? ` · ${inv.work_order_title}` : ''}`;
+    if (inv.work_order_number)
+      return `WO-${String(inv.work_order_number).padStart(3, '0')}${inv.work_order_title ? ` · ${inv.work_order_title}` : ''}`;
+    if (inv.project_number)
+      return `PRJ-${String(inv.project_number).padStart(4, '0')}${inv.project_name ? ` · ${inv.project_name}` : ''}`;
+    if (inv.job_id && inv.scheduled_at)
+      return `Job · ${new Date(inv.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    return null;
+  }
+
   return new Promise((resolve, reject) => {
     const doc  = new PDFDoc({ margin: 50, size: 'LETTER' });
     const bufs = [];
-    doc.on('data', d => bufs.push(d));
-    doc.on('end',  () => resolve(Buffer.concat(bufs)));
+    doc.on('data',  c => bufs.push(c));
+    doc.on('end',   () => resolve(Buffer.concat(bufs)));
     doc.on('error', reject);
 
-    const tax        = parseFloat(inv.tax_amount || 0);
-    const total      = parseFloat(inv.amount || 0);
-    const pretax     = parseFloat((total - tax).toFixed(2));
-    const lineItems  = Array.isArray(inv.line_items) && inv.line_items.length > 0
-      ? inv.line_items
-      : [{ description: inv.service_type || 'Service', amount: pretax }];
-    const fmtAmt     = n => `$${parseFloat(n || 0).toFixed(2)}`;
-    const fmtDt      = d => d ? new Date(d).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'N/A';
-    const invNumDisplay = inv.invoice_number
-      ? `#${inv.invoice_number}`
-      : inv.id.slice(0, 8).toUpperCase();
+    const M = 50, R = 562;  // left margin, right edge
 
-    // Header
-    doc.font('Helvetica-Bold').fontSize(22).fillColor('#1C2333').text('FIELDCORE', { align: 'left' });
-    doc.moveDown(0.2);
-    doc.font('Helvetica').fontSize(11).fillColor('#6b7280').text(inv.business_name || 'FieldCore');
-    doc.moveDown(1.5);
+    // ── HEADER: Left = business identity; Right = document identity ───────────
+    const LCW = 255, RCX = 325, RCW = R - RCX;
 
-    // Invoice title + meta
-    doc.font('Helvetica-Bold').fontSize(16).fillColor('#1C2333').text('INVOICE');
-    doc.moveDown(0.3);
-    doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-    doc.text(`Invoice: ${invNumDisplay}`);
-    doc.text(`Date: ${fmtDt(inv.issued_date || inv.created_at)}`);
-    if (inv.due_date) doc.text(`Due: ${fmtDt(inv.due_date)}`);
-    if (inv.paid_at) doc.text(`Paid: ${fmtDt(inv.paid_at)}`);
-    doc.moveDown(1);
+    let ly = M;
+    if (logoBuf) {
+      try { doc.image(logoBuf, M, ly, { fit: [130, 60] }); ly += 68; }
+      catch (_) { logoBuf = null; }
+    }
+    if (!logoBuf) {
+      doc.font('Helvetica-Bold').fontSize(16).fillColor(NAVY)
+         .text(inv.business_name || 'Your Business', M, ly, { width: LCW, lineBreak: false });
+      ly += 22;
+    }
+    const bizCity = [inv.business_city, inv.business_state, inv.business_zip].filter(Boolean).join(', ');
+    [inv.business_address, bizCity, inv.business_phone, inv.business_email, inv.business_website]
+      .filter(Boolean).forEach(ln => {
+        doc.font('Helvetica').fontSize(9).fillColor(SLATE).text(ln, M, ly, { width: LCW, lineBreak: false });
+        ly += 12;
+      });
 
-    // Bill to
-    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-    doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#9ca3af').text('BILL TO');
-    doc.moveDown(0.2);
-    doc.font('Helvetica').fontSize(12).fillColor('#1C2333').text(inv.client_name);
-    if (inv.client_email) doc.font('Helvetica').fontSize(10).fillColor('#6b7280').text(inv.client_email);
-    doc.moveDown(1);
-
-    // Line items
-    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-    doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#9ca3af');
-    doc.text('DESCRIPTION', 50, doc.y, { width: 360 });
-    doc.text('AMOUNT', 410, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-    doc.moveDown(0.3);
-    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-    doc.moveDown(0.5);
-
-    doc.font('Helvetica').fontSize(11).fillColor('#1C2333');
-    lineItems.forEach(item => {
-      const y = doc.y;
-      const desc = item.name || item.description || 'Service';
-      const amt  = item.line_total ?? item.amount;
-      doc.text(desc, 50, y, { width: 360 });
-      doc.text(fmtAmt(amt), 410, y, { width: 100, align: 'right' });
-      doc.moveDown(0.6);
+    let ry = M;
+    doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
+       .text('INVOICE', RCX, ry, { width: RCW, align: 'right', lineBreak: false });
+    ry += 38;
+    [
+      [invNum,                                        'Invoice #'],
+      [fmtDt(inv.issued_date || inv.created_at),     'Date'],
+      ...(inv.due_date       ? [[fmtDt(inv.due_date),                             'Due']]   : []),
+      ...(inv.payment_terms  ? [[TERMS[inv.payment_terms] || inv.payment_terms,   'Terms']] : []),
+    ].forEach(([val, lbl]) => {
+      doc.font('Helvetica').fontSize(9).fillColor(STEEL).text(lbl, RCX, ry, { width: 52, lineBreak: false });
+      doc.font('Helvetica').fontSize(9).fillColor(NAVY).text(val, RCX + 55, ry, { width: RCW - 55, align: 'right', lineBreak: false });
+      ry += 13;
     });
-    doc.moveDown(0.4);
 
-    // Totals
-    doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-    doc.moveDown(0.5);
-    const subtotal = parseFloat(inv.subtotal || pretax);
-    const discount = parseFloat(inv.discount_amount || 0);
-    if (discount > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('Subtotal', 360, doc.y, { width: 100 });
-      doc.text(fmtAmt(subtotal), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-      doc.moveDown(0.5);
-      doc.text('Discount', 360, doc.y, { width: 100 });
-      doc.text(`-${fmtAmt(discount)}`, 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-      doc.moveDown(0.5);
+    doc.x = M; doc.y = Math.max(ly, ry) + 18;
+
+    // ── DIVIDER ───────────────────────────────────────────────────────────────
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 14;
+
+    // ── BILL TO + SERVICE ADDRESS ─────────────────────────────────────────────
+    const svcAddr = inv.job_address && inv.job_address !== inv.client_address ? inv.job_address : null;
+    const ref     = jobRef();
+    const billW   = svcAddr ? 228 : (R - M);
+    const svcX    = M + billW + 22;
+    const svcW    = R - svcX;
+    const billStartY = doc.y;
+
+    let by = billStartY;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(STEEL).text('BILL TO', M, by, { width: billW, lineBreak: false }); by += 12;
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(NAVY).text(inv.client_name || '', M, by, { width: billW, lineBreak: false }); by += 15;
+    const clientCityLine = [inv.client_city, inv.client_state, inv.client_zip].filter(Boolean).join(', ');
+    [inv.client_address, clientCityLine, inv.client_phone, inv.client_email]
+      .filter(Boolean).forEach(ln => {
+        doc.font('Helvetica').fontSize(9).fillColor(SLATE).text(ln, M, by, { width: billW, lineBreak: false }); by += 12;
+      });
+    if (!svcAddr && ref) {
+      doc.font('Helvetica').fontSize(9).fillColor(STEEL).text(ref, M, by, { width: billW, lineBreak: false }); by += 12;
     }
-    if (tax > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      if (discount === 0) {
-        doc.text('Subtotal', 360, doc.y, { width: 100 });
-        doc.text(fmtAmt(subtotal), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-        doc.moveDown(0.5);
+
+    let sy = billStartY;
+    if (svcAddr) {
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(STEEL).text('SERVICE ADDRESS', svcX, sy, { width: svcW, lineBreak: false }); sy += 12;
+      doc.font('Helvetica').fontSize(10).fillColor(NAVY).text(svcAddr, svcX, sy, { width: svcW, lineBreak: false }); sy += 14;
+      if (ref) {
+        doc.font('Helvetica').fontSize(9).fillColor(STEEL).text(ref, svcX, sy, { width: svcW, lineBreak: false }); sy += 12;
       }
-      doc.text('Tax', 360, doc.y, { width: 100 });
-      doc.text(fmtAmt(tax), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-      doc.moveDown(0.5);
-      doc.moveTo(360, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-      doc.moveDown(0.5);
-    }
-    doc.font('Helvetica-Bold').fontSize(13).fillColor('#1C2333');
-    doc.text('Total Due', 360, doc.y, { width: 100 });
-    doc.text(fmtAmt(total), 460, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-    doc.moveDown(2);
-
-    // Status
-    const statusColor = inv.status === 'paid' ? '#15803d' : '#b45309';
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(statusColor)
-       .text(inv.status === 'paid' ? 'PAID' : 'PAYMENT DUE', { align: 'center' });
-
-    if (inv.payment_link && inv.status !== 'paid') {
-      doc.moveDown(0.5);
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280')
-         .text(`Pay online: ${inv.payment_link}`, { align: 'center' });
     }
 
+    doc.x = M; doc.y = Math.max(by, sy) + 18;
+
+    // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
+    const CD   = M;
+    const CDW  = hasTax ? 218 : 255;
+    const CQ   = M + CDW + 10;
+    const CQW  = 42;
+    const CP   = CQ + CQW + 5;
+    const CPW  = 90;
+    const CT   = CP + CPW + 5;
+    const CTW  = 28;
+    const CTT  = hasTax ? CT + CTW + 5 : CP + CPW + 5;
+    const CTTW = R - CTT;
+
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    const thY = doc.y + 7;
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(STEEL);
+    doc.text('DESCRIPTION', CD,  thY, { width: CDW,  lineBreak: false });
+    doc.text('QTY',         CQ,  thY, { width: CQW,  align: 'right', lineBreak: false });
+    doc.text('UNIT PRICE',  CP,  thY, { width: CPW,  align: 'right', lineBreak: false });
+    if (hasTax) doc.text('TAX', CT, thY, { width: CTW, align: 'center', lineBreak: false });
+    doc.text('TOTAL', CTT, thY, { width: CTTW, align: 'right', lineBreak: false });
+    doc.x = M; doc.y = thY + 14;
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 8;
+
+    lineItems.forEach((item, idx) => {
+      const rowY = doc.y;
+      const name = item.name || item.description || 'Service';
+      const desc = (item.name && item.description) ? item.description.trim() : '';
+      const qty  = fmtQ(item.quantity ?? 1);
+      const up   = parseFloat(item.unit_price ?? item.amount ?? 0);
+      const lt   = parseFloat(item.line_total  ?? item.amount ?? (up * parseFloat(item.quantity || 1)));
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(NAVY).text(name, CD,  rowY, { width: CDW,  lineBreak: false });
+      doc.font('Helvetica').fontSize(10).fillColor(NAVY).text(qty,     CQ,  rowY, { width: CQW,  align: 'right',  lineBreak: false });
+      doc.font('Helvetica').fontSize(10).fillColor(NAVY).text(fmt(up), CP,  rowY, { width: CPW,  align: 'right',  lineBreak: false });
+      if (hasTax) {
+        doc.font('Helvetica').fontSize(9).fillColor(item.taxable ? SLATE : '#e0ddd8')
+           .text('✓', CT, rowY, { width: CTW, align: 'center', lineBreak: false });
+      }
+      doc.font('Helvetica').fontSize(10).fillColor(NAVY).text(fmt(lt), CTT, rowY, { width: CTTW, align: 'right',  lineBreak: false });
+
+      doc.x = M; doc.y = rowY + 16;
+      if (desc) {
+        doc.font('Helvetica').fontSize(8.5).fillColor(SLATE).text(desc, CD, doc.y, { width: CDW });
+        doc.x = M; doc.y += 4;
+      }
+      if (idx < lineItems.length - 1) {
+        doc.moveTo(M, doc.y + 2).lineTo(R, doc.y + 2).strokeColor('#f0ede8').lineWidth(0.3).stroke();
+        doc.x = M; doc.y += 10;
+      } else {
+        doc.x = M; doc.y += 8;
+      }
+    });
+
+    // ── TOTALS ────────────────────────────────────────────────────────────────
+    const TLX = M + 292, TLW = 118, TVX = TLX + TLW + 8, TVW = R - TVX;
+
+    doc.moveTo(TLX, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 7;
+
+    function tRow(label, value, opts = {}) {
+      const y = doc.y;
+      doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica')
+         .fontSize(opts.large ? 11 : 9.5).fillColor(opts.lc || SLATE)
+         .text(label, TLX, y, { width: TLW, lineBreak: false });
+      doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica')
+         .fontSize(opts.large ? 11 : 9.5).fillColor(opts.vc || NAVY)
+         .text(value, TVX, y, { width: TVW, align: 'right', lineBreak: false });
+      doc.x = M; doc.y = y + (opts.large ? 16 : 14);
+    }
+
+    if (discAmt > 0 || taxAmt > 0) tRow('Subtotal', fmt(subtotal));
+    if (discAmt > 0) {
+      const discLabel = inv.discount_label
+        || (inv.discount_type === 'percent' ? `Discount (${parseFloat(inv.discount_value || 0)}%)` : 'Discount');
+      tRow(discLabel, `-${fmt(discAmt)}`);
+    }
+    if (taxAmt > 0) tRow('Tax', fmt(taxAmt));
+
+    doc.moveTo(TLX, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 6;
+    tRow('Total', fmt(total), { bold: true, large: true });
+    if (amtPaid > 0) {
+      tRow('Amount Paid', `-${fmt(amtPaid)}`, { vc: GREEN });
+      doc.moveTo(TLX, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+      doc.x = M; doc.y += 6;
+      tRow('Balance Due', fmt(balance), { bold: true, large: true, vc: balance <= 0 ? GREEN : AMBER });
+    }
+
+    // ── STATUS BANNER ─────────────────────────────────────────────────────────
+    doc.x = M; doc.y += 22;
+    const statusColor = inv.status === 'paid' ? GREEN : inv.status === 'void' ? STEEL : AMBER;
+    const statusLabel = inv.status === 'paid' ? 'PAID IN FULL'
+                      : inv.status === 'void' ? 'VOID'
+                      : inv.status === 'draft' ? 'DRAFT — Not yet finalized'
+                      : `BALANCE DUE: ${fmt(balance)}`;
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(statusColor).text(statusLabel, { align: 'center' });
+
+    if (inv.payment_link && inv.status === 'pending') {
+      doc.moveDown(0.4);
+      doc.font('Helvetica').fontSize(9).fillColor(SLATE)
+         .text(`Pay online: ${inv.payment_link}`, M, doc.y, { width: R - M, align: 'center' });
+    }
+
+    // ── CLIENT MESSAGE ────────────────────────────────────────────────────────
     if (inv.client_message) {
-      doc.moveDown(1);
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280').text(inv.client_message, { align: 'left' });
+      doc.moveDown(1.2);
+      doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+      doc.x = M; doc.y += 10;
+      doc.font('Helvetica').fontSize(9.5).fillColor(SLATE)
+         .text(inv.client_message, M, doc.y, { width: R - M, lineGap: 2 });
     }
 
-    // Footer
-    doc.moveDown(2);
-    doc.moveTo(50, doc.y).lineTo(560, doc.y).strokeColor('#e5e0d8').stroke();
-    doc.moveDown(0.5);
-    doc.font('Helvetica').fontSize(9).fillColor('#9ca3af')
-       .text(inv.terms || 'Thank you for your business.', { align: 'center' });
+    // ── FOOTER ────────────────────────────────────────────────────────────────
+    doc.moveDown(1.5);
+    doc.moveTo(M, doc.y).lineTo(R, doc.y).strokeColor(DIV).lineWidth(0.5).stroke();
+    doc.x = M; doc.y += 8;
+    doc.font('Helvetica').fontSize(8.5).fillColor(STEEL)
+       .text(inv.terms || 'Thank you for your business.', M, doc.y, { width: R - M, align: 'center' });
 
     doc.end();
   });
@@ -1167,21 +1314,39 @@ router.post('/:id/send', requireAuth, requireRole('owner', 'manager'), async (re
 router.get('/:id/pdf', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT i.*, c.name AS client_name, c.email AS client_email,
-              COALESCE(j.service_type, i.subject, 'Service') AS service_type,
-              a.name AS business_name
+      `SELECT i.*,
+              COALESCE(i.invoice_number::text, UPPER(LEFT(i.id::text,8))) AS invoice_number_display,
+              c.name    AS client_name,  c.email AS client_email, c.phone AS client_phone,
+              c.address AS client_address, c.city AS client_city,
+              c.state   AS client_state,  c.zip  AS client_zip,
+              j.service_address AS job_address,
+              j.service_type, j.scheduled_at,
+              j.work_order_number, j.title AS work_order_title,
+              p.name AS project_name, p.project_number,
+              COALESCE(bp.business_name, a.name) AS business_name,
+              bp.phone   AS business_phone,
+              bp.address AS business_address, bp.city AS business_city,
+              bp.state   AS business_state,   bp.zip  AS business_zip,
+              bp.logo_url, bp.website AS business_website,
+              (SELECT email FROM users
+               WHERE account_id = i.account_id AND role = 'owner'
+               ORDER BY created_at LIMIT 1) AS business_email
        FROM invoices i
-       JOIN clients  c ON c.id = i.client_id
-       LEFT JOIN jobs j ON j.id = i.job_id
-       JOIN accounts a ON a.id = i.account_id
+       JOIN clients  c  ON c.id  = i.client_id
+       LEFT JOIN jobs j ON j.id  = i.job_id
+       LEFT JOIN projects p ON p.id = COALESCE(i.project_id, j.project_id)
+       JOIN accounts a  ON a.id  = i.account_id
+       LEFT JOIN business_profiles bp ON bp.account_id = i.account_id
        WHERE i.id = $1 AND i.account_id = $2`,
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    const pdfBuf = await generateInvoicePdfBuffer(rows[0]);
+    const inv    = rows[0];
+    const pdfBuf = await generateInvoicePdfBuffer(inv);
+    const fname  = `invoice-${inv.invoice_number || inv.id.slice(0, 8)}.pdf`;
     res.set({
       'Content-Type':        'application/pdf',
-      'Content-Disposition': `attachment; filename="invoice-${rows[0].invoice_number || rows[0].id.slice(0, 8)}.pdf"`,
+      'Content-Disposition': `attachment; filename="${fname}"`,
     });
     res.send(pdfBuf);
   } catch (err) {

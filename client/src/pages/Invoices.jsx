@@ -982,6 +982,24 @@ export default function Invoices() {
                                 <ExternalLink size={13} />
                                 <span>Open in New Tab</span>
                               </a>
+                              <button
+                                className="inv-action-drop-item"
+                                role="menuitem"
+                                onClick={async () => {
+                                  setOpenMenuId(null);
+                                  try {
+                                    const res = await api.get(`/invoices/${inv.id}/pdf`, { responseType: 'blob' });
+                                    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                                    const a   = document.createElement('a');
+                                    a.href     = url;
+                                    a.download = `invoice-${inv.invoice_number || inv.id.slice(0,8)}.pdf`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  } catch (_) {}
+                                }}
+                              >
+                                <span>Download PDF</span>
+                              </button>
                               <div className="inv-action-drop-sep" />
                               <button
                                 className="inv-action-drop-item inv-action-drop-item--danger"

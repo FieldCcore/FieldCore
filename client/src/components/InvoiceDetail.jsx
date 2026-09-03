@@ -109,6 +109,20 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     }
   }
 
+  async function handleDownloadPdf() {
+    try {
+      const res = await api.get(`/invoices/${invoice.id}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = `invoice-${invoice.invoice_number || invoice.id.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      setError('Could not download PDF.');
+    }
+  }
+
   async function handleVoid() {
     if (!window.confirm('Void this invoice?')) return;
     setLoading(true);
@@ -283,6 +297,12 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           <span className="invoice-amount-label">Total Due</span>
           <span className="invoice-amount">${parseFloat(invoice.amount).toFixed(2)}</span>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, marginBottom: 4 }}>
+        <button className="btn-secondary" onClick={handleDownloadPdf} style={{ fontSize: 13 }}>
+          Download PDF
+        </button>
       </div>
 
       {isPending && (
