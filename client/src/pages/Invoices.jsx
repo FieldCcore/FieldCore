@@ -422,8 +422,8 @@ export default function Invoices() {
   return (
     <div>
       {/* ── Page header ───────────────────────────────────────── */}
-      <h1 className="sr-only">Invoices</h1>
       <div className="page-header">
+        <h1>Invoices</h1>
         <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
           + New Invoice
         </button>
