@@ -422,11 +422,10 @@ export default function Invoices() {
   return (
     <div>
       {/* ── Page header ───────────────────────────────────────── */}
+      <h1 className="sr-only">Invoices</h1>
       <div className="page-header">
-        <h1>Invoices</h1>
-        <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-          + New Invoice
-        </button>
+        <div style={{ fontSize: 13, color: 'var(--slate)' }}>Create, send, and track invoices for your clients</div>
+        <button className="btn-primary" onClick={() => navigate('/invoices/new')}>+ New Invoice</button>
       </div>
 
       {/* ── Invoice Overview ──────────────────────────────────── */}
