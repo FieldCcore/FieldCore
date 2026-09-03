@@ -1335,6 +1335,13 @@ body {
   padding: 4px 0;
 }
 .inv-filter-dropdown--wide { min-width: 200px; }
+.inv-filter-date-input {
+  flex: 1; min-width: 0; height: 28px; padding: 0 6px;
+  border: 1px solid var(--lightgray); border-radius: 4px;
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: var(--navy); background: var(--white); outline: none;
+}
+.inv-filter-date-input:focus { border-color: var(--steel); }
 .inv-dropdown-item {
   display: flex;
   align-items: center;
@@ -1440,6 +1447,219 @@ body {
   flex-shrink: 0;
 }
 .inv-chip-remove:hover { color: var(--navy); background: rgba(0,0,0,.08); }
+.inv-chip-clear-all {
+  background: none; border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--slate); padding: 2px 6px; border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+.inv-chip-clear-all:hover { color: var(--red); background: #fef2f2; }
+
+/* ── Advanced Filters panel ───────────────────────────────── */
+.inv-filter-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: var(--white);
+  border: 1px solid var(--lightgray);
+  border-radius: var(--r-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  width: 300px;
+  max-height: 72vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.inv-fpanel-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--lightgray);
+}
+.inv-fpanel-section:last-child { border-bottom: none; }
+.inv-fpanel-label {
+  display: block;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--steel);
+  margin-bottom: 8px;
+}
+.inv-fpanel-radio {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--navy);
+  cursor: pointer;
+  padding: 3px 0;
+}
+.inv-fpanel-radio input[type="radio"] {
+  accent-color: var(--navy);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.inv-fpanel-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.inv-fpanel-range-pair {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--lightgray);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 1;
+  background: var(--white);
+}
+.inv-fpanel-range-sym {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--steel);
+  background: var(--offwhite);
+  border-right: 1px solid var(--lightgray);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.inv-fpanel-range-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--navy);
+  background: transparent;
+  outline: none;
+}
+.inv-fpanel-range-to {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--steel);
+  white-space: nowrap;
+}
+.inv-fpanel-date-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.inv-fpanel-date-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.inv-fpanel-date-key {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--steel);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.inv-fpanel-date-input {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--lightgray);
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--navy);
+  background: var(--white);
+  width: 100%;
+  outline: none;
+}
+.inv-fpanel-date-input:focus { border-color: var(--steel); }
+.inv-fpanel-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--lightgray);
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--navy);
+  background: var(--white);
+  outline: none;
+}
+.inv-fpanel-search-input:focus { border-color: var(--steel); }
+.inv-fpanel-client-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--lightgray);
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--navy);
+  background: var(--offwhite);
+}
+.inv-fpanel-client-clear {
+  background: none; border: none; cursor: pointer;
+  color: var(--steel); display: flex; align-items: center; padding: 0; flex-shrink: 0;
+}
+.inv-fpanel-client-clear:hover { color: var(--navy); }
+.inv-fpanel-client-drop {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0; right: 0;
+  background: var(--white);
+  border: 1px solid var(--lightgray);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.10);
+  z-index: 10;
+  max-height: 140px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.inv-fpanel-client-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.inv-fpanel-client-item:hover { background: var(--off); }
+.inv-fpanel-client-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--navy);
+}
+.inv-fpanel-client-email {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--steel);
+}
+.inv-fpanel-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--lightgray);
+  background: var(--offwhite);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+}
+.inv-fpanel-clear {
+  background: none; border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--red); padding: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.1s;
+}
+.inv-fpanel-clear:hover { text-decoration-color: var(--red); }
 
 /* ── Sort icons ───────────────────────────────────────────── */
 .inv-th-sortable {
@@ -1448,6 +1668,8 @@ body {
   white-space: nowrap;
 }
 .inv-th-sortable:hover { color: var(--navy); }
+.inv-th-sortable:focus-visible { outline: 2px solid var(--sand); outline-offset: -2px; }
+tr.clickable-row:focus-visible { outline: 2px solid var(--sand); outline-offset: -1px; }
 .inv-sort-icon {
   display: inline-block;
   vertical-align: middle;

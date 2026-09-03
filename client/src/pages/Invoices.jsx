@@ -102,6 +102,8 @@ function SortTh({ label, col, currentSort, currentOrder, onSort, extraClass }) {
     <th
       className={`inv-th-sortable${extraClass ? ` ${extraClass}` : ''}`}
       onClick={() => onSort(col)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(col); } }}
+      tabIndex={0}
       aria-sort={active ? (currentOrder === 'ASC' ? 'ascending' : 'descending') : 'none'}
     >
       {label}
@@ -918,7 +920,9 @@ export default function Invoices() {
                   <tr
                     key={inv.id}
                     className="clickable-row inv-table-row"
+                    tabIndex={0}
                     onClick={() => setSelected(inv)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(inv); } }}
                   >
                     <td>
                       <span className="inv-client-name">{inv.client_name}</span>
