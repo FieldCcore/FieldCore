@@ -601,6 +601,90 @@ router.delete('/:id/work-orders/:woId/tasks/:taskId', requireAuth, requireRole('
   }
 });
 
+// POST /api/projects/:id/work-orders/:woId/share
+router.post('/:id/work-orders/:woId/share', requireAuth, requireRole('owner', 'manager', 'staff'), cap, async (req, res) => {
+  const { user_ids } = req.body;
+  if (!Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({ error: 'Select at least one person to share with.' });
+  }
+
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+
+    // Verify project + WO belong to this account
+    const { rows: [proj] } = await db.query(
+      `SELECT id FROM projects WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
+    );
+    if (!proj) { await db.query('ROLLBACK'); return res.status(404).json({ error: 'Project not found.' }); }
+
+    const { rows: [wo] } = await db.query(
+      `SELECT id, title, work_order_number FROM jobs WHERE id = $1 AND project_id = $2 AND account_id = $3`,
+      [req.params.woId, req.params.id, req.accountId]
+    );
+    if (!wo) { await db.query('ROLLBACK'); return res.status(404).json({ error: 'Work order not found.' }); }
+
+    // Resolve sharer name
+    const { rows: [sharer] } = await db.query(
+      `SELECT name FROM users WHERE id = $1`, [req.userId]
+    );
+
+    // Filter recipients to same-account users (excludes the sharer)
+    const { rows: recipients } = await db.query(
+      `SELECT id, name FROM users WHERE id = ANY($1) AND account_id = $2 AND id != $3`,
+      [user_ids, req.accountId, req.userId]
+    );
+    if (!recipients.length) {
+      await db.query('ROLLBACK');
+      return res.status(400).json({ error: 'No valid recipients found.' });
+    }
+
+    const woNum  = 'WO-' + String(wo.work_order_number).padStart(3, '0');
+    const link   = `/projects/${req.params.id}?tab=work-orders`;
+    const failed = [];
+
+    for (const user of recipients) {
+      try {
+        await db.query(
+          `INSERT INTO notifications (account_id, user_id, type, title, body, link)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [req.accountId, user.id, 'wo_shared',
+           `${sharer.name} shared ${woNum} with you`,
+           wo.title, link]
+        );
+      } catch {
+        failed.push(user.id);
+      }
+    }
+
+    // Activity log
+    const recipientNames = recipients.map(u => u.name).join(', ');
+    await logActivity(db, {
+      accountId: req.accountId, projectId: req.params.id, userId: req.userId,
+      type: 'work_order_shared',
+      body: `${sharer.name} shared ${woNum} "${wo.title}" with ${recipientNames}.`,
+    });
+
+    await db.query('COMMIT');
+
+    const sent = recipients.filter(u => !failed.includes(u.id));
+    if (failed.length && !sent.length) {
+      return res.status(500).json({ error: 'Failed to deliver notifications. Please try again.' });
+    }
+    res.json({
+      shared_with: sent,
+      notifications_sent: sent.length,
+      failed_count: failed.length,
+    });
+  } catch (err) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    db.release();
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 // MATERIALS
 // ═══════════════════════════════════════════════════════════

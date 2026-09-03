@@ -4,14 +4,15 @@ const pool    = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
 
 // GET /api/notifications — last 30, unread first
+// user_id IS NULL = account-wide; user_id = specific user
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM notifications
-       WHERE account_id = $1
+       WHERE account_id = $1 AND (user_id = $2 OR user_id IS NULL)
        ORDER BY read ASC, created_at DESC
        LIMIT 30`,
-      [req.accountId]
+      [req.accountId, req.userId]
     );
     res.json(rows);
   } catch (err) {
@@ -23,8 +24,8 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/read-all', requireAuth, async (req, res) => {
   try {
     await pool.query(
-      `UPDATE notifications SET read = TRUE WHERE account_id = $1`,
-      [req.accountId]
+      `UPDATE notifications SET read = TRUE WHERE account_id = $1 AND (user_id = $2 OR user_id IS NULL)`,
+      [req.accountId, req.userId]
     );
     res.json({ success: true });
   } catch (err) {

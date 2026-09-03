@@ -2591,6 +2591,10 @@ const MIGRATIONS = [
   `ALTER TABLE work_order_materials DROP CONSTRAINT IF EXISTS work_order_materials_type_check`,
   `ALTER TABLE work_order_materials ADD CONSTRAINT work_order_materials_type_check
      CHECK (type IN ('material','expense','other','labor','equipment','subcontractor','travel'))`,
+
+  // ── WORK ORDER SHARE — per-user notification targeting ───────────────────────
+  `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE`,
+  `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(account_id, user_id)`,
 ];
 
 async function runMigrations() {
