@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import JobTeamSelector from '../components/JobTeamSelector';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import {
   ChevronLeft, Plus, X, Check, Trash2, Share2,
-  ChevronDown, ChevronUp, Search, AlertTriangle, Link, UserPlus,
+  ChevronDown, ChevronUp, Search, Pencil, Link,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -361,7 +362,15 @@ function OverviewTab({ project, users, onRefresh, onTabChange }) {
             </div>
             <div className="form-group">
               <label>Site Address</label>
-              <input value={form.service_address} onChange={set('service_address')} placeholder="Street, city, state" />
+              <AddressAutocomplete
+                value={form.service_address}
+                onChange={v => setForm(prev => ({ ...prev, service_address: v }))}
+                onPlace={place => setForm(prev => ({
+                  ...prev,
+                  service_address: place.formattedAddress || place.street || '',
+                }))}
+                placeholder="Street, city, state"
+              />
             </div>
           </div>
           <div className="prj-form-actions">
@@ -1038,8 +1047,8 @@ function WorkOrderRow({ wo, projectId, users, onRefresh, isOwnerOrMgr, currentUs
           </button>
           {isOwnerOrMgr && (
             <>
-              <button className="prj-icon-btn" title="Edit" onClick={openEditWo}>Edit</button>
-              <button className="prj-icon-btn prj-icon-btn--danger" title="Delete" onClick={deleteWo}>
+              <button className="prj-icon-btn" title="Edit" onClick={openEditWo} aria-label="Edit work order"><Pencil size={13} /></button>
+              <button className="prj-icon-btn prj-icon-btn--danger" title="Delete" onClick={deleteWo} aria-label="Delete work order">
                 <Trash2 size={13} />
               </button>
             </>
