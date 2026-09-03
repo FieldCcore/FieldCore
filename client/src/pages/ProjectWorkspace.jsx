@@ -1707,7 +1707,7 @@ function FinancialsTab({ projectId }) {
     if (fRes.status      === 'fulfilled') setFin(fRes.value.data);
     if (mRes.status      === 'fulfilled') setMats(mRes.value.data);
     if (woRes.status     === 'fulfilled') setWorkOrders(woRes.value.data || []);
-    if (budgetRes.status === 'fulfilled') setBudget(budgetRes.value.data || []);
+    if (budgetRes.status === 'fulfilled') setBudget(budgetRes.value.data?.categories || []);
     if (coRes.status     === 'fulfilled') setChangeOrders(coRes.value.data || []);
     setLoading(false);
   }, [projectId]);
