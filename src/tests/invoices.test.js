@@ -1071,6 +1071,56 @@ describe('Link-to-Job — canonical relationship persistence and security', () =
   });
 });
 
+// ── GET /api/invoices/eligible-jobs — void invoice regression ─────────────────
+
+describe('GET /api/invoices/eligible-jobs — void invoice does not block re-invoicing', () => {
+  it('job with a void invoice still appears in eligible-jobs', async () => {
+    const { rows: [jobForVoid] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+       VALUES ($1,$2,$3,'Void Regression','complete',30000,$4,30) RETURNING id`,
+      [accountId, clientId, techId, TODAY + 'T11:00:00Z']
+    );
+
+    // Create a draft invoice for this job, then void it
+    const { rows: [voidedInv] } = await pool.query(
+      `INSERT INTO invoices (account_id, client_id, job_id, source_type, status, amount, subtotal, tax_amount, discount_amount)
+       VALUES ($1,$2,$3,'JOB','void',30000,30000,0,0) RETURNING id`,
+      [accountId, clientId, jobForVoid.id]
+    );
+
+    // Job must now appear in eligible-jobs despite having a void invoice
+    const res = await request(app)
+      .get(`/api/invoices/eligible-jobs?client_id=${clientId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const ids = res.body.rows.map(r => r.id);
+    expect(ids).toContain(jobForVoid.id);
+  });
+
+  it('job with a pending invoice does NOT appear in eligible-jobs', async () => {
+    const { rows: [activeJob] } = await pool.query(
+      `INSERT INTO jobs (account_id, client_id, tech_id, service_type, status, amount, scheduled_at, duration_minutes)
+       VALUES ($1,$2,$3,'Active Invoice Job','complete',20000,$4,30) RETURNING id`,
+      [accountId, clientId, techId, TODAY + 'T12:00:00Z']
+    );
+
+    await pool.query(
+      `INSERT INTO invoices (account_id, client_id, job_id, source_type, status, amount, subtotal, tax_amount, discount_amount)
+       VALUES ($1,$2,$3,'JOB','pending',20000,20000,0,0)`,
+      [accountId, clientId, activeJob.id]
+    );
+
+    const res = await request(app)
+      .get(`/api/invoices/eligible-jobs?client_id=${clientId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const ids = res.body.rows.map(r => r.id);
+    expect(ids).not.toContain(activeJob.id);
+  });
+});
+
 // ── GET /api/invoices/eligible-estimates ──────────────────────────────────────
 
 describe('GET /api/invoices/eligible-estimates — auth', () => {

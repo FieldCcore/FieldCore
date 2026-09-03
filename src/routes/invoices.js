@@ -858,7 +858,9 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
          AND j.status = 'complete'
          AND NOT EXISTS (
            SELECT 1 FROM invoices inv
-           WHERE inv.job_id = j.id AND inv.account_id = $1
+           WHERE inv.job_id = j.id
+             AND inv.account_id = $1
+             AND inv.status NOT IN ('void')
          )${whereExtra}
        ORDER BY j.scheduled_at DESC
        LIMIT 100`,
