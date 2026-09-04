@@ -4298,11 +4298,172 @@ tr:focus-within .inv-row-actions,
   font-size: 13px; color: var(--red);
 }
 
+/* Segmented control */
+.ec-seg {
+  display: inline-flex;
+  border: 1.5px solid var(--lightgray);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ec-seg-btn {
+  padding: 0 14px;
+  height: 36px;
+  border: none;
+  border-right: 1px solid var(--lightgray);
+  background: var(--white);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--slate);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+  flex: 1;
+}
+.ec-seg-btn:last-child { border-right: none; }
+.ec-seg-btn:hover:not(.ec-seg-btn--active) { background: var(--off); color: var(--navy); }
+.ec-seg-btn--active {
+  background: var(--navy);
+  color: var(--white);
+  font-weight: 500;
+}
+.ec-seg-btn:focus-visible { outline: 2px solid var(--sand); outline-offset: -2px; }
+
+/* Field hint (expiry preview) */
+.ec-field-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--steel);
+}
+
+/* Deposit section */
+.ec-deposit-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ec-deposit-row-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--slate);
+  flex-shrink: 0;
+}
+.ec-deposit-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lightgray);
+}
+.ec-deposit-type-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ec-deposit-value-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ec-deposit-suffix {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--slate);
+  flex-shrink: 0;
+}
+.ec-deposit-calc {
+  background: rgba(28,35,51,.04);
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ec-deposit-calc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--slate);
+  padding: 2px 0;
+}
+.ec-deposit-calc-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--navy);
+}
+
+/* Auto-generated terms */
+.ec-terms-auto {
+  background: var(--off);
+  border: 1px solid var(--lightgray);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.ec-terms-auto-heading {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--steel);
+  display: block;
+  margin-bottom: 8px;
+}
+.ec-terms-auto-item {
+  display: flex;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--slate);
+  line-height: 1.55;
+  padding: 2px 0;
+}
+.ec-terms-auto-bullet {
+  color: var(--steel);
+  flex-shrink: 0;
+}
+.ec-terms-auto-empty {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--steel);
+  font-style: italic;
+}
+
+/* Pricing summary deposit rows */
+.ec-summary-dep-line {
+  height: 1px;
+  background: var(--lightgray);
+  margin: 8px 0;
+}
+.ec-summary-dep-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--slate);
+}
+.ec-summary-dep-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--navy);
+}
+.ec-summary-dep-row--remaining .ec-summary-dep-val {
+  color: var(--steel);
+}
+
 @media (max-width: 900px) {
   .ec-composer { width: 100%; }
   .ec-2col { grid-template-columns: 1fr; gap: 12px; }
   .ec-bottom { grid-template-columns: 1fr; }
   .ec-item-controls { grid-template-columns: 72px 1fr 120px 80px; gap: 8px; }
+  .ec-seg { width: 100%; }
 }
 @media (max-width: 600px) {
   .ec-overlay { padding: 12px 0; }
@@ -4312,6 +4473,7 @@ tr:focus-within .inv-row-actions,
   .ec-foot { padding: 14px 18px; }
   .ec-item-controls { grid-template-columns: 1fr 1fr; gap: 8px; }
   .ec-item-total-display { grid-column: span 2; }
+  .ec-deposit-type-row { flex-direction: column; align-items: flex-start; }
 }
 
 /* ── Booking widget (public) ─────────────────────────────── */

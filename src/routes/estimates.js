@@ -38,13 +38,20 @@ async function ensureTable() {
     await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token)`);
 
     // New columns — additive, safe to run each boot
-    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_number     INTEGER`);
-    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_date       DATE`);
-    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS client_message      TEXT`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_number      INTEGER`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_date        DATE`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS client_message       TEXT`);
     await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT`);
-    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS discount            NUMERIC(10,2) DEFAULT 0`);
-    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS location_id         UUID`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS discount             NUMERIC(10,2) DEFAULT 0`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS location_id          UUID`);
     await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_invoice_id UUID`);
+    // Validity + deposit structured fields
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS validity_days          INTEGER CHECK (validity_days IN (30,60,90))`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS deposit_required       BOOLEAN DEFAULT FALSE`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS deposit_type           TEXT CHECK (deposit_type IN ('percentage','fixed'))`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS deposit_percentage     NUMERIC(5,2) CHECK (deposit_percentage > 0 AND deposit_percentage <= 100)`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS deposit_fixed_amount   NUMERIC(10,2) CHECK (deposit_fixed_amount >= 0)`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS custom_terms           TEXT`);
 
     _tableReady = true;
     console.log('[estimates] table ready');
@@ -56,6 +63,16 @@ async function ensureTable() {
 }
 
 router.use((req, res, next) => { ensureTable().then(next).catch(next); });
+
+// ─── Date helper: adds days to a yyyy-MM-dd string without UTC shift ────────
+function calculateExpiry(dateStr, days) {
+  if (!dateStr || !days) return null;
+  const parts = String(dateStr).split('-');
+  if (parts.length !== 3) return null;
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  d.setDate(d.getDate() + parseInt(days));
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 // ─── Shared totals calculator ─────────────────────────────────────────────
 function computeTotals(lineItems, discount, taxRate) {
@@ -108,28 +125,59 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 // POST /api/estimates — create estimate
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const {
-    client_id, title, line_items, notes, valid_until, job_id,
+    client_id, title, line_items, notes, job_id,
     estimate_date, client_message, terms_and_conditions, discount, location_id,
+    validity_days, deposit_required, deposit_type, deposit_percentage, deposit_fixed_amount, custom_terms,
   } = req.body;
 
   if (!client_id || !Array.isArray(line_items) || line_items.length === 0) {
     return res.status(400).json({ error: 'client_id and line_items are required' });
   }
+
+  // Validate validity_days
+  const vdays = parseInt(validity_days) || 30;
+  if (![30, 60, 90].includes(vdays)) {
+    return res.status(400).json({ error: 'validity_days must be 30, 60, or 90' });
+  }
+
+  // Validate deposit fields if deposit is required
+  const depReq  = deposit_required === true || deposit_required === 'true';
+  const depType = depReq ? deposit_type : null;
+  let depPerc   = null;
+  let depFixed  = null;
+  if (depReq) {
+    if (depType === 'percentage') {
+      const p = parseFloat(deposit_percentage);
+      if (isNaN(p) || p <= 0 || p > 100) return res.status(400).json({ error: 'deposit_percentage must be between 0 and 100' });
+      depPerc = p;
+    } else if (depType === 'fixed') {
+      const f = parseFloat(deposit_fixed_amount);
+      if (isNaN(f) || f < 0) return res.status(400).json({ error: 'deposit_fixed_amount must be >= 0' });
+      depFixed = f;
+    }
+  }
+
   try {
     const [settingsRes, numRes] = await Promise.all([
       pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
       pool.query(`SELECT COALESCE(MAX(estimate_number), 0) + 1 AS next FROM estimates WHERE account_id = $1`, [req.accountId]),
     ]);
-    const taxRate       = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-    const estimateNum   = numRes.rows[0].next;
-    const { validItems, subtotal, discountAmount, taxAmount, total } = computeTotals(line_items, discount, taxRate);
+    const taxRate     = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+    const estimateNum = numRes.rows[0].next;
+    const { validItems, discountAmount, taxAmount, total } = computeTotals(line_items, discount, taxRate);
+
+    // Calculate valid_until from estimate_date + validity_days (timezone-safe)
+    const estDateStr  = estimate_date || new Date().toISOString().slice(0, 10);
+    const validUntil  = calculateExpiry(estDateStr, vdays);
 
     const { rows } = await pool.query(
       `INSERT INTO estimates
          (account_id, client_id, job_id, title, line_items, amount, tax_amount,
           notes, valid_until, estimate_number, estimate_date, client_message,
-          terms_and_conditions, discount, location_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          terms_and_conditions, discount, location_id,
+          validity_days, deposit_required, deposit_type,
+          deposit_percentage, deposit_fixed_amount, custom_terms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
         req.accountId, client_id, job_id || null,
@@ -137,13 +185,19 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
         JSON.stringify(validItems),
         total, taxAmount,
         notes || null,
-        valid_until || null,
+        validUntil,
         estimateNum,
-        estimate_date || null,
+        estDateStr,
         client_message || null,
         terms_and_conditions || null,
         discountAmount,
         location_id || null,
+        vdays,
+        depReq,
+        depType,
+        depPerc,
+        depFixed,
+        custom_terms || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -235,8 +289,9 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
 // PATCH /api/estimates/:id — update draft estimate
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const {
-    title, line_items, notes, valid_until,
+    title, line_items, notes,
     estimate_date, client_message, terms_and_conditions, discount, location_id,
+    validity_days, deposit_required, deposit_type, deposit_percentage, deposit_fixed_amount, custom_terms,
   } = req.body;
   try {
     const estRes = await pool.query(
@@ -245,41 +300,66 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
     if (!estRes.rows.length) return res.status(404).json({ error: 'Not found' });
     if (estRes.rows[0].status !== 'draft') return res.status(400).json({ error: 'Can only edit draft estimates' });
 
-    let amount = estRes.rows[0].amount;
-    let taxAmt = estRes.rows[0].tax_amount;
-    let validItems = estRes.rows[0].line_items;
+    const existing = estRes.rows[0];
+
+    let amount    = existing.amount;
+    let taxAmt    = existing.tax_amount;
+    let validItems = existing.line_items;
 
     if (line_items) {
       const settingsRes = await pool.query(
         `SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]
       );
-      const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-      const disc    = discount !== undefined ? discount : (estRes.rows[0].discount || 0);
+      const taxRate  = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+      const disc     = discount !== undefined ? discount : (existing.discount || 0);
       const computed = computeTotals(line_items, disc, taxRate);
-      validItems = computed.validItems;
-      amount     = computed.total;
-      taxAmt     = computed.taxAmount;
+      validItems     = computed.validItems;
+      amount         = computed.total;
+      taxAmt         = computed.taxAmount;
     }
+
+    // Recalculate valid_until when estimate_date or validity_days changes
+    const newEstDate  = estimate_date  !== undefined ? estimate_date  : existing.estimate_date;
+    const newVdays    = validity_days  !== undefined ? parseInt(validity_days) : existing.validity_days;
+    if (newVdays !== null && newVdays !== undefined && ![30, 60, 90].includes(newVdays)) {
+      return res.status(400).json({ error: 'validity_days must be 30, 60, or 90' });
+    }
+    const newValidUntil = (newEstDate && newVdays) ? calculateExpiry(String(newEstDate), newVdays) : existing.valid_until;
+
+    // Deposit fields
+    const depReq = deposit_required !== undefined ? (deposit_required === true || deposit_required === 'true') : existing.deposit_required;
 
     const { rows } = await pool.query(
       `UPDATE estimates SET
-         title                = COALESCE($1,  title),
-         line_items           = $2,
-         notes                = COALESCE($3,  notes),
-         valid_until          = COALESCE($4,  valid_until),
-         amount               = $5,
-         tax_amount           = $6,
-         estimate_date        = COALESCE($7,  estimate_date),
-         client_message       = COALESCE($8,  client_message),
-         terms_and_conditions = COALESCE($9,  terms_and_conditions),
-         discount             = COALESCE($10, discount),
-         location_id          = COALESCE($11, location_id)
-       WHERE id = $12 AND account_id = $13
+         title                 = COALESCE($1,  title),
+         line_items            = $2,
+         notes                 = COALESCE($3,  notes),
+         valid_until           = $4,
+         amount                = $5,
+         tax_amount            = $6,
+         estimate_date         = COALESCE($7,  estimate_date),
+         client_message        = COALESCE($8,  client_message),
+         terms_and_conditions  = COALESCE($9,  terms_and_conditions),
+         discount              = COALESCE($10, discount),
+         location_id           = COALESCE($11, location_id),
+         validity_days         = COALESCE($12, validity_days),
+         deposit_required      = $13,
+         deposit_type          = COALESCE($14, deposit_type),
+         deposit_percentage    = COALESCE($15, deposit_percentage),
+         deposit_fixed_amount  = COALESCE($16, deposit_fixed_amount),
+         custom_terms          = COALESCE($17, custom_terms)
+       WHERE id = $18 AND account_id = $19
        RETURNING *`,
       [
-        title, JSON.stringify(validItems), notes, valid_until,
+        title, JSON.stringify(validItems), notes, newValidUntil,
         amount, taxAmt,
         estimate_date, client_message, terms_and_conditions, discount, location_id,
+        newVdays !== undefined ? newVdays : null,
+        depReq,
+        deposit_type !== undefined ? deposit_type : null,
+        deposit_percentage !== undefined ? parseFloat(deposit_percentage) : null,
+        deposit_fixed_amount !== undefined ? parseFloat(deposit_fixed_amount) : null,
+        custom_terms !== undefined ? custom_terms : null,
         req.params.id, req.accountId,
       ]
     );
