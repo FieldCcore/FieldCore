@@ -1016,17 +1016,27 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 
     const kpiRes = await pool.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0)                                                             AS outstanding,
-         COALESCE(SUM(CASE WHEN status = 'paid'    THEN amount ELSE 0 END), 0)                                                             AS collected,
-         COALESCE(SUM(CASE WHEN status IN ('pending','failed') AND due_date IS NOT NULL AND due_date < NOW() THEN amount ELSE 0 END), 0)    AS past_due,
-         COUNT(CASE WHEN status IN ('pending','failed') AND due_date IS NOT NULL AND due_date < NOW() THEN 1 END)::int                      AS past_due_count,
-         COUNT(*)::int                                                                                                                      AS total_count,
-         COUNT(CASE WHEN status = 'pending' THEN 1 END)::int                                                                               AS count_pending,
-         COUNT(CASE WHEN status = 'paid'    THEN 1 END)::int                                                                               AS count_paid,
-         COUNT(CASE WHEN status = 'void'    THEN 1 END)::int                                                                               AS count_void,
-         COUNT(CASE WHEN status = 'draft'   THEN 1 END)::int                                                                               AS count_draft,
-         COUNT(CASE WHEN status != 'void'   THEN 1 END)::int                                                                               AS issued_count,
-         COALESCE(SUM(CASE WHEN status != 'void' THEN amount ELSE 0 END), 0)                                                               AS issued_total
+         -- Outstanding: remaining balance on pending + partially_paid invoices
+         COALESCE(SUM(CASE WHEN status IN ('pending','partially_paid')
+                           THEN COALESCE(balance, amount) ELSE 0 END), 0)                                  AS outstanding,
+         -- Collected: full amount for paid + already-received portion for partially_paid
+         COALESCE(SUM(CASE WHEN status = 'paid'          THEN amount
+                           WHEN status = 'partially_paid' THEN amount - COALESCE(balance, 0)
+                           ELSE 0 END), 0)                                                                  AS collected,
+         -- Past due: remaining balance on overdue open invoices
+         COALESCE(SUM(CASE WHEN status IN ('pending','partially_paid','failed')
+                                AND due_date IS NOT NULL AND due_date < NOW()
+                           THEN COALESCE(balance, amount) ELSE 0 END), 0)                                  AS past_due,
+         COUNT(CASE WHEN status IN ('pending','partially_paid','failed')
+                         AND due_date IS NOT NULL AND due_date < NOW() THEN 1 END)::int                     AS past_due_count,
+         COUNT(*)::int                                                                                       AS total_count,
+         COUNT(CASE WHEN status = 'pending'         THEN 1 END)::int                                        AS count_pending,
+         COUNT(CASE WHEN status = 'partially_paid'  THEN 1 END)::int                                        AS count_partially_paid,
+         COUNT(CASE WHEN status = 'paid'            THEN 1 END)::int                                        AS count_paid,
+         COUNT(CASE WHEN status = 'void'            THEN 1 END)::int                                        AS count_void,
+         COUNT(CASE WHEN status = 'draft'           THEN 1 END)::int                                        AS count_draft,
+         COUNT(CASE WHEN status != 'void'           THEN 1 END)::int                                        AS issued_count,
+         COALESCE(SUM(CASE WHEN status != 'void'   THEN amount ELSE 0 END), 0)                              AS issued_total
        FROM invoices
        WHERE account_id = $1`,
       [req.accountId]
@@ -1044,12 +1054,13 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
       issuedTotal,
       averageInvoice: issuedCount > 0 ? issuedTotal / issuedCount : 0,
       counts: {
-        all:      k.total_count,
-        pending:  k.count_pending,
-        paid:     k.count_paid,
-        void:     k.count_void,
-        draft:    k.count_draft,
-        past_due: k.past_due_count,
+        all:             k.total_count,
+        pending:         k.count_pending,
+        partially_paid:  k.count_partially_paid,
+        paid:            k.count_paid,
+        void:            k.count_void,
+        draft:           k.count_draft,
+        past_due:        k.past_due_count,
       },
     };
 
@@ -2085,7 +2096,7 @@ router.delete('/:id', requireAuth, requireRole('owner', 'manager'), async (req, 
   }
 });
 
-// ─── POST /api/invoices/:id/payments — record manual payment ─────────────────
+// ─── POST /api/invoices/:id/payments — record manual payment (partial-safe) ───
 router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const VALID_METHODS = ['cash', 'check', 'other'];
   const { amount, date, method, reference = '', note = '' } = req.body;
@@ -2098,35 +2109,88 @@ router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async
     return res.status(400).json({ error: 'amount must be a positive number' });
   }
 
+  const paymentDate = date || new Date().toISOString().slice(0, 10);
+  const dbClient = await pool.connect();
   try {
-    const { rows } = await pool.query(
-      `SELECT * FROM invoices WHERE id = $1 AND account_id = $2`,
+    await dbClient.query('BEGIN');
+
+    // Lock invoice row to prevent concurrent double-payments
+    const { rows } = await dbClient.query(
+      `SELECT id, amount, COALESCE(balance, amount) AS balance, status, client_id
+       FROM invoices WHERE id = $1 AND account_id = $2
+       FOR UPDATE`,
       [req.params.id, req.accountId]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
+    if (!rows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
     const inv = rows[0];
 
     if (inv.status === 'void') {
+      await dbClient.query('ROLLBACK');
       return res.status(400).json({ error: 'Cannot record payment on a void invoice' });
     }
     if (inv.status === 'paid') {
+      await dbClient.query('ROLLBACK');
       return res.status(400).json({ error: 'Invoice is already paid' });
     }
+    if (amt > parseFloat(inv.balance) + 0.001) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Payment $${amt.toFixed(2)} exceeds remaining balance $${parseFloat(inv.balance).toFixed(2)}`,
+      });
+    }
 
-    const paymentDate = date || new Date().toISOString().slice(0, 10);
-    const combinedNote = [reference ? `Ref: ${reference}` : null, note || null].filter(Boolean).join(' — ') || null;
+    // Canonical payment record
+    const payRes = await dbClient.query(
+      `INSERT INTO payments (account_id, client_id, amount, method, payment_date, reference, note, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
+        req.accountId, inv.client_id, amt, method.toUpperCase(), paymentDate,
+        reference.trim() || null, note.trim() || null, req.userId,
+      ]
+    );
+    const paymentId = payRes.rows[0].id;
 
-    const { rows: updated } = await pool.query(
-      `UPDATE invoices
-       SET status = 'paid', balance = 0, paid_at = $1, paid_method = $2, payment_note = $3
-       WHERE id = $4 AND account_id = $5
-       RETURNING *`,
-      [paymentDate, method, combinedNote, req.params.id, req.accountId]
+    // Allocation record (payment → invoice)
+    await dbClient.query(
+      `INSERT INTO payment_allocations (payment_id, invoice_id, account_id, amount)
+       VALUES ($1, $2, $3, $4)`,
+      [paymentId, req.params.id, req.accountId, amt]
     );
 
-    res.json(updated[0]);
+    // Update invoice balance and status
+    const newBalance = Math.max(0, parseFloat(inv.balance) - amt);
+    const newStatus  = newBalance <= 0.001 ? 'paid' : 'partially_paid';
+    const paidAt     = newStatus === 'paid' ? new Date().toISOString() : null;
+
+    const { rows: updated } = await dbClient.query(
+      `UPDATE invoices
+       SET balance      = $1,
+           status       = $2,
+           paid_at      = COALESCE(paid_at, $3),
+           paid_method  = COALESCE(paid_method, $4)
+       WHERE id = $5 AND account_id = $6
+       RETURNING *`,
+      [newBalance, newStatus, paidAt, method, req.params.id, req.accountId]
+    );
+
+    if (newStatus === 'paid') {
+      await dbClient.query(
+        `UPDATE clients SET ltv = ltv + $1 WHERE id = $2 AND account_id = $3`,
+        [amt, inv.client_id, req.accountId]
+      );
+    }
+
+    await dbClient.query('COMMIT');
+    res.json({ ...updated[0], payment_id: paymentId });
   } catch (err) {
+    await dbClient.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
   }
 });
 

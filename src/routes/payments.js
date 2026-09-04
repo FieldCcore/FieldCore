@@ -27,7 +27,7 @@ router.post('/setup-intent', requireAuth, requireRole('owner', 'manager'), async
   }
 });
 
-// POST /api/payments/charge — charge card on file
+// POST /api/payments/charge — charge card on file (charges remaining balance)
 router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
   const { invoice_id, payment_method_id } = req.body;
   if (!invoice_id || !payment_method_id) {
@@ -46,10 +46,14 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (invoice.status === 'paid') return res.status(400).json({ error: 'Already paid' });
 
+    // Charge the remaining balance, not the full original amount
+    const chargeAmount = parseFloat(invoice.balance ?? invoice.amount);
+    if (chargeAmount <= 0) return res.status(400).json({ error: 'No remaining balance to charge' });
+
     const stripeCustomerId = clientResult.rows[0]?.stripe_customer_id;
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount:               Math.round(invoice.amount * 100),
+      amount:               Math.round(chargeAmount * 100),
       currency:             'usd',
       payment_method:       payment_method_id,
       customer:             stripeCustomerId || undefined,
@@ -59,6 +63,23 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
       metadata:             { invoice_id, account_id: req.accountId },
     });
 
+    const paymentDate = new Date().toISOString().slice(0, 10);
+
+    // Canonical payment + allocation records
+    const payRes = await pool.query(
+      `INSERT INTO payments (account_id, client_id, amount, method, payment_date, provider_transaction_id, created_by)
+       VALUES ($1, $2, $3, 'CARD', $4, $5, $6)
+       RETURNING id`,
+      [req.accountId, invoice.client_id, chargeAmount, paymentDate, paymentIntent.id, req.userId]
+    );
+    const paymentId = payRes.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO payment_allocations (payment_id, invoice_id, account_id, amount)
+       VALUES ($1, $2, $3, $4)`,
+      [paymentId, invoice_id, req.accountId, chargeAmount]
+    );
+
     await pool.query(
       `UPDATE invoices SET status = 'paid', balance = 0, stripe_payment_intent_id = $1
        WHERE id = $2 AND account_id = $3`,
@@ -67,10 +88,10 @@ router.post('/charge', requireAuth, requireRole('owner', 'manager'), async (req,
 
     await pool.query(
       `UPDATE clients SET ltv = ltv + $1 WHERE id = $2 AND account_id = $3`,
-      [invoice.amount, invoice.client_id, req.accountId]
+      [chargeAmount, invoice.client_id, req.accountId]
     );
 
-    res.json({ status: paymentIntent.status, payment_intent_id: paymentIntent.id });
+    res.json({ status: paymentIntent.status, payment_intent_id: paymentIntent.id, payment_id: paymentId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -126,10 +147,11 @@ router.post('/payment-link', requireAuth, requireRole('owner', 'manager'), async
 
   try {
     const result = await pool.query(
-      `SELECT i.*, c.name AS client_name, c.email AS client_email, j.service_type
+      `SELECT i.*, c.name AS client_name, c.email AS client_email,
+              COALESCE(j.service_type, i.subject, 'Service') AS service_type
        FROM invoices i
        JOIN clients c ON c.id = i.client_id
-       JOIN jobs j ON j.id = i.job_id
+       LEFT JOIN jobs j ON j.id = i.job_id
        WHERE i.id = $1 AND i.account_id = $2`,
       [invoice_id, req.accountId]
     );
