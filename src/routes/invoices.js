@@ -1237,7 +1237,7 @@ router.get('/eligible-jobs', requireAuth, requireRole('owner', 'manager'), async
            SELECT 1 FROM invoices inv
            WHERE inv.job_id = j.id
              AND inv.account_id = $1
-             AND inv.status IN ('pending', 'paid')
+             AND inv.status IN ('pending', 'paid', 'partially_paid', 'failed')
          )${whereExtra}
        ORDER BY j.scheduled_at DESC
        LIMIT 100`,
@@ -1439,9 +1439,9 @@ router.put('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
         discount_value != null ? parseFloat(discount_value) || null : null,
         discountAmount || null,
         discount_label || null,
-        client_message ?? null,
-        internal_notes ?? null,
-        terms ?? null,
+        client_message ?? invoice.client_message ?? null,
+        internal_notes ?? invoice.internal_notes ?? null,
+        terms ?? invoice.terms ?? null,
         total,
         subtotal,
         taxAmount,

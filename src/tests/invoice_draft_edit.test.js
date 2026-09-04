@@ -155,6 +155,25 @@ describe('PUT /api/invoices/:id — draft edit', () => {
     await pool.query(`DELETE FROM accounts WHERE id=$1`, [acct2.id]);
   });
 
+  it('PUT preserves client_message and terms when omitted from request body', async () => {
+    // First, set a client_message on the draft
+    await pool.query(
+      `UPDATE invoices SET client_message='Thank you for your business', terms='Net 30 terms apply' WHERE id=$1`,
+      [draftInvId]
+    );
+    // PUT without client_message or terms — they must NOT be cleared to null
+    const res = await request(app)
+      .put(`/api/invoices/${draftInvId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        subject:    'Preservation test',
+        line_items: [{ name: 'Full Detail', quantity: 1, unit_price: 15000, taxable: false }],
+      });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.client_message).toBe('Thank you for your business');
+    expect(res.body.terms).toBe('Net 30 terms apply');
+  });
+
   it('does NOT create a new invoice on second edit — no duplicate', async () => {
     const before = await pool.query(
       `SELECT COUNT(*) FROM invoices WHERE job_id=$1 AND account_id=$2`,
