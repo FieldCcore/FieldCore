@@ -2162,19 +2162,21 @@ router.post('/:id/payments', requireAuth, requireRole('owner', 'manager'), async
     );
 
     // Update invoice balance and status
-    const newBalance = Math.max(0, parseFloat(inv.balance) - amt);
-    const newStatus  = newBalance <= 0.001 ? 'paid' : 'partially_paid';
-    const paidAt     = newStatus === 'paid' ? new Date().toISOString() : null;
+    const newBalance    = Math.max(0, parseFloat(inv.balance) - amt);
+    const newStatus     = newBalance <= 0.001 ? 'paid' : 'partially_paid';
+    const paidAt        = newStatus === 'paid' ? new Date().toISOString() : null;
+    const combinedNote  = [reference ? `Ref: ${reference}` : null, note || null].filter(Boolean).join(' — ') || null;
 
     const { rows: updated } = await dbClient.query(
       `UPDATE invoices
-       SET balance      = $1,
-           status       = $2,
-           paid_at      = COALESCE(paid_at, $3),
-           paid_method  = COALESCE(paid_method, $4)
-       WHERE id = $5 AND account_id = $6
+       SET balance       = $1,
+           status        = $2,
+           paid_at       = COALESCE(paid_at, $3),
+           paid_method   = COALESCE(paid_method, $4),
+           payment_note  = COALESCE(payment_note, $5)
+       WHERE id = $6 AND account_id = $7
        RETURNING *`,
-      [newBalance, newStatus, paidAt, method, req.params.id, req.accountId]
+      [newBalance, newStatus, paidAt, method, combinedNote, req.params.id, req.accountId]
     );
 
     if (newStatus === 'paid') {
