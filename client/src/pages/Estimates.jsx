@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ChevronDown, Search, Check, MoreHorizontal, Send } from 'lucide-react';
 import api from '../api';
 import StatusBadge from '../components/StatusBadge';
+import EstimateComposer from './EstimateComposer';
 
 const STATUS_OPTS = [
   { value: 'all',      label: 'All statuses' },
@@ -663,7 +664,7 @@ export default function EstimatesPage() {
         )}
       </div>
 
-      {showCreate && <CreateEstimateModal onCreated={handleCreated} onClose={() => setShowCreate(false)} />}
+      {showCreate && <EstimateComposer onCreated={handleCreated} onClose={() => setShowCreate(false)} />}
       {selected && <EstimateDetail estimate={selected} onUpdate={handleUpdate} onClose={() => setSelected(null)} />}
     </div>
   );

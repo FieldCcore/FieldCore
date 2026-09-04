@@ -36,6 +36,16 @@ async function ensureTable() {
     await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_account ON estimates(account_id)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_client  ON estimates(client_id)`);
     await c.query(`CREATE INDEX IF NOT EXISTS idx_estimates_token   ON estimates(signing_token)`);
+
+    // New columns — additive, safe to run each boot
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_number     INTEGER`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS estimate_date       DATE`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS client_message      TEXT`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS discount            NUMERIC(10,2) DEFAULT 0`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS location_id         UUID`);
+    await c.query(`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS converted_invoice_id UUID`);
+
     _tableReady = true;
     console.log('[estimates] table ready');
   } catch (err) {
@@ -46,6 +56,37 @@ async function ensureTable() {
 }
 
 router.use((req, res, next) => { ensureTable().then(next).catch(next); });
+
+// ─── Shared totals calculator ─────────────────────────────────────────────
+function computeTotals(lineItems, discount, taxRate) {
+  const validItems = lineItems.map(item => {
+    const qty       = Math.max(0, parseFloat(item.quantity) || 1);
+    const price     = Math.max(0, parseFloat(item.unit_price ?? item.amount) || 0);
+    const lineTotal = parseFloat((qty * price).toFixed(2));
+    return {
+      name:        item.name || item.description || 'Service',
+      description: item.description || '',
+      quantity:    qty,
+      unit_price:  price,
+      taxable:     item.taxable !== false,
+      line_total:  lineTotal,
+      amount:      lineTotal,
+    };
+  });
+
+  const subtotal       = parseFloat(validItems.reduce((s, i) => s + i.line_total, 0).toFixed(2));
+  const discountAmount = parseFloat(Math.min(Math.max(parseFloat(discount) || 0, 0), subtotal).toFixed(2));
+
+  const taxableSubtotal = parseFloat(
+    validItems.filter(i => i.taxable).reduce((s, i) => s + i.line_total, 0).toFixed(2)
+  );
+  const discountRatio        = subtotal > 0 ? discountAmount / subtotal : 0;
+  const taxableAfterDiscount = parseFloat((taxableSubtotal * (1 - discountRatio)).toFixed(2));
+  const taxAmount            = parseFloat((taxableAfterDiscount * parseFloat(taxRate || 0)).toFixed(2));
+  const total                = parseFloat((subtotal - discountAmount + taxAmount).toFixed(2));
+
+  return { validItems, subtotal, discountAmount, taxAmount, total };
+}
 
 // GET /api/estimates — list all estimates for account
 router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
@@ -66,26 +107,62 @@ router.get('/', requireAuth, requireRole('owner', 'manager'), async (req, res) =
 
 // POST /api/estimates — create estimate
 router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { client_id, title, line_items, notes, valid_until, job_id } = req.body;
+  const {
+    client_id, title, line_items, notes, valid_until, job_id,
+    estimate_date, client_message, terms_and_conditions, discount, location_id,
+  } = req.body;
+
   if (!client_id || !Array.isArray(line_items) || line_items.length === 0) {
     return res.status(400).json({ error: 'client_id and line_items are required' });
   }
   try {
-    const settingsRes = await pool.query(
-      `SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]
-    );
-    const taxRate  = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-    const subtotal = line_items.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const taxAmt   = subtotal > 0 ? parseFloat((subtotal * taxRate).toFixed(2)) : 0;
-    const total    = parseFloat((subtotal + taxAmt).toFixed(2));
+    const [settingsRes, numRes] = await Promise.all([
+      pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
+      pool.query(`SELECT COALESCE(MAX(estimate_number), 0) + 1 AS next FROM estimates WHERE account_id = $1`, [req.accountId]),
+    ]);
+    const taxRate       = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+    const estimateNum   = numRes.rows[0].next;
+    const { validItems, subtotal, discountAmount, taxAmount, total } = computeTotals(line_items, discount, taxRate);
 
     const { rows } = await pool.query(
-      `INSERT INTO estimates (account_id, client_id, job_id, title, line_items, amount, tax_amount, notes, valid_until)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.accountId, client_id, job_id || null, title || 'Service Estimate',
-       JSON.stringify(line_items), total, taxAmt, notes || null, valid_until || null]
+      `INSERT INTO estimates
+         (account_id, client_id, job_id, title, line_items, amount, tax_amount,
+          notes, valid_until, estimate_number, estimate_date, client_message,
+          terms_and_conditions, discount, location_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING *`,
+      [
+        req.accountId, client_id, job_id || null,
+        title || 'Service Estimate',
+        JSON.stringify(validItems),
+        total, taxAmount,
+        notes || null,
+        valid_until || null,
+        estimateNum,
+        estimate_date || null,
+        client_message || null,
+        terms_and_conditions || null,
+        discountAmount,
+        location_id || null,
+      ]
     );
     res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/estimates/next-number — preview next estimate number
+router.get('/next-number', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  try {
+    const [numRes, settingsRes] = await Promise.all([
+      pool.query(`SELECT COALESCE(MAX(estimate_number), 0) + 1 AS next FROM estimates WHERE account_id = $1`, [req.accountId]),
+      pool.query(`SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]),
+    ]);
+    res.json({
+      next_number: numRes.rows[0].next,
+      tax_rate:    parseFloat(settingsRes.rows[0]?.tax_rate || 0),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -157,7 +234,10 @@ router.get('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res
 
 // PATCH /api/estimates/:id — update draft estimate
 router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
-  const { title, line_items, notes, valid_until } = req.body;
+  const {
+    title, line_items, notes, valid_until,
+    estimate_date, client_message, terms_and_conditions, discount, location_id,
+  } = req.body;
   try {
     const estRes = await pool.query(
       `SELECT * FROM estimates WHERE id = $1 AND account_id = $2`, [req.params.id, req.accountId]
@@ -167,26 +247,41 @@ router.patch('/:id', requireAuth, requireRole('owner', 'manager'), async (req, r
 
     let amount = estRes.rows[0].amount;
     let taxAmt = estRes.rows[0].tax_amount;
+    let validItems = estRes.rows[0].line_items;
+
     if (line_items) {
       const settingsRes = await pool.query(
         `SELECT tax_rate FROM booking_settings WHERE account_id = $1`, [req.accountId]
       );
-      const taxRate  = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
-      const subtotal = line_items.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-      taxAmt  = parseFloat((subtotal * taxRate).toFixed(2));
-      amount  = parseFloat((subtotal + taxAmt).toFixed(2));
+      const taxRate = parseFloat(settingsRes.rows[0]?.tax_rate || 0);
+      const disc    = discount !== undefined ? discount : (estRes.rows[0].discount || 0);
+      const computed = computeTotals(line_items, disc, taxRate);
+      validItems = computed.validItems;
+      amount     = computed.total;
+      taxAmt     = computed.taxAmount;
     }
 
     const { rows } = await pool.query(
       `UPDATE estimates SET
-         title      = COALESCE($1, title),
-         line_items = COALESCE($2, line_items),
-         notes      = COALESCE($3, notes),
-         valid_until = COALESCE($4, valid_until),
-         amount     = $5,
-         tax_amount = $6
-       WHERE id = $7 AND account_id = $8 RETURNING *`,
-      [title, line_items ? JSON.stringify(line_items) : null, notes, valid_until, amount, taxAmt, req.params.id, req.accountId]
+         title                = COALESCE($1,  title),
+         line_items           = $2,
+         notes                = COALESCE($3,  notes),
+         valid_until          = COALESCE($4,  valid_until),
+         amount               = $5,
+         tax_amount           = $6,
+         estimate_date        = COALESCE($7,  estimate_date),
+         client_message       = COALESCE($8,  client_message),
+         terms_and_conditions = COALESCE($9,  terms_and_conditions),
+         discount             = COALESCE($10, discount),
+         location_id          = COALESCE($11, location_id)
+       WHERE id = $12 AND account_id = $13
+       RETURNING *`,
+      [
+        title, JSON.stringify(validItems), notes, valid_until,
+        amount, taxAmt,
+        estimate_date, client_message, terms_and_conditions, discount, location_id,
+        req.params.id, req.accountId,
+      ]
     );
     res.json(rows[0]);
   } catch (err) {
