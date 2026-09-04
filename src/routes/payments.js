@@ -349,4 +349,117 @@ router.post('/', requireAuth, requireRole('owner', 'manager'), async (req, res) 
   }
 });
 
+// POST /api/payments/:id/refund — partial or full refund of a recorded payment
+router.post('/:id/refund', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { amount, reason = '' } = req.body;
+  const refundAmt = parseFloat(amount);
+  if (!refundAmt || refundAmt <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive number' });
+  }
+
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    // Lock the payment to prevent concurrent refunds
+    const { rows: payRows } = await dbClient.query(
+      `SELECT * FROM payments WHERE id = $1 AND account_id = $2 FOR UPDATE`,
+      [req.params.id, req.accountId]
+    );
+    if (!payRows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+    const payment = payRows[0];
+
+    // Total already refunded for this payment
+    const { rows: [refRow] } = await dbClient.query(
+      `SELECT COALESCE(SUM(amount), 0) AS already_refunded FROM payment_refunds WHERE payment_id = $1`,
+      [payment.id]
+    );
+    const alreadyRefunded = parseFloat(refRow.already_refunded);
+    const refundable = parseFloat(payment.amount) - alreadyRefunded;
+
+    if (refundAmt > refundable + 0.001) {
+      await dbClient.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Refund $${refundAmt.toFixed(2)} exceeds refundable balance $${refundable.toFixed(2)}`,
+      });
+    }
+
+    // Issue Stripe refund if this was a card payment with a provider transaction ID
+    let providerRefundId = null;
+    if (payment.provider_transaction_id && payment.method === 'CARD') {
+      try {
+        const stripeRefund = await stripe.refunds.create({
+          payment_intent: payment.provider_transaction_id,
+          amount:         Math.round(refundAmt * 100),
+        });
+        providerRefundId = stripeRefund.id;
+      } catch (stripeErr) {
+        await dbClient.query('ROLLBACK');
+        return res.status(502).json({ error: `Stripe refund failed: ${stripeErr.message}` });
+      }
+    }
+
+    // Record the canonical refund event
+    const { rows: [refundRow] } = await dbClient.query(
+      `INSERT INTO payment_refunds (payment_id, account_id, amount, reason, provider_refund_id, refunded_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [payment.id, req.accountId, refundAmt, reason.trim() || null, providerRefundId, req.userId]
+    );
+    const refundId = refundRow.id;
+
+    // Get payment allocations to distribute refund proportionally across invoices
+    const { rows: allocRows } = await dbClient.query(
+      `SELECT invoice_id, amount AS allocated_amount FROM payment_allocations WHERE payment_id = $1`,
+      [payment.id]
+    );
+
+    const totalAllocated = allocRows.reduce((s, r) => s + parseFloat(r.allocated_amount), 0);
+    const updatedInvoices = [];
+
+    for (const alloc of allocRows) {
+      const ratio = totalAllocated > 0 ? parseFloat(alloc.allocated_amount) / totalAllocated : 1;
+      const invoiceRefundAmt = Math.round(refundAmt * ratio * 100) / 100;
+
+      const { rows: invRows } = await dbClient.query(
+        `SELECT id, amount, COALESCE(balance, 0) AS balance, status, client_id
+         FROM invoices WHERE id = $1 AND account_id = $2 FOR UPDATE`,
+        [alloc.invoice_id, req.accountId]
+      );
+      if (!invRows.length) continue;
+      const inv = invRows[0];
+      const prevPaid = inv.status === 'paid';
+
+      const newBalance = Math.min(parseFloat(inv.amount), parseFloat(inv.balance) + invoiceRefundAmt);
+      const newStatus  = newBalance <= 0.001       ? 'paid'
+                       : newBalance >= parseFloat(inv.amount) - 0.001 ? 'pending'
+                       : 'partially_paid';
+
+      const { rows: [updated] } = await dbClient.query(
+        `UPDATE invoices SET balance = $1, status = $2 WHERE id = $3 AND account_id = $4 RETURNING *`,
+        [newBalance, newStatus, alloc.invoice_id, req.accountId]
+      );
+
+      // Reverse LTV if invoice moved out of paid status
+      if (prevPaid && newStatus !== 'paid') {
+        await dbClient.query(
+          `UPDATE clients SET ltv = GREATEST(0, ltv - $1) WHERE id = $2 AND account_id = $3`,
+          [invoiceRefundAmt, inv.client_id, req.accountId]
+        );
+      }
+      updatedInvoices.push(updated);
+    }
+
+    await dbClient.query('COMMIT');
+    res.json({ refund_id: refundId, payment_id: payment.id, amount_refunded: refundAmt, invoices: updatedInvoices });
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    dbClient.release();
+  }
+});
+
 module.exports = router;

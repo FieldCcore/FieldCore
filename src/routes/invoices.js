@@ -1789,7 +1789,7 @@ router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'),
   try {
     const { rows: invRows } = await pool.query(
       `SELECT i.id, i.status, i.amount, i.balance, i.paid_method, i.paid_at,
-              i.payment_note, i.stripe_payment_intent_id, i.updated_at, i.updated_by,
+              i.payment_note, i.stripe_payment_intent_id, i.void_reason, i.updated_at, i.updated_by,
               u.name AS updated_by_name
        FROM invoices i
        LEFT JOIN users u ON u.id = i.updated_by
@@ -1891,6 +1891,37 @@ router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'),
       });
     });
 
+    // Refund events — payments that were refunded and allocated to this invoice
+    const { rows: refundRows } = await pool.query(
+      `SELECT pr.id, pr.amount, pr.reason, pr.provider_refund_id, pr.refunded_at,
+              p.method,
+              u.name AS actor_name
+       FROM payment_refunds pr
+       JOIN payments p ON p.id = pr.payment_id
+       JOIN payment_allocations pa ON pa.payment_id = p.id AND pa.invoice_id = $1
+       LEFT JOIN users u ON u.id = pr.refunded_by
+       WHERE pr.account_id = $2
+       ORDER BY pr.refunded_at ASC`,
+      [req.params.id, req.accountId]
+    );
+    refundRows.forEach(r => {
+      events.push({
+        type:           'refund',
+        source:         r.provider_refund_id ? 'stripe' : 'manual',
+        payment_id:     null,
+        deposit_id:     null,
+        date:           r.refunded_at,
+        amount:         -parseFloat(r.amount),
+        method:         r.method,
+        method_label:   METHOD_LABELS[r.method] || r.method,
+        reference:      r.provider_refund_id || null,
+        note:           r.reason || null,
+        transaction_id: r.provider_refund_id || null,
+        status:         'refunded',
+        actor_name:     r.actor_name || null,
+      });
+    });
+
     // Void event — invoice-level financial event
     if (inv.status === 'void') {
       events.push({
@@ -1903,7 +1934,7 @@ router.get('/:id/payment-history', requireAuth, requireRole('owner', 'manager'),
         method:         null,
         method_label:   null,
         reference:      null,
-        note:           null,
+        note:           inv.void_reason || null,
         transaction_id: null,
         status:         'voided',
         actor_name:     inv.updated_by_name || null,
@@ -2062,13 +2093,32 @@ router.post('/:id/apply-deposit', requireAuth, requireRole('owner', 'manager'), 
 
 // ─── PATCH /api/invoices/:id/void ────────────────────────────────────────────
 router.patch('/:id/void', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
+  const { reason = '' } = req.body;
   try {
-    const { rows } = await pool.query(
-      `UPDATE invoices SET status = 'void', updated_by = $1, updated_at = NOW()
-       WHERE id = $2 AND account_id = $3 RETURNING *`,
-      [req.userId, req.params.id, req.accountId]
+    const { rows: current } = await pool.query(
+      `SELECT status FROM invoices WHERE id = $1 AND account_id = $2`,
+      [req.params.id, req.accountId]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (!current.length) return res.status(404).json({ error: 'Not found' });
+
+    const { status } = current[0];
+    if (status === 'draft') {
+      return res.status(400).json({ error: 'Draft invoices cannot be voided — delete them instead.' });
+    }
+    if (status === 'paid') {
+      return res.status(400).json({ error: 'Paid invoices cannot be voided. Issue a refund instead.' });
+    }
+    if (status === 'void') {
+      return res.status(400).json({ error: 'Invoice is already void.' });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE invoices
+       SET status = 'void', void_reason = $1, updated_by = $2, updated_at = NOW()
+       WHERE id = $3 AND account_id = $4
+       RETURNING *`,
+      [reason.trim() || null, req.userId, req.params.id, req.accountId]
+    );
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2083,8 +2133,8 @@ router.delete('/:id', requireAuth, requireRole('owner', 'manager'), async (req, 
       [req.params.id, req.accountId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    if (rows[0].status === 'paid') {
-      return res.status(400).json({ error: 'Cannot delete a paid invoice.' });
+    if (rows[0].status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft invoices may be deleted. To remove an issued invoice, void it instead.' });
     }
     await pool.query(
       `DELETE FROM invoices WHERE id = $1 AND account_id = $2`,

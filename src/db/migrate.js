@@ -2621,6 +2621,25 @@ const MIGRATIONS = [
   // Stripe card-on-file and manual payment paths set status='paid' but historically
   // did not set balance=0. Back-fill to ensure KPI queries using balance are accurate.
   `UPDATE invoices SET balance = 0 WHERE status = 'paid' AND (balance IS NULL OR balance > 0)`,
+
+  // ── PASS 3 — REFUNDS + VOIDS ─────────────────────────────────────────────────
+  // void_reason captures the operator's explanation in the audit trail.
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS void_reason TEXT`,
+
+  // Canonical refund records — one row per refund event, links back to original payment.
+  // ON DELETE RESTRICT on payment_id prevents deleting a payment that has been refunded.
+  `CREATE TABLE IF NOT EXISTS payment_refunds (
+     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     payment_id         UUID NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     amount             NUMERIC(10,2) NOT NULL CHECK (amount > 0),
+     reason             TEXT,
+     provider_refund_id TEXT,
+     refunded_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+     refunded_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment ON payment_refunds(payment_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_refunds_account ON payment_refunds(account_id)`,
 ];
 
 async function runMigrations() {
