@@ -669,7 +669,132 @@ function startAgreementSchedulerJob() {
   console.log('[Scheduler] Agreement scheduler scheduled (nightly 02:00)');
 }
 
-// ── 12. Expired token cleanup — runs daily at 03:00 ─────────────────────────
+// ── 12. Estimate expiration — runs daily at 00:05 ───────────────────────────
+function startEstimateExpirationJob() {
+  const estimateActivity = require('./estimateActivityService');
+  const EVENTS           = estimateActivity.EVENTS;
+
+  cron.schedule('5 0 * * *', async () => {
+    try {
+      // Atomically mark overdue sent/draft estimates as expired and capture them
+      const { rows: expired } = await pool.query(`
+        UPDATE estimates
+        SET status = 'expired'
+        WHERE status IN ('draft','sent')
+          AND valid_until IS NOT NULL
+          AND valid_until < CURRENT_DATE
+        RETURNING *
+      `);
+
+      for (const est of expired) {
+        try {
+          await estimateActivity.recordWithNotify(
+            {
+              accountId:      est.account_id,
+              estimateId:     est.id,
+              clientId:       est.client_id,
+              eventType:      EVENTS.EXPIRED,
+              actorType:      'system',
+              summary:        `Estimate #${est.estimate_number} expired`,
+              details:        { valid_until: est.valid_until, was_sent: est.status === 'sent' },
+              idempotencyKey: `estimate.expired:${est.id}`,
+            },
+            {
+              type:  'estimate_expired',
+              title: `Estimate #${est.estimate_number} expired`,
+              body:  'This estimate expired without approval. Review scope and pricing before sending a revision.',
+              link:  '/estimates',
+            }
+          );
+        } catch (err) {
+          console.error(`[Scheduler] Estimate expiration activity failed for ${est.id}:`, err.message);
+        }
+      }
+
+      if (expired.length) {
+        console.log(`[Scheduler] Expired ${expired.length} estimate(s)`);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Estimate expiration error:', err.message);
+    }
+  });
+
+  console.log('[Scheduler] Estimate expiration scheduled (daily 00:05)');
+}
+
+// ── 13. Estimate follow-up — runs daily at 08:00 ─────────────────────────────
+function startEstimateFollowUpJob() {
+  const estimateActivity = require('./estimateActivityService');
+  const EVENTS           = estimateActivity.EVENTS;
+  const FOLLOW_UP_HOURS  = estimateActivity.FOLLOW_UP_HOURS;
+
+  cron.schedule('0 8 * * *', async () => {
+    try {
+      // Find sent estimates where:
+      // - customer has viewed at least once
+      // - no follow-up notification fired yet
+      // - last view was more than FOLLOW_UP_HOURS ago
+      // - estimate has not yet reached a terminal state or expiry
+      const { rows: candidates } = await pool.query(`
+        SELECT e.*, c.name AS client_name
+        FROM estimates e
+        JOIN clients c ON c.id = e.client_id
+        WHERE e.status = 'sent'
+          AND e.first_viewed_at IS NOT NULL
+          AND e.follow_up_sent_at IS NULL
+          AND e.last_viewed_at < NOW() - INTERVAL '${FOLLOW_UP_HOURS} hours'
+          AND (e.valid_until IS NULL OR e.valid_until >= CURRENT_DATE)
+      `);
+
+      for (const est of candidates) {
+        try {
+          const viewedHoursAgo = Math.floor(
+            (Date.now() - new Date(est.last_viewed_at)) / (1000 * 60 * 60)
+          );
+          const daysLabel = viewedHoursAgo >= 48
+            ? `${Math.floor(viewedHoursAgo / 24)} days`
+            : `${viewedHoursAgo} hours`;
+
+          await estimateActivity.recordWithNotify(
+            {
+              accountId:      est.account_id,
+              estimateId:     est.id,
+              clientId:       est.client_id,
+              eventType:      EVENTS.FOLLOW_UP_DUE,
+              actorType:      'system',
+              summary:        `Follow-up recommended for Estimate #${est.estimate_number}`,
+              details:        { client_name: est.client_name, viewed_ago: daysLabel, last_viewed_at: est.last_viewed_at },
+              idempotencyKey: `estimate.follow_up_due:${est.id}`,
+            },
+            {
+              type:  'estimate_follow_up',
+              title: `Follow up on Estimate #${est.estimate_number}`,
+              body:  `${est.client_name} viewed this estimate ${daysLabel} ago and has not responded.`,
+              link:  '/estimates',
+            }
+          );
+
+          await pool.query(
+            `UPDATE estimates SET follow_up_sent_at = NOW() WHERE id = $1`,
+            [est.id]
+          );
+        } catch (err) {
+          console.error(`[Scheduler] Follow-up activity failed for estimate ${est.id}:`, err.message);
+        }
+      }
+
+      if (candidates.length) {
+        console.log(`[Scheduler] Follow-up notifications sent for ${candidates.length} estimate(s)`);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Estimate follow-up error:', err.message);
+    }
+  });
+
+  console.log('[Scheduler] Estimate follow-up scheduled (daily 08:00)');
+}
+
+// ── 14. Expired token cleanup — runs daily at 03:00 ─────────────────────────
 function startExpiredTokenCleanup() {
   cron.schedule('0 3 * * *', async () => {
     try {
@@ -705,6 +830,8 @@ function startReminderJobs() {
   startGoogleReviewSyncJob();
   startAccountingSyncJob();
   startAgreementSchedulerJob();
+  startEstimateExpirationJob();
+  startEstimateFollowUpJob();
   startExpiredTokenCleanup();
 }
 

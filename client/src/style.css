@@ -4458,6 +4458,81 @@ tr:focus-within .inv-row-actions,
   color: var(--steel);
 }
 
+/* ── Estimate Activity Timeline ──────────────────────────────────────────── */
+.est-tl {
+  margin-top: 20px;
+  border-top: 1px solid #e5e0d8;
+  padding-top: 14px;
+}
+.est-tl-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+  margin: 0 0 12px;
+}
+.est-tl-empty {
+  font-size: 12px;
+  color: var(--steel);
+  margin: 0;
+}
+.est-tl-list {
+  display: flex;
+  flex-direction: column;
+}
+.est-tl-item {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  position: relative;
+}
+.est-tl-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 20px;
+  bottom: -6px;
+  width: 1px;
+  background: #e5e0d8;
+}
+.est-tl-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #e5e0d8;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1.5px #c8c2b8;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.est-tl-dot--key {
+  background: var(--navy);
+  box-shadow: 0 0 0 1.5px var(--navy);
+}
+.est-tl-content {
+  flex: 1;
+  min-width: 0;
+}
+.est-tl-summary {
+  font-size: 13px;
+  color: var(--navy);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.est-tl-detail {
+  font-size: 12px;
+  color: var(--slate);
+  margin-top: 1px;
+  line-height: 1.4;
+}
+.est-tl-meta {
+  font-size: 11px;
+  color: var(--steel);
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+}
+
 @media (max-width: 900px) {
   .ec-composer { width: 100%; }
   .ec-2col { grid-template-columns: 1fr; gap: 12px; }

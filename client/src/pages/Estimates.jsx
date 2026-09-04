@@ -157,16 +157,86 @@ function CreateEstimateModal({ onCreated, onClose }) {
   );
 }
 
+// Human-readable labels for estimate activity event types.
+const EVENT_DISPLAY = {
+  'estimate.created':              { label: 'Estimate created',            key: true  },
+  'estimate.sent':                 { label: 'Estimate sent',               key: true  },
+  'estimate.viewed':               { label: 'Customer viewed estimate',    key: true  },
+  'estimate.follow_up_due':        { label: 'Follow-up recommended',       key: false },
+  'estimate.approved':             { label: 'Customer approved estimate',  key: true  },
+  'estimate.declined':             { label: 'Estimate manually expired',   key: false },
+  'estimate.expired':              { label: 'Estimate expired',            key: false },
+  'estimate.revision_created':     { label: 'Revision created',            key: false },
+  'estimate.deposit_received':     { label: 'Deposit received',            key: true  },
+  'estimate.converted_to_job':     { label: 'Converted to job',            key: true  },
+  'estimate.converted_to_project': { label: 'Converted to project',        key: true  },
+};
+
+function fmtActivityTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    + ' at '
+    + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function EstimateTimeline({ estimateId }) {
+  const [events, setEvents] = useState(null);
+
+  useEffect(() => {
+    api.get(`/estimates/${estimateId}/activity`)
+      .then(r => setEvents(r.data || []))
+      .catch(() => setEvents([]));
+  }, [estimateId]);
+
+  if (events === null) return (
+    <div className="est-tl">
+      <p className="est-tl-title">Activity</p>
+      <p className="est-tl-empty">Loading…</p>
+    </div>
+  );
+  if (events.length === 0) return (
+    <div className="est-tl">
+      <p className="est-tl-title">Activity</p>
+      <p className="est-tl-empty">No activity recorded yet.</p>
+    </div>
+  );
+
+  return (
+    <div className="est-tl">
+      <p className="est-tl-title">Activity</p>
+      <div className="est-tl-list">
+        {events.map((ev, i) => {
+          const display = EVENT_DISPLAY[ev.event_type] || { label: ev.event_type, key: false };
+          return (
+            <div key={ev.id || i} className="est-tl-item">
+              <div className={`est-tl-dot${display.key ? ' est-tl-dot--key' : ''}`} />
+              <div className="est-tl-content">
+                <div className="est-tl-summary">{display.label}</div>
+                {ev.summary && ev.summary !== display.label && (
+                  <div className="est-tl-detail">{ev.summary}</div>
+                )}
+                <div className="est-tl-meta">{fmtActivityTime(ev.occurred_at)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Estimate Detail Modal ──────────────────────────────────────────────────
 function EstimateDetail({ estimate: init, onUpdate, onClose }) {
   const [estimate,     setEstimate]     = useState(init);
   const [sending,      setSending]      = useState(false);
   const [copied,       setCopied]       = useState(false);
   const [converting,   setConverting]   = useState(false);
-  const [convertedJobId,     setConvertedJobId]     = useState(init.converted_job_id || null);
-  const [convertedInvoiceId, setConvertedInvoiceId] = useState(init.converted_invoice_id || null);
+  const [convertedJobId,      setConvertedJobId]      = useState(init.converted_job_id || null);
+  const [convertedInvoiceId,  setConvertedInvoiceId]  = useState(init.converted_invoice_id || null);
   const [convertedInvoiceNum, setConvertedInvoiceNum] = useState(init.converted_invoice_number || null);
   const [convertError, setConvertError] = useState('');
+  const [activityKey,  setActivityKey]  = useState(0);
 
   async function convertToJob() {
     if (!confirm('Convert this estimate into a new scheduled job?')) return;
@@ -179,6 +249,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
       const updated = { ...estimate, converted_job_id: jobId };
       setEstimate(updated);
       onUpdate(updated);
+      setActivityKey(k => k + 1);
     } catch (err) {
       if (err.response?.status === 409) {
         setConvertedJobId(err.response.data.job_id);
@@ -196,6 +267,7 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
       const r = await api.post(`/estimates/${estimate.id}/send`);
       const updated = { ...estimate, status: 'sent', sent_at: new Date().toISOString(), sign_url: r.data.sign_url };
       setEstimate(updated); onUpdate(updated);
+      setActivityKey(k => k + 1);
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to send.');
     } finally { setSending(false); }
@@ -203,9 +275,10 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
 
   async function voidEst() {
     if (!confirm('Expire this estimate?')) return;
-    const r = await api.post(`/estimates/${estimate.id}/void`);
+    await api.post(`/estimates/${estimate.id}/void`);
     const updated = { ...estimate, status: 'expired' };
     setEstimate(updated); onUpdate(updated);
+    setActivityKey(k => k + 1);
   }
 
   function copyLink() {
@@ -214,8 +287,8 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  const tax = parseFloat(estimate.tax_amount || 0);
-  const total = parseFloat(estimate.amount || 0);
+  const tax      = parseFloat(estimate.tax_amount || 0);
+  const total    = parseFloat(estimate.amount || 0);
   const subtotal = total - tax;
   const lineItems = Array.isArray(estimate.line_items) ? estimate.line_items : [];
 
@@ -237,13 +310,22 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           {estimate.valid_until && <div className="detail-row"><label>Valid Until</label><span>{fmtDt(estimate.valid_until)}</span></div>}
           {estimate.signed_at   && <div className="detail-row"><label>Signed</label><span>{fmtDt(estimate.signed_at)}</span></div>}
           {estimate.sent_at     && <div className="detail-row"><label>Sent</label><span>{fmtDt(estimate.sent_at)}</span></div>}
+          {estimate.view_count > 0 && (
+            <div className="detail-row">
+              <label>Views</label>
+              <span>{estimate.view_count} view{estimate.view_count !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {estimate.revision_number > 1 && (
+            <div className="detail-row"><label>Revision</label><span>{estimate.revision_number}</span></div>
+          )}
         </div>
 
         <div className="invoice-amount-block">
           {lineItems.map((item, i) => (
             <div key={i} style={{ display:'flex',justifyContent:'space-between',fontSize:13,color:'#1C2333',marginBottom:6 }}>
-              <span>{item.description}</span>
-              <span style={{ fontVariantNumeric:'tabular-nums' }}>{fmt$(item.amount)}</span>
+              <span>{item.description || item.name}</span>
+              <span style={{ fontVariantNumeric:'tabular-nums' }}>{fmt$(item.amount ?? item.line_total)}</span>
             </div>
           ))}
           {tax > 0 && (
@@ -295,22 +377,24 @@ function EstimateDetail({ estimate: init, onUpdate, onClose }) {
           )}
           {convertedJobId && (
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>✓ Converted to Job</span>
-              <a href={`/jobs`} style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Jobs →</a>
+              <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>Converted to Job</span>
+              <a href="/jobs" style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Jobs →</a>
             </div>
           )}
           {convertedInvoiceId && (
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:13, color:'var(--green)', fontWeight:700 }}>
-                ✓ Converted to Invoice{convertedInvoiceNum ? ` #${convertedInvoiceNum}` : ''}
+                Converted to Invoice{convertedInvoiceNum ? ` #${convertedInvoiceNum}` : ''}
               </span>
-              <a href={`/invoices`} style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Invoices →</a>
+              <a href="/invoices" style={{ fontSize:12, color:'var(--navy)', textDecoration:'underline' }}>View Invoices →</a>
             </div>
           )}
           {convertError && (
             <p style={{ fontSize:12, color:'var(--red)', margin:0 }}>{convertError}</p>
           )}
         </div>
+
+        <EstimateTimeline key={activityKey} estimateId={estimate.id} />
         </div>
       </div>
     </div>
