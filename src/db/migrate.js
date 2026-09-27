@@ -2902,6 +2902,21 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_authority_notes_case       ON authority_review_notes(account_id, case_id)`,
   `CREATE INDEX IF NOT EXISTS idx_authority_notes_instrument ON authority_review_notes(account_id, instrument_id)`,
   `CREATE INDEX IF NOT EXISTS idx_authority_notes_created_by ON authority_review_notes(created_by)`,
+
+  // ── Stage 2 correction pass ───────────────────────────────────────────────────
+
+  // Enforce exactly one active assignment per case at the database level.
+  // A partial unique index is the strongest available PostgreSQL enforcement short of a trigger.
+  // Concurrent INSERT with status='active' for the same (account_id, case_id) will fail with
+  // unique_violation (23505); the service converts this to a clean 409 conflict response.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_authority_ra_one_active_per_case
+     ON authority_review_assignments(account_id, case_id)
+     WHERE (status = 'active')`,
+
+  // Forward-additive column for review-note body encryption key version.
+  // NULL = legacy plaintext row (should not exist in practice; only synthetic data at this stage).
+  // Non-null = body column holds AES-256-GCM ciphertext encrypted with AUTHORITY_DATA_ENCRYPTION_KEY.
+  `ALTER TABLE authority_review_notes ADD COLUMN IF NOT EXISTS note_body_key_version TEXT`,
 ];
 
 async function runMigrations() {

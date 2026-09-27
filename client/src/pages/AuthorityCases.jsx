@@ -31,13 +31,14 @@ export default function AuthorityCases() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get('/authority/queue')
+    const params = statusFilter ? { params: { status: statusFilter } } : {};
+    api.get('/authority/cases', params)
       .then(r => { setCases(r.data); setError(''); })
       .catch(e => setError(e.response?.data?.error || 'Failed to load cases.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [statusFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, statusFilter]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -48,10 +49,6 @@ export default function AuthorityCases() {
       setError(err.response?.data?.error || 'Failed to create case.');
     }
   }
-
-  const filtered = statusFilter
-    ? cases.filter(c => c.status === statusFilter)
-    : cases;
 
   return (
     <div className="au-page">
@@ -94,12 +91,12 @@ export default function AuthorityCases() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        <div style={{ fontSize: 12, color: 'var(--steel)' }}>{filtered.length} case{filtered.length !== 1 ? 's' : ''}</div>
+        <div style={{ fontSize: 12, color: 'var(--steel)' }}>{cases.length} case{cases.length !== 1 ? 's' : ''}</div>
       </div>
 
       {loading ? <AuLoading /> : (
         <div className="au-table-card">
-          {!filtered.length ? (
+          {!cases.length ? (
             <AuEmpty text="No cases found." />
           ) : (
             <table className="au-table">
@@ -114,7 +111,7 @@ export default function AuthorityCases() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
+                {cases.map(c => (
                   <tr key={c.id} onClick={() => nav(`/authority/cases/${c.id}`)}>
                     <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
                       {c.external_case_reference || c.id.slice(0, 8) + '…'}

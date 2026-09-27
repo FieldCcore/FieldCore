@@ -21,8 +21,14 @@ if (process.env.NODE_ENV === 'production') {
   process.exit(1);
 }
 
+if (process.env.AUTHORITY_DEV_SEED_ENABLED !== 'true') {
+  console.error('[authority-seed-dev] REFUSED: set AUTHORITY_DEV_SEED_ENABLED=true to run this script.');
+  process.exit(1);
+}
+
 require('dotenv').config();
 
+const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const pool     = require('../src/db/pool');
 const { runMigrations } = require('../src/db/migrate');
@@ -42,7 +48,8 @@ async function seed() {
   await runMigrations();
   console.log('[authority-seed-dev] Migrations complete.');
 
-  const hash = await bcrypt.hash('DevPassword123!', 10);
+  const plainPw = process.env.SEED_DEV_PASSWORD || crypto.randomBytes(16).toString('hex');
+  const hash = await bcrypt.hash(plainPw, 10);
 
   // 1. Create institution account
   const { rows: [acct] } = await pool.query(
@@ -134,33 +141,103 @@ async function seed() {
   await authorityService.transitionCase(acct.id, owner.id, kase.id, 'PENDING_HUMAN_REVIEW');
   console.log(`[authority-seed-dev] Case ${kase.id} advanced to PENDING_HUMAN_REVIEW.`);
 
-  // 8. Submit instrument for review and verify it (real verification path via reviewer)
+  // 8. Submit instrument for review (owner)
   await authorityService.transitionInstrument(acct.id, owner.id, instr.id, 'PENDING_REVIEW',
     { actorType: 'human' });
 
+  // 9. Reviewer claims the case — this transitions it to HUMAN_REVIEW_IN_PROGRESS
+  //    Must happen BEFORE verify so the reviewer has an active assignment.
+  const assignment = await authorityService.claimCase(acct.id, reviewer.id, kase.id);
+  console.log(`[authority-seed-dev] Case claimed; assignment: ${assignment.id}`);
+
+  // 10. Reviewer verifies instrument (active assignee required)
   const verified = await authorityService.transitionInstrument(
     acct.id, reviewer.id, instr.id, 'VERIFIED', { actorType: 'human' }
   );
   console.log(`[authority-seed-dev] Instrument VERIFIED by reviewer: ${verified.status}`);
 
-  // 9. Reviewer claims the case
-  const assignment = await authorityService.claimCase(acct.id, reviewer.id, kase.id);
-  console.log(`[authority-seed-dev] Case claimed; assignment: ${assignment.id}`);
-
-  // 10. Add a review note
+  // 11. Add a review note (active assignee required)
   await authorityService.addReviewNote(acct.id, reviewer.id, kase.id,
     'Seed review note: instrument verified. All parties confirmed. Ready to complete.');
   console.log('[authority-seed-dev] Review note added.');
+
+  // 12. Complete the case
+  await authorityService.transitionCase(acct.id, reviewer.id, kase.id, 'COMPLETED');
+  console.log(`[authority-seed-dev] Main case COMPLETED.`);
+
+  // ── Additional scenarios ────────────────────────────────────────────────────
+
+  // Scenario B: Case stopped at AWAITING_DOCUMENTS
+  const kaseB = await authorityService.createCase(acct.id, owner.id,
+    { externalCaseReference: 'SEED-CASE-AWAITING' });
+  await authorityService.transitionCase(acct.id, owner.id, kaseB.id, 'AWAITING_DOCUMENTS');
+  console.log(`[authority-seed-dev] Scenario B (AWAITING_DOCUMENTS) case: ${kaseB.id}`);
+
+  // Scenario C: Case stopped at PENDING_EXTRACTION (has document but not yet extracted)
+  const instrC = await authorityService.createInstrument(acct.id, owner.id, {
+    instrumentType:  'letter_of_authorization',
+    effectiveDate:   '2026-06-01',
+    expirationDate:  '2027-06-01',
+    jurisdiction:    'California, USA',
+  });
+  const kaseC = await authorityService.createCase(acct.id, owner.id,
+    { externalCaseReference: 'SEED-CASE-PENDING-EXTRACTION' });
+  await authorityService.linkInstrumentToCase(acct.id, owner.id, kaseC.id, instrC.id);
+  await authorityService.transitionCase(acct.id, owner.id, kaseC.id, 'AWAITING_DOCUMENTS');
+  await authorityService.uploadDocument(acct.id, owner.id, SYNTHETIC_PDF, {
+    caseId:           kaseC.id,
+    instrumentId:     instrC.id,
+    originalFilename: 'synthetic-letter-of-authorization.pdf',
+  });
+  await authorityService.transitionCase(acct.id, owner.id, kaseC.id, 'PENDING_EXTRACTION');
+  console.log(`[authority-seed-dev] Scenario C (PENDING_EXTRACTION) case: ${kaseC.id}`);
+
+  // Scenario D: Instrument REJECTED (reviewer rejects)
+  const instrD = await authorityService.createInstrument(acct.id, owner.id, {
+    instrumentType:  'guardianship_order',
+    effectiveDate:   '2025-01-01',
+    expirationDate:  null,
+    jurisdiction:    'New York, USA',
+  });
+  const partyD = await authorityService.createParty(acct.id, owner.id, {
+    partyType:         'person',
+    displayName:       '__SEED_DEV__ Eve Guardian',
+    externalReference: 'SEED-GUARDIAN-001',
+  });
+  await authorityService.addParticipant(acct.id, owner.id, instrD.id,
+    { partyId: partyD.id, role: 'guardian', sequence: 1 });
+  const kaseD = await authorityService.createCase(acct.id, owner.id,
+    { externalCaseReference: 'SEED-CASE-REJECTED' });
+  await authorityService.linkInstrumentToCase(acct.id, owner.id, kaseD.id, instrD.id);
+  await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'AWAITING_DOCUMENTS');
+  await authorityService.uploadDocument(acct.id, owner.id, SYNTHETIC_PDF, {
+    caseId:           kaseD.id,
+    instrumentId:     instrD.id,
+    originalFilename: 'synthetic-guardianship-order.pdf',
+  });
+  await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'PENDING_EXTRACTION');
+  await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'EXTRACTION_COMPLETE',
+    { systemActor: true });
+  await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'PENDING_HUMAN_REVIEW');
+  await authorityService.transitionInstrument(acct.id, owner.id, instrD.id, 'PENDING_REVIEW',
+    { actorType: 'human' });
+  await authorityService.claimCase(acct.id, reviewer.id, kaseD.id);
+  await authorityService.transitionInstrument(acct.id, reviewer.id, instrD.id, 'REJECTED',
+    { actorType: 'human', rejectionReason: 'Synthetic rejection: document does not match jurisdiction requirements.' });
+  console.log(`[authority-seed-dev] Scenario D (REJECTED instrument) case: ${kaseD.id}`);
 
   console.log('\n[authority-seed-dev] ✓ Complete.\n');
   console.log(`  Institution account ID : ${acct.id}`);
   console.log(`  Owner user ID          : ${owner.id}`);
   console.log(`  Reviewer user ID       : ${reviewer.id}`);
-  console.log(`  Case ID                : ${kase.id}`);
-  console.log(`  Instrument ID          : ${instr.id}`);
-  console.log(`\n  Case status: HUMAN_REVIEW_IN_PROGRESS`);
-  console.log(`  Instrument status: VERIFIED`);
-  console.log('\n  To log in as the reviewer, use the email above with password: DevPassword123!\n');
+  console.log(`\n  Scenario A (COMPLETED case):`);
+  console.log(`    Case ID              : ${kase.id}`);
+  console.log(`    Instrument ID        : ${instr.id}  (status: VERIFIED)`);
+  console.log(`  Scenario B (AWAITING_DOCUMENTS): Case ${kaseB.id}`);
+  console.log(`  Scenario C (PENDING_EXTRACTION): Case ${kaseC.id}`);
+  console.log(`  Scenario D (REJECTED instrument): Case ${kaseD.id}`);
+  console.log(`\n  Reviewer password: ${plainPw}`);
+  console.log('  (also available as SEED_DEV_PASSWORD env var if you set it)\n');
 
   await pool.end();
 }

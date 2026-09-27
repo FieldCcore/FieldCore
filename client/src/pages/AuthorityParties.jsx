@@ -11,11 +11,14 @@ export default function AuthorityParties() {
   const [form, setForm] = useState({ partyType: 'person', displayName: '', externalReference: '' });
   const [saving, setSaving] = useState(false);
 
+  const [search, setSearch] = useState('');
+
   const load = useCallback(() => {
     setLoading(true);
-    // Authority has no list-parties endpoint yet; we'll show an info message
-    setParties([]);
-    setLoading(false);
+    api.get('/authority/parties')
+      .then(r => { setParties(r.data); setError(''); })
+      .catch(e => setError(e.response?.data?.error || 'Failed to load parties.'))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -94,16 +97,95 @@ export default function AuthorityParties() {
 
       <AuError msg={error} />
 
+      <div className="au-toolbar" style={{ marginBottom: 12 }}>
+        <input
+          className="au-input"
+          style={{ width: 240, marginBottom: 0 }}
+          placeholder="Filter by name or reference…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <div style={{ fontSize: 12, color: 'var(--steel)' }}>
+          {parties.filter(p => filterParty(p, search)).length} part{parties.filter(p => filterParty(p, search)).length !== 1 ? 'ies' : 'y'}
+        </div>
+      </div>
+
       {loading ? <AuLoading /> : (
-        <div className="au-card">
-          <div className="au-card-body">
-            <div className="au-info">
-              Party list endpoint is not yet available. Use the Review Workspace to view parties associated with instruments.
-              Use the form above to create new parties.
-            </div>
-          </div>
+        <div className="au-table-card">
+          {!parties.length ? (
+            <AuEmpty text="No parties yet. Create a party above." />
+          ) : (
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Reference</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {parties.filter(p => filterParty(p, search)).map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      {editing === p.id ? (
+                        <EditNameInline
+                          initial={p.display_name || ''}
+                          onSave={name => handleUpdateName(p.id, name)}
+                          onCancel={() => setEditing(null)}
+                        />
+                      ) : (
+                        <span>{p.display_name || <em style={{ color: 'var(--steel)' }}>encrypted</em>}</span>
+                      )}
+                    </td>
+                    <td style={{ textTransform: 'capitalize' }}>{p.party_type}</td>
+                    <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                      {p.external_reference || '—'}
+                    </td>
+                    <td><AuBadge status={p.status} /></td>
+                    <td style={{ fontSize: 12, color: 'var(--steel)' }}>{fmtDate(p.created_at)}</td>
+                    <td>
+                      {editing !== p.id && (
+                        <button className="au-btn au-btn--sm" onClick={() => setEditing(p.id)}>
+                          Rename
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function filterParty(party, search) {
+  if (!search) return true;
+  const q = search.toLowerCase();
+  return (
+    (party.display_name || '').toLowerCase().includes(q) ||
+    (party.external_reference || '').toLowerCase().includes(q)
+  );
+}
+
+function EditNameInline({ initial, onSave, onCancel }) {
+  const [val, setVal] = useState(initial);
+  return (
+    <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <input
+        className="au-input"
+        style={{ width: 180, marginBottom: 0 }}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        autoFocus
+      />
+      <button className="au-btn au-btn--sm au-btn--primary" onClick={() => onSave(val)} disabled={!val.trim()}>Save</button>
+      <button className="au-btn au-btn--sm" onClick={onCancel}>Cancel</button>
+    </span>
   );
 }

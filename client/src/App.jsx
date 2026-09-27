@@ -105,6 +105,19 @@ function TechRoute({ children }) {
   return children;
 }
 
+function AuthorityGate({ children }) {
+  const { user } = useAuth();
+  if (!user?.authority_enabled || user?.account_type !== 'institution') {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--slate)', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: 'var(--navy)' }}>Authority Unavailable</div>
+        <div style={{ fontSize: 13 }}>The Authority feature is not enabled for this account.</div>
+      </div>
+    );
+  }
+  return children;
+}
+
 const PAGE_TITLES = {
   '/authority':          'Authority',
   '/authority/queue':    'Review Queue',
@@ -555,8 +568,8 @@ function AppShell() {
                   </>
                 )}
 
-                {/* Authority — institution accounts only */}
-                {user?.account_type === 'institution' && (
+                {/* Authority — institution accounts only, and only when feature flag is on */}
+                {user?.account_type === 'institution' && user?.authority_enabled && (
                   <>
                     <div className="nav-section">Authority</div>
                     {ni('/authority',         true,  IcoAuthority, 'Dashboard',  null)}
@@ -655,11 +668,11 @@ function AppShell() {
             <Route path="/business-settings"  element={<ProtectedRoute><BusinessSettings /></ProtectedRoute>}  />
             <Route path="/entities"           element={<ProtectedRoute><Entities /></ProtectedRoute>}           />
             <Route path="/account"            element={<ProtectedRoute><Account /></ProtectedRoute>}            />
-            <Route path="/authority"              element={<ProtectedRoute><Authority /></ProtectedRoute>}          />
-            <Route path="/authority/queue"        element={<ProtectedRoute><AuthorityQueue /></ProtectedRoute>}     />
-            <Route path="/authority/cases"        element={<ProtectedRoute><AuthorityCases /></ProtectedRoute>}     />
-            <Route path="/authority/cases/:caseId" element={<ProtectedRoute><AuthorityWorkspace /></ProtectedRoute>} />
-            <Route path="/authority/parties"      element={<ProtectedRoute><AuthorityParties /></ProtectedRoute>}   />
+            <Route path="/authority"              element={<ProtectedRoute><AuthorityGate><Authority /></AuthorityGate></ProtectedRoute>}          />
+            <Route path="/authority/queue"        element={<ProtectedRoute><AuthorityGate><AuthorityQueue /></AuthorityGate></ProtectedRoute>}     />
+            <Route path="/authority/cases"        element={<ProtectedRoute><AuthorityGate><AuthorityCases /></AuthorityGate></ProtectedRoute>}     />
+            <Route path="/authority/cases/:caseId" element={<ProtectedRoute><AuthorityGate><AuthorityWorkspace /></AuthorityGate></ProtectedRoute>} />
+            <Route path="/authority/parties"      element={<ProtectedRoute><AuthorityGate><AuthorityParties /></AuthorityGate></ProtectedRoute>}   />
           </Routes>
         </div>
 

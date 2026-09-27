@@ -314,7 +314,7 @@ router.get('/me', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT u.id, u.name, u.email, u.is_available,
               CASE WHEN u.account_id = $2 THEN u.role ELSE am.role END AS role,
-              a.name AS account_name, a.plan, a.plan_status, a.onboarded
+              a.name AS account_name, a.plan, a.plan_status, a.onboarded, a.account_type
        FROM users u
        JOIN accounts a ON a.id = $2
        LEFT JOIN account_memberships am ON am.account_id = $2 AND am.user_id = u.id
@@ -325,17 +325,19 @@ router.get('/me', async (req, res) => {
     const r = rows[0];
     res.json({
       user: {
-        id:           r.id,
-        name:         r.name,
-        email:        r.email,
-        role:         r.role,
-        account_id:   payload.accountId,
-        accountId:    payload.accountId,
-        accountName:  r.account_name,
-        plan:         r.plan,
-        planStatus:   r.plan_status,
-        onboarded:    r.onboarded,
-        is_available: r.is_available,
+        id:               r.id,
+        name:             r.name,
+        email:            r.email,
+        role:             r.role,
+        account_id:       payload.accountId,
+        accountId:        payload.accountId,
+        accountName:      r.account_name,
+        account_type:     r.account_type,
+        plan:             r.plan,
+        planStatus:       r.plan_status,
+        onboarded:        r.onboarded,
+        is_available:     r.is_available,
+        authority_enabled: process.env.AUTHORITY_ENABLED === 'true',
       },
     });
   } catch {

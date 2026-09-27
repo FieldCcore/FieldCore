@@ -66,6 +66,17 @@ router.post('/internal/provision', async (req, res) => {
 // Authority Parties
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// GET /api/authority/parties — list parties for this institution account
+router.get('/parties', async (req, res) => {
+  try {
+    const { limit, offset } = req.query;
+    const parties = await authorityService.listParties(req.accountId, { limit, offset });
+    res.json(parties);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 // POST /api/authority/parties
 router.post('/parties', async (req, res) => {
   try {
@@ -102,8 +113,39 @@ router.patch('/parties/:partyId/status', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Current-user Authority Capabilities
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/authority/capabilities — returns caller's authority-relevant capabilities
+router.get('/capabilities', async (req, res) => {
+  try {
+    const { rows } = await require('../db/pool').query(
+      `SELECT capability, granted_at
+       FROM platform_user_capabilities
+       WHERE user_id = $1 AND capability LIKE 'AUTHORITY_%'
+       ORDER BY granted_at ASC`,
+      [req.userId]
+    );
+    res.json({ capabilities: rows.map(r => r.capability) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Authority Cases
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/authority/cases — list cases for this institution account (all statuses)
+router.get('/cases', async (req, res) => {
+  try {
+    const { status, limit, offset } = req.query;
+    const cases = await authorityService.listCases(req.accountId, { status, limit, offset });
+    res.json(cases);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
 
 // POST /api/authority/cases
 router.post('/cases', async (req, res) => {
@@ -197,11 +239,12 @@ router.get('/instruments/:instrumentId', async (req, res) => {
 // POST /api/authority/instruments/:instrumentId/transition
 router.post('/instruments/:instrumentId/transition', async (req, res) => {
   try {
-    const { status, actorType, revocationReason, rejectionReason, supersededByInstrumentId } =
-      req.body || {};
+    const { status, revocationReason, rejectionReason, supersededByInstrumentId } = req.body || {};
+    // actorType is NEVER read from req.body — hardcoded to prevent spoofing.
+    // Only a human reviewer authenticated via JWT may trigger instrument transitions.
     const result = await authorityService.transitionInstrument(
       req.accountId, req.userId, req.params.instrumentId, status,
-      { actorType: actorType || 'human', revocationReason, rejectionReason, supersededByInstrumentId }
+      { actorType: 'human', revocationReason, rejectionReason, supersededByInstrumentId }
     );
     res.json(result);
   } catch (err) {
@@ -335,16 +378,6 @@ router.post('/cases/:caseId/claim', async (req, res) => {
   try {
     const assignment = await authorityService.claimCase(req.accountId, req.userId, req.params.caseId);
     res.status(201).json(assignment);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-// POST /api/authority/cases/:caseId/release
-router.post('/cases/:caseId/release', async (req, res) => {
-  try {
-    const result = await authorityService.releaseCase(req.accountId, req.userId, req.params.caseId);
-    res.json(result);
   } catch (err) {
     handleError(res, err);
   }
