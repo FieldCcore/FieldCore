@@ -319,7 +319,7 @@ router.post('/jobs/:id/photos', requireAuth, upload.single('photo'), async (req,
 router.get('/jobs/:id/photos', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT *, COALESCE(url, '/uploads/' || filename) AS url
+      `SELECT *, COALESCE(url, '/api/uploads/' || filename) AS url
        FROM job_photos
        WHERE job_id = $1 AND account_id = $2
        ORDER BY CASE photo_category WHEN 'before' THEN 1 WHEN 'general' THEN 2 WHEN 'after' THEN 3 ELSE 4 END, created_at`,

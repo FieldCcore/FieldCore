@@ -7,6 +7,26 @@ if (missing.length) {
   process.exit(1);
 }
 
+// ENCRYPTION_KEY guard — must be a 64-char hex string (32 bytes) in production.
+// In dev/test a warning is emitted and the zero-key fallback is used (never for production data).
+if (process.env.NODE_ENV === 'production') {
+  const encKey = process.env.ENCRYPTION_KEY || '';
+  if (!encKey) {
+    console.error('[startup] CRITICAL: ENCRYPTION_KEY is not set. Cannot start in production without a secure encryption key. Set ENCRYPTION_KEY to a 64-character hex string in Railway.');
+    process.exit(1);
+  }
+  if (encKey.length !== 64 || !/^[0-9a-fA-F]+$/.test(encKey)) {
+    console.error('[startup] CRITICAL: ENCRYPTION_KEY must be a 64-character hexadecimal string (32 bytes). Current value has invalid format.');
+    process.exit(1);
+  }
+  if (encKey === '0'.repeat(64)) {
+    console.error('[startup] CRITICAL: ENCRYPTION_KEY is the all-zeros placeholder. Replace with a cryptographically random value before accepting real data.');
+    process.exit(1);
+  }
+} else if (!process.env.ENCRYPTION_KEY) {
+  console.warn('[startup] ⚠  ENCRYPTION_KEY is not set. Using zero-key fallback — acceptable only in dev/test. Never run production without this key.');
+}
+
 const app       = require('./src/app');
 const scheduler = require('./src/services/scheduler');
 const { runMigrations } = require('./src/db/migrate');
@@ -84,6 +104,34 @@ async function probeGeocoding() {
   }
 }
 
+// Storage configuration check — warns if R2 is not configured.
+// Photo uploads and future authority document uploads require R2.
+// Local disk uploads are ephemeral on Railway and will be lost on redeploy.
+function validateStorageConfig() {
+  const hasKey    = !!(process.env.R2_ACCESS_KEY_ID || '').trim();
+  const hasSecret = !!(process.env.R2_SECRET_ACCESS_KEY || '').trim();
+  const hasBucket = !!(process.env.R2_BUCKET || '').trim();
+  const hasPublic = !!(process.env.R2_PUBLIC_URL || '').trim();
+
+  if (hasKey && hasSecret && hasBucket) {
+    console.log(`[startup] ✓ R2 storage configured (bucket=${process.env.R2_BUCKET}, publicUrl=${hasPublic ? 'set' : 'NOT SET — uploaded files will not be accessible'})`);
+  } else {
+    const msg = '[startup] ⚠  R2 storage NOT fully configured. File uploads will be rejected at runtime. ' +
+      'Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL, and R2_ENDPOINT in Railway.';
+    if (process.env.NODE_ENV === 'production') {
+      console.error(msg);
+    } else {
+      console.warn(msg);
+    }
+  }
+}
+
+// Listen for audit write failures — these are security-relevant events.
+// In a future phase, this hook will trigger alerting/paging.
+process.on('auditFailure', ({ error, failureCount }) => {
+  console.error(`[ALERT] Audit write failure #${failureCount}: ${error}. Investigate immediately — audit gaps may have compliance implications.`);
+});
+
 function validatePlaidConfig() {
   const plaidClientId = process.env.PLAID_CLIENT_ID;
   const plaidSecret   = process.env.PLAID_SECRET;
@@ -135,6 +183,7 @@ runMigrations()
       console.log(`FieldCore API running on port ${PORT}`);
       validateQuickBooksConfig();
       validateMapsConfig();
+      validateStorageConfig();
       validatePlaidConfig();
       scheduler.startReminderJob();
       // Non-blocking post-startup tasks

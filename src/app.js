@@ -57,6 +57,7 @@ const revenueRouter            = require('./routes/revenue');
 const operationsRouter         = require('./routes/operations');
 const agreementsRouter         = require('./routes/agreements');
 const servicesRouter           = require('./routes/services');
+const uploadsRouter            = require('./routes/uploads');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -227,7 +228,10 @@ app.use('/api/integrations',                   generalLimiter, integrationsRoute
 app.use('/api/integrations/banking',           generalLimiter, bankingRouter);
 app.use('/api/agreements',                     generalLimiter, agreementsRouter);
 app.use('/api/services',                       generalLimiter, servicesRouter);
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Authenticated proxy for legacy locally-stored files.
+// New authority documents must use the Phase 2 authenticated R2 streaming endpoint instead.
+// The previously public /uploads static route has been removed — all file access requires auth.
+app.use('/api/uploads',                        generalLimiter, uploadsRouter);
 
 app.get('/health', async (req, res) => {
   const timeout = new Promise((_, reject) =>

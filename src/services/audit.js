@@ -1,6 +1,10 @@
 const pool         = require('../db/pool');
 const emailService = require('./email');
 
+// Running count of audit write failures since process start.
+// Used to detect persistent DB issues that would leave gaps in the audit trail.
+let _failureCount = 0;
+
 async function log(accountId, userId, action, entity, entityId, details, ipAddress) {
   try {
     await pool.query(
@@ -10,7 +14,14 @@ async function log(accountId, userId, action, entity, entityId, details, ipAddre
        details ? JSON.stringify(details) : null, ipAddress || null]
     );
   } catch (err) {
-    console.error('[audit]', err.message);
+    _failureCount++;
+    // Write to stderr synchronously so the failure is visible even if the event loop is stressed.
+    process.stderr.write(
+      `[audit-failure] ${new Date().toISOString()} count=${_failureCount} action=${action} error=${err.message}\n`
+    );
+    // Emit a named process event so server.js and tests can hook into it.
+    // This does NOT throw — audit failures must not cascade into primary request failures.
+    process.emit('auditFailure', { error: err.message, failureCount: _failureCount, action, accountId });
   }
 }
 
@@ -29,4 +40,8 @@ async function alertAdmin(subject, body) {
   }
 }
 
-module.exports = { log, alertAdmin };
+// Exposed for test introspection only.
+function getFailureCount() { return _failureCount; }
+function resetFailureCount() { _failureCount = 0; }
+
+module.exports = { log, alertAdmin, getFailureCount, resetFailureCount };

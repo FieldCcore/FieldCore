@@ -8,7 +8,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   name               TEXT NOT NULL,
   plan               TEXT NOT NULL DEFAULT 'starter',
   stripe_customer_id TEXT,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Tenant classification added Phase 0 (2026-09-27). Existing rows default to 'field_service'.
+  -- 'institution': financial-institution tenants (FieldCore Authority). 'fc_internal': FieldCore operational.
+  account_type       TEXT NOT NULL DEFAULT 'field_service'
+                       CHECK (account_type IN ('field_service', 'institution', 'fc_internal'))
 );
 
 -- All team members: owner, manager, tech

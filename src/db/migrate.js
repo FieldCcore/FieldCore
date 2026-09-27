@@ -2640,6 +2640,13 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment ON payment_refunds(payment_id)`,
   `CREATE INDEX IF NOT EXISTS idx_payment_refunds_account ON payment_refunds(account_id)`,
+
+  // ── ACCOUNT TYPE — distinguishes field-service tenants from future institution/FC-internal accounts ──
+  // DEFAULT 'field_service' means every existing account is unaffected.
+  // 'institution' will identify financial-institution tenants onboarded for FieldCore Authority.
+  // 'fc_internal' is reserved for FieldCore operational accounts (super-admin, audit, etc.).
+  `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'field_service'
+     CHECK (account_type IN ('field_service', 'institution', 'fc_internal'))`,
 ];
 
 async function runMigrations() {
