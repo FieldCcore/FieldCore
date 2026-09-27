@@ -58,6 +58,7 @@ const operationsRouter         = require('./routes/operations');
 const agreementsRouter         = require('./routes/agreements');
 const servicesRouter           = require('./routes/services');
 const uploadsRouter            = require('./routes/uploads');
+const authorityRouter          = require('./routes/authority');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -232,6 +233,8 @@ app.use('/api/services',                       generalLimiter, servicesRouter);
 // New authority documents must use the Phase 2 authenticated R2 streaming endpoint instead.
 // The previously public /uploads static route has been removed — all file access requires auth.
 app.use('/api/uploads',                        generalLimiter, uploadsRouter);
+// FieldCore Authority — internal/unstable; gated by AUTHORITY_ENABLED + requireAuth in the router
+app.use('/api/authority',                      generalLimiter, authorityRouter);
 
 app.get('/health', async (req, res) => {
   const timeout = new Promise((_, reject) =>

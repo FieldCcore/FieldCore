@@ -2647,6 +2647,222 @@ const MIGRATIONS = [
   // 'fc_internal' is reserved for FieldCore operational accounts (super-admin, audit, etc.).
   `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'field_service'
      CHECK (account_type IN ('field_service', 'institution', 'fc_internal'))`,
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  // FIELDCORE AUTHORITY — Domain Foundation (Phase 1, 2026-09-27)
+  // All Authority tables carry account_id (tenant isolation). Composite FKs enforce that
+  // cross-tenant links between Authority objects are impossible at the DB level.
+  // Only accounts with account_type = 'institution' may own Authority objects (service-layer).
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+  // ── Platform User Capabilities ────────────────────────────────────────────────────────────
+  // Explicit platform-level capability grants. Not grantable by tenant-level admin UIs.
+  // Used for: INSTITUTION_PROVISION (fc_internal users), AUTHORITY_INSTRUMENT_VERIFY,
+  //   AUTHORITY_INSTRUMENT_REJECT (institution reviewer users).
+  `CREATE TABLE IF NOT EXISTS platform_user_capabilities (
+     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     capability  TEXT NOT NULL,
+     granted_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (user_id, capability)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_platform_caps_user ON platform_user_capabilities(user_id, capability)`,
+
+  // ── Authority Parties ─────────────────────────────────────────────────────────────────────
+  // Tenant-scoped entity that can play roles in instruments. person | organization | ai_agent.
+  // display_name is AES-256-GCM encrypted with AUTHORITY_DATA_ENCRYPTION_KEY (PII for persons).
+  // UNIQUE(account_id, id) enables composite FK references from join tables.
+  `CREATE TABLE IF NOT EXISTS authority_parties (
+     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     party_type         TEXT NOT NULL CHECK (party_type IN ('person', 'organization', 'ai_agent')),
+     display_name       TEXT NOT NULL,
+     external_reference TEXT,
+     status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+     created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, id)
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_authority_parties_ext_ref
+     ON authority_parties(account_id, external_reference)
+     WHERE external_reference IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_parties_acct_status  ON authority_parties(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_parties_acct_created ON authority_parties(account_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_parties_created_by   ON authority_parties(created_by)`,
+
+  // ── Authority Cases ───────────────────────────────────────────────────────────────────────
+  // Tenant-scoped review/process workflow. Status machine enforced in service layer.
+  // external_case_reference is optional; unique only within the same account (partial unique index).
+  `CREATE TABLE IF NOT EXISTS authority_cases (
+     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id              UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     external_case_reference TEXT,
+     status                  TEXT NOT NULL DEFAULT 'DRAFT'
+       CHECK (status IN ('DRAFT','AWAITING_DOCUMENTS','PENDING_EXTRACTION','EXTRACTION_COMPLETE',
+                         'PENDING_HUMAN_REVIEW','HUMAN_REVIEW_IN_PROGRESS','COMPLETED','CANCELLED')),
+     created_by              UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     status_changed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     completed_at            TIMESTAMPTZ,
+     cancelled_at            TIMESTAMPTZ,
+     cancellation_reason     TEXT,
+     UNIQUE (account_id, id)
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_authority_cases_ext_ref
+     ON authority_cases(account_id, external_case_reference)
+     WHERE external_case_reference IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_cases_acct_status  ON authority_cases(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_cases_acct_created ON authority_cases(account_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_cases_created_by   ON authority_cases(created_by)`,
+
+  // ── Authority Instruments ─────────────────────────────────────────────────────────────────
+  // Source of delegated authority. Status is independent of any case.
+  // instrument_type is TEXT (validated in service layer) — extensible without schema change.
+  // superseded_by_instrument_id uses a composite self-referential FK to enforce same-tenant supersession.
+  // verified_by_user_id uses a PLAIN FK to users — no composite FK constraining verifier to the
+  //   owning institution. The institution-reviewer restriction is service-layer only (temporary, see docs).
+  `CREATE TABLE IF NOT EXISTS authority_instruments (
+     id                                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id                        UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     instrument_type                   TEXT NOT NULL,
+     status                            TEXT NOT NULL DEFAULT 'UNVERIFIED'
+       CHECK (status IN ('UNVERIFIED','PENDING_REVIEW','VERIFIED','REJECTED','REVOKED','EXPIRED','SUPERSEDED')),
+     effective_date                    DATE,
+     expiration_date                   DATE,
+     jurisdiction                      TEXT,
+     superseded_by_instrument_id       UUID,
+     revoked_at                        TIMESTAMPTZ,
+     revocation_reason                 TEXT,
+     expired_at                        TIMESTAMPTZ,
+     rejected_at                       TIMESTAMPTZ,
+     rejection_reason                  TEXT,
+     verified_by_user_id               UUID REFERENCES users(id) ON DELETE SET NULL,
+     verified_at                       TIMESTAMPTZ,
+     verification_actor_type           TEXT,
+     verification_authorization_context TEXT,
+     verification_actor_account_id     UUID REFERENCES accounts(id) ON DELETE SET NULL,
+     created_by                        UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at                        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at                        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     UNIQUE (account_id, id),
+     FOREIGN KEY (account_id, superseded_by_instrument_id)
+       REFERENCES authority_instruments(account_id, id) ON DELETE SET NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_instr_acct_status  ON authority_instruments(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_instr_acct_created ON authority_instruments(account_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_instr_created_by   ON authority_instruments(created_by)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_instr_superseded   ON authority_instruments(superseded_by_instrument_id)`,
+
+  // ── Case ↔ Instrument relationship ───────────────────────────────────────────────────────
+  // Instruments are first-class and may be linked to more than one case per tenant.
+  // Composite FKs make cross-tenant case↔instrument links impossible at the DB level.
+  `CREATE TABLE IF NOT EXISTS authority_case_instruments (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL,
+     case_id       UUID NOT NULL,
+     instrument_id UUID NOT NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, case_id)       REFERENCES authority_cases(account_id, id)       ON DELETE CASCADE,
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE CASCADE,
+     UNIQUE (account_id, case_id, instrument_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ci_case       ON authority_case_instruments(account_id, case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ci_instrument ON authority_case_instruments(account_id, instrument_id)`,
+
+  // ── Instrument Participants ───────────────────────────────────────────────────────────────
+  // role is validated in service layer (extensible). Composite FKs enforce same-tenant for
+  // both the instrument and the party references.
+  // A party may hold multiple roles on the same instrument; the same role twice is rejected
+  // by the UNIQUE constraint on (account_id, instrument_id, party_id, role).
+  `CREATE TABLE IF NOT EXISTS authority_instrument_parties (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL,
+     instrument_id UUID NOT NULL,
+     party_id      UUID NOT NULL,
+     role          TEXT NOT NULL,
+     sequence      INT,
+     status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+     conditions    JSONB,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE CASCADE,
+     FOREIGN KEY (account_id, party_id)      REFERENCES authority_parties(account_id, id)      ON DELETE CASCADE,
+     UNIQUE (account_id, instrument_id, party_id, role),
+     UNIQUE (account_id, id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ip_instrument ON authority_instrument_parties(account_id, instrument_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ip_party      ON authority_instrument_parties(account_id, party_id)`,
+
+  // ── Authority Permissions ─────────────────────────────────────────────────────────────────
+  // action_key format: DOMAIN.ACTION (validated in service layer; extensible without schema change).
+  // participant_id scopes the grant to a specific participant; null = instrument-wide.
+  `CREATE TABLE IF NOT EXISTS authority_permissions (
+     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id     UUID NOT NULL,
+     instrument_id  UUID NOT NULL,
+     action_key     TEXT NOT NULL,
+     grant_type     TEXT NOT NULL DEFAULT 'granted' CHECK (grant_type IN ('granted', 'prohibited')),
+     participant_id UUID REFERENCES authority_instrument_parties(id) ON DELETE SET NULL,
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_perms_instrument ON authority_permissions(account_id, instrument_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_perms_key        ON authority_permissions(action_key)`,
+
+  // ── Authority Restrictions ────────────────────────────────────────────────────────────────
+  // restriction_type and parameters are validated in service layer.
+  // parameters JSONB: shapes validated per restriction_type where cheap (service layer).
+  // No evaluation logic — rows are data for a future deterministic Authority Engine.
+  `CREATE TABLE IF NOT EXISTS authority_restrictions (
+     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id       UUID NOT NULL,
+     instrument_id    UUID NOT NULL,
+     permission_id    UUID REFERENCES authority_permissions(id) ON DELETE SET NULL,
+     participant_id   UUID REFERENCES authority_instrument_parties(id) ON DELETE SET NULL,
+     restriction_type TEXT NOT NULL,
+     parameters       JSONB,
+     effective_from   DATE,
+     effective_to     DATE,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_restr_instrument ON authority_restrictions(account_id, instrument_id)`,
+
+  // ── Authority Documents ───────────────────────────────────────────────────────────────────
+  // Metadata for files stored in the private Authority R2 bucket.
+  // storage_key is opaque (never contains filenames or PII).
+  // original_filename is AES-256-GCM encrypted with AUTHORITY_DATA_ENCRYPTION_KEY.
+  // Composite FKs on (account_id, case_id) and (account_id, instrument_id) enforce same-tenant
+  // links. MATCH SIMPLE semantics mean null FK parts are not checked (nullable case_id/instrument_id).
+  `CREATE TABLE IF NOT EXISTS authority_documents (
+     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id                      UUID NOT NULL,
+     case_id                         UUID,
+     instrument_id                   UUID,
+     storage_key                     TEXT NOT NULL UNIQUE,
+     original_filename               TEXT NOT NULL,
+     content_type                    TEXT NOT NULL DEFAULT 'application/pdf',
+     byte_size                       BIGINT NOT NULL,
+     content_sha256                  TEXT NOT NULL,
+     filename_encryption_key_version TEXT NOT NULL DEFAULT '1',
+     status                          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deleted')),
+     retention_until                 DATE,
+     deleted_at                      TIMESTAMPTZ,
+     uploaded_by                     UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, case_id)       REFERENCES authority_cases(account_id, id)       ON DELETE SET NULL,
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE SET NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_docs_acct_status  ON authority_documents(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_docs_acct_created ON authority_documents(account_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_docs_case         ON authority_documents(account_id, case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_docs_instrument   ON authority_documents(account_id, instrument_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_docs_uploaded_by  ON authority_documents(uploaded_by)`,
 ];
 
 async function runMigrations() {

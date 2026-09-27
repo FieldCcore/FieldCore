@@ -132,6 +132,61 @@ process.on('auditFailure', ({ error, failureCount }) => {
   console.error(`[ALERT] Audit write failure #${failureCount}: ${error}. Investigate immediately — audit gaps may have compliance implications.`);
 });
 
+// Authority feature flag and required configuration checks.
+// When AUTHORITY_ENABLED=true in production: AUTHORITY_DATA_ENCRYPTION_KEY and
+// R2_AUTHORITY_BUCKET must be valid — server refuses to start if they are not.
+// In dev/test: warns and Authority operations fail closed (they never fall back to
+// the general key or the legacy bucket).
+function validateAuthorityConfig() {
+  if (process.env.AUTHORITY_ENABLED !== 'true') {
+    console.log('[startup] Authority feature: DISABLED (set AUTHORITY_ENABLED=true to enable).');
+    return;
+  }
+
+  const { validateKeyConfig } = require('./src/services/authorityCrypto');
+  const keyResult = validateKeyConfig();
+
+  const hasBucket = !!(process.env.R2_AUTHORITY_BUCKET || '').trim();
+  const hasKey    = !!(process.env.R2_AUTHORITY_ACCESS_KEY_ID || '').trim();
+  const hasSecret = !!(process.env.R2_AUTHORITY_SECRET_ACCESS_KEY || '').trim();
+  const storageOk = hasBucket && hasKey && hasSecret;
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!keyResult.valid) {
+      console.error(
+        `[startup] CRITICAL: AUTHORITY_ENABLED=true but AUTHORITY_DATA_ENCRYPTION_KEY is invalid (${keyResult.reason}). ` +
+        'Refusing to start — live institutional data cannot be processed without a valid Authority encryption key.'
+      );
+      process.exit(1);
+    }
+    if (!storageOk) {
+      console.error(
+        '[startup] CRITICAL: AUTHORITY_ENABLED=true but Authority storage is not configured. ' +
+        'Set R2_AUTHORITY_ACCESS_KEY_ID, R2_AUTHORITY_SECRET_ACCESS_KEY, and R2_AUTHORITY_BUCKET. ' +
+        'Refusing to start.'
+      );
+      process.exit(1);
+    }
+    console.log(`[startup] ✓ Authority feature ENABLED (bucket=${process.env.R2_AUTHORITY_BUCKET}).`);
+  } else {
+    if (!keyResult.valid) {
+      console.warn(
+        `[startup] ⚠  AUTHORITY_ENABLED=true but AUTHORITY_DATA_ENCRYPTION_KEY is invalid (${keyResult.reason}). ` +
+        'Authority encryption operations will fail closed — never falling back to ENCRYPTION_KEY.'
+      );
+    }
+    if (!storageOk) {
+      console.warn(
+        '[startup] ⚠  AUTHORITY_ENABLED=true but Authority storage is not fully configured. ' +
+        'Document uploads will fail closed — never falling back to the legacy bucket.'
+      );
+    }
+    if (keyResult.valid && storageOk) {
+      console.log('[startup] ✓ Authority feature ENABLED (dev/test mode).');
+    }
+  }
+}
+
 function validatePlaidConfig() {
   const plaidClientId = process.env.PLAID_CLIENT_ID;
   const plaidSecret   = process.env.PLAID_SECRET;
@@ -184,6 +239,7 @@ runMigrations()
       validateQuickBooksConfig();
       validateMapsConfig();
       validateStorageConfig();
+      validateAuthorityConfig();
       validatePlaidConfig();
       scheduler.startReminderJob();
       // Non-blocking post-startup tasks
