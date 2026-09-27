@@ -130,10 +130,12 @@ router.get('/cases/:caseId', async (req, res) => {
 // POST /api/authority/cases/:caseId/transition
 router.post('/cases/:caseId/transition', async (req, res) => {
   try {
-    const { status, cancellationReason, systemActor } = req.body || {};
+    const { status, cancellationReason } = req.body || {};
+    // systemActor is intentionally NOT read from req.body.
+    // EXTRACTION_COMPLETE is a system-only transition; end users cannot self-declare it.
     const result = await authorityService.transitionCase(
       req.accountId, req.userId, req.params.caseId, status,
-      { cancellationReason, systemActor }
+      { cancellationReason, systemActor: false }
     );
     res.json(result);
   } catch (err) {

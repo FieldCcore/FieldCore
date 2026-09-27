@@ -356,6 +356,16 @@ async function transitionCase(accountId, userId, caseId, newStatus, opts = {}) {
     );
   }
 
+  // Guard: PENDING_EXTRACTION → EXTRACTION_COMPLETE is a system-only transition.
+  // It is NOT reachable by end users via the HTTP API.
+  // Tests drive it by passing opts.systemActor = true directly to the service.
+  if (newStatus === 'EXTRACTION_COMPLETE' && !opts.systemActor) {
+    throw _forbidden(
+      'PENDING_EXTRACTION → EXTRACTION_COMPLETE is a system-only transition and cannot be ' +
+      'triggered by end users. Pass systemActor: true from an internal service path.'
+    );
+  }
+
   // Guard: cannot complete while any linked instrument is UNVERIFIED or PENDING_REVIEW
   if (newStatus === 'COMPLETED') {
     const { rows: unready } = await pool.query(

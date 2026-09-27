@@ -704,7 +704,7 @@ describe('Case lifecycle', () => {
     expect(r2.status).toBe('AWAITING_DOCUMENTS');
 
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
-    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     const r3 = await authorityService.getCase(institutionAccountId, kase.id);
     expect(r3.status).toBe('EXTRACTION_COMPLETE');
   });
@@ -719,7 +719,7 @@ describe('Case lifecycle', () => {
 
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
-    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'HUMAN_REVIEW_IN_PROGRESS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'COMPLETED');
@@ -749,7 +749,7 @@ describe('Case lifecycle', () => {
     const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
-    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'HUMAN_REVIEW_IN_PROGRESS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'COMPLETED');
@@ -770,6 +770,23 @@ describe('Case lifecycle', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
+  // EXTRACTION_COMPLETE is a system-only transition — not reachable without systemActor: true
+  test('PENDING_EXTRACTION → EXTRACTION_COMPLETE without systemActor is rejected (system-only path)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
+
+    // Without systemActor: true, the transition is forbidden
+    await expect(
+      authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE')
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    // With systemActor: true (internal service path), it succeeds
+    await expect(
+      authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true })
+    ).resolves.toMatchObject({ status: 'EXTRACTION_COMPLETE' });
+  });
+
   // Test 22: case cannot complete while a linked instrument is UNVERIFIED or PENDING_REVIEW
   test('HUMAN_REVIEW_IN_PROGRESS → COMPLETED blocked when linked instrument is UNVERIFIED', async () => {
     const kase  = await authorityService.createCase(institutionAccountId, institutionUserId, {});
@@ -779,7 +796,7 @@ describe('Case lifecycle', () => {
     await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, kase.id, instr.id);
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
-    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'HUMAN_REVIEW_IN_PROGRESS');
 
@@ -799,7 +816,7 @@ describe('Case lifecycle', () => {
 
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
-    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'HUMAN_REVIEW_IN_PROGRESS');
 
@@ -1398,15 +1415,14 @@ describe('Data model constraints', () => {
     const instr = await authorityService.createInstrument(
       institutionAccountId, institutionUserId, { instrumentType: 'power_of_attorney' }
     );
-    await expect(
-      authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
-        { actionKey: 'invalid-format', grantType: 'granted' })
-    ).rejects.toMatchObject({ statusCode: 400 });
-
-    await expect(
-      authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
-        { actionKey: 'lowercase.action', grantType: 'granted' })
-    ).rejects.toMatchObject({ statusCode: 400 });
+    // Non-namespaced keys (no dot separator) — these were mistakenly cited as examples in the
+    // completion report; they are not valid under the DOMAIN.ACTION format requirement.
+    for (const badKey of ['SIGN', 'MANAGE_FUNDS', 'invalid-format', 'lowercase.action', 'NO_DOT']) {
+      await expect(
+        authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
+          { actionKey: badKey, grantType: 'granted' })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    }
   });
 
   test('valid action_key is accepted without schema changes', async () => {
@@ -1476,5 +1492,33 @@ describe('Migration correctness (Tests 52, 53)', () => {
       `SELECT account_type FROM accounts WHERE id = $1`, [fieldServiceAccountId]
     );
     expect(legacy.account_type).toBe('field_service');
+  });
+
+  // DB CHECK constraint rejects states that were removed/never approved (case)
+  test('DB rejects invalid case status values (open, in_progress, suspended)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    for (const badStatus of ['open', 'in_progress', 'under_review', 'suspended']) {
+      await expect(
+        pool.query(
+          `UPDATE authority_cases SET status = $1 WHERE id = $2`,
+          [badStatus, kase.id]
+        )
+      ).rejects.toThrow(/check.*constraint|violates check/i);
+    }
+  });
+
+  // DB CHECK constraint rejects states that were removed/never approved (instrument)
+  test('DB rejects invalid instrument status values (active, draft)', async () => {
+    const instr = await authorityService.createInstrument(
+      institutionAccountId, institutionUserId, { instrumentType: 'trust' }
+    );
+    for (const badStatus of ['active', 'draft', 'in_force']) {
+      await expect(
+        pool.query(
+          `UPDATE authority_instruments SET status = $1 WHERE id = $2`,
+          [badStatus, instr.id]
+        )
+      ).rejects.toThrow(/check.*constraint|violates check/i);
+    }
   });
 });
