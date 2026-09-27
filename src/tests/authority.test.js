@@ -2627,3 +2627,210 @@ describe('Issue 18 — dev seed secondary opt-in guard', () => {
     expect(seedSrc).not.toContain('DevPassword123!');
   });
 });
+
+// ── Narrow Correction Pass — Issue B: REJECTED locking discipline ─────────────
+
+describe('Correction Pass Issue B — REJECTED via full lifecycle (locking path)', () => {
+  let instrCPB, caseCPB, partyCPB, reviewerCPBId, reviewerCPBToken;
+
+  beforeAll(async () => {
+    const hash = await bcrypt.hash('pw-test-123', 10);
+    const { rows: [rv] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,$2,$3,$4,'owner') RETURNING id`,
+      [institutionAccountId, 'CP-B Reviewer', `cp-b-rev-${Date.now()}@fieldcore.test`, hash]
+    );
+    reviewerCPBId = rv.id;
+    reviewerCPBToken = makeToken(reviewerCPBId, institutionAccountId, 'owner');
+    await pool.query(
+      `INSERT INTO platform_user_capabilities (user_id, capability)
+       VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT')
+       ON CONFLICT DO NOTHING`,
+      [reviewerCPBId]
+    );
+
+    partyCPB = await authorityService.createParty(institutionAccountId, institutionUserId, {
+      partyType: 'person', displayName: 'CP-B Test Party',
+    });
+    instrCPB = await authorityService.createInstrument(institutionAccountId, institutionUserId, {
+      instrumentType: 'durable_power_of_attorney', effectiveDate: '2026-01-01', jurisdiction: 'NY',
+    });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instrCPB.id, {
+      partyId: partyCPB.id, role: 'principal', sequence: 1,
+    });
+    caseCPB = await authorityService.createCase(institutionAccountId, institutionUserId, {
+      externalCaseReference: 'SEED-CPB-001',
+    });
+    await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, caseCPB.id, instrCPB.id);
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPB.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF, {
+      caseId: caseCPB.id, instrumentId: instrCPB.id, originalFilename: 'synthetic-cpb.pdf',
+    });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPB.id, 'PENDING_EXTRACTION');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPB.id, 'EXTRACTION_COMPLETE', { systemActor: true });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPB.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instrCPB.id, 'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.claimCase(institutionAccountId, reviewerCPBId, caseCPB.id);
+  }, 45000);
+
+  test('active assignee can REJECT instrument under review (transaction locking path)', async () => {
+    const res = await request(app)
+      .post(`/api/authority/instruments/${instrCPB.id}/transition`)
+      .set('Authorization', `Bearer ${reviewerCPBToken}`)
+      .send({ status: 'REJECTED', rejectionReason: 'Synthetic rejection — CPB locking test.' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('REJECTED');
+  });
+
+  test('party rename fails after instrument is REJECTED (409)', async () => {
+    const res = await request(app)
+      .patch(`/api/authority/parties/${partyCPB.id}/display-name`)
+      .set('Authorization', `Bearer ${institutionToken}`)
+      .send({ displayName: 'CP-B Party Renamed After Reject' });
+    expect(res.status).toBe(409);
+  });
+}, 60000);
+
+describe('Correction Pass Issue B — non-assignee cannot REJECT', () => {
+  let instrCPBNA, caseCPBNA, claimerId, claimerToken, nonAssigneeId, nonAssigneeToken;
+
+  beforeAll(async () => {
+    const hash = await bcrypt.hash('pw-test-123', 10);
+
+    const { rows: [cl] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,$2,$3,$4,'owner') RETURNING id`,
+      [institutionAccountId, 'CP-BNA Claimer', `cp-bna-claimer-${Date.now()}@fieldcore.test`, hash]
+    );
+    claimerId = cl.id;
+    claimerToken = makeToken(claimerId, institutionAccountId, 'owner');
+    await pool.query(
+      `INSERT INTO platform_user_capabilities (user_id, capability)
+       VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT')
+       ON CONFLICT DO NOTHING`,
+      [claimerId]
+    );
+
+    const { rows: [na] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,$2,$3,$4,'owner') RETURNING id`,
+      [institutionAccountId, 'CP-BNA Non-Assignee', `cp-bna-na-${Date.now()}@fieldcore.test`, hash]
+    );
+    nonAssigneeId = na.id;
+    nonAssigneeToken = makeToken(nonAssigneeId, institutionAccountId, 'owner');
+    await pool.query(
+      `INSERT INTO platform_user_capabilities (user_id, capability)
+       VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT')
+       ON CONFLICT DO NOTHING`,
+      [nonAssigneeId]
+    );
+
+    instrCPBNA = await authorityService.createInstrument(institutionAccountId, institutionUserId, {
+      instrumentType: 'letter_of_authorization', effectiveDate: '2026-01-01', jurisdiction: 'CA',
+    });
+    caseCPBNA = await authorityService.createCase(institutionAccountId, institutionUserId, {
+      externalCaseReference: 'SEED-CPBNA-001',
+    });
+    await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, caseCPBNA.id, instrCPBNA.id);
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPBNA.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF, {
+      caseId: caseCPBNA.id, instrumentId: instrCPBNA.id, originalFilename: 'synthetic-cpbna.pdf',
+    });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPBNA.id, 'PENDING_EXTRACTION');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPBNA.id, 'EXTRACTION_COMPLETE', { systemActor: true });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPBNA.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instrCPBNA.id, 'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.claimCase(institutionAccountId, claimerId, caseCPBNA.id);
+  }, 45000);
+
+  test('user with REJECT capability but no active assignment is rejected (403)', async () => {
+    const res = await request(app)
+      .post(`/api/authority/instruments/${instrCPBNA.id}/transition`)
+      .set('Authorization', `Bearer ${nonAssigneeToken}`)
+      .send({ status: 'REJECTED', rejectionReason: 'Unauthorized — CP-BNA test.' });
+    expect(res.status).toBe(403);
+  });
+}, 60000);
+
+// ── Narrow Correction Pass — Issue C: participant mutation locking ────────────
+
+describe('Correction Pass Issue C — participant mutations on locked instrument', () => {
+  let instrCPC, caseCPC, partyCPC, reviewerCPCId, reviewerCPCToken, participantCPCId;
+
+  beforeAll(async () => {
+    const hash = await bcrypt.hash('pw-test-123', 10);
+    const { rows: [rc] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,$2,$3,$4,'owner') RETURNING id`,
+      [institutionAccountId, 'CP-C Reviewer', `cp-c-rev-${Date.now()}@fieldcore.test`, hash]
+    );
+    reviewerCPCId = rc.id;
+    reviewerCPCToken = makeToken(reviewerCPCId, institutionAccountId, 'owner');
+    await pool.query(
+      `INSERT INTO platform_user_capabilities (user_id, capability)
+       VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT')
+       ON CONFLICT DO NOTHING`,
+      [reviewerCPCId]
+    );
+
+    partyCPC = await authorityService.createParty(institutionAccountId, institutionUserId, {
+      partyType: 'person', displayName: 'CP-C Party',
+    });
+    instrCPC = await authorityService.createInstrument(institutionAccountId, institutionUserId, {
+      instrumentType: 'durable_power_of_attorney', effectiveDate: '2026-01-01', jurisdiction: 'TX',
+    });
+    caseCPC = await authorityService.createCase(institutionAccountId, institutionUserId, {
+      externalCaseReference: 'SEED-CPC-001',
+    });
+    await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, caseCPC.id, instrCPC.id);
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPC.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF, {
+      caseId: caseCPC.id, instrumentId: instrCPC.id, originalFilename: 'synthetic-cpc.pdf',
+    });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPC.id, 'PENDING_EXTRACTION');
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPC.id, 'EXTRACTION_COMPLETE', { systemActor: true });
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, caseCPC.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instrCPC.id, 'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.claimCase(institutionAccountId, reviewerCPCId, caseCPC.id);
+    const participant = await authorityService.addParticipant(
+      institutionAccountId, reviewerCPCId, instrCPC.id,
+      { partyId: partyCPC.id, role: 'principal', sequence: 1 }
+    );
+    participantCPCId = participant.id;
+    // Lock the instrument
+    await authorityService.transitionInstrument(institutionAccountId, reviewerCPCId, instrCPC.id, 'VERIFIED', { actorType: 'human' });
+  }, 45000);
+
+  test('addParticipant on VERIFIED instrument returns 409', async () => {
+    const extraParty = await authorityService.createParty(institutionAccountId, institutionUserId, {
+      partyType: 'person', displayName: 'CP-C Extra Party',
+    });
+    const res = await request(app)
+      .post(`/api/authority/instruments/${instrCPC.id}/parties`)
+      .set('Authorization', `Bearer ${reviewerCPCToken}`)
+      .send({ partyId: extraParty.id, role: 'agent', sequence: 2 });
+    expect(res.status).toBe(409);
+  });
+
+  test('removeParticipant on VERIFIED instrument returns 409', async () => {
+    const res = await request(app)
+      .delete(`/api/authority/instruments/${instrCPC.id}/parties/${participantCPCId}`)
+      .set('Authorization', `Bearer ${reviewerCPCToken}`);
+    expect(res.status).toBe(409);
+  });
+
+  test('addParticipant with cross-tenant party returns 404', async () => {
+    // Instrument not linked to any HUMAN_REVIEW_IN_PROGRESS case — _assertIsActiveAssigneeForInstrument passes.
+    const instrFresh = await authorityService.createInstrument(institutionAccountId, institutionUserId, {
+      instrumentType: 'letter_of_authorization',
+    });
+    const crossTenantParty = await authorityService.createParty(institution2AccountId, institution2UserId, {
+      partyType: 'person', displayName: 'Cross-Tenant Party',
+    });
+    await expect(
+      authorityService.addParticipant(institutionAccountId, institutionUserId, instrFresh.id, {
+        partyId: crossTenantParty.id, role: 'agent', sequence: 1,
+      })
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+}, 60000);

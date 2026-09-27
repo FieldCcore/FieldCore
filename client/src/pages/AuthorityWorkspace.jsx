@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 import {
   AuLoading, AuError, AuBadge, AuEmpty, AuInfo,
   instrumentTypeLabel, fmtDate, fmtDateTime, fmtEventLabel,
 } from './AuthorityShared';
+
+const PARTICIPANT_ROLES = [
+  'principal', 'agent', 'co_agent', 'successor_agent',
+  'guardian', 'trustee', 'co_trustee', 'authorized_representative',
+];
 
 // ── PDF Viewer ────────────────────────────────────────────────────────────────
 
@@ -30,8 +36,15 @@ function PdfViewer({ documentId }) {
 
 // ── Participants panel ────────────────────────────────────────────────────────
 
-function ParticipantsPanel({ participants, instrumentId, locked, onMutated }) {
-  const [removing, setRemoving] = useState(null);
+function ParticipantsPanel({ participants, instrumentId, canMutate, onMutated }) {
+  const [removing,  setRemoving]  = useState(null);
+  const [adding,    setAdding]    = useState(false);
+  const [parties,   setParties]   = useState([]);
+  const [partyLoad, setPartyLoad] = useState(false);
+  const [partyErr,  setPartyErr]  = useState('');
+  const [filter,    setFilter]    = useState('');
+  const [form,      setForm]      = useState({ partyId: '', role: PARTICIPANT_ROLES[0], sequence: '' });
+  const [addErr,    setAddErr]    = useState('');
 
   async function handleRemove(pId) {
     if (!window.confirm('Remove this participant?')) return;
@@ -46,9 +59,47 @@ function ParticipantsPanel({ participants, instrumentId, locked, onMutated }) {
     }
   }
 
-  if (!participants.length) return <AuEmpty text="No participants added." />;
+  async function openAddForm() {
+    setAdding(true);
+    setPartyLoad(true);
+    setPartyErr('');
+    setFilter('');
+    setForm({ partyId: '', role: PARTICIPANT_ROLES[0], sequence: '' });
+    setAddErr('');
+    try {
+      const res = await api.get('/authority/parties', { params: { limit: 200 } });
+      setParties(res.data || []);
+    } catch {
+      setPartyErr('Could not load parties.');
+    } finally {
+      setPartyLoad(false);
+    }
+  }
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!form.partyId) { setAddErr('Select a party.'); return; }
+    setAddErr('');
+    try {
+      await api.post(`/authority/instruments/${instrumentId}/parties`, {
+        partyId:  form.partyId,
+        role:     form.role,
+        sequence: form.sequence !== '' ? Number(form.sequence) : undefined,
+      });
+      setAdding(false);
+      onMutated();
+    } catch (e) {
+      setAddErr(e.response?.data?.error || 'Could not add participant.');
+    }
+  }
+
+  const visibleParties = parties.filter(p =>
+    !filter || (p.display_name || '').toLowerCase().includes(filter.toLowerCase())
+  );
+
   return (
     <div>
+      {!participants.length && !adding && <AuEmpty text="No participants added." />}
       {participants.map(p => (
         <div key={p.id} className="au-participant">
           <div style={{ flex: 1 }}>
@@ -57,7 +108,7 @@ function ParticipantsPanel({ participants, instrumentId, locked, onMutated }) {
             {p.party_type && <div style={{ fontSize: 11, color: 'var(--steel)' }}>{p.party_type}</div>}
           </div>
           <AuBadge status={p.status} />
-          {!locked && (
+          {canMutate && (
             <button
               className="au-btn au-btn--outline"
               style={{ padding: '3px 8px', fontSize: 11 }}
@@ -69,13 +120,77 @@ function ParticipantsPanel({ participants, instrumentId, locked, onMutated }) {
           )}
         </div>
       ))}
+
+      {canMutate && !adding && (
+        <button className="au-btn au-btn--outline" style={{ marginTop: 8, fontSize: 12 }}
+          onClick={openAddForm}>
+          + Add Participant
+        </button>
+      )}
+
+      {adding && (
+        <form onSubmit={handleAdd} style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--off-white)', padding: 12, borderRadius: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>Add Participant</div>
+          {partyLoad && <div style={{ fontSize: 12, color: 'var(--steel)' }}>Loading parties…</div>}
+          {partyErr && <div className="au-error" style={{ margin: 0 }}>{partyErr}</div>}
+          {!partyLoad && !partyErr && (
+            <>
+              <div>
+                <label className="au-label">Search parties</label>
+                <input className="au-input" placeholder="Filter by name…"
+                  value={filter} onChange={e => setFilter(e.target.value)} />
+              </div>
+              <div>
+                <label className="au-label">Party</label>
+                <select className="au-select" value={form.partyId}
+                  onChange={e => setForm(f => ({ ...f, partyId: e.target.value }))}>
+                  <option value="">— select a party —</option>
+                  {visibleParties.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name || p.id.slice(0, 8)} ({p.party_type})
+                    </option>
+                  ))}
+                </select>
+                {parties.length > 0 && visibleParties.length === 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>No parties match filter.</div>
+                )}
+                {parties.length === 0 && !partyLoad && (
+                  <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>No parties found. Create one on the Parties page.</div>
+                )}
+              </div>
+              <div>
+                <label className="au-label">Role</label>
+                <select className="au-select" value={form.role}
+                  onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                  {PARTICIPANT_ROLES.map(r => (
+                    <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="au-label">Sequence (optional)</label>
+                <input className="au-input" type="number" min="1" placeholder="e.g. 1"
+                  value={form.sequence}
+                  onChange={e => setForm(f => ({ ...f, sequence: e.target.value }))} />
+              </div>
+            </>
+          )}
+          {addErr && <div className="au-error" style={{ margin: 0 }}>{addErr}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="au-btn au-btn--primary" type="submit" style={{ fontSize: 12 }}
+              disabled={partyLoad || !!partyErr}>Add</button>
+            <button className="au-btn au-btn--outline" type="button" style={{ fontSize: 12 }}
+              onClick={() => { setAdding(false); setAddErr(''); }}>Cancel</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
 
 // ── Permissions panel ─────────────────────────────────────────────────────────
 
-function PermissionsPanel({ permissions, instrumentId, locked, onMutated }) {
+function PermissionsPanel({ permissions, instrumentId, canMutate, onMutated }) {
   async function handleRemove(pId) {
     if (!window.confirm('Remove this permission?')) return;
     try {
@@ -97,7 +212,7 @@ function PermissionsPanel({ permissions, instrumentId, locked, onMutated }) {
           <span className={`au-badge au-badge--${p.grant_type === 'granted' ? 'verified' : 'rejected'}`}>
             {p.grant_type}
           </span>
-          {!locked && (
+          {canMutate && (
             <button className="au-btn au-btn--outline" style={{ padding: '3px 8px', fontSize: 11 }}
               onClick={() => handleRemove(p.id)}>Remove</button>
           )}
@@ -109,7 +224,7 @@ function PermissionsPanel({ permissions, instrumentId, locked, onMutated }) {
 
 // ── Notes panel ───────────────────────────────────────────────────────────────
 
-function NotesPanel({ notes, caseId, onAdded }) {
+function NotesPanel({ notes, caseId, canAdd, onAdded }) {
   const [body,    setBody]    = useState('');
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
@@ -132,21 +247,23 @@ function NotesPanel({ notes, caseId, onAdded }) {
 
   return (
     <div>
-      <form onSubmit={handleSubmit} className="au-note-compose" style={{ marginBottom: 16 }}>
-        <textarea
-          className="au-note-textarea"
-          placeholder="Add a review note…"
-          value={body}
-          onChange={e => setBody(e.target.value)}
-        />
-        {error && <div className="au-error" style={{ margin: 0 }}>{error}</div>}
-        <div>
-          <button className="au-btn au-btn--primary" style={{ padding: '6px 14px', fontSize: 12 }}
-            disabled={saving || !body.trim()} type="submit">
-            {saving ? 'Saving…' : 'Add Note'}
-          </button>
-        </div>
-      </form>
+      {canAdd && (
+        <form onSubmit={handleSubmit} className="au-note-compose" style={{ marginBottom: 16 }}>
+          <textarea
+            className="au-note-textarea"
+            placeholder="Add a review note…"
+            value={body}
+            onChange={e => setBody(e.target.value)}
+          />
+          {error && <div className="au-error" style={{ margin: 0 }}>{error}</div>}
+          <div>
+            <button className="au-btn au-btn--primary" style={{ padding: '6px 14px', fontSize: 12 }}
+              disabled={saving || !body.trim()} type="submit">
+              {saving ? 'Saving…' : 'Add Note'}
+            </button>
+          </div>
+        </form>
+      )}
       {notes.length === 0 && <AuEmpty text="No notes yet." />}
       {notes.map(n => (
         <div key={n.id} className="au-note">
@@ -188,7 +305,7 @@ const RESTRICTION_TYPE_OPTS = [
   'prohibited_action', 'triggering_condition',
 ];
 
-function RestrictionsPanel({ restrictions, instrumentId, locked, onMutated }) {
+function RestrictionsPanel({ restrictions, instrumentId, canMutate, onMutated }) {
   const [adding,   setAdding]   = useState(false);
   const [removing, setRemoving] = useState(null);
   const [form,     setForm]     = useState({ restrictionType: RESTRICTION_TYPE_OPTS[0], parameters: '' });
@@ -243,7 +360,7 @@ function RestrictionsPanel({ restrictions, instrumentId, locked, onMutated }) {
               </span>
             )}
           </div>
-          {!locked && (
+          {canMutate && (
             <button
               className="au-btn au-btn--outline"
               style={{ padding: '3px 8px', fontSize: 11 }}
@@ -256,7 +373,7 @@ function RestrictionsPanel({ restrictions, instrumentId, locked, onMutated }) {
         </div>
       ))}
       {err && <div className="au-error" style={{ marginTop: 8 }}>{err}</div>}
-      {!locked && !adding && (
+      {canMutate && !adding && (
         <button className="au-btn au-btn--outline" style={{ marginTop: 8, fontSize: 12 }}
           onClick={() => setAdding(true)}>
           + Add Restriction
@@ -292,10 +409,11 @@ function RestrictionsPanel({ restrictions, instrumentId, locked, onMutated }) {
 
 // ── Instrument section ────────────────────────────────────────────────────────
 
-function InstrumentSection({ instr, onMutated }) {
+function InstrumentSection({ instr, caseStatus, isActiveAssignee, onMutated }) {
   const [expanded, setExpanded] = useState(true);
   const [tab, setTab] = useState('participants');
   const locked = ['VERIFIED', 'REJECTED', 'REVOKED', 'EXPIRED', 'SUPERSEDED'].includes(instr.status);
+  const canMutate = !locked && (caseStatus !== 'HUMAN_REVIEW_IN_PROGRESS' || isActiveAssignee);
 
   return (
     <div className="au-card" style={{ marginBottom: 12 }}>
@@ -323,7 +441,7 @@ function InstrumentSection({ instr, onMutated }) {
               <ParticipantsPanel
                 participants={instr.participants || []}
                 instrumentId={instr.id}
-                locked={locked}
+                canMutate={canMutate}
                 onMutated={onMutated}
               />
             )}
@@ -331,7 +449,7 @@ function InstrumentSection({ instr, onMutated }) {
               <PermissionsPanel
                 permissions={instr.permissions || []}
                 instrumentId={instr.id}
-                locked={locked}
+                canMutate={canMutate}
                 onMutated={onMutated}
               />
             )}
@@ -339,7 +457,7 @@ function InstrumentSection({ instr, onMutated }) {
               <RestrictionsPanel
                 restrictions={instr.restrictions || []}
                 instrumentId={instr.id}
-                locked={locked}
+                canMutate={canMutate}
                 onMutated={onMutated}
               />
             )}
@@ -355,6 +473,7 @@ function InstrumentSection({ instr, onMutated }) {
 export default function AuthorityWorkspace() {
   const { caseId } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
   const [workspace,   setWorkspace]   = useState(null);
   const [activity,    setActivity]    = useState([]);
   const [caps,        setCaps]        = useState([]);
@@ -429,7 +548,8 @@ export default function AuthorityWorkspace() {
   );
 
   const { case: kase, instruments, documents, assignments, notes } = workspace;
-  const isAssigned = assignments.length > 0;
+  const isActiveAssignee = assignments.some(a => a.assigned_to === user?.id);
+  const hasReviewCapability = caps.includes('AUTHORITY_INSTRUMENT_VERIFY') || caps.includes('AUTHORITY_INSTRUMENT_REJECT');
 
   const canTransitionCase = (to) => {
     const allowed = {
@@ -454,7 +574,7 @@ export default function AuthorityWorkspace() {
           </div>
         </div>
         <div className="au-action-bar">
-          {!isAssigned && (kase.status === 'PENDING_HUMAN_REVIEW' || kase.status === 'HUMAN_REVIEW_IN_PROGRESS') && (
+          {hasReviewCapability && !isActiveAssignee && (kase.status === 'PENDING_HUMAN_REVIEW' || kase.status === 'HUMAN_REVIEW_IN_PROGRESS') && (
             <button className="au-btn au-btn--sand" disabled={claiming} onClick={handleClaim}>
               {claiming ? 'Claiming…' : 'Claim Case'}
             </button>
@@ -532,7 +652,7 @@ export default function AuthorityWorkspace() {
               <div className="au-card"><div className="au-card-body"><AuEmpty text="No instruments linked." /></div></div>
             ) : instruments.map(instr => (
               <div key={instr.id}>
-                <InstrumentSection instr={instr} onMutated={load} />
+                <InstrumentSection instr={instr} caseStatus={kase.status} isActiveAssignee={isActiveAssignee} onMutated={load} />
                 {instr.status === 'PENDING_REVIEW' && (
                   <div className="au-action-bar" style={{ marginBottom: 12, paddingLeft: 2 }}>
                     {caps.includes('AUTHORITY_INSTRUMENT_VERIFY') && (
@@ -592,7 +712,7 @@ export default function AuthorityWorkspace() {
           <div className="au-card">
             <div className="au-card-header"><span className="au-card-title">Review Notes</span></div>
             <div className="au-card-body">
-              <NotesPanel notes={notes} caseId={caseId} onAdded={load} />
+              <NotesPanel notes={notes} caseId={caseId} canAdd={kase.status !== 'HUMAN_REVIEW_IN_PROGRESS' || isActiveAssignee} onAdded={load} />
             </div>
           </div>
 

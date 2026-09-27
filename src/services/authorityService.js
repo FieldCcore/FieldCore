@@ -884,23 +884,66 @@ async function transitionInstrument(accountId, userId, instrumentId, newStatus, 
     // Require active assignment for rejection when case is under human review
     await _assertIsActiveAssigneeForInstrument(accountId, userId, instrumentId);
 
-    const { rows: [updated] } = await pool.query(
-      `UPDATE authority_instruments
-       SET status = 'REJECTED', rejected_at = NOW(),
-           rejection_reason = $1, updated_at = NOW()
-       WHERE account_id = $2 AND id = $3 AND status = 'PENDING_REVIEW'
-       RETURNING id, status`,
-      [opts.rejectionReason || null, accountId, instrumentId]
-    );
-    if (!updated) throw _conflict('Instrument status changed concurrently. Please retry.');
+    // Lock order: instrument row (step 2), then party rows ascending (step 3) — same as VERIFIED.
+    // This prevents a concurrent party identity update from committing after REJECTED finalizes.
+    const rejectClient = await pool.connect();
+    try {
+      await rejectClient.query('BEGIN');
 
-    await auditService.log(
-      accountId, userId, 'authority.instrument.rejected',
-      'authority_instrument', instrumentId,
-      { rejection_reason: opts.rejectionReason || null },
-      null
-    );
-    return updated;
+      // Lock instrument row
+      const { rows: [lockedInstr] } = await rejectClient.query(
+        `SELECT status FROM authority_instruments WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+        [accountId, instrumentId]
+      );
+      if (!lockedInstr) { await rejectClient.query('ROLLBACK'); throw _notFound(); }
+      if (lockedInstr.status !== 'PENDING_REVIEW') {
+        await rejectClient.query('ROLLBACK');
+        throw _conflict('Instrument status changed concurrently. Please retry.');
+      }
+
+      // Lock linked party rows in ascending ID order
+      const { rows: partyRows } = await rejectClient.query(
+        `SELECT DISTINCT aip.party_id
+         FROM authority_instrument_parties aip
+         WHERE aip.account_id = $1 AND aip.instrument_id = $2
+         ORDER BY aip.party_id ASC`,
+        [accountId, instrumentId]
+      );
+      if (partyRows.length > 0) {
+        await rejectClient.query(
+          `SELECT id FROM authority_parties
+           WHERE account_id = $1 AND id = ANY($2::uuid[])
+           ORDER BY id ASC
+           FOR UPDATE`,
+          [accountId, partyRows.map(r => r.party_id)]
+        );
+      }
+
+      const { rows: [updated] } = await rejectClient.query(
+        `UPDATE authority_instruments
+         SET status = 'REJECTED', rejected_at = NOW(),
+             rejection_reason = $1, updated_at = NOW()
+         WHERE account_id = $2 AND id = $3 AND status = 'PENDING_REVIEW'
+         RETURNING id, status`,
+        [opts.rejectionReason || null, accountId, instrumentId]
+      );
+      if (!updated) { await rejectClient.query('ROLLBACK'); throw _conflict('Instrument status changed concurrently. Please retry.'); }
+
+      await rejectClient.query('COMMIT');
+
+      await auditService.log(
+        accountId, userId, 'authority.instrument.rejected',
+        'authority_instrument', instrumentId,
+        { rejection_reason: opts.rejectionReason || null },
+        null
+      );
+      return updated;
+    } catch (err) {
+      try { await rejectClient.query('ROLLBACK'); } catch {}
+      throw err;
+    } finally {
+      rejectClient.release();
+    }
   }
 
   // ── VERIFIED → SUPERSEDED ─────────────────────────────────────────────────
@@ -1063,7 +1106,7 @@ async function unlinkInstrumentFromCase(accountId, userId, caseId, instrumentId)
 async function addParticipant(accountId, userId, instrumentId, {
   partyId, role, sequence, conditions,
 }) {
-  await _assertInstrumentEditable(accountId, instrumentId);
+  // Pre-flight: active assignee check (read-only, outside transaction)
   await _assertIsActiveAssigneeForInstrument(accountId, userId, instrumentId);
 
   if (!VALID_PARTICIPANT_ROLES.has(role)) {
@@ -1072,15 +1115,32 @@ async function addParticipant(accountId, userId, instrumentId, {
     );
   }
 
-  // Party must belong to same tenant
-  const { rows: [party] } = await pool.query(
-    `SELECT id FROM authority_parties WHERE account_id = $1 AND id = $2`,
-    [accountId, partyId]
-  );
-  if (!party) throw _notFound();
-
+  // Lock instrument row (canonical step 2) before INSERT so a concurrent finalization
+  // cannot commit while we are adding a participant relationship.
+  const addClient = await pool.connect();
   try {
-    const { rows: [participant] } = await pool.query(
+    await addClient.query('BEGIN');
+
+    const { rows: [lockedInstr] } = await addClient.query(
+      `SELECT status FROM authority_instruments WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+      [accountId, instrumentId]
+    );
+    if (!lockedInstr) { await addClient.query('ROLLBACK'); throw _notFound(); }
+    if (LOCKED_INSTRUMENT_STATUSES.has(lockedInstr.status)) {
+      await addClient.query('ROLLBACK');
+      throw _conflict(
+        `Instrument is ${lockedInstr.status} — participants, permissions, and restrictions are locked.`
+      );
+    }
+
+    // Party must belong to same tenant (checked inside transaction)
+    const { rows: [party] } = await addClient.query(
+      `SELECT id FROM authority_parties WHERE account_id = $1 AND id = $2`,
+      [accountId, partyId]
+    );
+    if (!party) { await addClient.query('ROLLBACK'); throw _notFound(); }
+
+    const { rows: [participant] } = await addClient.query(
       `INSERT INTO authority_instrument_parties
          (account_id, instrument_id, party_id, role, sequence, conditions)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -1091,6 +1151,8 @@ async function addParticipant(accountId, userId, instrumentId, {
        conditions ? JSON.stringify(conditions) : null]
     );
 
+    await addClient.query('COMMIT');
+
     await auditService.log(
       accountId, userId, 'authority.participant.added',
       'authority_instrument_parties', participant.id,
@@ -1099,10 +1161,13 @@ async function addParticipant(accountId, userId, instrumentId, {
     );
     return participant;
   } catch (err) {
+    try { await addClient.query('ROLLBACK'); } catch {}
     if (err.code === '23505') {
       throw _conflict(`Party already holds role "${role}" on this instrument.`);
     }
     throw err;
+  } finally {
+    addClient.release();
   }
 }
 
@@ -1221,16 +1286,42 @@ async function _assertInstrumentEditable(accountId, instrumentId) {
 // ── Participant management (with lifecycle lock) ───────────────────────────────
 
 async function removeParticipant(accountId, userId, instrumentId, participantId) {
-  await _assertInstrumentEditable(accountId, instrumentId);
+  // Pre-flight: active assignee check (read-only, outside transaction)
   await _assertIsActiveAssigneeForInstrument(accountId, userId, instrumentId);
 
-  const { rows } = await pool.query(
-    `DELETE FROM authority_instrument_parties
-     WHERE account_id = $1 AND instrument_id = $2 AND id = $3
-     RETURNING id`,
-    [accountId, instrumentId, participantId]
-  );
-  if (!rows.length) throw _notFound();
+  // Lock instrument row (canonical step 2) before DELETE to prevent a concurrent
+  // finalization from committing while the participant relationship is changing.
+  const rmClient = await pool.connect();
+  try {
+    await rmClient.query('BEGIN');
+
+    const { rows: [lockedInstr] } = await rmClient.query(
+      `SELECT status FROM authority_instruments WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+      [accountId, instrumentId]
+    );
+    if (!lockedInstr) { await rmClient.query('ROLLBACK'); throw _notFound(); }
+    if (LOCKED_INSTRUMENT_STATUSES.has(lockedInstr.status)) {
+      await rmClient.query('ROLLBACK');
+      throw _conflict(
+        `Instrument is ${lockedInstr.status} — participants, permissions, and restrictions are locked.`
+      );
+    }
+
+    const { rows } = await rmClient.query(
+      `DELETE FROM authority_instrument_parties
+       WHERE account_id = $1 AND instrument_id = $2 AND id = $3
+       RETURNING id`,
+      [accountId, instrumentId, participantId]
+    );
+    if (!rows.length) { await rmClient.query('ROLLBACK'); throw _notFound(); }
+
+    await rmClient.query('COMMIT');
+  } catch (err) {
+    try { await rmClient.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally {
+    rmClient.release();
+  }
 
   await auditService.log(
     accountId, userId, 'authority.participant.removed',
@@ -1241,19 +1332,48 @@ async function removeParticipant(accountId, userId, instrumentId, participantId)
 }
 
 async function updateParticipantStatus(accountId, userId, instrumentId, participantId, status) {
-  await _assertInstrumentEditable(accountId, instrumentId);
+  // Pre-flight: active assignee check (read-only, outside transaction)
   await _assertIsActiveAssigneeForInstrument(accountId, userId, instrumentId);
 
   if (!['active', 'inactive'].includes(status)) {
     throw _badRequest(`Invalid participant status "${status}".`);
   }
-  const { rows: [p] } = await pool.query(
-    `UPDATE authority_instrument_parties
-     SET status = $1, updated_at = NOW()
-     WHERE account_id = $2 AND instrument_id = $3 AND id = $4
-     RETURNING id, status`,
-    [status, accountId, instrumentId, participantId]
-  );
+
+  // Lock instrument row (canonical step 2) before UPDATE
+  const upClient = await pool.connect();
+  let p;
+  try {
+    await upClient.query('BEGIN');
+
+    const { rows: [lockedInstr] } = await upClient.query(
+      `SELECT status FROM authority_instruments WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+      [accountId, instrumentId]
+    );
+    if (!lockedInstr) { await upClient.query('ROLLBACK'); throw _notFound(); }
+    if (LOCKED_INSTRUMENT_STATUSES.has(lockedInstr.status)) {
+      await upClient.query('ROLLBACK');
+      throw _conflict(
+        `Instrument is ${lockedInstr.status} — participants, permissions, and restrictions are locked.`
+      );
+    }
+
+    const { rows: [updated] } = await upClient.query(
+      `UPDATE authority_instrument_parties
+       SET status = $1, updated_at = NOW()
+       WHERE account_id = $2 AND instrument_id = $3 AND id = $4
+       RETURNING id, status`,
+      [status, accountId, instrumentId, participantId]
+    );
+    if (!updated) { await upClient.query('ROLLBACK'); throw _notFound(); }
+    p = updated;
+
+    await upClient.query('COMMIT');
+  } catch (err) {
+    try { await upClient.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally {
+    upClient.release();
+  }
   if (!p) throw _notFound();
 
   await auditService.log(
