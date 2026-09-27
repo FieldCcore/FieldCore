@@ -77,6 +77,11 @@ import Communications  from './pages/Communications';
 import Requests        from './pages/Requests';
 import Projects          from './pages/Projects';
 import ProjectWorkspace  from './pages/ProjectWorkspace';
+import Authority         from './pages/Authority';
+import AuthorityQueue    from './pages/AuthorityQueue';
+import AuthorityCases    from './pages/AuthorityCases';
+import AuthorityWorkspace from './pages/AuthorityWorkspace';
+import AuthorityParties  from './pages/AuthorityParties';
 import EntitySwitcher  from './components/EntitySwitcher';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -101,6 +106,10 @@ function TechRoute({ children }) {
 }
 
 const PAGE_TITLES = {
+  '/authority':          'Authority',
+  '/authority/queue':    'Review Queue',
+  '/authority/cases':    'Cases',
+  '/authority/parties':  'Parties',
   '/dashboard':          'Dashboard',
   '/dispatch':           'Dispatch',
   '/jobs':               'Calendar',
@@ -133,7 +142,8 @@ const IcoTeam     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IcoSettings = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 const IcoBilling  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 14h.01M10 14h4"/></svg>;
 const IcoLogout   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
-const IcoProjects = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path d="M8 13h8M8 17h5"/></svg>;
+const IcoProjects  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path d="M8 13h8M8 17h5"/></svg>;
+const IcoAuthority = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
 
 // Arrow-key navigation for role="menu" panels
 function panelKeyNav(e) {
@@ -468,10 +478,12 @@ function AppShell() {
     );
   }
 
-  const isClientProfile  = pathname.startsWith('/clients/');
+  const isClientProfile    = pathname.startsWith('/clients/');
   const isProjectWorkspace = pathname.startsWith('/projects/');
+  const isAuthorityCase    = pathname.startsWith('/authority/cases/') && pathname.split('/').length > 4;
   const pageTitle = isClientProfile ? 'Client Profile'
     : isProjectWorkspace ? 'Project'
+    : isAuthorityCase ? 'Review Workspace'
     : (PAGE_TITLES[pathname] || 'FieldCore');
 
   const ni = (to, end, Icon, label, badge) => (
@@ -540,6 +552,17 @@ function AppShell() {
                   <>
                     <div className="nav-section">Mobile</div>
                     {ni('/tech', false, IcoDispatch, 'My Jobs', null)}
+                  </>
+                )}
+
+                {/* Authority — institution accounts only */}
+                {user?.account_type === 'institution' && (
+                  <>
+                    <div className="nav-section">Authority</div>
+                    {ni('/authority',         true,  IcoAuthority, 'Dashboard',  null)}
+                    {ni('/authority/queue',   false, IcoAuthority, 'Queue',      null)}
+                    {ni('/authority/cases',   false, IcoAuthority, 'Cases',      null)}
+                    {ni('/authority/parties', false, IcoTeam,      'Parties',    null)}
                   </>
                 )}
 
@@ -632,6 +655,11 @@ function AppShell() {
             <Route path="/business-settings"  element={<ProtectedRoute><BusinessSettings /></ProtectedRoute>}  />
             <Route path="/entities"           element={<ProtectedRoute><Entities /></ProtectedRoute>}           />
             <Route path="/account"            element={<ProtectedRoute><Account /></ProtectedRoute>}            />
+            <Route path="/authority"              element={<ProtectedRoute><Authority /></ProtectedRoute>}          />
+            <Route path="/authority/queue"        element={<ProtectedRoute><AuthorityQueue /></ProtectedRoute>}     />
+            <Route path="/authority/cases"        element={<ProtectedRoute><AuthorityCases /></ProtectedRoute>}     />
+            <Route path="/authority/cases/:caseId" element={<ProtectedRoute><AuthorityWorkspace /></ProtectedRoute>} />
+            <Route path="/authority/parties"      element={<ProtectedRoute><AuthorityParties /></ProtectedRoute>}   />
           </Routes>
         </div>
 

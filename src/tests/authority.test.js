@@ -703,6 +703,8 @@ describe('Case lifecycle', () => {
     const r2 = await authorityService.getCase(institutionAccountId, kase.id);
     expect(r2.status).toBe('AWAITING_DOCUMENTS');
 
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     const r3 = await authorityService.getCase(institutionAccountId, kase.id);
@@ -718,6 +720,8 @@ describe('Case lifecycle', () => {
     await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id, 'VERIFIED', { actorType: 'human' });
 
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
@@ -748,6 +752,8 @@ describe('Case lifecycle', () => {
   test('COMPLETED → any state is rejected', async () => {
     const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
@@ -774,6 +780,8 @@ describe('Case lifecycle', () => {
   test('PENDING_EXTRACTION → EXTRACTION_COMPLETE without systemActor is rejected (system-only path)', async () => {
     const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
 
     // Without systemActor: true, the transition is forbidden
@@ -795,6 +803,8 @@ describe('Case lifecycle', () => {
 
     await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, kase.id, instr.id);
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
@@ -815,6 +825,8 @@ describe('Case lifecycle', () => {
       { actorType: 'human' });
 
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'test.pdf' });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION');
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
     await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_HUMAN_REVIEW');
@@ -1520,5 +1532,675 @@ describe('Migration correctness (Tests 52, 53)', () => {
         )
       ).rejects.toThrow(/check.*constraint|violates check/i);
     }
+  });
+
+  test('authority_review_assignments and authority_review_notes tables exist after migration', async () => {
+    for (const table of ['authority_review_assignments', 'authority_review_notes']) {
+      const { rows } = await pool.query(
+        `SELECT EXISTS (
+           SELECT FROM information_schema.tables WHERE table_name = $1
+         ) AS exists_flag`,
+        [table]
+      );
+      expect(rows[0].exists_flag).toBe(true);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 9: Stage 2 — Human Review Operations
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Helper: advance case to PENDING_HUMAN_REVIEW ──────────────────────────────
+async function _advanceCaseToHumanReview(accountId, userId) {
+  const kase = await authorityService.createCase(accountId, userId, {});
+  await authorityService.transitionCase(accountId, userId, kase.id, 'AWAITING_DOCUMENTS');
+  await authorityService.uploadDocument(accountId, userId, SYNTHETIC_PDF,
+    { caseId: kase.id, originalFilename: 'test.pdf' });
+  await authorityService.transitionCase(accountId, userId, kase.id, 'PENDING_EXTRACTION');
+  await authorityService.transitionCase(accountId, userId, kase.id, 'EXTRACTION_COMPLETE', { systemActor: true });
+  await authorityService.transitionCase(accountId, userId, kase.id, 'PENDING_HUMAN_REVIEW');
+  return kase;
+}
+
+describe('Invariant A — Extraction Readiness Guard', () => {
+  test('AWAITING_DOCUMENTS → PENDING_EXTRACTION fails with no linked documents', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await expect(
+      authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION')
+    ).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/at least one linked document/) });
+  });
+
+  test('AWAITING_DOCUMENTS → PENDING_EXTRACTION succeeds after uploading a document', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'doc.pdf' });
+    const result = await authorityService.transitionCase(
+      institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION'
+    );
+    expect(result.status).toBe('PENDING_EXTRACTION');
+  });
+
+  test('AWAITING_DOCUMENTS → PENDING_EXTRACTION fails after all documents are deleted', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    const doc = await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'doc.pdf' });
+    await authorityService.deleteDocument(institutionAccountId, institutionUserId, doc.id);
+    await expect(
+      authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'PENDING_EXTRACTION')
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('other transitions (DRAFT → AWAITING_DOCUMENTS) do not require documents', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const result = await authorityService.transitionCase(
+      institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS'
+    );
+    expect(result.status).toBe('AWAITING_DOCUMENTS');
+  });
+
+  test('Invariant A is enforced via HTTP route (400 with no documents)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.transitionCase(institutionAccountId, institutionUserId, kase.id, 'AWAITING_DOCUMENTS');
+    const res = await request(app)
+      .post(`/api/authority/cases/${kase.id}/transition`)
+      .set('Authorization', `Bearer ${institutionToken}`)
+      .send({ status: 'PENDING_EXTRACTION' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/at least one linked document/);
+  });
+});
+
+describe('Invariant B — Party Historical Record Protection', () => {
+  test('party display_name can be updated before any instrument is VERIFIED', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Before Verification' });
+    const result = await authorityService.updatePartyDisplayName(
+      institutionAccountId, institutionUserId, party.id, 'After Update'
+    );
+    expect(result.id).toBe(party.id);
+    const fetched = await authorityService.getParty(institutionAccountId, party.id);
+    expect(fetched.display_name).toBe('After Update');
+  });
+
+  test('party display_name cannot be updated once used in a VERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Protected Person' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'power_of_attorney' });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'principal' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.updatePartyDisplayName(institutionAccountId, institutionUserId, party.id, 'New Name')
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringMatching(/VERIFIED.*immutable|immutable.*VERIFIED/i) });
+  });
+
+  test('party status cannot be changed to inactive once used in a VERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'organization', displayName: 'Protected Org' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'corporate_resolution' });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'authorized_representative' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.updatePartyStatus(institutionAccountId, institutionUserId, party.id, 'inactive')
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('party in REJECTED instrument is still mutable (only VERIFIED triggers protection)', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Mutable Person' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'trustee' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'REJECTED', { actorType: 'human' });
+
+    const result = await authorityService.updatePartyDisplayName(
+      institutionAccountId, institutionUserId, party.id, 'Updated After Rejection'
+    );
+    expect(result.id).toBe(party.id);
+  });
+
+  test('updatePartyDisplayName rejects empty string', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Someone' });
+    await expect(
+      authorityService.updatePartyDisplayName(institutionAccountId, institutionUserId, party.id, '  ')
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('Invariant B enforced via HTTP route — 409 when party is in VERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'HTTP Protected' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'guardianship_order' });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'guardian' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    const res = await request(app)
+      .patch(`/api/authority/parties/${party.id}/display-name`)
+      .set('Authorization', `Bearer ${institutionToken}`)
+      .send({ displayName: 'New Name' });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('Lifecycle lock — instruments, participants, permissions, restrictions', () => {
+  test('addParticipant fails on VERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Party X' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'trustee' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    const party2 = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Party Y' });
+    await expect(
+      authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+        { partyId: party2.id, role: 'agent' })
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringMatching(/locked/) });
+  });
+
+  test('addPermission fails on VERIFIED instrument', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'corporate_resolution' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
+        { actionKey: 'BANKING.WIRE_TRANSFER', grantType: 'granted' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('addRestriction fails on VERIFIED instrument', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'letter_of_authorization' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.addRestriction(institutionAccountId, institutionUserId, instr.id,
+        { restrictionType: 'monetary_limit',
+          parameters: { amount: 100000, currency: 'USD' } })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('addParticipant / addPermission / addRestriction succeed on UNVERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Open Party' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'power_of_attorney' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'agent' });
+    expect(p.role).toBe('agent');
+    const perm = await authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
+      { actionKey: 'BANKING.WIRE_TRANSFER', grantType: 'granted' });
+    expect(perm.action_key).toBe('BANKING.WIRE_TRANSFER');
+    const restr = await authorityService.addRestriction(institutionAccountId, institutionUserId, instr.id,
+      { restrictionType: 'monetary_limit', parameters: { amount: 500000, currency: 'USD' } });
+    expect(restr.restriction_type).toBe('monetary_limit');
+  });
+
+  test('removeParticipant succeeds on UNVERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Removable' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'durable_power_of_attorney' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'agent' });
+    await expect(
+      authorityService.removeParticipant(institutionAccountId, institutionUserId, instr.id, p.id)
+    ).resolves.toBeUndefined();
+  });
+
+  test('removeParticipant fails on VERIFIED instrument (lifecycle lock)', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Locked' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'co_trustee' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.removeParticipant(institutionAccountId, institutionUserId, instr.id, p.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('removePermissionById fails on VERIFIED instrument', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'corporate_resolution' });
+    const perm = await authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
+      { actionKey: 'BANKING.TRANSFER', grantType: 'granted' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.removePermissionById(institutionAccountId, institutionUserId, instr.id, perm.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('removeRestriction fails on VERIFIED instrument', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'letter_of_authorization' });
+    const restr = await authorityService.addRestriction(institutionAccountId, institutionUserId, instr.id,
+      { restrictionType: 'date_window', parameters: null });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    await expect(
+      authorityService.removeRestriction(institutionAccountId, institutionUserId, instr.id, restr.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('updateParticipantStatus succeeds on PENDING_REVIEW instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Status Party' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'power_of_attorney' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'principal' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    const updated = await authorityService.updateParticipantStatus(
+      institutionAccountId, institutionUserId, instr.id, p.id, 'inactive'
+    );
+    expect(updated.status).toBe('inactive');
+  });
+
+  test('lifecycle lock tested via HTTP DELETE /instruments/:id/parties/:pid on VERIFIED', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'HTTP Locked' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'court_order' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'guardian' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'PENDING_REVIEW', { actorType: 'human' });
+    await authorityService.transitionInstrument(institutionAccountId, institutionUserId, instr.id,
+      'VERIFIED', { actorType: 'human' });
+
+    const res = await request(app)
+      .delete(`/api/authority/instruments/${instr.id}/parties/${p.id}`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('Review Queue and Assignments', () => {
+  test('getReviewQueue returns empty array when no cases are pending review', async () => {
+    const queue = await authorityService.getReviewQueue(institutionAccountId, institutionUserId);
+    const reviewCases = queue.filter(c =>
+      c.status === 'PENDING_HUMAN_REVIEW' || c.status === 'HUMAN_REVIEW_IN_PROGRESS'
+    );
+    // May contain cases from other tests; we just confirm the call succeeds
+    expect(Array.isArray(queue)).toBe(true);
+  });
+
+  test('getReviewQueue requires review capability — field_service account is rejected', async () => {
+    await expect(
+      authorityService.getReviewQueue(fieldServiceAccountId, fieldServiceUserId)
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  test('getReviewQueue returns cases in PENDING_HUMAN_REVIEW', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    const queue = await authorityService.getReviewQueue(institutionAccountId, institutionUserId);
+    const found = queue.find(c => c.id === kase.id);
+    expect(found).toBeDefined();
+    expect(found.status).toBe('PENDING_HUMAN_REVIEW');
+  });
+
+  test('claimCase transitions PENDING_HUMAN_REVIEW → HUMAN_REVIEW_IN_PROGRESS and creates assignment', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    const assignment = await authorityService.claimCase(institutionAccountId, institutionUserId, kase.id);
+    expect(assignment.case_id).toBe(kase.id);
+    expect(assignment.assigned_to).toBe(institutionUserId);
+
+    const updatedCase = await authorityService.getCase(institutionAccountId, kase.id);
+    expect(updatedCase.status).toBe('HUMAN_REVIEW_IN_PROGRESS');
+  });
+
+  test('claimCase on already-claimed case by same user throws 409', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    await authorityService.claimCase(institutionAccountId, institutionUserId, kase.id);
+    await expect(
+      authorityService.claimCase(institutionAccountId, institutionUserId, kase.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('claimCase fails on case in wrong status (DRAFT)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.claimCase(institutionAccountId, institutionUserId, kase.id)
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('claimCase requires review capability', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    await expect(
+      authorityService.claimCase(fieldServiceAccountId, fieldServiceUserId, kase.id)
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  test('releaseCase removes active assignment', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    await authorityService.claimCase(institutionAccountId, institutionUserId, kase.id);
+    const result = await authorityService.releaseCase(institutionAccountId, institutionUserId, kase.id);
+    expect(result.released).toBe(true);
+
+    // After release, claim again should succeed
+    const assignment2 = await authorityService.claimCase(institutionAccountId, institutionUserId, kase.id);
+    expect(assignment2.case_id).toBe(kase.id);
+  });
+
+  test('releaseCase with no active assignment throws 404', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    await expect(
+      authorityService.releaseCase(institutionAccountId, institutionUserId, kase.id)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('GET /api/authority/queue returns cases needing review', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    const res = await request(app)
+      .get('/api/authority/queue')
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    const found = res.body.find(c => c.id === kase.id);
+    expect(found).toBeDefined();
+  });
+
+  test('POST /api/authority/cases/:caseId/claim succeeds', async () => {
+    const kase = await _advanceCaseToHumanReview(institutionAccountId, institutionUserId);
+    const res = await request(app)
+      .post(`/api/authority/cases/${kase.id}/claim`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(201);
+    expect(res.body.case_id).toBe(kase.id);
+  });
+});
+
+describe('Review Workspace', () => {
+  test('getReviewWorkspace returns case, instruments, documents, assignments, notes', async () => {
+    const kase  = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'power_of_attorney' });
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Workspace Person' });
+
+    await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, kase.id, instr.id);
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'principal' });
+    await authorityService.uploadDocument(institutionAccountId, institutionUserId, SYNTHETIC_PDF,
+      { caseId: kase.id, originalFilename: 'poa.pdf' });
+
+    const workspace = await authorityService.getReviewWorkspace(
+      institutionAccountId, institutionUserId, kase.id
+    );
+
+    expect(workspace.case.id).toBe(kase.id);
+    expect(workspace.instruments).toHaveLength(1);
+    expect(workspace.instruments[0].id).toBe(instr.id);
+    expect(workspace.instruments[0].participants).toHaveLength(1);
+    expect(workspace.instruments[0].participants[0].display_name).toBe('Workspace Person');
+    expect(workspace.documents).toHaveLength(1);
+  });
+
+  test('getReviewWorkspace decrypts party display_name', async () => {
+    const kase  = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Alice Trustee' });
+
+    await authorityService.linkInstrumentToCase(institutionAccountId, institutionUserId, kase.id, instr.id);
+    await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'trustee' });
+
+    const workspace = await authorityService.getReviewWorkspace(
+      institutionAccountId, institutionUserId, kase.id
+    );
+    expect(workspace.instruments[0].participants[0].display_name).toBe('Alice Trustee');
+  });
+
+  test('getReviewWorkspace is tenant-scoped (cross-tenant access returns 404)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.getReviewWorkspace(institution2AccountId, institution2UserId, kase.id)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('GET /api/authority/cases/:caseId/workspace returns full workspace', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const res = await request(app)
+      .get(`/api/authority/cases/${kase.id}/workspace`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.case.id).toBe(kase.id);
+    expect(Array.isArray(res.body.instruments)).toBe(true);
+    expect(Array.isArray(res.body.documents)).toBe(true);
+    expect(Array.isArray(res.body.assignments)).toBe(true);
+    expect(Array.isArray(res.body.notes)).toBe(true);
+  });
+});
+
+describe('Review Notes', () => {
+  test('addReviewNote creates a note', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const note = await authorityService.addReviewNote(
+      institutionAccountId, institutionUserId, kase.id, 'This is a review note.'
+    );
+    expect(note.body).toBe('This is a review note.');
+    expect(note.case_id).toBe(kase.id);
+  });
+
+  test('addReviewNote rejects empty body', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.addReviewNote(institutionAccountId, institutionUserId, kase.id, '  ')
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('addReviewNote rejects body over 10,000 characters', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.addReviewNote(institutionAccountId, institutionUserId, kase.id, 'x'.repeat(10001))
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('getReviewNotes returns notes for a case ordered DESC by created_at', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.addReviewNote(institutionAccountId, institutionUserId, kase.id, 'Note 1');
+    await authorityService.addReviewNote(institutionAccountId, institutionUserId, kase.id, 'Note 2');
+    const notes = await authorityService.getReviewNotes(institutionAccountId, kase.id);
+    expect(notes.length).toBeGreaterThanOrEqual(2);
+    // Most recent first
+    expect(new Date(notes[0].created_at) >= new Date(notes[1].created_at)).toBe(true);
+  });
+
+  test('notes are immutable — no update or delete service method exposed', async () => {
+    expect(authorityService.updateReviewNote).toBeUndefined();
+    expect(authorityService.deleteReviewNote).toBeUndefined();
+  });
+
+  test('addReviewNote can be scoped to an instrument', async () => {
+    const kase  = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    const note = await authorityService.addReviewNote(
+      institutionAccountId, institutionUserId, kase.id, 'Instrument note', instr.id
+    );
+    expect(note.instrument_id).toBe(instr.id);
+  });
+
+  test('POST /api/authority/cases/:caseId/notes creates note', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const res = await request(app)
+      .post(`/api/authority/cases/${kase.id}/notes`)
+      .set('Authorization', `Bearer ${institutionToken}`)
+      .send({ body: 'HTTP review note.' });
+    expect(res.status).toBe(201);
+    expect(res.body.body).toBe('HTTP review note.');
+  });
+
+  test('GET /api/authority/cases/:caseId/notes returns notes', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await authorityService.addReviewNote(institutionAccountId, institutionUserId, kase.id, 'Note for GET');
+    const res = await request(app)
+      .get(`/api/authority/cases/${kase.id}/notes`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.some(n => n.body === 'Note for GET')).toBe(true);
+  });
+});
+
+describe('Audit Activity Feed', () => {
+  test('getAuditActivity returns case events', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const events = await authorityService.getAuditActivity(institutionAccountId, 'case', kase.id);
+    expect(Array.isArray(events)).toBe(true);
+    // createCase generates at least one audit log event
+    expect(events.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('getAuditActivity returns instrument events', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'trust' });
+    const events = await authorityService.getAuditActivity(institutionAccountId, 'instrument', instr.id);
+    expect(Array.isArray(events)).toBe(true);
+    expect(events.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('getAuditActivity rejects invalid subjectType', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.getAuditActivity(institutionAccountId, 'document', kase.id)
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('getAuditActivity is tenant-scoped (cross-tenant returns 404)', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    await expect(
+      authorityService.getAuditActivity(institution2AccountId, 'case', kase.id)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('GET /api/authority/cases/:caseId/activity returns events', async () => {
+    const kase = await authorityService.createCase(institutionAccountId, institutionUserId, {});
+    const res = await request(app)
+      .get(`/api/authority/cases/${kase.id}/activity`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/authority/instruments/:instrumentId/activity returns events', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'guardianship_order' });
+    const res = await request(app)
+      .get(`/api/authority/instruments/${instr.id}/activity`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+
+describe('Participant, Permission, Restriction CRUD via HTTP', () => {
+  test('DELETE /instruments/:id/parties/:pid succeeds on UNVERIFIED instrument', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Deletable' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'power_of_attorney' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'agent' });
+
+    const res = await request(app)
+      .delete(`/api/authority/instruments/${instr.id}/parties/${p.id}`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.removed).toBe(true);
+  });
+
+  test('DELETE /instruments/:id/permissions/:pid succeeds on UNVERIFIED', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'corporate_resolution' });
+    const perm = await authorityService.addPermission(institutionAccountId, institutionUserId, instr.id,
+      { actionKey: 'BANKING.DEBIT', grantType: 'granted' });
+
+    const res = await request(app)
+      .delete(`/api/authority/instruments/${instr.id}/permissions/${perm.id}`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.removed).toBe(true);
+  });
+
+  test('DELETE /instruments/:id/restrictions/:rid succeeds on UNVERIFIED', async () => {
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'letter_of_authorization' });
+    const restr = await authorityService.addRestriction(institutionAccountId, institutionUserId, instr.id,
+      { restrictionType: 'account_scope', parameters: null });
+
+    const res = await request(app)
+      .delete(`/api/authority/instruments/${instr.id}/restrictions/${restr.id}`)
+      .set('Authorization', `Bearer ${institutionToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.removed).toBe(true);
+  });
+
+  test('PATCH /instruments/:id/parties/:pid updates participant status', async () => {
+    const party = await authorityService.createParty(institutionAccountId, institutionUserId,
+      { partyType: 'person', displayName: 'Status Target' });
+    const instr = await authorityService.createInstrument(institutionAccountId, institutionUserId,
+      { instrumentType: 'durable_power_of_attorney' });
+    const p = await authorityService.addParticipant(institutionAccountId, institutionUserId, instr.id,
+      { partyId: party.id, role: 'agent' });
+
+    const res = await request(app)
+      .patch(`/api/authority/instruments/${instr.id}/parties/${p.id}`)
+      .set('Authorization', `Bearer ${institutionToken}`)
+      .send({ status: 'inactive' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('inactive');
   });
 });

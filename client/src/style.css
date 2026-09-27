@@ -10421,3 +10421,205 @@ tr:focus-within .inv-row-actions,
 @media (max-width: 480px) {
   .prj-kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   FIELDCORE AUTHORITY — Internal Review UI
+   Prefix: au-
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Page header ─────────────────────────────────────────── */
+.au-page { padding: 24px 28px; max-width: 1200px; }
+.au-page-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.au-page-title {
+  font-size: 20px; font-weight: 700; color: var(--navy); line-height: 1.2;
+}
+.au-page-subtitle { font-size: 13px; color: var(--steel); margin-top: 3px; }
+
+/* ── KPI strip ───────────────────────────────────────────── */
+.au-kpi-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;
+}
+.au-kpi-card {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: var(--r-lg);
+  padding: 16px 20px;
+}
+.au-kpi-label { font-size: 11px; font-weight: 600; color: var(--steel); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.au-kpi-value { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
+.au-kpi-meta  { font-size: 12px; color: var(--steel); margin-top: 4px; }
+
+/* ── Table ───────────────────────────────────────────────── */
+.au-table-card {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.au-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.au-table th {
+  padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px;
+  color: var(--steel); text-transform: uppercase; letter-spacing: .06em;
+  background: var(--offwhite); border-bottom: 1px solid var(--lightgray);
+}
+.au-table td { padding: 12px 14px; border-bottom: 1px solid var(--lightgray); color: var(--navy); }
+.au-table tr:last-child td { border-bottom: none; }
+.au-table tr:hover td { background: var(--offwhite); cursor: pointer; }
+.au-table--no-hover tr:hover td { background: transparent; cursor: default; }
+
+/* ── Empty state ─────────────────────────────────────────── */
+.au-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px 24px; text-align: center; color: var(--steel);
+}
+.au-empty-icon { font-size: 32px; margin-bottom: 12px; opacity: .4; }
+.au-empty-text { font-size: 14px; color: var(--steel); }
+
+/* ── Status badges for Authority objects ─────────────────── */
+.au-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.au-badge--draft              { background: var(--offwhite);  color: var(--slate); border: 1px solid var(--lightgray); }
+.au-badge--awaiting_documents { background: var(--amber-lt);  color: var(--amber); }
+.au-badge--pending_extraction { background: var(--blue-lt);   color: var(--blue); }
+.au-badge--extraction_complete{ background: var(--teal-lt);   color: var(--teal); }
+.au-badge--pending_human_review{ background: var(--yellow-lt); color: var(--yellow); border: 1px solid var(--yellow-bd); }
+.au-badge--human_review_in_progress{ background: #EDE9FE; color: #5B21B6; }
+.au-badge--completed          { background: var(--green-lt);  color: var(--green); }
+.au-badge--cancelled          { background: var(--red-lt);    color: var(--red); }
+.au-badge--unverified         { background: var(--offwhite);  color: var(--slate); border: 1px solid var(--lightgray); }
+.au-badge--pending_review     { background: var(--yellow-lt); color: var(--yellow); border: 1px solid var(--yellow-bd); }
+.au-badge--verified           { background: var(--green-lt);  color: var(--green); }
+.au-badge--rejected           { background: var(--red-lt);    color: var(--red); }
+.au-badge--revoked            { background: var(--red-lt);    color: var(--red); }
+.au-badge--expired            { background: var(--offwhite);  color: var(--slate); }
+.au-badge--superseded         { background: var(--offwhite);  color: var(--slate); }
+
+/* ── Workspace layout ────────────────────────────────────── */
+.au-workspace { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+.au-workspace-main { display: flex; flex-direction: column; gap: 16px; }
+.au-workspace-aside { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 24px; }
+
+/* ── Section card ────────────────────────────────────────── */
+.au-card {
+  background: #fff; border: 1px solid var(--lightgray); border-radius: var(--r-lg);
+}
+.au-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--lightgray);
+}
+.au-card-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+.au-card-body  { padding: 16px 18px; }
+
+/* ── Instrument list within workspace ────────────────────── */
+.au-instr-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--lightgray);
+}
+.au-instr-row:last-child { border-bottom: none; }
+.au-instr-type { font-size: 13px; font-weight: 600; color: var(--navy); }
+.au-instr-meta { font-size: 12px; color: var(--steel); }
+
+/* ── Participant list ────────────────────────────────────── */
+.au-participant {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--lightgray);
+}
+.au-participant:last-child { border-bottom: none; }
+.au-participant-name { font-size: 13px; font-weight: 600; color: var(--navy); }
+.au-participant-role { font-size: 11px; color: var(--steel); text-transform: capitalize; }
+
+/* ── Review notes ────────────────────────────────────────── */
+.au-note { padding: 10px 0; border-bottom: 1px solid var(--lightgray); }
+.au-note:last-child { border-bottom: none; }
+.au-note-author { font-size: 11px; font-weight: 600; color: var(--slate); margin-bottom: 3px; }
+.au-note-body   { font-size: 13px; color: var(--navy); line-height: 1.5; }
+.au-note-time   { font-size: 11px; color: var(--steel); margin-top: 3px; }
+
+/* ── Note compose ────────────────────────────────────────── */
+.au-note-compose { display: flex; flex-direction: column; gap: 8px; }
+.au-note-textarea {
+  width: 100%; min-height: 72px; padding: 10px 12px; border: 1px solid var(--lightgray);
+  border-radius: var(--r-sm); font-size: 13px; color: var(--navy); resize: vertical;
+  font-family: 'Inter', sans-serif; line-height: 1.5;
+}
+.au-note-textarea:focus { border-color: var(--sand); outline: none; }
+
+/* ── Activity feed ───────────────────────────────────────── */
+.au-activity-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--lightgray); }
+.au-activity-item:last-child { border-bottom: none; }
+.au-activity-action { font-size: 12px; font-weight: 600; color: var(--navy); }
+.au-activity-meta   { font-size: 11px; color: var(--steel); margin-top: 2px; }
+.au-activity-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--sand);
+  flex-shrink: 0; margin-top: 5px;
+}
+
+/* ── PDF viewer ──────────────────────────────────────────── */
+.au-pdf-frame {
+  width: 100%; height: 600px; border: none; border-radius: var(--r-md);
+  background: var(--offwhite);
+}
+
+/* ── Action bar ──────────────────────────────────────────── */
+.au-action-bar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.au-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--r-sm); font-size: 13px;
+  font-weight: 600; cursor: pointer; border: none; transition: opacity .12s;
+}
+.au-btn:disabled { opacity: .45; cursor: default; }
+.au-btn--primary  { background: var(--navy);  color: var(--white); }
+.au-btn--success  { background: var(--green); color: var(--white); }
+.au-btn--danger   { background: var(--red);   color: var(--white); }
+.au-btn--outline  { background: transparent; border: 1px solid var(--lightgray); color: var(--navy); }
+.au-btn--sand     { background: var(--sand);  color: var(--navy); }
+
+/* ── Form elements ───────────────────────────────────────── */
+.au-input {
+  height: 36px; padding: 0 12px; border: 1px solid var(--lightgray);
+  border-radius: var(--r-sm); font-size: 13px; color: var(--navy); background: #fff; width: 100%;
+}
+.au-input:focus { border-color: var(--sand); outline: none; }
+.au-label { font-size: 12px; font-weight: 600; color: var(--slate); margin-bottom: 4px; display: block; }
+.au-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.au-select {
+  height: 36px; padding: 0 12px; border: 1px solid var(--lightgray);
+  border-radius: var(--r-sm); font-size: 13px; color: var(--navy); background: #fff;
+  cursor: pointer; width: 100%;
+}
+.au-select:focus { border-color: var(--sand); outline: none; }
+
+/* ── Error / info banners ────────────────────────────────── */
+.au-error { background: var(--red-lt); border: 1px solid #FFCDD2; border-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; color: var(--red); margin-bottom: 12px; }
+.au-info  { background: var(--blue-lt); border: 1px solid #BBDEFB; border-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; color: var(--blue); margin-bottom: 12px; }
+
+/* ── Inline loading ──────────────────────────────────────── */
+.au-loading { display: flex; align-items: center; justify-content: center; padding: 32px; color: var(--steel); font-size: 14px; }
+
+/* ── Toolbar / filter row ────────────────────────────────── */
+.au-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.au-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+
+/* ── Lock indicator ──────────────────────────────────────── */
+.au-lock-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border-radius: 99px; font-size: 11px; font-weight: 600;
+  background: var(--amber-lt); color: var(--amber);
+}
+
+@media (max-width: 1024px) {
+  .au-workspace { grid-template-columns: 1fr; }
+  .au-workspace-aside { position: static; }
+  .au-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .au-kpi-strip { grid-template-columns: 1fr; }
+  .au-page { padding: 16px; }
+}

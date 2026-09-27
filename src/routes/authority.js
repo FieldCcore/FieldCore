@@ -316,4 +316,185 @@ router.delete('/documents/:documentId', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Human Review Queue & Assignments
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/authority/queue
+router.get('/queue', async (req, res) => {
+  try {
+    const queue = await authorityService.getReviewQueue(req.accountId, req.userId);
+    res.json(queue);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/cases/:caseId/claim
+router.post('/cases/:caseId/claim', async (req, res) => {
+  try {
+    const assignment = await authorityService.claimCase(req.accountId, req.userId, req.params.caseId);
+    res.status(201).json(assignment);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/cases/:caseId/release
+router.post('/cases/:caseId/release', async (req, res) => {
+  try {
+    const result = await authorityService.releaseCase(req.accountId, req.userId, req.params.caseId);
+    res.json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// PUT /api/authority/cases/:caseId/reviewer
+router.put('/cases/:caseId/reviewer', async (req, res) => {
+  try {
+    const result = await authorityService.assignReviewer(
+      req.accountId, req.userId, req.params.caseId, req.body?.targetUserId
+    );
+    res.status(201).json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/cases/:caseId/workspace
+router.get('/cases/:caseId/workspace', async (req, res) => {
+  try {
+    const workspace = await authorityService.getReviewWorkspace(
+      req.accountId, req.userId, req.params.caseId
+    );
+    res.json(workspace);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/cases/:caseId/notes
+router.post('/cases/:caseId/notes', async (req, res) => {
+  try {
+    const note = await authorityService.addReviewNote(
+      req.accountId, req.userId, req.params.caseId,
+      req.body?.body, req.body?.instrumentId || null
+    );
+    res.status(201).json(note);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/cases/:caseId/notes
+router.get('/cases/:caseId/notes', async (req, res) => {
+  try {
+    const notes = await authorityService.getReviewNotes(
+      req.accountId, req.params.caseId,
+      { instrumentId: req.query.instrumentId || null }
+    );
+    res.json(notes);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/cases/:caseId/activity
+router.get('/cases/:caseId/activity', async (req, res) => {
+  try {
+    const events = await authorityService.getAuditActivity(
+      req.accountId, 'case', req.params.caseId
+    );
+    res.json(events);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/instruments/:instrumentId/activity
+router.get('/instruments/:instrumentId/activity', async (req, res) => {
+  try {
+    const events = await authorityService.getAuditActivity(
+      req.accountId, 'instrument', req.params.instrumentId
+    );
+    res.json(events);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Participant / Permission / Restriction mutation (with lifecycle lock)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PATCH /api/authority/instruments/:instrumentId/parties/:participantId
+router.patch('/instruments/:instrumentId/parties/:participantId', async (req, res) => {
+  try {
+    const p = await authorityService.updateParticipantStatus(
+      req.accountId, req.userId,
+      req.params.instrumentId, req.params.participantId,
+      req.body?.status
+    );
+    res.json(p);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// DELETE /api/authority/instruments/:instrumentId/parties/:participantId
+router.delete('/instruments/:instrumentId/parties/:participantId', async (req, res) => {
+  try {
+    await authorityService.removeParticipant(
+      req.accountId, req.userId,
+      req.params.instrumentId, req.params.participantId
+    );
+    res.json({ removed: true });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// DELETE /api/authority/instruments/:instrumentId/permissions/:permissionId
+router.delete('/instruments/:instrumentId/permissions/:permissionId', async (req, res) => {
+  try {
+    await authorityService.removePermissionById(
+      req.accountId, req.userId,
+      req.params.instrumentId, req.params.permissionId
+    );
+    res.json({ removed: true });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// DELETE /api/authority/instruments/:instrumentId/restrictions/:restrictionId
+router.delete('/instruments/:instrumentId/restrictions/:restrictionId', async (req, res) => {
+  try {
+    await authorityService.removeRestriction(
+      req.accountId, req.userId,
+      req.params.instrumentId, req.params.restrictionId
+    );
+    res.json({ removed: true });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Party mutations (display name update with Invariant B protection)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PATCH /api/authority/parties/:partyId/display-name
+router.patch('/parties/:partyId/display-name', async (req, res) => {
+  try {
+    const result = await authorityService.updatePartyDisplayName(
+      req.accountId, req.userId, req.params.partyId, req.body?.displayName
+    );
+    res.json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 module.exports = router;

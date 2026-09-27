@@ -281,23 +281,39 @@ async function updatePartyStatus(accountId, userId, partyId, status) {
   if (!['active', 'inactive'].includes(status)) {
     throw _badRequest(`Invalid status "${status}".`);
   }
-  const { rows: [party] } = await pool.query(
-    `UPDATE authority_parties
-     SET status = $1, updated_at = NOW()
-     WHERE account_id = $2 AND id = $3
-     RETURNING id, status`,
-    [status, accountId, partyId]
-  );
-  if (!party) throw _notFound();
 
-  await auditService.log(
-    accountId, userId, 'authority.party.status_changed',
-    'authority_party', partyId,
-    { new_status: status },
-    null
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `SELECT id FROM authority_parties WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+      [accountId, partyId]
+    );
+    await _assertPartyMutable(client, accountId, partyId);
 
-  return party;
+    const { rows: [party] } = await client.query(
+      `UPDATE authority_parties
+       SET status = $1, updated_at = NOW()
+       WHERE account_id = $2 AND id = $3
+       RETURNING id, status`,
+      [status, accountId, partyId]
+    );
+    if (!party) { await client.query('ROLLBACK'); throw _notFound(); }
+    await client.query('COMMIT');
+
+    await auditService.log(
+      accountId, userId, 'authority.party.status_changed',
+      'authority_party', partyId,
+      { new_status: status },
+      null
+    );
+    return party;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ── Authority Cases ───────────────────────────────────────────────────────────
@@ -354,6 +370,24 @@ async function transitionCase(accountId, userId, caseId, newStatus, opts = {}) {
     throw _badRequest(
       `Cannot transition case from ${kase.status} to ${newStatus}.`
     );
+  }
+
+  // Guard: AWAITING_DOCUMENTS → PENDING_EXTRACTION requires at least one active document
+  // linked to this case (Invariant A — extraction readiness). Race-safe: the caller must
+  // hold a transaction or accept a 400 if documents are concurrently deleted before the
+  // status UPDATE commits.
+  if (newStatus === 'PENDING_EXTRACTION') {
+    const { rows: [docCount] } = await pool.query(
+      `SELECT COUNT(*) AS cnt
+       FROM authority_documents
+       WHERE account_id = $1 AND case_id = $2 AND status = 'active'`,
+      [accountId, caseId]
+    );
+    if (parseInt(docCount.cnt, 10) === 0) {
+      throw _badRequest(
+        'Case cannot be submitted for extraction without at least one linked document.'
+      );
+    }
   }
 
   // Guard: PENDING_EXTRACTION → EXTRACTION_COMPLETE is a system-only transition.
@@ -753,7 +787,7 @@ async function unlinkInstrumentFromCase(accountId, userId, caseId, instrumentId)
 async function addParticipant(accountId, userId, instrumentId, {
   partyId, role, sequence, conditions,
 }) {
-  await getInstrument(accountId, instrumentId);
+  await _assertInstrumentEditable(accountId, instrumentId);
 
   if (!VALID_PARTICIPANT_ROLES.has(role)) {
     throw _badRequest(
@@ -800,7 +834,7 @@ async function addParticipant(accountId, userId, instrumentId, {
 async function addPermission(accountId, userId, instrumentId, {
   actionKey, grantType = 'granted', participantId,
 }) {
-  await getInstrument(accountId, instrumentId);
+  await _assertInstrumentEditable(accountId, instrumentId);
 
   if (!ACTION_KEY_RE.test(actionKey)) {
     throw _badRequest(
@@ -848,7 +882,7 @@ async function addRestriction(accountId, userId, instrumentId, {
   permissionId, participantId, restrictionType, parameters,
   effectiveFrom, effectiveTo,
 }) {
-  await getInstrument(accountId, instrumentId);
+  await _assertInstrumentEditable(accountId, instrumentId);
 
   if (!VALID_RESTRICTION_TYPES.has(restrictionType)) {
     throw _badRequest(
@@ -889,6 +923,547 @@ async function addRestriction(accountId, userId, instrumentId, {
     null
   );
   return restr;
+}
+
+// ── Lifecycle lock helper ─────────────────────────────────────────────────────
+
+const LOCKED_INSTRUMENT_STATUSES = new Set(['VERIFIED', 'REJECTED', 'REVOKED', 'EXPIRED', 'SUPERSEDED']);
+
+async function _assertInstrumentEditable(accountId, instrumentId) {
+  const instr = await getInstrument(accountId, instrumentId);
+  if (LOCKED_INSTRUMENT_STATUSES.has(instr.status)) {
+    throw _conflict(
+      `Instrument is ${instr.status} — participants, permissions, and restrictions are locked.`
+    );
+  }
+  return instr;
+}
+
+// ── Participant management (with lifecycle lock) ───────────────────────────────
+
+async function removeParticipant(accountId, userId, instrumentId, participantId) {
+  await _assertInstrumentEditable(accountId, instrumentId);
+
+  const { rows } = await pool.query(
+    `DELETE FROM authority_instrument_parties
+     WHERE account_id = $1 AND instrument_id = $2 AND id = $3
+     RETURNING id`,
+    [accountId, instrumentId, participantId]
+  );
+  if (!rows.length) throw _notFound();
+
+  await auditService.log(
+    accountId, userId, 'authority.participant.removed',
+    'authority_instrument_parties', participantId,
+    { instrument_id: instrumentId },
+    null
+  );
+}
+
+async function updateParticipantStatus(accountId, userId, instrumentId, participantId, status) {
+  await _assertInstrumentEditable(accountId, instrumentId);
+
+  if (!['active', 'inactive'].includes(status)) {
+    throw _badRequest(`Invalid participant status "${status}".`);
+  }
+  const { rows: [p] } = await pool.query(
+    `UPDATE authority_instrument_parties
+     SET status = $1, updated_at = NOW()
+     WHERE account_id = $2 AND instrument_id = $3 AND id = $4
+     RETURNING id, status`,
+    [status, accountId, instrumentId, participantId]
+  );
+  if (!p) throw _notFound();
+
+  await auditService.log(
+    accountId, userId, 'authority.participant.status_changed',
+    'authority_instrument_parties', participantId,
+    { instrument_id: instrumentId, new_status: status },
+    null
+  );
+  return p;
+}
+
+// ── Permission removal (with lifecycle lock) ───────────────────────────────────
+
+async function removePermissionById(accountId, userId, instrumentId, permissionId) {
+  await _assertInstrumentEditable(accountId, instrumentId);
+
+  const { rows } = await pool.query(
+    `DELETE FROM authority_permissions
+     WHERE account_id = $1 AND instrument_id = $2 AND id = $3
+     RETURNING id`,
+    [accountId, instrumentId, permissionId]
+  );
+  if (!rows.length) throw _notFound();
+
+  await auditService.log(
+    accountId, userId, 'authority.permission.removed',
+    'authority_permissions', permissionId,
+    { instrument_id: instrumentId },
+    null
+  );
+}
+
+// ── Restriction management (with lifecycle lock) ──────────────────────────────
+
+async function removeRestriction(accountId, userId, instrumentId, restrictionId) {
+  await _assertInstrumentEditable(accountId, instrumentId);
+
+  const { rows } = await pool.query(
+    `DELETE FROM authority_restrictions
+     WHERE account_id = $1 AND instrument_id = $2 AND id = $3
+     RETURNING id`,
+    [accountId, instrumentId, restrictionId]
+  );
+  if (!rows.length) throw _notFound();
+
+  await auditService.log(
+    accountId, userId, 'authority.restriction.removed',
+    'authority_restrictions', restrictionId,
+    { instrument_id: instrumentId },
+    null
+  );
+}
+
+// ── Party updates with Invariant B protection ─────────────────────────────────
+
+/**
+ * Check whether a party is protected from mutation because it is a participant
+ * in one or more VERIFIED instruments. Uses SELECT FOR UPDATE inside a client
+ * transaction to be race-safe.
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {string} accountId
+ * @param {string} partyId
+ */
+async function _assertPartyMutable(client, accountId, partyId) {
+  const { rows } = await client.query(
+    `SELECT COUNT(*) AS cnt
+     FROM authority_instrument_parties aip
+     JOIN authority_instruments ai
+       ON ai.account_id = aip.account_id AND ai.id = aip.instrument_id
+     WHERE aip.account_id = $1 AND aip.party_id = $2 AND ai.status = 'VERIFIED'`,
+    [accountId, partyId]
+  );
+  if (parseInt(rows[0].cnt, 10) > 0) {
+    throw _conflict(
+      'Party is a participant in one or more VERIFIED instruments. ' +
+      'Historical records are immutable — this party cannot be modified.'
+    );
+  }
+}
+
+async function updatePartyDisplayName(accountId, userId, partyId, displayName) {
+  if (!displayName || !String(displayName).trim()) {
+    throw _badRequest('displayName is required.');
+  }
+  const trimmed = String(displayName).trim();
+  const client  = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `SELECT id FROM authority_parties WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+      [accountId, partyId]
+    );
+
+    await _assertPartyMutable(client, accountId, partyId);
+
+    const encryptedName = authorityCrypto.encrypt(trimmed);
+    const { rows: [p] } = await client.query(
+      `UPDATE authority_parties
+       SET display_name = $1, updated_at = NOW()
+       WHERE account_id = $2 AND id = $3
+       RETURNING id`,
+      [encryptedName, accountId, partyId]
+    );
+    if (!p) { await client.query('ROLLBACK'); throw _notFound(); }
+
+    await client.query('COMMIT');
+    await auditService.log(
+      accountId, userId, 'authority.party.display_name_changed',
+      'authority_party', partyId, {}, null
+    );
+    return { id: p.id };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── Human Review Queue & Assignment ──────────────────────────────────────────
+
+async function _assertReviewCapability(userId) {
+  const [canVerify, canReject] = await Promise.all([
+    _hasCapability(userId, 'AUTHORITY_INSTRUMENT_VERIFY'),
+    _hasCapability(userId, 'AUTHORITY_INSTRUMENT_REJECT'),
+  ]);
+  if (!canVerify && !canReject) {
+    throw _forbidden(
+      'AUTHORITY_INSTRUMENT_VERIFY or AUTHORITY_INSTRUMENT_REJECT capability is required.'
+    );
+  }
+}
+
+/**
+ * Returns cases in PENDING_HUMAN_REVIEW or HUMAN_REVIEW_IN_PROGRESS,
+ * enriched with document count, instrument count, and active assignment.
+ */
+async function getReviewQueue(accountId, userId) {
+  await _assertInstitutionAccount(accountId);
+  await _assertReviewCapability(userId);
+
+  const { rows } = await pool.query(
+    `SELECT
+       ac.id,
+       ac.external_case_reference,
+       ac.status,
+       ac.created_at,
+       ac.status_changed_at,
+       COALESCE(doc_counts.cnt, 0)  AS document_count,
+       COALESCE(instr_counts.cnt, 0) AS instrument_count,
+       ra.assigned_to,
+       ra.claimed_at
+     FROM authority_cases ac
+     LEFT JOIN (
+       SELECT case_id, account_id, COUNT(*) AS cnt
+       FROM authority_documents
+       WHERE status = 'active'
+       GROUP BY case_id, account_id
+     ) doc_counts   ON doc_counts.case_id = ac.id   AND doc_counts.account_id = ac.account_id
+     LEFT JOIN (
+       SELECT case_id, account_id, COUNT(*) AS cnt
+       FROM authority_case_instruments
+       GROUP BY case_id, account_id
+     ) instr_counts ON instr_counts.case_id = ac.id AND instr_counts.account_id = ac.account_id
+     LEFT JOIN LATERAL (
+       SELECT assigned_to, claimed_at
+       FROM authority_review_assignments
+       WHERE account_id = ac.account_id AND case_id = ac.id AND status = 'active'
+       ORDER BY claimed_at ASC
+       LIMIT 1
+     ) ra ON true
+     WHERE ac.account_id = $1
+       AND ac.status IN ('PENDING_HUMAN_REVIEW', 'HUMAN_REVIEW_IN_PROGRESS')
+     ORDER BY ac.status_changed_at ASC`,
+    [accountId]
+  );
+  return rows;
+}
+
+/**
+ * Claim a case for review. Transitions PENDING_HUMAN_REVIEW → HUMAN_REVIEW_IN_PROGRESS
+ * if not already there. Creates an assignment record.
+ */
+async function claimCase(accountId, userId, caseId) {
+  await _assertInstitutionAccount(accountId);
+  await _assertReviewCapability(userId);
+
+  const kase = await getCase(accountId, caseId);
+
+  if (kase.status !== 'PENDING_HUMAN_REVIEW' && kase.status !== 'HUMAN_REVIEW_IN_PROGRESS') {
+    throw _badRequest(
+      `Case is in status ${kase.status}. Only cases in PENDING_HUMAN_REVIEW or ` +
+      `HUMAN_REVIEW_IN_PROGRESS can be claimed.`
+    );
+  }
+
+  // Check if this user already has an active assignment
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM authority_review_assignments
+     WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
+    [accountId, caseId, userId]
+  );
+  if (existing.length) {
+    throw _conflict('You have already claimed this case.');
+  }
+
+  // Transition to HUMAN_REVIEW_IN_PROGRESS if needed
+  if (kase.status === 'PENDING_HUMAN_REVIEW') {
+    await transitionCase(accountId, userId, caseId, 'HUMAN_REVIEW_IN_PROGRESS');
+  }
+
+  const { rows: [assignment] } = await pool.query(
+    `INSERT INTO authority_review_assignments
+       (account_id, case_id, assigned_to, assigned_by)
+     VALUES ($1, $2, $3, $3)
+     RETURNING id, case_id, assigned_to, status, claimed_at`,
+    [accountId, caseId, userId]
+  );
+
+  await auditService.log(
+    accountId, userId, 'authority.case.claimed',
+    'authority_case', caseId,
+    { assignment_id: assignment.id },
+    null
+  );
+  return assignment;
+}
+
+/**
+ * Release a claimed case. Marks the assignment as released.
+ */
+async function releaseCase(accountId, userId, caseId) {
+  await _assertInstitutionAccount(accountId);
+
+  const { rows: [assignment] } = await pool.query(
+    `UPDATE authority_review_assignments
+     SET status = 'released', released_at = NOW(), updated_at = NOW()
+     WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'
+     RETURNING id`,
+    [accountId, caseId, userId]
+  );
+  if (!assignment) throw _notFound();
+
+  await auditService.log(
+    accountId, userId, 'authority.case.released',
+    'authority_case', caseId,
+    { assignment_id: assignment.id },
+    null
+  );
+  return { released: true };
+}
+
+/**
+ * Assign a reviewer to a case (admin operation — assigns any target user).
+ */
+async function assignReviewer(accountId, actorUserId, caseId, targetUserId) {
+  await _assertInstitutionAccount(accountId);
+  await _assertReviewCapability(actorUserId);
+
+  const kase = await getCase(accountId, caseId);
+  if (kase.status !== 'PENDING_HUMAN_REVIEW' && kase.status !== 'HUMAN_REVIEW_IN_PROGRESS') {
+    throw _badRequest(`Case must be in PENDING_HUMAN_REVIEW or HUMAN_REVIEW_IN_PROGRESS to assign a reviewer.`);
+  }
+
+  // Verify target user exists in same account
+  const { rows: [targetUser] } = await pool.query(
+    `SELECT id FROM users WHERE account_id = $1 AND id = $2`,
+    [accountId, targetUserId]
+  );
+  if (!targetUser) throw _notFound();
+
+  if (kase.status === 'PENDING_HUMAN_REVIEW') {
+    await transitionCase(accountId, actorUserId, caseId, 'HUMAN_REVIEW_IN_PROGRESS');
+  }
+
+  const { rows: [assignment] } = await pool.query(
+    `INSERT INTO authority_review_assignments
+       (account_id, case_id, assigned_to, assigned_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT DO NOTHING
+     RETURNING id, case_id, assigned_to, status, claimed_at`,
+    [accountId, caseId, targetUserId, actorUserId]
+  );
+
+  await auditService.log(
+    accountId, actorUserId, 'authority.case.reviewer_assigned',
+    'authority_case', caseId,
+    { assigned_to: targetUserId },
+    null
+  );
+  return assignment || { case_id: caseId, assigned_to: targetUserId };
+}
+
+/**
+ * Returns a full case workspace: case metadata, linked instruments (with participants,
+ * permissions, restrictions), linked documents, active assignments, and recent notes.
+ */
+async function getReviewWorkspace(accountId, userId, caseId) {
+  await _assertInstitutionAccount(accountId);
+
+  const kase = await getCase(accountId, caseId);
+
+  // Linked instruments
+  const { rows: instruments } = await pool.query(
+    `SELECT ai.id, ai.instrument_type, ai.status, ai.effective_date, ai.expiration_date,
+            ai.jurisdiction, ai.verified_at, ai.verified_by_user_id,
+            ai.rejected_at, ai.rejection_reason,
+            ai.revoked_at, ai.revocation_reason,
+            ai.created_at
+     FROM authority_case_instruments aci
+     JOIN authority_instruments ai ON ai.account_id = aci.account_id AND ai.id = aci.instrument_id
+     WHERE aci.account_id = $1 AND aci.case_id = $2
+     ORDER BY ai.created_at ASC`,
+    [accountId, caseId]
+  );
+
+  // For each instrument, load parties, permissions, restrictions
+  const enrichedInstruments = await Promise.all(instruments.map(async (instr) => {
+    const [{ rows: participants }, { rows: permissions }, { rows: restrictions }] = await Promise.all([
+      pool.query(
+        `SELECT aip.id, aip.party_id, aip.role, aip.sequence, aip.status, aip.conditions,
+                ap.party_type, ap.display_name AS encrypted_name, ap.external_reference
+         FROM authority_instrument_parties aip
+         JOIN authority_parties ap ON ap.account_id = aip.account_id AND ap.id = aip.party_id
+         WHERE aip.account_id = $1 AND aip.instrument_id = $2
+         ORDER BY aip.sequence ASC NULLS LAST, aip.created_at ASC`,
+        [accountId, instr.id]
+      ),
+      pool.query(
+        `SELECT id, action_key, grant_type, participant_id, created_at
+         FROM authority_permissions
+         WHERE account_id = $1 AND instrument_id = $2
+         ORDER BY created_at ASC`,
+        [accountId, instr.id]
+      ),
+      pool.query(
+        `SELECT id, restriction_type, parameters, participant_id, permission_id,
+                effective_from, effective_to, created_at
+         FROM authority_restrictions
+         WHERE account_id = $1 AND instrument_id = $2
+         ORDER BY created_at ASC`,
+        [accountId, instr.id]
+      ),
+    ]);
+
+    return {
+      ...instr,
+      participants: participants.map(p => ({
+        ...p,
+        display_name: (() => {
+          try { return authorityCrypto.decrypt(p.encrypted_name); } catch { return null; }
+        })(),
+        encrypted_name: undefined,
+      })),
+      permissions,
+      restrictions,
+    };
+  }));
+
+  // Linked documents
+  const { rows: documents } = await pool.query(
+    `SELECT id, content_type, byte_size, status, created_at
+     FROM authority_documents
+     WHERE account_id = $1 AND case_id = $2 AND status = 'active'
+     ORDER BY created_at ASC`,
+    [accountId, caseId]
+  );
+
+  // Active assignments
+  const { rows: assignments } = await pool.query(
+    `SELECT ara.id, ara.assigned_to, ara.assigned_by, ara.status, ara.claimed_at,
+            u.name AS reviewer_name
+     FROM authority_review_assignments ara
+     LEFT JOIN users u ON u.id = ara.assigned_to
+     WHERE ara.account_id = $1 AND ara.case_id = $2 AND ara.status = 'active'
+     ORDER BY ara.claimed_at ASC`,
+    [accountId, caseId]
+  );
+
+  // Recent notes
+  const { rows: notes } = await pool.query(
+    `SELECT arn.id, arn.body, arn.created_at, arn.instrument_id,
+            u.name AS author_name
+     FROM authority_review_notes arn
+     LEFT JOIN users u ON u.id = arn.created_by
+     WHERE arn.account_id = $1 AND arn.case_id = $2
+     ORDER BY arn.created_at DESC
+     LIMIT 50`,
+    [accountId, caseId]
+  );
+
+  await auditService.log(
+    accountId, userId, 'authority.case.workspace_accessed',
+    'authority_case', caseId, {}, null
+  );
+
+  return { case: kase, instruments: enrichedInstruments, documents, assignments, notes };
+}
+
+// ── Review Notes ──────────────────────────────────────────────────────────────
+
+async function addReviewNote(accountId, userId, caseId, body, instrumentId) {
+  await _assertInstitutionAccount(accountId);
+
+  if (!body || !String(body).trim()) {
+    throw _badRequest('Note body is required.');
+  }
+  if (body.length > 10000) {
+    throw _badRequest('Note body must not exceed 10,000 characters.');
+  }
+
+  // Verify case exists in tenant
+  await getCase(accountId, caseId);
+
+  // Verify instrument belongs to tenant if provided
+  if (instrumentId) {
+    await getInstrument(accountId, instrumentId);
+  }
+
+  const { rows: [note] } = await pool.query(
+    `INSERT INTO authority_review_notes
+       (account_id, case_id, instrument_id, body, created_by)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, case_id, instrument_id, body, created_at`,
+    [accountId, caseId, instrumentId || null, String(body).trim(), userId]
+  );
+
+  await auditService.log(
+    accountId, userId, 'authority.review_note.added',
+    'authority_review_notes', note.id,
+    { case_id: caseId, instrument_id: instrumentId || null },
+    null
+  );
+  return note;
+}
+
+async function getReviewNotes(accountId, caseId, { instrumentId } = {}) {
+  await _assertInstitutionAccount(accountId);
+  await getCase(accountId, caseId);
+
+  const params = [accountId, caseId];
+  let filterClause = '';
+  if (instrumentId) {
+    params.push(instrumentId);
+    filterClause = `AND arn.instrument_id = $${params.length}`;
+  }
+
+  const { rows } = await pool.query(
+    `SELECT arn.id, arn.body, arn.created_at, arn.instrument_id,
+            u.name AS author_name
+     FROM authority_review_notes arn
+     LEFT JOIN users u ON u.id = arn.created_by
+     WHERE arn.account_id = $1 AND arn.case_id = $2 ${filterClause}
+     ORDER BY arn.created_at DESC`,
+    params
+  );
+  return rows;
+}
+
+// ── Audit Activity Feed ───────────────────────────────────────────────────────
+
+async function getAuditActivity(accountId, subjectType, subjectId) {
+  await _assertInstitutionAccount(accountId);
+
+  // Map our entity types to audit_logs entity values and confirm tenant ownership
+  if (subjectType === 'case') {
+    await getCase(accountId, subjectId);
+  } else if (subjectType === 'instrument') {
+    await getInstrument(accountId, subjectId);
+  } else {
+    throw _badRequest('subjectType must be "case" or "instrument".');
+  }
+
+  const entityMap = { case: 'authority_case', instrument: 'authority_instrument' };
+  const entity    = entityMap[subjectType];
+
+  const { rows } = await pool.query(
+    `SELECT al.id, al.action, al.details, al.created_at,
+            u.name AS actor_name
+     FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     WHERE al.account_id = $1
+       AND al.entity = $2
+       AND al.entity_id = $3
+     ORDER BY al.created_at DESC
+     LIMIT 200`,
+    [accountId, entity, subjectId]
+  );
+  return rows;
 }
 
 // ── Authority Documents ───────────────────────────────────────────────────────
@@ -1041,10 +1616,21 @@ module.exports = {
   createParty,
   getParty,
   updatePartyStatus,
+  updatePartyDisplayName,
   // Cases
   createCase,
   getCase,
   transitionCase,
+  // Human Review
+  getReviewQueue,
+  claimCase,
+  releaseCase,
+  assignReviewer,
+  getReviewWorkspace,
+  addReviewNote,
+  getReviewNotes,
+  // Audit Activity
+  getAuditActivity,
   // Instruments
   createInstrument,
   getInstrument,
@@ -1055,11 +1641,15 @@ module.exports = {
   unlinkInstrumentFromCase,
   // Participants
   addParticipant,
+  removeParticipant,
+  updateParticipantStatus,
   // Permissions
   addPermission,
   removePermission,
+  removePermissionById,
   // Restrictions
   addRestriction,
+  removeRestriction,
   // Documents
   uploadDocument,
   getDocumentMetadata,

@@ -2863,6 +2863,45 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_authority_docs_case         ON authority_documents(account_id, case_id)`,
   `CREATE INDEX IF NOT EXISTS idx_authority_docs_instrument   ON authority_documents(account_id, instrument_id)`,
   `CREATE INDEX IF NOT EXISTS idx_authority_docs_uploaded_by  ON authority_documents(uploaded_by)`,
+
+  // ── Authority Review Assignments ──────────────────────────────────────────────
+  // Tracks which reviewer claimed a case. Multiple assignments per case are allowed
+  // (e.g. primary + secondary reviewer). Composite FK ensures same-tenant case.
+  `CREATE TABLE IF NOT EXISTS authority_review_assignments (
+     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id   UUID NOT NULL,
+     case_id      UUID NOT NULL,
+     assigned_to  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     assigned_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+     status       TEXT NOT NULL DEFAULT 'active'
+       CHECK (status IN ('active', 'released', 'completed')),
+     claimed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     released_at  TIMESTAMPTZ,
+     completed_at TIMESTAMPTZ,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, case_id) REFERENCES authority_cases(account_id, id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ra_case     ON authority_review_assignments(account_id, case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_ra_reviewer ON authority_review_assignments(assigned_to, status)`,
+
+  // ── Authority Review Notes ────────────────────────────────────────────────────
+  // Free-text notes attached to a case or instrument by a reviewer.
+  // Immutable after creation — reviewers cannot edit or delete notes.
+  `CREATE TABLE IF NOT EXISTS authority_review_notes (
+     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     account_id    UUID NOT NULL,
+     case_id       UUID,
+     instrument_id UUID,
+     body          TEXT NOT NULL,
+     created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, case_id)       REFERENCES authority_cases(account_id, id)       ON DELETE CASCADE,
+     FOREIGN KEY (account_id, instrument_id) REFERENCES authority_instruments(account_id, id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_notes_case       ON authority_review_notes(account_id, case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_notes_instrument ON authority_review_notes(account_id, instrument_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_notes_created_by ON authority_review_notes(created_by)`,
 ];
 
 async function runMigrations() {
