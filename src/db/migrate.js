@@ -2917,6 +2917,84 @@ const MIGRATIONS = [
   // NULL = legacy plaintext row (should not exist in practice; only synthetic data at this stage).
   // Non-null = body column holds AES-256-GCM ciphertext encrypted with AUTHORITY_DATA_ENCRYPTION_KEY.
   `ALTER TABLE authority_review_notes ADD COLUMN IF NOT EXISTS note_body_key_version TEXT`,
+
+  // ── Stage 3: AI-Assisted Document Extraction ─────────────────────────────────
+
+  // Extraction run — one row per (document, attempt). Worker claims with SELECT FOR UPDATE SKIP LOCKED
+  // then writes lease_token for fencing: all candidate/evidence writes verify the token still matches.
+  `CREATE TABLE IF NOT EXISTS authority_extraction_runs (
+     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+     account_id        UUID        NOT NULL,
+     case_id           UUID        NOT NULL,
+     document_id       UUID        NOT NULL,
+     run_kind          TEXT        NOT NULL DEFAULT 'auto'
+                         CHECK (run_kind IN ('auto','retry')),
+     status            TEXT        NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','running','completed','failed','cancelled')),
+     provider          TEXT        NOT NULL DEFAULT 'fake'
+                         CHECK (provider IN ('fake','anthropic')),
+     lease_token       UUID,
+     lease_expires_at  TIMESTAMPTZ,
+     claimed_at        TIMESTAMPTZ,
+     completed_at      TIMESTAMPTZ,
+     error_category    TEXT
+                         CHECK (error_category IN (
+                           'provider_error','timeout','rate_limited','malformed_output',
+                           'no_documents','storage_error','validation_error','unknown'
+                         )),
+     error_message     TEXT,
+     created_by        UUID,
+     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (account_id, case_id) REFERENCES authority_cases(account_id, id) ON DELETE CASCADE,
+     FOREIGN KEY (document_id)         REFERENCES authority_documents(id)         ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_aer_case     ON authority_extraction_runs(account_id, case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_aer_document ON authority_extraction_runs(account_id, document_id)`,
+  // Worker claim index: pending runs ordered by creation time, skipping locked rows efficiently
+  `CREATE INDEX IF NOT EXISTS idx_aer_worker   ON authority_extraction_runs(status, created_at)
+     WHERE (status = 'pending')`,
+
+  // Extraction candidate — one proposed field value per run. proposed_value is AES-256-GCM encrypted.
+  // row_version supports optimistic locking: accept/reject check version before writing.
+  `CREATE TABLE IF NOT EXISTS authority_extraction_candidates (
+     id                       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+     account_id               UUID        NOT NULL,
+     run_id                   UUID        NOT NULL REFERENCES authority_extraction_runs(id) ON DELETE CASCADE,
+     instrument_id            UUID        NOT NULL,
+     field_key                TEXT        NOT NULL,
+     proposed_value           TEXT,
+     proposed_value_key_version TEXT,
+     confidence               NUMERIC(5,4) CHECK (confidence >= 0 AND confidence <= 1),
+     status                   TEXT        NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending','accepted','rejected','superseded')),
+     reviewed_by              UUID,
+     reviewed_at              TIMESTAMPTZ,
+     rejection_reason         TEXT,
+     row_version              INTEGER     NOT NULL DEFAULT 1,
+     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_aec_run        ON authority_extraction_candidates(run_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_aec_instrument ON authority_extraction_candidates(account_id, instrument_id)`,
+  // Review queue index: pending candidates for a case (joined via run)
+  `CREATE INDEX IF NOT EXISTS idx_aec_status     ON authority_extraction_candidates(account_id, status)
+     WHERE (status = 'pending')`,
+
+  // Extraction evidence — source passages supporting a candidate. excerpt is AES-256-GCM encrypted.
+  `CREATE TABLE IF NOT EXISTS authority_extraction_evidence (
+     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+     account_id           UUID        NOT NULL,
+     candidate_id         UUID        NOT NULL REFERENCES authority_extraction_candidates(id) ON DELETE CASCADE,
+     document_id          UUID        NOT NULL,
+     page_numbers         INTEGER[]   NOT NULL DEFAULT '{}',
+     excerpt              TEXT,
+     excerpt_key_version  TEXT,
+     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     FOREIGN KEY (document_id) REFERENCES authority_documents(id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_aee_candidate ON authority_extraction_evidence(candidate_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_aee_document  ON authority_extraction_evidence(account_id, document_id)`,
 ];
 
 async function runMigrations() {

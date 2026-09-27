@@ -242,6 +242,10 @@ runMigrations()
       validateAuthorityConfig();
       validatePlaidConfig();
       scheduler.startReminderJob();
+      // Start Authority extraction worker when Authority is enabled
+      if (process.env.AUTHORITY_ENABLED === 'true') {
+        require('./src/workers/authorityExtractionWorker').start();
+      }
       // Non-blocking post-startup tasks
       require('./src/services/bankingSyncService').recoverStaleSyncingConnections()
         .catch(err => console.error('[DB] recoverStaleSyncingConnections error:', err.message));

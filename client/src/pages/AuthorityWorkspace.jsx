@@ -468,6 +468,313 @@ function InstrumentSection({ instr, caseStatus, isActiveAssignee, onMutated }) {
   );
 }
 
+// ── Extraction panel ──────────────────────────────────────────────────────────
+
+const FIELD_KEY_LABEL = {
+  instrument_type:   'Instrument Type',
+  effective_date:    'Effective Date',
+  expiration_date:   'Expiration Date',
+  jurisdiction:      'Jurisdiction',
+  principal_name:    'Principal Name',
+  agent_name:        'Agent Name',
+  trustee_name:      'Trustee Name',
+  guardian_name:     'Guardian Name',
+  grantor_name:      'Grantor Name',
+  beneficiary_name:  'Beneficiary Name',
+};
+
+function fieldLabel(key) {
+  if (FIELD_KEY_LABEL[key]) return FIELD_KEY_LABEL[key];
+  if (key.startsWith('granted_action.')) return `Grant: ${key.slice('granted_action.'.length)}`;
+  if (key.startsWith('restriction.'))   return `Restriction: ${key.slice('restriction.'.length)}`;
+  return key;
+}
+
+function RunStatusBadge({ status }) {
+  const colors = {
+    pending:   { bg: '#f3f4f6', color: '#374151' },
+    running:   { bg: '#dbeafe', color: '#1d4ed8' },
+    completed: { bg: '#dcfce7', color: '#15803d' },
+    failed:    { bg: '#fee2e2', color: '#b91c1c' },
+    cancelled: { bg: '#f3f4f6', color: '#6b7280' },
+  };
+  const s = colors[status] || colors.cancelled;
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+      fontSize: 11, fontWeight: 600, background: s.bg, color: s.color,
+    }}>{status.toUpperCase()}</span>
+  );
+}
+
+function CandidateRow({ candidate, caps, caseId, onMutated }) {
+  const [expanded,  setExpanded]  = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [editing,   setEditing]   = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [err,       setErr]       = useState('');
+
+  const canAccept = caps.includes('AUTHORITY_INSTRUMENT_VERIFY');
+  const canReject = caps.includes('AUTHORITY_INSTRUMENT_VERIFY') || caps.includes('AUTHORITY_INSTRUMENT_REJECT');
+  const isPending = candidate.status === 'pending';
+
+  async function handleAccept(overrideValue) {
+    setAccepting(true); setErr('');
+    try {
+      await api.post(`/authority/candidates/${candidate.id}/accept`, {
+        rowVersion: candidate.rowVersion,
+        ...(overrideValue !== undefined ? { proposedValue: overrideValue } : {}),
+      });
+      setEditing(false);
+      onMutated();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Accept failed.');
+    } finally {
+      setAccepting(false);
+    }
+  }
+
+  async function handleReject() {
+    const reason = window.prompt('Reason for rejection (optional):') ?? null;
+    if (reason === null) return;
+    setRejecting(true); setErr('');
+    try {
+      await api.post(`/authority/candidates/${candidate.id}/reject`, {
+        rejectionReason: reason || null,
+      });
+      onMutated();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Reject failed.');
+    } finally {
+      setRejecting(false);
+    }
+  }
+
+  const pct = candidate.confidence != null
+    ? Math.round(Number(candidate.confidence) * 100)
+    : null;
+
+  const statusColor = {
+    pending:    'var(--slate)',
+    accepted:   '#15803d',
+    rejected:   '#b91c1c',
+    superseded: '#6b7280',
+  }[candidate.status] || 'var(--slate)';
+
+  return (
+    <div style={{
+      border: '1px solid #e2e8f0',
+      borderRadius: 6,
+      marginBottom: 8,
+      background: candidate.status === 'accepted' ? '#f0fdf4'
+                : candidate.status === 'rejected'  ? '#fff1f2'
+                : '#fff',
+    }}>
+      <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {fieldLabel(candidate.fieldKey)}
+            </span>
+            {pct != null && (
+              <span style={{ fontSize: 10, color: 'var(--steel)' }}>{pct}% confidence</span>
+            )}
+            <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{candidate.status}</span>
+          </div>
+          <div style={{ marginTop: 4, fontSize: 13, color: 'var(--navy)', fontFamily: 'monospace', wordBreak: 'break-word' }}>
+            {/* Untrusted AI content rendered as text node only — never dangerouslySetInnerHTML */}
+            {candidate.proposedValue !== null ? String(candidate.proposedValue) : <em style={{ color: 'var(--steel)' }}>not found</em>}
+          </div>
+          {candidate.evidence && candidate.evidence.length > 0 && (
+            <button
+              style={{ fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0 0 0' }}
+              onClick={() => setExpanded(v => !v)}>
+              {expanded ? '▲ Hide evidence' : `▼ ${candidate.evidence.length} evidence item(s)`}
+            </button>
+          )}
+          {expanded && (
+            <div style={{ marginTop: 8 }}>
+              {candidate.evidence.map((ev, i) => (
+                <div key={i} style={{
+                  background: '#f8fafc', border: '1px solid #e2e8f0',
+                  borderRadius: 4, padding: '8px 10px', marginBottom: 6,
+                }}>
+                  {ev.pageNumbers && ev.pageNumbers.length > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 4 }}>
+                      Page{ev.pageNumbers.length > 1 ? 's' : ''} {ev.pageNumbers.join(', ')}
+                    </div>
+                  )}
+                  {/* Untrusted excerpt rendered as plain text */}
+                  <div style={{ fontSize: 12, color: 'var(--navy)', fontStyle: 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {ev.excerpt ? String(ev.excerpt) : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {isPending && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+            {canAccept && (
+              <button className="au-btn au-btn--success" style={{ fontSize: 11, padding: '4px 10px' }}
+                disabled={accepting} onClick={() => handleAccept()}>
+                {accepting ? '…' : 'Accept'}
+              </button>
+            )}
+            {canAccept && (
+              <button className="au-btn au-btn--outline" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => { setEditValue(candidate.proposedValue || ''); setEditing(true); }}>
+                Edit & Accept
+              </button>
+            )}
+            {canReject && (
+              <button className="au-btn au-btn--danger" style={{ fontSize: 11, padding: '4px 10px' }}
+                disabled={rejecting} onClick={handleReject}>
+                {rejecting ? '…' : 'Reject'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <div style={{ padding: '0 14px 12px' }}>
+          <textarea
+            className="au-note-textarea"
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            rows={2}
+            style={{ fontSize: 12, fontFamily: 'monospace' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button className="au-btn au-btn--success" style={{ fontSize: 11, padding: '4px 10px' }}
+              disabled={accepting} onClick={() => handleAccept(editValue)}>
+              {accepting ? '…' : 'Confirm & Accept'}
+            </button>
+            <button className="au-btn au-btn--outline" style={{ fontSize: 11, padding: '4px 10px' }}
+              onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {err && <div style={{ padding: '0 14px 8px', fontSize: 11, color: '#b91c1c' }}>{err}</div>}
+    </div>
+  );
+}
+
+function ExtractionPanel({ caseId, runs, candidates, caps, kaseStatus, onMutated }) {
+  const [retrying,      setRetrying]      = useState(null);
+  const [retryErr,      setRetryErr]      = useState('');
+  const canManage = caps.includes('AUTHORITY_EXTRACTION_MANAGE');
+
+  async function handleRetry(documentId) {
+    setRetrying(documentId); setRetryErr('');
+    try {
+      await api.post(`/authority/cases/${caseId}/extraction/retry`, { documentId });
+      onMutated();
+    } catch (e) {
+      setRetryErr(e.response?.data?.error || 'Retry failed.');
+    } finally {
+      setRetrying(null);
+    }
+  }
+
+  const showExtraction = ['PENDING_EXTRACTION','EXTRACTION_COMPLETE',
+    'PENDING_HUMAN_REVIEW','HUMAN_REVIEW_IN_PROGRESS','COMPLETED'].includes(kaseStatus);
+
+  if (!showExtraction && runs.length === 0) return null;
+
+  const pendingCandidates  = candidates.filter(c => c.status === 'pending');
+  const reviewedCandidates = candidates.filter(c => c.status !== 'pending');
+
+  return (
+    <div className="au-card" style={{ borderLeft: '3px solid #7c3aed' }}>
+      <div className="au-card-header" style={{ background: '#faf5ff' }}>
+        <span className="au-card-title" style={{ color: '#7c3aed' }}>
+          AI Extraction {runs.length > 0 ? `(${runs.length} run${runs.length > 1 ? 's' : ''})` : ''}
+        </span>
+      </div>
+      <div className="au-card-body">
+
+        {/* Runs summary */}
+        {runs.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            {runs.map(r => (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '6px 0', borderBottom: '1px solid #f1f5f9',
+              }}>
+                <RunStatusBadge status={r.status} />
+                <div style={{ flex: 1, fontSize: 12, color: 'var(--slate)' }}>
+                  {/* Untrusted filename rendered as plain text */}
+                  {String(r.original_filename || r.document_id)}
+                  {r.run_kind === 'retry' && <span style={{ marginLeft: 6, color: '#7c3aed', fontSize: 10 }}>RETRY</span>}
+                </div>
+                {r.error_category && (
+                  <span style={{ fontSize: 10, color: '#b91c1c' }}>{r.error_category}</span>
+                )}
+                {r.status === 'failed' && canManage && (
+                  <button className="au-btn au-btn--outline" style={{ fontSize: 10, padding: '2px 8px' }}
+                    disabled={retrying === r.document_id}
+                    onClick={() => handleRetry(r.document_id)}>
+                    {retrying === r.document_id ? '…' : 'Retry'}
+                  </button>
+                )}
+              </div>
+            ))}
+            {retryErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>{retryErr}</div>}
+          </div>
+        )}
+
+        {/* Pending candidates */}
+        {pendingCandidates.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#7c3aed' }} />
+              AI Proposed — Pending Review ({pendingCandidates.length})
+            </div>
+            {pendingCandidates.map(c => (
+              <CandidateRow key={c.id} candidate={c} caps={caps} caseId={caseId} onMutated={onMutated} />
+            ))}
+          </div>
+        )}
+
+        {/* Reviewed candidates (collapsed by default) */}
+        {reviewedCandidates.length > 0 && (
+          <details style={{ marginTop: 4 }}>
+            <summary style={{ fontSize: 12, color: 'var(--slate)', cursor: 'pointer', userSelect: 'none' }}>
+              {reviewedCandidates.length} reviewed candidate{reviewedCandidates.length > 1 ? 's' : ''}
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              {reviewedCandidates.map(c => (
+                <CandidateRow key={c.id} candidate={c} caps={caps} caseId={caseId} onMutated={onMutated} />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {runs.length > 0 && candidates.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--steel)', marginTop: 4 }}>
+            {runs.some(r => r.status === 'pending' || r.status === 'running')
+              ? 'Extraction in progress…'
+              : 'No candidates were extracted from this document.'}
+          </div>
+        )}
+
+        {runs.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--steel)' }}>
+            No extraction runs yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main workspace page ───────────────────────────────────────────────────────
 
 export default function AuthorityWorkspace() {
@@ -477,6 +784,8 @@ export default function AuthorityWorkspace() {
   const [workspace,   setWorkspace]   = useState(null);
   const [activity,    setActivity]    = useState([]);
   const [caps,        setCaps]        = useState([]);
+  const [runs,        setRuns]        = useState([]);
+  const [candidates,  setCandidates]  = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState('');
   const [claiming,    setClaiming]    = useState(false);
@@ -488,11 +797,15 @@ export default function AuthorityWorkspace() {
       api.get(`/authority/cases/${caseId}/workspace`),
       api.get(`/authority/cases/${caseId}/activity`),
       api.get('/authority/capabilities'),
+      api.get(`/authority/cases/${caseId}/extraction/runs`).catch(() => ({ data: [] })),
+      api.get(`/authority/cases/${caseId}/candidates`).catch(() => ({ data: [] })),
     ])
-      .then(([ws, act, capRes]) => {
+      .then(([ws, act, capRes, runsRes, candsRes]) => {
         setWorkspace(ws.data);
         setActivity(act.data);
         setCaps(capRes.data.capabilities || []);
+        setRuns(runsRes.data || []);
+        setCandidates(candsRes.data || []);
         setError('');
       })
       .catch(e => setError(e.response?.data?.error || 'Failed to load workspace.'));
@@ -642,6 +955,16 @@ export default function AuthorityWorkspace() {
               )}
             </div>
           </div>
+
+          {/* AI Extraction */}
+          <ExtractionPanel
+            caseId={caseId}
+            runs={runs}
+            candidates={candidates}
+            caps={caps}
+            kaseStatus={kase.status}
+            onMutated={load}
+          />
 
           {/* Instruments */}
           <div>

@@ -530,4 +530,100 @@ router.patch('/parties/:partyId/display-name', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stage 3: AI-Assisted Extraction
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const extractionService = require('../services/authorityExtractionService');
+
+async function _hasCapability(userId, capability) {
+  const pool = require('../db/pool');
+  const { rows } = await pool.query(
+    `SELECT 1 FROM platform_user_capabilities WHERE user_id = $1 AND capability = $2`,
+    [userId, capability]
+  );
+  return rows.length > 0;
+}
+
+// GET /api/authority/cases/:caseId/extraction/runs
+router.get('/cases/:caseId/extraction/runs', async (req, res) => {
+  try {
+    const runs = await extractionService.listRunsForCase(req.accountId, req.params.caseId);
+    res.json(runs);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/cases/:caseId/extraction/retry
+// Requires AUTHORITY_EXTRACTION_MANAGE capability
+router.post('/cases/:caseId/extraction/retry', async (req, res) => {
+  try {
+    const allowed = await _hasCapability(req.userId, 'AUTHORITY_EXTRACTION_MANAGE');
+    if (!allowed) {
+      return res.status(403).json({ error: 'AUTHORITY_EXTRACTION_MANAGE capability required.' });
+    }
+    const { documentId } = req.body || {};
+    if (!documentId) return res.status(400).json({ error: 'documentId is required.' });
+
+    const run = await extractionService.createExplicitRetry(
+      req.accountId, req.userId, req.params.caseId, documentId
+    );
+    res.status(201).json(run);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/cases/:caseId/candidates
+router.get('/cases/:caseId/candidates', async (req, res) => {
+  try {
+    const candidates = await extractionService.listCandidatesForCase(req.accountId, req.params.caseId);
+    res.json(candidates);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/candidates/:candidateId/accept
+// Requires AUTHORITY_INSTRUMENT_VERIFY capability
+router.post('/candidates/:candidateId/accept', async (req, res) => {
+  try {
+    const allowed = await _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_VERIFY');
+    if (!allowed) {
+      return res.status(403).json({ error: 'AUTHORITY_INSTRUMENT_VERIFY capability required.' });
+    }
+    const result = await extractionService.acceptCandidate(
+      req.accountId, req.userId, req.params.candidateId,
+      { rowVersion: req.body?.rowVersion }
+    );
+    res.json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// POST /api/authority/candidates/:candidateId/reject
+// Requires AUTHORITY_INSTRUMENT_VERIFY or AUTHORITY_INSTRUMENT_REJECT capability
+router.post('/candidates/:candidateId/reject', async (req, res) => {
+  try {
+    const [canVerify, canReject] = await Promise.all([
+      _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_VERIFY'),
+      _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_REJECT'),
+    ]);
+    if (!canVerify && !canReject) {
+      return res.status(403).json({
+        error: 'AUTHORITY_INSTRUMENT_VERIFY or AUTHORITY_INSTRUMENT_REJECT capability required.',
+      });
+    }
+    const result = await extractionService.rejectCandidate(
+      req.accountId, req.userId, req.params.candidateId,
+      req.body?.rejectionReason || null
+    );
+    res.json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 module.exports = router;

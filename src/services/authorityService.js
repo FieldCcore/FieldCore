@@ -526,6 +526,12 @@ async function transitionCase(accountId, userId, caseId, newStatus, opts = {}) {
         throw _conflict('Case status was changed concurrently. Please retry.');
       }
 
+      // Enqueue one extraction run per qualifying document — same transaction,
+      // so the run rows are visible atomically with the case status change.
+      // Lazy-require to avoid circular dependency with authorityExtractionService.
+      const extractionSvc = require('./authorityExtractionService');
+      await extractionSvc.enqueueExtractionRuns(txClient, accountId, caseId);
+
       await txClient.query('COMMIT');
 
       await auditService.log(
@@ -2149,6 +2155,38 @@ async function listParties(accountId, { limit = 50, offset = 0 } = {}) {
   }));
 }
 
+// ── Stage 3: updateInstrumentFields ──────────────────────────────────────────
+// Minimal canonical update for instrument metadata (type, dates, jurisdiction).
+// Intended for the extraction service's acceptCandidate path, but also usable
+// by the route layer if a direct edit-fields endpoint is added in a future stage.
+async function updateInstrumentFields(accountId, userId, instrumentId, fields, txClient) {
+  const ALLOWED_COLS = {
+    instrument_type: 'instrument_type',
+    effective_date:  'effective_date',
+    expiration_date: 'expiration_date',
+    jurisdiction:    'jurisdiction',
+  };
+  const entries = Object.entries(fields).filter(([k]) => ALLOWED_COLS[k]);
+  if (entries.length === 0) return;
+
+  const q = txClient || pool;
+  await q.query(
+    `SELECT id, status FROM authority_instruments
+      WHERE account_id = $1 AND id = $2 FOR UPDATE`,
+    [accountId, instrumentId]
+  );
+
+  const setClauses = entries.map(([k], i) => `${ALLOWED_COLS[k]} = $${i + 3}`);
+  const values     = entries.map(([, v]) => v);
+
+  await q.query(
+    `UPDATE authority_instruments
+        SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE account_id = $1 AND id = $2`,
+    [accountId, instrumentId, ...values]
+  );
+}
+
 module.exports = {
   // Provisioning
   provisionInstitution,
@@ -2197,4 +2235,6 @@ module.exports = {
   getDocumentMetadata,
   streamDocument,
   deleteDocument,
+  // Stage 3
+  updateInstrumentFields,
 };

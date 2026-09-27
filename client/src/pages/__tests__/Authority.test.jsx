@@ -59,11 +59,13 @@ const WORKSPACE_WITH_PENDING_INSTR = {
   instruments: [INSTR_PENDING],
 };
 
-function setupWorkspaceApi(workspaceData, caps = []) {
+function setupWorkspaceApi(workspaceData, caps = [], { runs = [], candidates = [] } = {}) {
   api.get.mockImplementation((url) => {
-    if (url.includes('/workspace')) return Promise.resolve({ data: workspaceData });
-    if (url.includes('/activity'))  return Promise.resolve({ data: [] });
+    if (url.includes('/workspace'))    return Promise.resolve({ data: workspaceData });
+    if (url.includes('/activity'))     return Promise.resolve({ data: [] });
     if (url.includes('/capabilities')) return Promise.resolve({ data: { capabilities: caps } });
+    if (url.includes('/extraction/runs')) return Promise.resolve({ data: runs });
+    if (url.includes('/candidates'))   return Promise.resolve({ data: candidates });
     return Promise.reject(new Error(`Unexpected GET: ${url}`));
   });
 }
@@ -472,5 +474,192 @@ describe('AuthorityWorkspace — Claim button gating (Issue D)', () => {
     }, ['AUTHORITY_INSTRUMENT_VERIFY', 'AUTHORITY_INSTRUMENT_REJECT']);
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
     await waitFor(() => { expect(screen.queryByText('Claim Case')).toBeNull(); });
+  });
+});
+
+// ── Stage 3: Extraction UI tests ──────────────────────────────────────────────
+
+const EXTRACTION_RUN_COMPLETED = {
+  id: 'run-uuid-1', document_id: 'doc-uuid-1', run_kind: 'auto',
+  status: 'completed', provider: 'fake',
+  error_category: null, error_message: null,
+  claimed_at: '2026-01-01T10:00:00Z', completed_at: '2026-01-01T10:00:05Z',
+  created_at: '2026-01-01T10:00:00Z', original_filename: 'power-of-attorney.pdf',
+};
+
+const EXTRACTION_RUN_FAILED = {
+  ...EXTRACTION_RUN_COMPLETED,
+  id: 'run-uuid-2', status: 'failed', error_category: 'timeout', completed_at: null,
+};
+
+const CANDIDATE_PENDING = {
+  id: 'cand-uuid-1', runId: 'run-uuid-1', instrumentId: 'instr-uuid-1',
+  fieldKey: 'instrument_type', proposedValue: 'durable_power_of_attorney',
+  confidence: 0.97, status: 'pending',
+  reviewedBy: null, reviewedAt: null, rejectionReason: null, rowVersion: 1,
+  createdAt: '2026-01-01T10:00:05Z',
+  evidence: [
+    { id: 'ev-1', documentId: 'doc-uuid-1', pageNumbers: [1], excerpt: 'I hereby grant durable power of attorney.' },
+  ],
+};
+
+const CANDIDATE_ACCEPTED = {
+  ...CANDIDATE_PENDING, id: 'cand-uuid-2', fieldKey: 'jurisdiction',
+  proposedValue: 'Delaware, USA', status: 'accepted',
+  reviewedBy: 'test-user-id', rowVersion: 2,
+};
+
+const EXTRACTION_CASE = {
+  id: 'case-uuid-1', status: 'EXTRACTION_COMPLETE',
+  external_case_reference: 'EXT-001',
+  created_at: '2026-01-01T00:00:00Z',
+};
+
+describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'test-user-id', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    useParams.mockReturnValue({ caseId: 'case-uuid-1' });
+    api.get.mockReset();
+    api.post.mockReset();
+  });
+
+  it('shows AI Extraction panel when runs exist', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText(/AI Extraction/i)).toBeTruthy(); });
+  });
+
+  it('displays run status badge for completed run', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText('COMPLETED')).toBeTruthy(); });
+  });
+
+  it('displays error_category for failed run', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_FAILED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText('timeout')).toBeTruthy(); });
+  });
+
+  it('shows pending candidate with fieldKey label', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText(/Instrument Type/i)).toBeTruthy(); });
+  });
+
+  it('renders proposed value as plain text (not HTML)', async () => {
+    const xssCand = {
+      ...CANDIDATE_PENDING,
+      proposedValue: '<script>alert(1)</script>',
+    };
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [xssCand] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => {
+      // Text should appear escaped, not as an actual script element
+      expect(screen.queryByText('<script>alert(1)</script>')).toBeTruthy();
+      expect(document.querySelector('script[data-injected]')).toBeNull();
+    });
+  });
+
+  it('shows Accept button when user has AUTHORITY_INSTRUMENT_VERIFY', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText('Accept')).toBeTruthy(); });
+  });
+
+  it('shows Reject button when user has AUTHORITY_INSTRUMENT_REJECT', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_REJECT'],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText('Reject')).toBeTruthy(); });
+  });
+
+  it('hides Accept/Reject when candidate is already accepted', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_ACCEPTED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.queryByText('Accept')).toBeNull(); });
+  });
+
+  it('shows Retry button for failed run when user has AUTHORITY_EXTRACTION_MANAGE', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_EXTRACTION_MANAGE'],
+      { runs: [EXTRACTION_RUN_FAILED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText('Retry')).toBeTruthy(); });
+  });
+
+  it('hides Retry when user lacks AUTHORITY_EXTRACTION_MANAGE', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      ['AUTHORITY_INSTRUMENT_VERIFY'],
+      { runs: [EXTRACTION_RUN_FAILED] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.queryByText('Retry')).toBeNull(); });
+  });
+
+  it('shows "no candidates" message when runs completed but no candidates', async () => {
+    setupWorkspaceApi(
+      { case: EXTRACTION_CASE, instruments: [], documents: [], assignments: [], notes: [] },
+      [],
+      { runs: [EXTRACTION_RUN_COMPLETED], candidates: [] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText(/No candidates were extracted/i)).toBeTruthy(); });
+  });
+
+  it('shows "extraction in progress" when run is pending', async () => {
+    setupWorkspaceApi(
+      { case: { ...EXTRACTION_CASE, status: 'PENDING_EXTRACTION' }, instruments: [], documents: [], assignments: [], notes: [] },
+      [],
+      { runs: [{ ...EXTRACTION_RUN_COMPLETED, status: 'pending', completed_at: null }], candidates: [] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText(/Extraction in progress/i)).toBeTruthy(); });
+  });
+
+  it('does not show extraction panel when case is DRAFT and no runs', async () => {
+    setupWorkspaceApi(
+      { case: CASE_DRAFT, instruments: [], documents: [], assignments: [], notes: [] },
+      [],
+      { runs: [], candidates: [] }
+    );
+    render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => { expect(screen.queryByText(/AI Extraction/i)).toBeNull(); });
   });
 });

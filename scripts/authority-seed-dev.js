@@ -32,8 +32,10 @@ const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const pool     = require('../src/db/pool');
 const { runMigrations } = require('../src/db/migrate');
-const authorityService  = require('../src/services/authorityService');
-const authorityCrypto   = require('../src/services/authorityCrypto');
+const authorityService   = require('../src/services/authorityService');
+const authorityCrypto    = require('../src/services/authorityCrypto');
+const extractionService  = require('../src/services/authorityExtractionService');
+const extractionWorker   = require('../src/workers/authorityExtractionWorker');
 
 // Minimal synthetic PDF — valid magic bytes, no real content
 const SYNTHETIC_PDF = Buffer.from(
@@ -41,6 +43,19 @@ const SYNTHETIC_PDF = Buffer.from(
   '2 0 obj\n<</Type /Pages /Kids [] /Count 0>>\nendobj\n' +
   'xref\n0 3\n0000000000 65535 f \ntrailer\n<</Size 3/Root 1 0 R>>\nstartxref\n9\n%%EOF'
 );
+
+// Poll until a case leaves PENDING_EXTRACTION, with a fallback for storage-not-configured environments.
+async function waitForExtractionComplete(accountId, caseId, maxWaitMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const kase = await authorityService.getCase(accountId, caseId);
+    if (kase.status !== 'PENDING_EXTRACTION') return kase;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  // Fallback: force the transition so the seed can complete even without R2 configured.
+  console.warn('[authority-seed-dev] Extraction did not finish in time — forcing EXTRACTION_COMPLETE (storage may not be configured in this environment).');
+  await authorityService.transitionCase(accountId, null, caseId, 'EXTRACTION_COMPLETE', { systemActor: true });
+}
 
 async function seed() {
   console.log('[authority-seed-dev] Starting…');
@@ -135,9 +150,14 @@ async function seed() {
   });
   console.log(`[authority-seed-dev] Document uploaded: ${doc.id}`);
 
+  // Transition to PENDING_EXTRACTION — enqueues real extraction runs for the synthetic document.
   await authorityService.transitionCase(acct.id, owner.id, kase.id, 'PENDING_EXTRACTION');
-  await authorityService.transitionCase(acct.id, owner.id, kase.id, 'EXTRACTION_COMPLETE',
-    { systemActor: true });
+  extractionWorker.start();
+  console.log('[authority-seed-dev] Extraction worker started — waiting for EXTRACTION_COMPLETE…');
+  await waitForExtractionComplete(acct.id, kase.id);
+  extractionWorker.stop();
+  console.log(`[authority-seed-dev] Case ${kase.id} extraction complete.`);
+
   await authorityService.transitionCase(acct.id, owner.id, kase.id, 'PENDING_HUMAN_REVIEW');
   console.log(`[authority-seed-dev] Case ${kase.id} advanced to PENDING_HUMAN_REVIEW.`);
 
@@ -189,8 +209,10 @@ async function seed() {
     instrumentId:     instrC.id,
     originalFilename: 'synthetic-letter-of-authorization.pdf',
   });
+  // Transition to PENDING_EXTRACTION — runs are auto-enqueued. The worker is not started here
+  // so the case remains in PENDING_EXTRACTION, demonstrating the queued-but-not-yet-processed state.
   await authorityService.transitionCase(acct.id, owner.id, kaseC.id, 'PENDING_EXTRACTION');
-  console.log(`[authority-seed-dev] Scenario C (PENDING_EXTRACTION) case: ${kaseC.id}`);
+  console.log(`[authority-seed-dev] Scenario C (PENDING_EXTRACTION — runs enqueued, not yet processed) case: ${kaseC.id}`);
 
   // Scenario D: Instrument REJECTED (reviewer rejects)
   const instrD = await authorityService.createInstrument(acct.id, owner.id, {
@@ -216,8 +238,10 @@ async function seed() {
     originalFilename: 'synthetic-guardianship-order.pdf',
   });
   await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'PENDING_EXTRACTION');
-  await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'EXTRACTION_COMPLETE',
-    { systemActor: true });
+  extractionWorker.start();
+  console.log('[authority-seed-dev] Extraction worker started for Scenario D…');
+  await waitForExtractionComplete(acct.id, kaseD.id);
+  extractionWorker.stop();
   await authorityService.transitionCase(acct.id, owner.id, kaseD.id, 'PENDING_HUMAN_REVIEW');
   await authorityService.transitionInstrument(acct.id, owner.id, instrD.id, 'PENDING_REVIEW',
     { actorType: 'human' });
