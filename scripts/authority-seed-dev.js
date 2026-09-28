@@ -173,15 +173,23 @@ async function seed() {
 
   // 9b. Reviewer accepts/rejects extraction candidates (active assignment required).
   //     Candidates with evidence are accepted; those without are rejected.
-  //     Participant name candidates (principal_name, agent_name) are accepted for the
-  //     record but make no structural change to party data — that is by design.
+  //     Participant name candidates require explicit partyAction — map_existing binds the
+  //     extracted name to the pre-created parties from step 5.
   {
+    const roleToPartyId = {
+      principal_name: principal.id,
+      agent_name:     agent.id,
+    };
     const candidates = await extractionService.listCandidatesForCase(acct.id, kase.id);
     let accepted = 0, rejected = 0;
     for (const c of candidates) {
       if (c.status !== 'pending') continue;
       if (c.evidence && c.evidence.length > 0) {
-        await extractionService.acceptCandidate(acct.id, reviewer.id, c.id, { rowVersion: c.rowVersion });
+        const partyId = roleToPartyId[c.fieldKey];
+        await extractionService.acceptCandidate(acct.id, reviewer.id, c.id, {
+          rowVersion:  c.rowVersion,
+          ...(partyId ? { partyAction: 'map_existing', partyId } : {}),
+        });
         accepted++;
       } else {
         await extractionService.rejectCandidate(acct.id, reviewer.id, c.id, 'No supporting evidence from extraction');

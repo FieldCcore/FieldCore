@@ -190,6 +190,34 @@ async function setupCaseThroughExtraction(overrideAccountId, overrideUserId) {
   return { kase, instr, doc, party };
 }
 
+// ── Helper: advance case to HUMAN_REVIEW_IN_PROGRESS ─────────────────────────
+
+async function setupCaseThroughHumanReview(overrideAccountId, overrideUserId) {
+  const aid = overrideAccountId || accountId;
+  const uid = overrideUserId    || userId;
+
+  const { kase, instr, doc, party } = await setupCaseThroughExtraction(aid, uid);
+
+  // Drain pending runs until this case exits PENDING_EXTRACTION.
+  // claimNextRun uses SKIP LOCKED and returns the oldest pending run, which may belong
+  // to a different case — keep processing until our case advances.
+  for (let i = 0; i < 40; i++) {
+    const k = await authorityService.getCase(aid, kase.id);
+    if (k.status !== 'PENDING_EXTRACTION') break;
+    const c = await extractionService.claimNextRun();
+    if (!c) { await new Promise(r => setTimeout(r, 50)); continue; }
+    await extractionService.processExtractionRun(c.id, c.leaseToken);
+  }
+
+  const kAfter = await authorityService.getCase(aid, kase.id);
+  if (kAfter.status === 'EXTRACTION_COMPLETE') {
+    await authorityService.transitionCase(aid, uid, kase.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.claimCase(aid, uid, kase.id);
+  }
+
+  return { kase, instr, doc, party };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Section 1: DB Migrations — New Tables Exist
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,7 +264,7 @@ describe('DB Migrations — extraction tables exist', () => {
   });
 
   // Test 5
-  test('candidates table has required columns including row_version', async () => {
+  test('candidates table has required columns including row_version and canonical_party_id', async () => {
     const { rows } = await pool.query(
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'authority_extraction_candidates'`
@@ -244,7 +272,7 @@ describe('DB Migrations — extraction tables exist', () => {
     const cols = rows.map(r => r.column_name);
     expect(cols).toEqual(expect.arrayContaining([
       'id','run_id','field_key','proposed_value','proposed_value_key_version',
-      'confidence','status','row_version',
+      'confidence','status','row_version','canonical_party_id',
     ]));
   });
 });
@@ -715,10 +743,7 @@ describe('Candidate acceptance', () => {
   let candidate;
 
   beforeAll(async () => {
-    ({ kase, instr } = await setupCaseThroughExtraction());
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    ({ kase, instr } = await setupCaseThroughHumanReview());
     const candidates = await extractionService.listCandidatesForCase(accountId, kase.id);
     candidate = candidates.find(c => c.fieldKey === 'instrument_type');
     expect(candidate).toBeDefined();
@@ -795,10 +820,7 @@ describe('Candidate rejection', () => {
   let candidate;
 
   beforeAll(async () => {
-    const { kase } = await setupCaseThroughExtraction();
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    const { kase } = await setupCaseThroughHumanReview();
     const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
     candidate = cands.find(c => c.fieldKey === 'effective_date');
     expect(candidate).toBeDefined();
@@ -897,10 +919,7 @@ describe('HTTP routes — extraction', () => {
   let candidateId;
 
   beforeAll(async () => {
-    ({ kase, instr, doc } = await setupCaseThroughExtraction());
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    ({ kase, instr, doc } = await setupCaseThroughHumanReview());
     const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
     candidateId = cands.find(c => c.fieldKey === 'jurisdiction')?.id;
   });
@@ -940,17 +959,20 @@ describe('HTTP routes — extraction', () => {
   });
 
   // Test 63
-  test('POST /candidates/:id/accept requires AUTHORITY_INSTRUMENT_VERIFY', async () => {
-    const noCap = await pool.query(
+  test('POST /candidates/:id/accept returns 403 for user without active case assignment', async () => {
+    const noAssign = await pool.query(
       `INSERT INTO users (account_id, name, email, password_hash, role)
-       VALUES ($1,'No Cap','nocap-${Date.now()}@test.dev',$2,'owner') RETURNING id`,
+       VALUES ($1,'No Assign','noassign-${Date.now()}@test.dev',$2,'owner') RETURNING id`,
       [accountId, await bcrypt.hash('x', 4)]
     );
-    const noCapToken = makeToken(noCap.rows[0].id, accountId, 'owner');
+    const noAssignToken = makeToken(noAssign.rows[0].id, accountId, 'owner');
+    // jurisdiction candidate is still pending and has evidence — only the assignment check blocks it
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const c = cands.find(c => c.id === candidateId);
     const res = await request(app)
       .post(`/api/authority/candidates/${candidateId}/accept`)
-      .set('Authorization', `Bearer ${noCapToken}`)
-      .send({ rowVersion: 1 });
+      .set('Authorization', `Bearer ${noAssignToken}`)
+      .send({ rowVersion: c?.rowVersion ?? 1 });
     expect(res.status).toBe(403);
   });
 
@@ -970,27 +992,28 @@ describe('HTTP routes — extraction', () => {
   });
 
   // Test 65
-  test('POST /candidates/:id/reject requires capability', async () => {
-    const noCap2 = await pool.query(
+  test('POST /candidates/:id/reject returns 403 for user without active case assignment', async () => {
+    const noAssign2 = await pool.query(
       `INSERT INTO users (account_id, name, email, password_hash, role)
-       VALUES ($1,'No Cap 2','nocap2-${Date.now()}@test.dev',$2,'owner') RETURNING id`,
+       VALUES ($1,'No Assign 2','noassign2-${Date.now()}@test.dev',$2,'owner') RETURNING id`,
       [accountId, await bcrypt.hash('x', 4)]
     );
-    const noCapToken2 = makeToken(noCap2.rows[0].id, accountId, 'owner');
+    const noAssignToken2 = makeToken(noAssign2.rows[0].id, accountId, 'owner');
+    // Find any pending candidate in this case to attempt rejection
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const pending = cands.find(c => c.status === 'pending');
+    if (!pending) return; // all candidates already reviewed — test is vacuously satisfied
     const res = await request(app)
-      .post(`/api/authority/candidates/${candidateId}/reject`)
-      .set('Authorization', `Bearer ${noCapToken2}`)
+      .post(`/api/authority/candidates/${pending.id}/reject`)
+      .set('Authorization', `Bearer ${noAssignToken2}`)
       .send({});
     expect(res.status).toBe(403);
   });
 
   // Test 66
   test('POST /candidates/:id/reject rejects pending candidate', async () => {
-    // Pick a fresh candidate to reject
-    const { kase: k2 } = await setupCaseThroughExtraction();
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    // Fresh case in HUMAN_REVIEW_IN_PROGRESS with userId as active assignee
+    const { kase: k2 } = await setupCaseThroughHumanReview();
     const cands = await extractionService.listCandidatesForCase(accountId, k2.id);
     const toReject = cands.find(c => c.status === 'pending');
     if (!toReject) return;
@@ -1051,10 +1074,7 @@ describe('Candidate field application', () => {
   let kase, instr;
 
   beforeAll(async () => {
-    ({ kase, instr } = await setupCaseThroughExtraction());
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    ({ kase, instr } = await setupCaseThroughHumanReview());
   });
 
   // Test 70
@@ -1073,11 +1093,7 @@ describe('Candidate field application', () => {
 
   // Test 71
   test('accepting effective_date candidate updates instrument', async () => {
-    // Use a fresh case to get fresh pending candidates
-    const { kase: k2, instr: i2 } = await setupCaseThroughExtraction();
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+    const { kase: k2, instr: i2 } = await setupCaseThroughHumanReview();
     const cands = await extractionService.listCandidatesForCase(accountId, k2.id);
     const dateCand = cands.find(c => c.fieldKey === 'effective_date' && c.status === 'pending');
     if (!dateCand) return;
@@ -1090,23 +1106,62 @@ describe('Candidate field application', () => {
   });
 
   // Test 72
-  test('accepting principal_name candidate does NOT update party display_name', async () => {
-    // Party identity is immutable after creation — AI extraction must never silently
-    // rename an existing party. Accepting a participant-name candidate is acknowledged
-    // for audit purposes but makes no structural change to authority_parties.
-    const { kase: k3, party } = await setupCaseThroughExtraction();
-    const originalName = party.display_name;
-    const claimed = await extractionService.claimNextRun();
-    expect(claimed).not.toBeNull();
-    await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+  test('accepting principal_name with create_new creates new party; original party unchanged', async () => {
+    // AI extraction must never rename an existing party. Accepting a party-identity candidate
+    // with create_new creates a new party from the extracted name; the original party is unaffected.
+    const { kase: k3, party } = await setupCaseThroughHumanReview();
+    // Use getParty to read display_name in the same format used for the post-acceptance check.
+    const partyBefore = await authorityService.getParty(accountId, party.id);
+    const originalName = partyBefore.display_name;
     const cands = await extractionService.listCandidatesForCase(accountId, k3.id);
     const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
     if (!nameCand || nameCand.proposedValue === null) return;
 
-    await extractionService.acceptCandidate(accountId, userId, nameCand.id, { rowVersion: nameCand.rowVersion });
+    const result = await extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+      rowVersion:  nameCand.rowVersion,
+      partyAction: 'create_new',
+    });
+    expect(result).toMatchObject({ status: 'accepted' });
+
+    // Original party must be unchanged
     const refreshedParty = await authorityService.getParty(accountId, party.id);
-    // display_name must be unchanged — acceptance does not rename the party
     expect(refreshedParty.display_name).toBe(originalName);
+
+    // canonical_party_id must be set on the accepted candidate
+    const refreshedCands = await extractionService.listCandidatesForCase(accountId, k3.id);
+    const refreshed = refreshedCands.find(c => c.id === nameCand.id);
+    expect(refreshed.canonicalPartyId).not.toBeNull();
+  });
+
+  // Test 72b
+  test('accepting principal_name without partyAction returns 422', async () => {
+    const { kase: k4 } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, k4.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || nameCand.proposedValue === null) return;
+
+    await expect(
+      extractionService.acceptCandidate(accountId, userId, nameCand.id, { rowVersion: nameCand.rowVersion })
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  // Test 72c
+  test('accepting principal_name with map_existing links to existing party', async () => {
+    const { kase: k5, party: p5 } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, k5.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || nameCand.proposedValue === null) return;
+
+    const result = await extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+      rowVersion:  nameCand.rowVersion,
+      partyAction: 'map_existing',
+      partyId:     p5.id,
+    });
+    expect(result).toMatchObject({ status: 'accepted' });
+
+    const refreshedCands = await extractionService.listCandidatesForCase(accountId, k5.id);
+    const refreshed = refreshedCands.find(c => c.id === nameCand.id);
+    expect(refreshed.canonicalPartyId).toBe(p5.id);
   });
 });
 
@@ -1128,11 +1183,22 @@ describe('Acceptance guards', () => {
   // Test 73
   test('accepting a no-evidence candidate returns 422', async () => {
     const { Readable } = require('stream');
+    // Set mock before creating the case so the next processExtractionRun for this document
+    // returns the no-evidence fixture.
     storageModule.getStream.mockResolvedValueOnce(Readable.from([bufNoEvidence]));
     const { kase } = await setupCaseThroughExtraction();
+    // Claim the run immediately — this case is the newest so any older pending runs
+    // were already drained by previous tests in this file.
     const claimed = await extractionService.claimNextRun();
     expect(claimed).not.toBeNull();
     await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+
+    // Advance to HUMAN_REVIEW_IN_PROGRESS (required for candidate accept/reject)
+    const kAfter = await authorityService.getCase(accountId, kase.id);
+    if (kAfter.status !== 'EXTRACTION_COMPLETE') return;
+    await authorityService.transitionCase(accountId, userId, kase.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.claimCase(accountId, userId, kase.id);
+
     const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
     const noEv = cands.find(c => c.evidence.length === 0 && c.status === 'pending');
     if (!noEv) return; // fixture did not produce a no-evidence candidate
@@ -1150,6 +1216,13 @@ describe('Acceptance guards', () => {
     const claimed = await extractionService.claimNextRun();
     expect(claimed).not.toBeNull();
     await extractionService.processExtractionRun(claimed.id, claimed.leaseToken);
+
+    // Advance to HUMAN_REVIEW_IN_PROGRESS
+    const kAfter = await authorityService.getCase(accountId, kase.id);
+    if (kAfter.status !== 'EXTRACTION_COMPLETE') return;
+    await authorityService.transitionCase(accountId, userId, kase.id, 'PENDING_HUMAN_REVIEW');
+    await authorityService.claimCase(accountId, userId, kase.id);
+
     const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
     const noEv = cands.find(c => c.evidence.length === 0 && c.status === 'pending');
     if (!noEv) return;

@@ -2995,6 +2995,10 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_aee_candidate ON authority_extraction_evidence(candidate_id)`,
   `CREATE INDEX IF NOT EXISTS idx_aee_document  ON authority_extraction_evidence(account_id, document_id)`,
+
+  // Stage 3 additive: canonical party resolved by reviewer when accepting a party-identity candidate.
+  `ALTER TABLE authority_extraction_candidates
+     ADD COLUMN IF NOT EXISTS canonical_party_id UUID REFERENCES authority_parties(id)`,
 ];
 
 async function runMigrations() {

@@ -39,6 +39,18 @@ const VALID_FIELD_KEYS    = new Set([
   'grantor_name', 'beneficiary_name',
 ]);
 
+// ── Institution account guard ─────────────────────────────────────────────────
+
+async function _assertInstitutionAccount(accountId) {
+  const { rows } = await pool.query(
+    `SELECT id FROM accounts WHERE id = $1 AND account_type = 'institution'`,
+    [accountId],
+  );
+  if (rows.length === 0) {
+    throw Object.assign(new Error('Not an institution account'), { status: 403 });
+  }
+}
+
 // ── Provider selection ────────────────────────────────────────────────────────
 
 function _getProvider() {
@@ -424,7 +436,7 @@ async function transitionToExtractionComplete(accountId, caseId) {
  * opts.rowVersion: expected row_version for optimistic locking.
  */
 async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
-  const { rowVersion } = opts;
+  const { rowVersion, partyAction, partyId } = opts;
 
   // Fetch candidate
   const { rows: cRows } = await pool.query(
@@ -450,6 +462,29 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
     const e = new Error('Candidate has no associated instrument'); e.status = 422; throw e;
   }
 
+  // Candidate acceptance is only valid during active human review — the case must be claimed
+  // and the caller must be the active assignee.
+  const { rows: caseRows } = await pool.query(
+    `SELECT status FROM authority_cases WHERE account_id = $1 AND id = $2`,
+    [accountId, candidate.case_id],
+  );
+  if (caseRows.length === 0) {
+    const e = new Error('Case not found'); e.status = 404; throw e;
+  }
+  if (caseRows[0].status !== 'HUMAN_REVIEW_IN_PROGRESS') {
+    const e = new Error('Candidates can only be accepted when the case is in HUMAN_REVIEW_IN_PROGRESS');
+    e.status = 409; throw e;
+  }
+  const { rows: assignRows } = await pool.query(
+    `SELECT id FROM authority_review_assignments
+      WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
+    [accountId, candidate.case_id, userId],
+  );
+  if (!assignRows.length) {
+    const e = new Error('An active case assignment is required to accept candidates during human review');
+    e.status = 403; throw e;
+  }
+
   // Require at least one evidence item — accepting an AI extraction with zero citations
   // would apply field values to a legal instrument with no auditable provenance.
   const { rows: [evRow] } = await pool.query(
@@ -461,23 +496,6 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
     e.status = 422; throw e;
   }
 
-  // When the case is under active human review, only the active assignee may accept candidates.
-  const { rows: caseRows } = await pool.query(
-    `SELECT status FROM authority_cases WHERE account_id = $1 AND id = $2`,
-    [accountId, candidate.case_id],
-  );
-  if (caseRows.length > 0 && caseRows[0].status === 'HUMAN_REVIEW_IN_PROGRESS') {
-    const { rows: assignRows } = await pool.query(
-      `SELECT id FROM authority_review_assignments
-        WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
-      [accountId, candidate.case_id, userId],
-    );
-    if (!assignRows.length) {
-      const e = new Error('An active case assignment is required to accept candidates during human review');
-      e.status = 403; throw e;
-    }
-  }
-
   // Decrypt proposed value
   let plainValue = null;
   if (candidate.proposed_value !== null && candidate.proposed_value_key_version) {
@@ -487,6 +505,7 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
   }
 
   const client = await pool.connect();
+  let canonicalPartyId = null;
   try {
     await client.query('BEGIN');
 
@@ -511,19 +530,24 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
       );
     }
 
-    // Apply the field update
-    await _applyField(client, accountId, instr, candidate.field_key, plainValue);
+    // Apply the field update; returns canonicalPartyId for party-identity fields
+    canonicalPartyId = await _applyField(client, accountId, instr, candidate.field_key, plainValue, {
+      partyAction,
+      partyId,
+      createdBy: userId,
+    });
 
     // Mark candidate accepted (optimistic lock: WHERE row_version = current)
     const { rowCount } = await client.query(
       `UPDATE authority_extraction_candidates
-          SET status      = 'accepted',
-              reviewed_by = $1,
-              reviewed_at = NOW(),
-              row_version = row_version + 1,
-              updated_at  = NOW()
+          SET status             = 'accepted',
+              reviewed_by        = $1,
+              reviewed_at        = NOW(),
+              canonical_party_id = $5,
+              row_version        = row_version + 1,
+              updated_at         = NOW()
         WHERE id = $2 AND account_id = $3 AND row_version = $4`,
-      [userId, candidateId, accountId, candidate.row_version],
+      [userId, candidateId, accountId, candidate.row_version, canonicalPartyId],
     );
     if (rowCount === 0) {
       throw Object.assign(
@@ -541,8 +565,9 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
   }
 
   audit.log(accountId, userId, 'EXTRACTION_CANDIDATE_ACCEPTED', 'extraction_candidate', candidateId, {
-    fieldKey:  candidate.field_key,
+    fieldKey:         candidate.field_key,
     plainValue,
+    canonicalPartyId,
   });
 
   return { id: candidateId, status: 'accepted' };
@@ -551,8 +576,16 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
 /**
  * Apply a single extracted field to the instrument row.
  * txClient must already hold a FOR UPDATE lock on the instrument.
+ *
+ * opts.partyAction: 'create_new' | 'map_existing' — required for party-identity fields.
+ * opts.partyId:    UUID — required when partyAction === 'map_existing'.
+ * opts.createdBy:  UUID — set as created_by for create_new parties.
+ *
+ * Returns: canonicalPartyId (UUID) for party-identity fields, null for all others.
  */
-async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
+async function _applyField(txClient, accountId, instr, fieldKey, plainValue, opts = {}) {
+  const { partyAction, partyId, createdBy } = opts;
+
   // Instrument metadata fields
   if (['instrument_type','effective_date','expiration_date','jurisdiction'].includes(fieldKey)) {
     const col = {
@@ -567,10 +600,13 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
         WHERE account_id = $2 AND id = $3`,
       [plainValue, accountId, instr.id],
     );
-    return;
+    return null;
   }
 
-  // Participant name fields — update the party display_name for the matching role
+  // Participant name (party-identity) fields.
+  // AI extraction must never silently rename an existing party. The reviewer must
+  // explicitly choose: create a new party from the extracted name (create_new) or
+  // map to an existing same-tenant party (map_existing).
   const roleMap = {
     principal_name:   'principal',
     agent_name:       'agent',
@@ -580,17 +616,38 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
     beneficiary_name: 'beneficiary',
   };
   if (roleMap[fieldKey]) {
-    // Participant name candidates are acknowledged but make no structural change to party
-    // data. Party display_name is immutable after creation — AI extraction must never
-    // silently rename an existing party identity record. The reviewer may update the
-    // party via the party management UI if the extracted name differs.
-    return;
+    if (partyAction === 'create_new') {
+      const { rows: [newParty] } = await txClient.query(
+        `INSERT INTO authority_parties (account_id, party_type, display_name, created_by)
+         VALUES ($1, 'person', $2, $3)
+         RETURNING id`,
+        [accountId, plainValue || 'Unknown', createdBy || null],
+      );
+      return newParty.id;
+    }
+    if (partyAction === 'map_existing') {
+      if (!partyId) {
+        throw Object.assign(new Error("partyId is required when partyAction is 'map_existing'"), { status: 422 });
+      }
+      const { rows } = await txClient.query(
+        `SELECT id FROM authority_parties WHERE account_id = $1 AND id = $2`,
+        [accountId, partyId],
+      );
+      if (rows.length === 0) {
+        throw Object.assign(new Error('Party not found or not in this account'), { status: 404 });
+      }
+      return partyId;
+    }
+    throw Object.assign(
+      new Error("Party candidate requires partyAction: 'create_new' or 'map_existing'"),
+      { status: 422 },
+    );
   }
 
   // Granted action — granted_action.<ACTION_KEY>
   if (fieldKey.startsWith('granted_action.')) {
     const actionKey = fieldKey.slice('granted_action.'.length);
-    if (!actionKey) return;
+    if (!actionKey) return null;
     // Upsert: ignore if permission already exists for this action
     await txClient.query(
       `INSERT INTO authority_instrument_permissions
@@ -599,13 +656,13 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
        ON CONFLICT (account_id, instrument_id, action_key) DO NOTHING`,
       [accountId, instr.id, actionKey, plainValue || 'granted'],
     );
-    return;
+    return null;
   }
 
   // Restriction — restriction.<RESTRICTION_TYPE>
   if (fieldKey.startsWith('restriction.')) {
     const restrictionType = fieldKey.slice('restriction.'.length);
-    if (!restrictionType) return;
+    if (!restrictionType) return null;
     let params = {};
     if (plainValue) {
       try { params = JSON.parse(plainValue); } catch { params = { raw: plainValue }; }
@@ -624,11 +681,12 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
         [accountId, instr.id, restrictionType, JSON.stringify(params)],
       );
     }
-    return;
+    return null;
   }
 
   // Unknown field_key — accepted but no structural change applied
   // (human reviewed and acknowledged it)
+  return null;
 }
 
 /**
@@ -650,21 +708,26 @@ async function rejectCandidate(accountId, userId, candidateId, rejectionReason) 
     const e = new Error(`Candidate is already ${candidate.status}`); e.status = 409; throw e;
   }
 
-  // When the case is under active human review, only the active assignee may reject candidates.
+  // Candidate rejection is only valid during active human review.
   const { rows: caseRows } = await pool.query(
     `SELECT status FROM authority_cases WHERE account_id = $1 AND id = $2`,
     [accountId, candidate.case_id],
   );
-  if (caseRows.length > 0 && caseRows[0].status === 'HUMAN_REVIEW_IN_PROGRESS') {
-    const { rows: assignRows } = await pool.query(
-      `SELECT id FROM authority_review_assignments
-        WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
-      [accountId, candidate.case_id, userId],
-    );
-    if (!assignRows.length) {
-      const e = new Error('An active case assignment is required to reject candidates during human review');
-      e.status = 403; throw e;
-    }
+  if (caseRows.length === 0) {
+    const e = new Error('Case not found'); e.status = 404; throw e;
+  }
+  if (caseRows[0].status !== 'HUMAN_REVIEW_IN_PROGRESS') {
+    const e = new Error('Candidates can only be rejected when the case is in HUMAN_REVIEW_IN_PROGRESS');
+    e.status = 409; throw e;
+  }
+  const { rows: assignRows } = await pool.query(
+    `SELECT id FROM authority_review_assignments
+      WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
+    [accountId, candidate.case_id, userId],
+  );
+  if (!assignRows.length) {
+    const e = new Error('An active case assignment is required to reject candidates during human review');
+    e.status = 403; throw e;
   }
 
   const { rowCount } = await pool.query(
@@ -729,6 +792,7 @@ async function createExplicitRetry(accountId, userId, caseId, documentId) {
 // ── Read models ───────────────────────────────────────────────────────────────
 
 async function listRunsForCase(accountId, caseId) {
+  await _assertInstitutionAccount(accountId);
   const { rows } = await pool.query(
     `SELECT r.id, r.document_id, r.run_kind, r.status, r.provider,
             r.error_category, r.error_message, r.claimed_at, r.completed_at, r.created_at,
@@ -743,11 +807,12 @@ async function listRunsForCase(accountId, caseId) {
 }
 
 async function listCandidatesForCase(accountId, caseId) {
+  await _assertInstitutionAccount(accountId);
   const { rows } = await pool.query(
     `SELECT c.id, c.run_id, c.instrument_id, c.field_key,
             c.proposed_value, c.proposed_value_key_version,
             c.confidence, c.status, c.reviewed_by, c.reviewed_at,
-            c.rejection_reason, c.row_version, c.created_at,
+            c.rejection_reason, c.canonical_party_id, c.row_version, c.created_at,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -802,18 +867,19 @@ async function listCandidatesForCase(accountId, caseId) {
     });
 
     return {
-      id:              row.id,
-      runId:           row.run_id,
-      instrumentId:    row.instrument_id,
-      fieldKey:        row.field_key,
-      proposedValue:   proposedValuePlain,
-      confidence:      row.confidence,
-      status:          row.status,
-      reviewedBy:      row.reviewed_by,
-      reviewedAt:      row.reviewed_at,
-      rejectionReason: row.rejection_reason,
-      rowVersion:      row.row_version,
-      createdAt:       row.created_at,
+      id:               row.id,
+      runId:            row.run_id,
+      instrumentId:     row.instrument_id,
+      fieldKey:         row.field_key,
+      proposedValue:    proposedValuePlain,
+      confidence:       row.confidence,
+      status:           row.status,
+      reviewedBy:       row.reviewed_by,
+      reviewedAt:       row.reviewed_at,
+      rejectionReason:  row.rejection_reason,
+      canonicalPartyId: row.canonical_party_id,
+      rowVersion:       row.row_version,
+      createdAt:        row.created_at,
       evidence,
     };
   });

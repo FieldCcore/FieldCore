@@ -40,7 +40,7 @@ const upload = multer({
 
 // ── Error handler helper ──────────────────────────────────────────────────────
 function handleError(res, err) {
-  const status = err.statusCode || 500;
+  const status = err.status || err.statusCode || 500;
   // Never include internal stack traces or sensitive details in the response body
   res.status(status).json({ error: err.message || 'Internal server error.' });
 }
@@ -586,16 +586,13 @@ router.get('/cases/:caseId/candidates', async (req, res) => {
 });
 
 // POST /api/authority/candidates/:candidateId/accept
-// Requires AUTHORITY_INSTRUMENT_VERIFY capability
+// No special capability required — active case assignment enforced in service.
 router.post('/candidates/:candidateId/accept', async (req, res) => {
   try {
-    const allowed = await _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_VERIFY');
-    if (!allowed) {
-      return res.status(403).json({ error: 'AUTHORITY_INSTRUMENT_VERIFY capability required.' });
-    }
+    const { rowVersion, partyAction, partyId } = req.body || {};
     const result = await extractionService.acceptCandidate(
       req.accountId, req.userId, req.params.candidateId,
-      { rowVersion: req.body?.rowVersion }
+      { rowVersion, partyAction, partyId }
     );
     res.json(result);
   } catch (err) {
@@ -604,18 +601,9 @@ router.post('/candidates/:candidateId/accept', async (req, res) => {
 });
 
 // POST /api/authority/candidates/:candidateId/reject
-// Requires AUTHORITY_INSTRUMENT_VERIFY or AUTHORITY_INSTRUMENT_REJECT capability
+// No special capability required — active case assignment enforced in service.
 router.post('/candidates/:candidateId/reject', async (req, res) => {
   try {
-    const [canVerify, canReject] = await Promise.all([
-      _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_VERIFY'),
-      _hasCapability(req.userId, 'AUTHORITY_INSTRUMENT_REJECT'),
-    ]);
-    if (!canVerify && !canReject) {
-      return res.status(403).json({
-        error: 'AUTHORITY_INSTRUMENT_VERIFY or AUTHORITY_INSTRUMENT_REJECT capability required.',
-      });
-    }
     const result = await extractionService.rejectCandidate(
       req.accountId, req.userId, req.params.candidateId,
       req.body?.rejectionReason || null
