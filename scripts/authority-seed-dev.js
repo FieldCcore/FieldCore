@@ -44,7 +44,7 @@ const SYNTHETIC_PDF = Buffer.from(
   'xref\n0 3\n0000000000 65535 f \ntrailer\n<</Size 3/Root 1 0 R>>\nstartxref\n9\n%%EOF'
 );
 
-// Poll until a case leaves PENDING_EXTRACTION, with a fallback for storage-not-configured environments.
+// Poll until a case leaves PENDING_EXTRACTION.
 async function waitForExtractionComplete(accountId, caseId, maxWaitMs = 20000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
@@ -52,9 +52,10 @@ async function waitForExtractionComplete(accountId, caseId, maxWaitMs = 20000) {
     if (kase.status !== 'PENDING_EXTRACTION') return kase;
     await new Promise(r => setTimeout(r, 400));
   }
-  // Fallback: force the transition so the seed can complete even without R2 configured.
-  console.warn('[authority-seed-dev] Extraction did not finish in time — forcing EXTRACTION_COMPLETE (storage may not be configured in this environment).');
-  await authorityService.transitionCase(accountId, null, caseId, 'EXTRACTION_COMPLETE', { systemActor: true });
+  throw new Error(
+    `[authority-seed-dev] Extraction did not complete within ${maxWaitMs}ms. ` +
+    'Ensure R2 storage is configured (R2_AUTHORITY_* env vars) and the extraction worker can reach it.',
+  );
 }
 
 async function seed() {
@@ -166,9 +167,29 @@ async function seed() {
     { actorType: 'human' });
 
   // 9. Reviewer claims the case — this transitions it to HUMAN_REVIEW_IN_PROGRESS
-  //    Must happen BEFORE verify so the reviewer has an active assignment.
+  //    Must happen BEFORE candidate review so the reviewer has an active assignment.
   const assignment = await authorityService.claimCase(acct.id, reviewer.id, kase.id);
   console.log(`[authority-seed-dev] Case claimed; assignment: ${assignment.id}`);
+
+  // 9b. Reviewer accepts/rejects extraction candidates (active assignment required).
+  //     Candidates with evidence are accepted; those without are rejected.
+  //     Participant name candidates (principal_name, agent_name) are accepted for the
+  //     record but make no structural change to party data — that is by design.
+  {
+    const candidates = await extractionService.listCandidatesForCase(acct.id, kase.id);
+    let accepted = 0, rejected = 0;
+    for (const c of candidates) {
+      if (c.status !== 'pending') continue;
+      if (c.evidence && c.evidence.length > 0) {
+        await extractionService.acceptCandidate(acct.id, reviewer.id, c.id, { rowVersion: c.rowVersion });
+        accepted++;
+      } else {
+        await extractionService.rejectCandidate(acct.id, reviewer.id, c.id, 'No supporting evidence from extraction');
+        rejected++;
+      }
+    }
+    console.log(`[authority-seed-dev] Reviewed candidates: ${accepted} accepted, ${rejected} rejected.`);
+  }
 
   // 10. Reviewer verifies instrument (active assignee required)
   const verified = await authorityService.transitionInstrument(

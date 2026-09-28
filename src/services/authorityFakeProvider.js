@@ -20,12 +20,10 @@
 
 const crypto = require('crypto');
 
-if (
-  process.env.NODE_ENV === 'production' &&
-  process.env.AUTHORITY_EXTRACTION_REAL_PROVIDER_ENABLED === 'true'
-) {
+if (process.env.NODE_ENV === 'production') {
   throw new Error(
-    '[authorityFakeProvider] REFUSED: cannot use fake provider when real provider is enabled in production.',
+    '[authorityFakeProvider] REFUSED: fake provider cannot be used in production. ' +
+    'Set AUTHORITY_EXTRACTION_PROVIDER=anthropic and AUTHORITY_EXTRACTION_REAL_PROVIDER_ENABLED=true.',
   );
 }
 

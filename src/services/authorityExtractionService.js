@@ -406,8 +406,13 @@ async function transitionToExtractionComplete(accountId, caseId) {
   } catch (err) {
     // 409 Conflict means the case is already in a later state — treat as success
     if (err.status === 409 || err.statusCode === 409) return;
-    // 400 with "invalid transition" also means case is already past this state
-    if (err.status === 400 || err.statusCode === 400) return;
+    // 400 with the specific "Cannot transition case from" message means the case has
+    // already advanced past PENDING_EXTRACTION — treat as success (idempotent).
+    // Other 400s (validation errors, missing instruments, etc.) should propagate.
+    if (
+      (err.status === 400 || err.statusCode === 400) &&
+      err.message && err.message.includes('Cannot transition case from')
+    ) return;
     console.error(`[authorityExtraction] transitionToExtractionComplete failed for case ${caseId}:`, err.message);
   }
 }
@@ -443,6 +448,34 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
   }
   if (!candidate.instrument_id) {
     const e = new Error('Candidate has no associated instrument'); e.status = 422; throw e;
+  }
+
+  // Require at least one evidence item — accepting an AI extraction with zero citations
+  // would apply field values to a legal instrument with no auditable provenance.
+  const { rows: [evRow] } = await pool.query(
+    `SELECT COUNT(*)::int AS cnt FROM authority_extraction_evidence WHERE candidate_id = $1`,
+    [candidateId],
+  );
+  if (evRow.cnt === 0) {
+    const e = new Error('Candidate has no supporting evidence and cannot be accepted');
+    e.status = 422; throw e;
+  }
+
+  // When the case is under active human review, only the active assignee may accept candidates.
+  const { rows: caseRows } = await pool.query(
+    `SELECT status FROM authority_cases WHERE account_id = $1 AND id = $2`,
+    [accountId, candidate.case_id],
+  );
+  if (caseRows.length > 0 && caseRows[0].status === 'HUMAN_REVIEW_IN_PROGRESS') {
+    const { rows: assignRows } = await pool.query(
+      `SELECT id FROM authority_review_assignments
+        WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
+      [accountId, candidate.case_id, userId],
+    );
+    if (!assignRows.length) {
+      const e = new Error('An active case assignment is required to accept candidates during human review');
+      e.status = 403; throw e;
+    }
   }
 
   // Decrypt proposed value
@@ -547,21 +580,10 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
     beneficiary_name: 'beneficiary',
   };
   if (roleMap[fieldKey]) {
-    const role = roleMap[fieldKey];
-    const { rows: partRows } = await txClient.query(
-      `SELECT ip.party_id FROM authority_instrument_participants ip
-        WHERE ip.account_id = $1 AND ip.instrument_id = $2 AND ip.role = $3
-          AND ip.status = 'active'
-        LIMIT 1`,
-      [accountId, instr.id, role],
-    );
-    if (partRows.length > 0 && plainValue !== null) {
-      await txClient.query(
-        `UPDATE authority_parties SET display_name = $1, updated_at = NOW()
-          WHERE account_id = $2 AND id = $3`,
-        [plainValue, accountId, partRows[0].party_id],
-      );
-    }
+    // Participant name candidates are acknowledged but make no structural change to party
+    // data. Party display_name is immutable after creation — AI extraction must never
+    // silently rename an existing party identity record. The reviewer may update the
+    // party via the party management UI if the extracted name differs.
     return;
   }
 
@@ -614,8 +636,10 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue) {
  */
 async function rejectCandidate(accountId, userId, candidateId, rejectionReason) {
   const { rows: cRows } = await pool.query(
-    `SELECT id, status, field_key, row_version FROM authority_extraction_candidates
-      WHERE id = $1 AND account_id = $2`,
+    `SELECT c.id, c.status, c.field_key, c.row_version, r.case_id
+       FROM authority_extraction_candidates c
+       JOIN authority_extraction_runs r ON r.id = c.run_id
+      WHERE c.id = $1 AND c.account_id = $2`,
     [candidateId, accountId],
   );
   if (cRows.length === 0) {
@@ -624,6 +648,23 @@ async function rejectCandidate(accountId, userId, candidateId, rejectionReason) 
   const candidate = cRows[0];
   if (candidate.status !== 'pending') {
     const e = new Error(`Candidate is already ${candidate.status}`); e.status = 409; throw e;
+  }
+
+  // When the case is under active human review, only the active assignee may reject candidates.
+  const { rows: caseRows } = await pool.query(
+    `SELECT status FROM authority_cases WHERE account_id = $1 AND id = $2`,
+    [accountId, candidate.case_id],
+  );
+  if (caseRows.length > 0 && caseRows[0].status === 'HUMAN_REVIEW_IN_PROGRESS') {
+    const { rows: assignRows } = await pool.query(
+      `SELECT id FROM authority_review_assignments
+        WHERE account_id = $1 AND case_id = $2 AND assigned_to = $3 AND status = 'active'`,
+      [accountId, candidate.case_id, userId],
+    );
+    if (!assignRows.length) {
+      const e = new Error('An active case assignment is required to reject candidates during human review');
+      e.status = 403; throw e;
+    }
   }
 
   const { rowCount } = await pool.query(
