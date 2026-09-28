@@ -40,8 +40,21 @@ async function alertAdmin(subject, body) {
   }
 }
 
+// Transactional audit write — uses the caller's txClient so the record is
+// committed or rolled back atomically with the surrounding transaction.
+// Unlike log(), this does NOT swallow errors: a write failure propagates
+// and causes the transaction to roll back.
+async function logInTx(txClient, accountId, userId, action, entity, entityId, details, ipAddress) {
+  await txClient.query(
+    `INSERT INTO audit_logs (account_id, user_id, action, entity, entity_id, details, ip_address)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [accountId || null, userId || null, action, entity || null, entityId || null,
+     details ? JSON.stringify(details) : null, ipAddress || null]
+  );
+}
+
 // Exposed for test introspection only.
 function getFailureCount() { return _failureCount; }
 function resetFailureCount() { _failureCount = 0; }
 
-module.exports = { log, alertAdmin, getFailureCount, resetFailureCount };
+module.exports = { log, logInTx, alertAdmin, getFailureCount, resetFailureCount };

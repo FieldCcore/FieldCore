@@ -556,6 +556,13 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
       );
     }
 
+    await audit.logInTx(client, accountId, userId, 'EXTRACTION_CANDIDATE_ACCEPTED',
+      'extraction_candidate', candidateId, {
+        fieldKey:         candidate.field_key,
+        plainValue,
+        canonicalPartyId,
+      });
+
     await client.query('COMMIT');
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
@@ -563,12 +570,6 @@ async function acceptCandidate(accountId, userId, candidateId, opts = {}) {
   } finally {
     client.release();
   }
-
-  audit.log(accountId, userId, 'EXTRACTION_CANDIDATE_ACCEPTED', 'extraction_candidate', candidateId, {
-    fieldKey:         candidate.field_key,
-    plainValue,
-    canonicalPartyId,
-  });
 
   return { id: candidateId, status: 'accepted' };
 }
@@ -617,11 +618,15 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue, opt
   };
   if (roleMap[fieldKey]) {
     if (partyAction === 'create_new') {
-      const { rows: [newParty] } = await txClient.query(
-        `INSERT INTO authority_parties (account_id, party_type, display_name, created_by)
-         VALUES ($1, 'person', $2, $3)
-         RETURNING id`,
-        [accountId, plainValue || 'Unknown', createdBy || null],
+      if (!plainValue) {
+        throw Object.assign(new Error('Party candidate has no proposed value'), { status: 422 });
+      }
+      // Lazy require to avoid circular dep: authorityExtractionService ↔ authorityService
+      const svc = require('./authorityService');
+      const newParty = await svc.createParty(
+        accountId, createdBy,
+        { partyType: 'person', displayName: plainValue },
+        txClient,
       );
       return newParty.id;
     }
@@ -730,26 +735,39 @@ async function rejectCandidate(accountId, userId, candidateId, rejectionReason) 
     e.status = 403; throw e;
   }
 
-  const { rowCount } = await pool.query(
-    `UPDATE authority_extraction_candidates
-        SET status           = 'rejected',
-            reviewed_by      = $1,
-            reviewed_at      = NOW(),
-            rejection_reason = $2,
-            row_version      = row_version + 1,
-            updated_at       = NOW()
-      WHERE id = $3 AND account_id = $4 AND status = 'pending'`,
-    [userId, rejectionReason || null, candidateId, accountId],
-  );
-  if (rowCount === 0) {
-    const e = new Error('Candidate could not be rejected (possibly already reviewed)');
-    e.status = 409; throw e;
-  }
+  const rejectClient = await pool.connect();
+  try {
+    await rejectClient.query('BEGIN');
 
-  audit.log(accountId, userId, 'EXTRACTION_CANDIDATE_REJECTED', 'extraction_candidate', candidateId, {
-    fieldKey: candidate.field_key,
-    reason:   rejectionReason,
-  });
+    const { rowCount } = await rejectClient.query(
+      `UPDATE authority_extraction_candidates
+          SET status           = 'rejected',
+              reviewed_by      = $1,
+              reviewed_at      = NOW(),
+              rejection_reason = $2,
+              row_version      = row_version + 1,
+              updated_at       = NOW()
+        WHERE id = $3 AND account_id = $4 AND status = 'pending'`,
+      [userId, rejectionReason || null, candidateId, accountId],
+    );
+    if (rowCount === 0) {
+      const e = new Error('Candidate could not be rejected (possibly already reviewed)');
+      e.status = 409; throw e;
+    }
+
+    await audit.logInTx(rejectClient, accountId, userId, 'EXTRACTION_CANDIDATE_REJECTED',
+      'extraction_candidate', candidateId, {
+        fieldKey: candidate.field_key,
+        reason:   rejectionReason,
+      });
+
+    await rejectClient.query('COMMIT');
+  } catch (err) {
+    try { await rejectClient.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally {
+    rejectClient.release();
+  }
 
   return { id: candidateId, status: 'rejected' };
 }

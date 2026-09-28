@@ -316,7 +316,7 @@ async function grantCapability(grantingUserId, targetUserId, capability) {
  * Create an authority party. Encrypted display_name is stored in the DB.
  * ai_agent party_type is rejected by the service in this stage.
  */
-async function createParty(accountId, userId, { partyType, displayName, externalReference }) {
+async function createParty(accountId, userId, { partyType, displayName, externalReference }, txClient = null) {
   await _assertInstitutionAccount(accountId);
 
   if (!VALID_PARTICIPANT_ROLES || !partyType) throw _badRequest('partyType is required.');
@@ -332,7 +332,7 @@ async function createParty(accountId, userId, { partyType, displayName, external
 
   const encryptedName = authorityCrypto.encrypt(String(displayName).trim());
 
-  const { rows: [party] } = await pool.query(
+  const { rows: [party] } = await (txClient || pool).query(
     `INSERT INTO authority_parties
        (account_id, party_type, display_name, external_reference, created_by)
      VALUES ($1, $2, $3, $4, $5)
@@ -340,12 +340,15 @@ async function createParty(accountId, userId, { partyType, displayName, external
     [accountId, partyType, encryptedName, externalReference || null, userId]
   );
 
-  await auditService.log(
-    accountId, userId, 'authority.party.created',
-    'authority_party', party.id,
-    { party_type: partyType },
-    null
-  );
+  // When called inside a transaction the caller is responsible for the audit record.
+  if (!txClient) {
+    await auditService.log(
+      accountId, userId, 'authority.party.created',
+      'authority_party', party.id,
+      { party_type: partyType },
+      null
+    );
+  }
 
   return party;
 }

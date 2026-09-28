@@ -1320,3 +1320,231 @@ describe('Acceptance guards', () => {
     expect(result).toMatchObject({ status: 'rejected' });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 15: Canonical Party Creation Integrity
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Canonical party creation integrity', () => {
+  // Test 77
+  test('extractionService has no direct INSERT into authority_parties', () => {
+    const fs   = require('fs');
+    const path = require('path');
+    const src  = fs.readFileSync(
+      path.join(__dirname, '../services/authorityExtractionService.js'),
+      'utf8'
+    );
+    expect(src).not.toMatch(/INSERT\s+INTO\s+authority_parties/i);
+  });
+
+  // Test 78
+  test('create_new stores display_name encrypted in DB, readable via getParty', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    await extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+      rowVersion:  nameCand.rowVersion,
+      partyAction: 'create_new',
+    });
+
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const accepted  = refreshed.find(c => c.id === nameCand.id);
+    expect(accepted.canonicalPartyId).not.toBeNull();
+
+    // Raw DB column must not equal plaintext
+    const { rows: [raw] } = await pool.query(
+      `SELECT display_name FROM authority_parties WHERE id = $1`,
+      [accepted.canonicalPartyId]
+    );
+    expect(raw).toBeDefined();
+    expect(raw.display_name).not.toBe(nameCand.proposedValue);
+
+    // Canonical read path decrypts correctly
+    const party = await authorityService.getParty(accountId, accepted.canonicalPartyId);
+    expect(party.display_name).toBe(nameCand.proposedValue);
+  });
+
+  // Test 79
+  test('createParty failure during create_new leaves candidate pending', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    const spy = jest.spyOn(authorityService, 'createParty')
+      .mockRejectedValueOnce(Object.assign(new Error('simulated createParty failure'), { status: 500 }));
+
+    await expect(
+      extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+        rowVersion:  nameCand.rowVersion,
+        partyAction: 'create_new',
+      })
+    ).rejects.toThrow();
+
+    spy.mockRestore();
+
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    expect(refreshed.find(c => c.id === nameCand.id).status).toBe('pending');
+  });
+
+  // Test 80
+  test('audit failure during create_new accept: candidate stays pending, no orphan party', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    const { rows: [before] } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM authority_parties WHERE account_id = $1`, [accountId]
+    );
+
+    const auditMod = require('../services/audit');
+    const spy = jest.spyOn(auditMod, 'logInTx')
+      .mockRejectedValueOnce(new Error('simulated audit failure'));
+
+    await expect(
+      extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+        rowVersion:  nameCand.rowVersion,
+        partyAction: 'create_new',
+      })
+    ).rejects.toThrow();
+
+    spy.mockRestore();
+
+    // Candidate still pending
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    expect(refreshed.find(c => c.id === nameCand.id).status).toBe('pending');
+
+    // No orphan party left in DB
+    const { rows: [after] } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM authority_parties WHERE account_id = $1`, [accountId]
+    );
+    expect(after.c).toBe(before.c);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 16: Candidate Decision Audit Atomicity
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Candidate decision audit atomicity', () => {
+  // Test 81
+  test('successful accept creates a durable audit record', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const c = cands.find(x => x.fieldKey === 'jurisdiction' && x.status === 'pending');
+    if (!c) return;
+
+    const { rows: [before] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`,
+      [accountId]
+    );
+
+    await extractionService.acceptCandidate(accountId, userId, c.id, { rowVersion: c.rowVersion });
+
+    const { rows: [after] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`,
+      [accountId]
+    );
+    expect(after.n).toBe(before.n + 1);
+  });
+
+  // Test 82
+  test('audit failure during accept rolls back: candidate stays pending, no audit row', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const c = cands.find(x => x.fieldKey === 'jurisdiction' && x.status === 'pending');
+    if (!c) return;
+
+    const { rows: [before] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`,
+      [accountId]
+    );
+
+    const auditMod = require('../services/audit');
+    const spy = jest.spyOn(auditMod, 'logInTx')
+      .mockRejectedValueOnce(new Error('simulated audit failure'));
+
+    await expect(
+      extractionService.acceptCandidate(accountId, userId, c.id, { rowVersion: c.rowVersion })
+    ).rejects.toThrow();
+
+    spy.mockRestore();
+
+    // Candidate stays pending
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    expect(refreshed.find(x => x.id === c.id).status).toBe('pending');
+
+    // No audit row was committed
+    const { rows: [after] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`,
+      [accountId]
+    );
+    expect(after.n).toBe(before.n);
+  });
+
+  // Test 83
+  test('successful reject creates a durable audit record', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const c = cands.find(x => x.status === 'pending');
+    if (!c) return;
+
+    const { rows: [before] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_REJECTED'`,
+      [accountId]
+    );
+
+    await extractionService.rejectCandidate(accountId, userId, c.id, 'atomicity-test rejection');
+
+    const { rows: [after] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_REJECTED'`,
+      [accountId]
+    );
+    expect(after.n).toBe(before.n + 1);
+  });
+
+  // Test 84
+  test('audit failure during reject rolls back: candidate stays pending, no audit row', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const c = cands.find(x => x.status === 'pending');
+    if (!c) return;
+
+    const { rows: [before] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_REJECTED'`,
+      [accountId]
+    );
+
+    const auditMod = require('../services/audit');
+    const spy = jest.spyOn(auditMod, 'logInTx')
+      .mockRejectedValueOnce(new Error('simulated audit failure'));
+
+    await expect(
+      extractionService.rejectCandidate(accountId, userId, c.id, 'atomicity-failure-test')
+    ).rejects.toThrow();
+
+    spy.mockRestore();
+
+    // Candidate stays pending
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    expect(refreshed.find(x => x.id === c.id).status).toBe('pending');
+
+    // No audit row committed
+    const { rows: [after] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_REJECTED'`,
+      [accountId]
+    );
+    expect(after.n).toBe(before.n);
+  });
+});
