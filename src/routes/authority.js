@@ -614,4 +614,54 @@ router.post('/candidates/:candidateId/reject', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stage 4: Deterministic Authority Engine
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const evaluationService = require('../services/authorityEvaluationService');
+
+// POST /api/authority/evaluate
+// Body: { instrumentId, requestingPartyId, actionKey, amount?, currency?,
+//         actionTime?, idempotencyKey }
+router.post('/evaluate', async (req, res) => {
+  try {
+    const {
+      instrumentId, requestingPartyId, actionKey,
+      amount, currency, actionTime, idempotencyKey,
+    } = req.body || {};
+
+    const result = await evaluationService.evaluateAuthority(
+      { instrumentId, requestingPartyId, actionKey, amount, currency, actionTime, idempotencyKey },
+      { accountId: req.accountId, userId: req.userId, ipAddress: req.ip || null }
+    );
+    res.status(result.isReplay ? 200 : 201).json(result);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/evaluations — list evaluations for this account
+// Query: ?instrumentId=<uuid>&limit=<n>&offset=<n>
+router.get('/evaluations', async (req, res) => {
+  try {
+    const { instrumentId, limit, offset } = req.query;
+    const rows = await evaluationService.listEvaluations(
+      req.accountId, { instrumentId, limit, offset }
+    );
+    res.json(rows);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// GET /api/authority/evaluations/:evaluationId
+router.get('/evaluations/:evaluationId', async (req, res) => {
+  try {
+    const row = await evaluationService.getEvaluation(req.accountId, req.params.evaluationId);
+    res.json(row);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 module.exports = router;

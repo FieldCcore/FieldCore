@@ -3000,6 +3000,36 @@ const MIGRATIONS = [
   // Stage 3 additive: canonical party resolved by reviewer when accepting a party-identity candidate.
   `ALTER TABLE authority_extraction_candidates
      ADD COLUMN IF NOT EXISTS canonical_party_id UUID REFERENCES authority_parties(id)`,
+
+  // Stage 4: Deterministic Authority Engine — evaluation persistence table.
+  `CREATE TABLE IF NOT EXISTS authority_evaluations (
+     id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     account_id                 UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     instrument_id              UUID NOT NULL REFERENCES authority_instruments(id) ON DELETE CASCADE,
+     idempotency_key            TEXT NOT NULL,
+     outcome                    TEXT NOT NULL,
+     reason_code                TEXT NOT NULL,
+     reason_detail              TEXT,
+     policy_version             TEXT NOT NULL,
+     canonical_rules_fingerprint TEXT NOT NULL,
+     evaluation_state_snapshot  TEXT NOT NULL,
+     runtime_context            TEXT,
+     evaluated_at               TIMESTAMPTZ NOT NULL,
+     action_time                TIMESTAMPTZ,
+     requested_action_key       TEXT,
+     requesting_party_id        UUID REFERENCES authority_parties(id),
+     created_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ae_idempotency
+     ON authority_evaluations(account_id, idempotency_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_ae_instrument
+     ON authority_evaluations(account_id, instrument_id, evaluated_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ae_outcome
+     ON authority_evaluations(account_id, outcome, evaluated_at DESC)`,
+
+  // Drop FK on requesting_party_id — evaluations may record unknown/external party IDs.
+  `ALTER TABLE authority_evaluations
+     DROP CONSTRAINT IF EXISTS authority_evaluations_requesting_party_id_fkey`,
 ];
 
 async function runMigrations() {

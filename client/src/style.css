@@ -10575,8 +10575,12 @@ tr:focus-within .inv-row-actions,
 .au-btn--primary  { background: var(--navy);  color: var(--white); }
 .au-btn--success  { background: var(--green); color: var(--white); }
 .au-btn--danger   { background: var(--red);   color: var(--white); }
-.au-btn--outline  { background: transparent; border: 1px solid var(--lightgray); color: var(--navy); }
-.au-btn--sand     { background: var(--sand);  color: var(--navy); }
+.au-btn--outline    { background: transparent; border: 1px solid var(--lightgray); color: var(--navy); }
+.au-btn--sand       { background: var(--sand);  color: var(--navy); }
+.au-btn--secondary  { background: var(--offwhite); border: 1px solid var(--lightgray); color: var(--navy); }
+.au-btn--ghost      { background: transparent; border: none; color: var(--slate); padding: 4px 8px; }
+.au-btn--ghost:hover{ color: var(--navy); }
+.au-form-group      { display: flex; flex-direction: column; gap: 4px; }
 
 /* ── Form elements ───────────────────────────────────────── */
 .au-input {

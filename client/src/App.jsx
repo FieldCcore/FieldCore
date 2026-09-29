@@ -82,6 +82,7 @@ import AuthorityQueue    from './pages/AuthorityQueue';
 import AuthorityCases    from './pages/AuthorityCases';
 import AuthorityWorkspace from './pages/AuthorityWorkspace';
 import AuthorityParties  from './pages/AuthorityParties';
+import AuthorityEvaluate from './pages/AuthorityEvaluate';
 import EntitySwitcher  from './components/EntitySwitcher';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -119,10 +120,11 @@ function AuthorityGate({ children }) {
 }
 
 const PAGE_TITLES = {
-  '/authority':          'Authority',
-  '/authority/queue':    'Review Queue',
-  '/authority/cases':    'Cases',
-  '/authority/parties':  'Parties',
+  '/authority':           'Authority',
+  '/authority/queue':     'Review Queue',
+  '/authority/cases':     'Cases',
+  '/authority/parties':   'Parties',
+  '/authority/evaluate':  'Evaluate',
   '/dashboard':          'Dashboard',
   '/dispatch':           'Dispatch',
   '/jobs':               'Calendar',
@@ -572,10 +574,11 @@ function AppShell() {
                 {user?.account_type === 'institution' && user?.authority_enabled && (
                   <>
                     <div className="nav-section">Authority</div>
-                    {ni('/authority',         true,  IcoAuthority, 'Dashboard',  null)}
-                    {ni('/authority/queue',   false, IcoAuthority, 'Queue',      null)}
-                    {ni('/authority/cases',   false, IcoAuthority, 'Cases',      null)}
-                    {ni('/authority/parties', false, IcoTeam,      'Parties',    null)}
+                    {ni('/authority',          true,  IcoAuthority, 'Dashboard',  null)}
+                    {ni('/authority/queue',    false, IcoAuthority, 'Queue',      null)}
+                    {ni('/authority/cases',    false, IcoAuthority, 'Cases',      null)}
+                    {ni('/authority/parties',  false, IcoTeam,      'Parties',    null)}
+                    {ni('/authority/evaluate', false, IcoAuthority, 'Evaluate',   null)}
                   </>
                 )}
 
@@ -673,6 +676,7 @@ function AppShell() {
             <Route path="/authority/cases"        element={<ProtectedRoute><AuthorityGate><AuthorityCases /></AuthorityGate></ProtectedRoute>}     />
             <Route path="/authority/cases/:caseId" element={<ProtectedRoute><AuthorityGate><AuthorityWorkspace /></AuthorityGate></ProtectedRoute>} />
             <Route path="/authority/parties"      element={<ProtectedRoute><AuthorityGate><AuthorityParties /></AuthorityGate></ProtectedRoute>}   />
+            <Route path="/authority/evaluate"    element={<ProtectedRoute><AuthorityGate><AuthorityEvaluate /></AuthorityGate></ProtectedRoute>}  />
           </Routes>
         </div>
 
