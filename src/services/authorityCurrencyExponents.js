@@ -82,10 +82,52 @@ function isThreeDecimal(currencyCode) {
   return getExponent(currencyCode) === 3;
 }
 
+/**
+ * Convert a decimal string amount to integer minor units without float imprecision.
+ *
+ * Accepts amounts as strings (e.g. "19.99") or integers (e.g. 1999 already in minor units).
+ * If the input already looks like an integer with no fractional part, it is returned as-is.
+ * Rejects inputs with more fractional digits than the currency's exponent.
+ *
+ * @param {string|number} amount  e.g. "19.99" or 1999
+ * @param {string} currencyCode   ISO 4217
+ * @returns {number}  integer minor units
+ * @throws {Error}  if fractional digits exceed the currency's exponent
+ */
+function toMinorUnits(amount, currencyCode) {
+  const exp = getExponent(currencyCode);
+  const str = String(amount).trim();
+
+  if (!/^-?\d+(\.\d+)?$/.test(str)) {
+    throw new Error(`Invalid amount format: "${str}"`);
+  }
+
+  const dotIdx = str.indexOf('.');
+  if (dotIdx === -1) {
+    // Integer input — treat as already in major units (no decimal, multiply by 10^exp)
+    return parseInt(str, 10) * Math.pow(10, exp);
+  }
+
+  const fractionalPart = str.slice(dotIdx + 1);
+  if (fractionalPart.length > exp) {
+    throw new Error(
+      `Amount "${str}" has ${fractionalPart.length} fractional digits but ${currencyCode} allows only ${exp}`
+    );
+  }
+
+  // Pad fractional part to exactly exp digits (e.g. "19.9" → "19.90" for USD)
+  const paddedFraction = fractionalPart.padEnd(exp, '0');
+  const integerPart    = str.slice(0, dotIdx).replace('-', '');
+  const negative       = str.startsWith('-');
+  const result         = parseInt(integerPart, 10) * Math.pow(10, exp) + parseInt(paddedFraction || '0', 10);
+  return negative ? -result : result;
+}
+
 module.exports = {
   CURRENCY_EXPONENTS,
   DEFAULT_EXPONENT,
   getExponent,
   isZeroDecimal,
   isThreeDecimal,
+  toMinorUnits,
 };

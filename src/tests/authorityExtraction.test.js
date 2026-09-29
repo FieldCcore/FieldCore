@@ -1265,7 +1265,8 @@ describe('Acceptance guards', () => {
     );
 
     const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
-    const c = cands.find(c => c.status === 'pending' && c.evidence.length > 0);
+    const PARTY_FIELDS = new Set(['principal_name','agent_name','trustee_name','guardian_name','grantor_name','beneficiary_name']);
+    const c = cands.find(c => c.status === 'pending' && c.evidence.length > 0 && !PARTY_FIELDS.has(c.fieldKey));
     if (!c) return;
 
     // Non-assignee → 403

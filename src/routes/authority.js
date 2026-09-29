@@ -632,17 +632,17 @@ router.post('/candidates/:candidateId/reject', async (req, res) => {
 const evaluationService = require('../services/authorityEvaluationService');
 
 // POST /api/authority/evaluate
-// Body: { instrumentId, requestingPartyId, actionKey, amount?, currency?,
-//         actionTime?, idempotencyKey }
+// Body: { instrumentId, delegatePartyId, principalPartyId, actionKey, amount?,
+//         currency?, actionTime?, requestedAt, idempotencyKey }
 router.post('/evaluate', async (req, res) => {
   try {
     const {
-      instrumentId, requestingPartyId, actionKey,
-      amount, currency, actionTime, idempotencyKey,
+      instrumentId, delegatePartyId, principalPartyId, actionKey,
+      amount, currency, actionTime, requestedAt, idempotencyKey,
     } = req.body || {};
 
     const result = await evaluationService.evaluateAuthority(
-      { instrumentId, requestingPartyId, actionKey, amount, currency, actionTime, idempotencyKey },
+      { instrumentId, delegatePartyId, principalPartyId, actionKey, amount, currency, actionTime, requestedAt, idempotencyKey },
       { accountId: req.accountId, userId: req.userId, ipAddress: req.ip || null }
     );
     res.status(result.isReplay ? 200 : 201).json(result);

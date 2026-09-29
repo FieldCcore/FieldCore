@@ -133,8 +133,8 @@ const OUTCOME_RANK = {
  */
 function evaluate(inputs, request, temporalContext, policyRegistry, restrictionEvaluators) {
   const { instrument, participants, permissions, restrictions } = inputs;
-  // Correction 1: accept delegatePartyId with backward-compat fallback to requestingPartyId
-  const delegatePartyId  = request.delegatePartyId || request.requestingPartyId || null;
+  // Closure Part 3: delegatePartyId only — no requestingPartyId fallback
+  const delegatePartyId  = request.delegatePartyId || null;
   const principalPartyId = request.principalPartyId || null;
   const { actionKey, amount, currency }            = request;
   const { action_time }                            = temporalContext;
@@ -244,26 +244,27 @@ function evaluate(inputs, request, temporalContext, policyRegistry, restrictionE
       { blockingPermissionIds: [prohibitedPerm.id] });
   }
 
-  const grantedPerm = (permissions || []).find(
-    p => p.action_key === actionKey && p.grant_type === 'granted'
-  );
-  if (!grantedPerm) {
-    // Correction 5: no grant → NOT_AUTHORIZED / NO_APPLICABLE_GRANT (not INSUFFICIENT_INFO)
+  // Part 9 closure: collect ALL grants for this action key, sort deterministically by id.
+  const grantedPerms = [...(permissions || [])]
+    .filter(p => p.action_key === actionKey && p.grant_type === 'granted')
+    .sort((a, b) => a.id < b.id ? -1 : 1);
+  if (grantedPerms.length === 0) {
     return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'NO_APPLICABLE_GRANT');
   }
+  const grantedPermIds = grantedPerms.map(p => p.id);
 
   // ── 9. Action key format validation (format only, no allowlist) ─────────────
-  // Correction 6: use isActionKeyValid (format-only) instead of isActionDomainSupported (allowlist)
   if (!policyRegistry.isActionKeyValid(actionKey)) {
     return _hardGate(OUTCOMES.MANUAL_REVIEW, 'UNSUPPORTED_ACTION_DOMAIN',
       { manualReviewReasons: [`Action key '${actionKey}' has invalid format`] });
   }
 
   // ── 10. Restrictions ─────────────────────────────────────────────────────────
-  // Apply restrictions scoped to this permission or instrument-wide (null permission_id).
-  // Correction 9: sort by id for deterministic order, collect ALL results.
+  // Apply restrictions scoped to any of the granted permissions or instrument-wide (null permission_id).
+  // Sort by id for deterministic order; collect ALL results.
+  const grantedPermIdSet = new Set(grantedPermIds);
   const applicableRestrictions = [...(restrictions || [])]
-    .filter(r => r.permission_id === null || r.permission_id === grantedPerm.id)
+    .filter(r => r.permission_id === null || grantedPermIdSet.has(r.permission_id))
     .sort((a, b) => a.id < b.id ? -1 : 1);
 
   const allReasonCodes      = [];
@@ -309,11 +310,11 @@ function evaluate(inputs, request, temporalContext, policyRegistry, restrictionE
 
   // ── 11. Result assembly ─────────────────────────────────────────────────────
   if (allReasonCodes.length === 0) {
-    // All restrictions passed (or none applicable)
-    return _authorized([grantedPerm.id], passedRestrictionIds);
+    // All restrictions passed (or none applicable) — AUTHORIZED
+    return _authorized(grantedPermIds, passedRestrictionIds);
   }
 
-  // Correction 10: aggregate all reason codes in result
+  // Aggregate all reason codes across all failing restrictions
   return {
     decision:               aggregatedOutcome,
     outcome:                aggregatedOutcome,
@@ -321,7 +322,7 @@ function evaluate(inputs, request, temporalContext, policyRegistry, restrictionE
     reasonCode:             allReasonCodes[0],
     missingFields:          allMissingFields,
     manualReviewReasons:    allManualReasons,
-    matchedPermissionIds:   [grantedPerm.id],
+    matchedPermissionIds:   grantedPermIds,
     appliedRestrictionIds:  passedRestrictionIds,
     blockingPermissionIds:  [],
     blockingRestrictionIds: blockingRestrictionIds,
