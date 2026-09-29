@@ -12,61 +12,60 @@
  * policy changes can be traced to specific evaluation records.
  *
  * Classification rules:
- *   agentRoles  — participant roles that can act on behalf of the principal
- *   principalRoles — participant roles that ARE the principal
+ *   agentRoles       — participant roles that can unambiguously act on behalf of the principal
+ *   conditionalRoles — roles that require external activation state before acting (e.g. successor_agent)
+ *   principalRoles   — participant roles that ARE the principal
  *
  * Design constraint: this file contains NO I/O, NO DB calls, NO clock reads.
  * It is a pure data registry.
  */
 
-const POLICY_VERSION = '1.0.0';
+const POLICY_VERSION = '2.0.0';
+
+// ── Action key format ──────────────────────────────────────────────────────────
+// Valid format: DOMAIN.ACTION — both segments uppercase alphanumeric + underscore,
+// 1-30 chars each, starting with a letter. No allowlist — any valid format is accepted.
+const ACTION_KEY_FORMAT_RE = /^[A-Z][A-Z0-9_]{0,29}\.[A-Z][A-Z0-9_]{0,29}$/;
 
 // ── Per-instrument-type role classifications ──────────────────────────────────
 // Only confirmed semantics based on legal domain knowledge of each type.
-// "co_agent" and "successor_agent" are agent variants for POA instruments.
+// Correction 3: co_agent and successor_agent are CONDITIONAL roles (require external
+// activation state) — moved out of agentRoles into conditionalRoles.
 
 const INSTRUMENT_POLICIES = Object.freeze({
   power_of_attorney: Object.freeze({
-    agentRoles:     new Set(['agent', 'co_agent', 'successor_agent', 'authorized_representative']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['agent', 'authorized_representative']),
+    conditionalRoles: new Set(['co_agent', 'successor_agent']),
+    principalRoles:   new Set(['principal']),
   }),
   durable_power_of_attorney: Object.freeze({
-    agentRoles:     new Set(['agent', 'co_agent', 'successor_agent', 'authorized_representative']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['agent', 'authorized_representative']),
+    conditionalRoles: new Set(['co_agent', 'successor_agent']),
+    principalRoles:   new Set(['principal']),
   }),
   guardianship_order: Object.freeze({
-    agentRoles:     new Set(['guardian']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['guardian']),
+    conditionalRoles: new Set(),
+    principalRoles:   new Set(['principal']),
   }),
   trust: Object.freeze({
-    agentRoles:     new Set(['trustee', 'co_trustee', 'authorized_representative']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['trustee', 'authorized_representative']),
+    conditionalRoles: new Set(['co_trustee']),
+    principalRoles:   new Set(['principal']),
   }),
   corporate_resolution: Object.freeze({
-    agentRoles:     new Set(['authorized_representative']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['authorized_representative']),
+    conditionalRoles: new Set(),
+    principalRoles:   new Set(['principal']),
   }),
   letter_of_authorization: Object.freeze({
-    agentRoles:     new Set(['agent', 'authorized_representative']),
-    principalRoles: new Set(['principal']),
+    agentRoles:       new Set(['agent', 'authorized_representative']),
+    conditionalRoles: new Set(),
+    principalRoles:   new Set(['principal']),
   }),
   // healthcare_proxy and court_order: roles depend heavily on jurisdiction-specific
   // interpretation. Policy engine escalates to MANUAL_REVIEW for these types.
 });
-
-// ── Action domain classifications ─────────────────────────────────────────────
-// Action key format: DOMAIN.ACTION (e.g. BANKING.WIRE_TRANSFER)
-// Only domains with confirmed semantics are listed here.
-// An unlisted domain produces UNSUPPORTED_ACTION_DOMAIN → MANUAL_REVIEW.
-
-const SUPPORTED_ACTION_DOMAINS = Object.freeze(new Set([
-  'BANKING',
-  'HEALTHCARE',
-  'REAL_ESTATE',
-  'LEGAL',
-  'FINANCIAL',
-  'CUSTOM_DOMAIN',
-]));
 
 // ── Registry API ──────────────────────────────────────────────────────────────
 
@@ -75,28 +74,37 @@ const SUPPORTED_ACTION_DOMAINS = Object.freeze(new Set([
  * Returns null if the type has no confirmed policy (triggers MANUAL_REVIEW).
  *
  * @param {string} instrumentType
- * @returns {{ agentRoles: Set<string>, principalRoles: Set<string> } | null}
+ * @returns {{ agentRoles: Set<string>, conditionalRoles: Set<string>, principalRoles: Set<string> } | null}
  */
 function getPolicyForType(instrumentType) {
   return INSTRUMENT_POLICIES[instrumentType] || null;
 }
 
 /**
- * Return true if the action key's domain has confirmed semantics.
+ * Return true if the action key has a valid format (DOMAIN.ACTION).
+ * Does NOT use an allowlist — any correctly formatted key is valid.
  * @param {string} actionKey  e.g. "BANKING.WIRE_TRANSFER"
  * @returns {boolean}
  */
-function isActionDomainSupported(actionKey) {
+function isActionKeyValid(actionKey) {
   if (typeof actionKey !== 'string') return false;
-  const dot = actionKey.indexOf('.');
-  if (dot < 0) return false;
-  return SUPPORTED_ACTION_DOMAINS.has(actionKey.slice(0, dot));
+  return ACTION_KEY_FORMAT_RE.test(actionKey);
+}
+
+/**
+ * Deprecated alias for isActionKeyValid — kept for backward compatibility.
+ * @param {string} actionKey
+ * @returns {boolean}
+ */
+function isActionDomainSupported(actionKey) {
+  return isActionKeyValid(actionKey);
 }
 
 module.exports = {
   POLICY_VERSION,
   INSTRUMENT_POLICIES,
-  SUPPORTED_ACTION_DOMAINS,
+  ACTION_KEY_FORMAT_RE,
   getPolicyForType,
+  isActionKeyValid,
   isActionDomainSupported,
 };

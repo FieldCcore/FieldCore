@@ -2,23 +2,62 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { AuLoading, AuError, AuEmpty, fmtDateTime } from './AuthorityShared';
 
+// ── Currency exponent map (ISO 4217) ─────────────────────────────────────────
+// Correction 8: no blind ×100. Use known exponent for each currency.
+
+const CURRENCY_EXPONENTS = {
+  BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+  JPY: 0, KRW: 0, VND: 0, IDR: 0, UGX: 0, RWF: 0, GNF: 0, PYG: 0,
+  CLF: 4,
+};
+
+function currencyExponent(code) {
+  if (!code) return 2;
+  return CURRENCY_EXPONENTS[code.toUpperCase()] !== undefined
+    ? CURRENCY_EXPONENTS[code.toUpperCase()]
+    : 2;
+}
+
+/**
+ * Convert a display amount string (e.g. "10.00") to minor units (integer).
+ * Uses ISO 4217 exponent — does NOT blindly multiply by 100.
+ */
+function toMinorUnits(display, currencyCode) {
+  if (display === '' || display === null || display === undefined) return null;
+  const exp    = currencyExponent(currencyCode);
+  const factor = Math.pow(10, exp);
+  const parsed = parseFloat(display);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed * factor);
+}
+
+function fromMinorUnits(minor, currencyCode) {
+  if (minor == null) return '—';
+  const exp    = currencyExponent(currencyCode);
+  const factor = Math.pow(10, exp);
+  return (minor / factor).toFixed(exp);
+}
+
 // ── Outcome display helpers ───────────────────────────────────────────────────
+// Correction 14: show all four outcome states with clear labeling
 
 const OUTCOME_META = {
-  AUTHORIZED:              { label: 'Authorized',             color: '#166534', bg: '#DCFCE7' },
-  NOT_AUTHORIZED:          { label: 'Not Authorized',         color: '#991B1B', bg: '#FEE2E2' },
-  INSUFFICIENT_INFORMATION:{ label: 'Insufficient Info',      color: '#92400E', bg: '#FEF3C7' },
-  MANUAL_REVIEW:           { label: 'Manual Review Required', color: '#5B21B6', bg: '#EDE9FE' },
+  AUTHORIZED:               { label: 'Authorized',             color: '#166534', bg: '#DCFCE7', icon: '✓' },
+  NOT_AUTHORIZED:           { label: 'Not Authorized',         color: '#991B1B', bg: '#FEE2E2', icon: '✗' },
+  INSUFFICIENT_INFORMATION: { label: 'Insufficient Information', color: '#92400E', bg: '#FEF3C7', icon: '?' },
+  MANUAL_REVIEW:            { label: 'Manual Review Required', color: '#5B21B6', bg: '#EDE9FE', icon: '!' },
 };
 
 function OutcomeBadge({ outcome }) {
-  const meta = OUTCOME_META[outcome] || { label: outcome, color: '#374151', bg: '#F3F4F6' };
+  const meta = OUTCOME_META[outcome] || { label: outcome, color: '#374151', bg: '#F3F4F6', icon: '•' };
   return (
     <span style={{
-      display: 'inline-block', padding: '3px 10px', borderRadius: 6,
-      fontSize: 12, fontWeight: 700, letterSpacing: '.03em',
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '4px 12px', borderRadius: 6,
+      fontSize: 13, fontWeight: 700, letterSpacing: '.03em',
       color: meta.color, background: meta.bg,
     }}>
+      <span style={{ fontSize: 14 }}>{meta.icon}</span>
       {meta.label}
     </span>
   );
@@ -36,24 +75,121 @@ function ReasonChip({ code }) {
   );
 }
 
+function IdList({ ids, label }) {
+  if (!ids || ids.length === 0) return null;
+  return (
+    <div>
+      <span style={{ color: 'var(--steel)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {ids.map(id => (
+          <span key={id} style={{
+            fontFamily: 'DM Mono, monospace', fontSize: 10,
+            background: '#F9FAFB', border: '1px solid #E5E7EB',
+            padding: '2px 6px', borderRadius: 3,
+          }}>
+            {id}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StringList({ items, label, color }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <span style={{ color: 'var(--steel)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {items.map((item, i) => (
+          <span key={i} style={{
+            fontFamily: 'DM Mono, monospace', fontSize: 11,
+            background: '#FEF3C7', border: '1px solid #FDE68A',
+            padding: '2px 8px', borderRadius: 4, color: color || '#92400E',
+          }}>
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Instrument picker ────────────────────────────────────────────────────────
+
+function InstrumentPicker({ value, onChange }) {
+  const [instruments, setInstruments] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/authority/instruments?limit=100')
+      .then(r => setInstruments(r.data))
+      .catch(() => setInstruments([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <select className="au-input" disabled><option>Loading instruments…</option></select>;
+
+  return (
+    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
+      <option value="">— Select an instrument —</option>
+      {instruments.map(i => (
+        <option key={i.id} value={i.id}>
+          [{i.status}] {i.instrument_type} · {i.id.slice(0, 8)}…
+          {i.effective_date ? ` (eff: ${i.effective_date.slice ? i.effective_date.slice(0,10) : String(i.effective_date).slice(0,10)})` : ''}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ── Party picker ─────────────────────────────────────────────────────────────
+
+function PartyPicker({ value, onChange, placeholder, required }) {
+  const [parties, setParties] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/authority/parties?limit=100')
+      .then(r => setParties(r.data))
+      .catch(() => setParties([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <select className="au-input" disabled><option>Loading parties…</option></select>;
+
+  return (
+    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required={required}>
+      <option value="">{placeholder || '— Select a party —'}</option>
+      {parties.map(p => (
+        <option key={p.id} value={p.id}>
+          {p.display_name || p.id.slice(0, 8)} · {p.party_type} [{p.status}]
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // ── Evaluation form ───────────────────────────────────────────────────────────
+// Correction 14: use canonical pickers; correct money conversion; rich fields
 
 function EvaluationForm({ onResult }) {
   const [form, setForm] = useState({
     instrumentId:     '',
-    requestingPartyId:'',
+    principalPartyId: '',
+    delegatePartyId:  '',
     actionKey:        '',
-    amount:           '',
+    amount:           '',   // display value (e.g. "50.00")
     currency:         'USD',
     actionTime:       '',
+    requestedAt:      '',
     idempotencyKey:   '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
+  const [fieldError, setFieldError] = useState('');
 
-  function set(field, val) {
-    setForm(f => ({ ...f, [field]: val }));
-  }
+  function set(field, val) { setForm(f => ({ ...f, [field]: val })); }
 
   function generateKey() {
     const array = new Uint8Array(16);
@@ -65,26 +201,60 @@ function EvaluationForm({ onResult }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setFieldError('');
     setSubmitting(true);
+
     try {
       const payload = {
-        instrumentId:      form.instrumentId.trim(),
-        requestingPartyId: form.requestingPartyId.trim(),
-        actionKey:         form.actionKey.trim() || undefined,
+        instrumentId:      form.instrumentId,
+        delegatePartyId:   form.delegatePartyId || undefined,
         idempotencyKey:    form.idempotencyKey.trim(),
       };
+
+      if (form.principalPartyId) payload.principalPartyId = form.principalPartyId;
+      if (form.actionKey.trim()) payload.actionKey = form.actionKey.trim();
+
+      // Correction 8: use currency exponent — no blind ×100
       if (form.amount !== '') {
-        const parsed = parseInt(form.amount, 10);
-        if (!Number.isFinite(parsed)) { setError('Amount must be an integer (minor units, e.g. cents).'); setSubmitting(false); return; }
-        payload.amount   = parsed;
+        const minor = toMinorUnits(form.amount, form.currency);
+        if (minor === null) {
+          setFieldError('Amount must be a valid number (e.g. 50.00 for $50.00).');
+          setSubmitting(false);
+          return;
+        }
+        payload.amount   = minor;
         payload.currency = form.currency.trim().toUpperCase() || 'USD';
       }
+
       if (form.actionTime.trim()) {
-        payload.actionTime = new Date(form.actionTime.trim()).toISOString();
+        payload.actionTime  = new Date(form.actionTime.trim()).toISOString();
       }
+      if (form.requestedAt.trim()) {
+        payload.requestedAt = new Date(form.requestedAt.trim()).toISOString();
+      }
+
       const res = await api.post('/authority/evaluate', payload);
-      onResult(res.data);
+      onResult({ ...res.data, _stale: false });
     } catch (err) {
+      // Correction 14: stale replay (409 IDEMPOTENCY_REPLAY_STALE) must NOT show prior decision
+      if (err.response?.status === 409) {
+        const code = err.response?.data?.code || err.response?.data?.error || '';
+        if (code === 'IDEMPOTENCY_REPLAY_STALE') {
+          onResult({ _stale: true, _staleReason: err.response?.data?.staleReason });
+          setSubmitting(false);
+          return;
+        }
+        if (code === 'IDEMPOTENCY_KEY_CONFLICT') {
+          setError('This idempotency key was used with a different request. Generate a new key to run a new evaluation.');
+          setSubmitting(false);
+          return;
+        }
+      }
+      if (err.response?.status === 422) {
+        setError('Request time is outside the supported ±5 minute window. Please use a current requestedAt timestamp.');
+        setSubmitting(false);
+        return;
+      }
       setError(err.response?.data?.error || 'Evaluation failed.');
     } finally {
       setSubmitting(false);
@@ -99,17 +269,20 @@ function EvaluationForm({ onResult }) {
 
       <div style={{ display: 'grid', gap: 14 }}>
         <div className="au-form-group">
-          <label className="au-label">Instrument ID *</label>
-          <input className="au-input" value={form.instrumentId}
-            onChange={e => set('instrumentId', e.target.value)}
-            placeholder="UUID of the authority instrument" required />
+          <label className="au-label">Instrument *</label>
+          <InstrumentPicker value={form.instrumentId} onChange={v => set('instrumentId', v)} />
         </div>
 
         <div className="au-form-group">
-          <label className="au-label">Requesting Party ID *</label>
-          <input className="au-input" value={form.requestingPartyId}
-            onChange={e => set('requestingPartyId', e.target.value)}
-            placeholder="UUID of the delegate (authority party)" required />
+          <label className="au-label">Principal Party (optional — verifies instrument ownership)</label>
+          <PartyPicker value={form.principalPartyId} onChange={v => set('principalPartyId', v)}
+            placeholder="— No principal check —" required={false} />
+        </div>
+
+        <div className="au-form-group">
+          <label className="au-label">Delegate Party *</label>
+          <PartyPicker value={form.delegatePartyId} onChange={v => set('delegatePartyId', v)}
+            placeholder="— Select delegate —" required />
         </div>
 
         <div className="au-form-group">
@@ -121,15 +294,15 @@ function EvaluationForm({ onResult }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 10 }}>
           <div className="au-form-group">
-            <label className="au-label">Amount (minor units, optional)</label>
-            <input className="au-input" type="number" value={form.amount}
+            <label className="au-label">Amount (optional)</label>
+            <input className="au-input" type="text" value={form.amount}
               onChange={e => set('amount', e.target.value)}
-              placeholder="e.g. 5000 = $50.00" />
+              placeholder={`e.g. 50.00 (in ${form.currency || 'major units'})`} />
           </div>
           <div className="au-form-group">
             <label className="au-label">Currency</label>
             <input className="au-input" value={form.currency}
-              onChange={e => set('currency', e.target.value)}
+              onChange={e => set('currency', e.target.value.toUpperCase())}
               maxLength={3} placeholder="USD" />
           </div>
         </div>
@@ -145,7 +318,7 @@ function EvaluationForm({ onResult }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <input className="au-input" style={{ flex: 1 }} value={form.idempotencyKey}
               onChange={e => set('idempotencyKey', e.target.value)}
-              placeholder="Caller-supplied deduplication key" required />
+              placeholder="Deduplication key — generate one for each new evaluation" required />
             <button type="button" className="au-btn au-btn--secondary"
               onClick={generateKey} style={{ whiteSpace: 'nowrap' }}>
               Generate
@@ -153,6 +326,13 @@ function EvaluationForm({ onResult }) {
           </div>
         </div>
       </div>
+
+      {fieldError && (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: '#FEE2E2', borderRadius: 6,
+          color: '#991B1B', fontSize: 13 }}>
+          {fieldError}
+        </div>
+      )}
 
       <AuError msg={error} />
 
@@ -166,37 +346,124 @@ function EvaluationForm({ onResult }) {
 }
 
 // ── Single result card ────────────────────────────────────────────────────────
+// Correction 14: show all four outcome states; rich output; replay/stale labeling;
+// stale replay must NOT show prior decision
 
 function EvaluationResultCard({ result }) {
+  // Correction 14: stale replay must not display the prior decision
+  if (result._stale) {
+    return (
+      <div className="au-card" style={{ padding: 24, borderLeft: '4px solid #F59E0B' }}>
+        <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 8, fontSize: 14 }}>
+          Evaluation Record Changed
+        </div>
+        <div style={{ color: '#374151', fontSize: 13, lineHeight: 1.6 }}>
+          The record or evaluation time has changed. Please run a new evaluation.
+        </div>
+        {result._staleReason && (
+          <div style={{ marginTop: 8 }}>
+            <ReasonChip code={result._staleReason} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const reasonCodes = result.reasonCodes || (result.reasonCode ? [result.reasonCode] : []);
+
   return (
     <div className="au-card" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <OutcomeBadge outcome={result.outcome} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <OutcomeBadge outcome={result.outcome || result.decision} />
         {result.isReplay && (
-          <span style={{ fontSize: 11, color: 'var(--steel)', fontStyle: 'italic' }}>
-            (replayed result)
+          <span style={{
+            fontSize: 11, color: '#5B21B6', fontStyle: 'italic',
+            background: '#EDE9FE', padding: '2px 8px', borderRadius: 4,
+          }}>
+            Replayed result (cached)
           </span>
         )}
       </div>
-      <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-        <div><span style={{ color: 'var(--steel)', minWidth: 140, display: 'inline-block' }}>Reason code</span>
-          <ReasonChip code={result.reasonCode} /></div>
-        {result.reasonDetail && (
-          <div><span style={{ color: 'var(--steel)', minWidth: 140, display: 'inline-block' }}>Detail</span>
-            <span>{result.reasonDetail}</span></div>
+
+      <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
+        {/* Reason codes */}
+        {reasonCodes.length > 0 && (
+          <div>
+            <span style={{ color: 'var(--steel)', display: 'block', marginBottom: 4, fontSize: 12 }}>
+              Reason Codes
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {reasonCodes.map(c => <ReasonChip key={c} code={c} />)}
+            </div>
+          </div>
         )}
-        <div><span style={{ color: 'var(--steel)', minWidth: 140, display: 'inline-block' }}>Evaluation ID</span>
-          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{result.evaluationId}</span></div>
-        <div><span style={{ color: 'var(--steel)', minWidth: 140, display: 'inline-block' }}>Evaluated at</span>
-          <span>{fmtDateTime(result.evaluated_at)}</span></div>
+
+        {/* Missing fields */}
+        <StringList
+          items={result.missingFields}
+          label="Missing Fields"
+          color="#92400E"
+        />
+
+        {/* Manual review reasons */}
+        <StringList
+          items={result.manualReviewReasons}
+          label="Manual Review Reasons"
+          color="#5B21B6"
+        />
+
+        {/* Permission IDs */}
+        <IdList ids={result.matchedPermissionIds} label="Matched Permission IDs" />
+        <IdList ids={result.appliedRestrictionIds} label="Applied Restriction IDs" />
+        <IdList ids={result.blockingPermissionIds} label="Blocking Permission IDs" />
+        <IdList ids={result.blockingRestrictionIds} label="Blocking Restriction IDs" />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <span style={{ color: 'var(--steel)', fontSize: 12 }}>Evaluation ID</span>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, wordBreak: 'break-all' }}>
+              {result.evaluationId}
+            </div>
+          </div>
+          {result.ruleVersion && (
+            <div>
+              <span style={{ color: 'var(--steel)', fontSize: 12 }}>Rule Version</span>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{result.ruleVersion}</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <span style={{ color: 'var(--steel)', fontSize: 12 }}>Evaluated At</span>
+            <div style={{ fontSize: 12 }}>{fmtDateTime(result.evaluated_at)}</div>
+          </div>
+          {result.replayCheckedAt && (
+            <div>
+              <span style={{ color: 'var(--steel)', fontSize: 12 }}>Replay Checked At</span>
+              <div style={{ fontSize: 12 }}>{fmtDateTime(result.replayCheckedAt)}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Disclaimer — Correction 14 */}
+      <div style={{
+        marginTop: 16, padding: '10px 12px',
+        background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
+        fontSize: 11, color: '#6B7280', lineHeight: 1.5,
+      }}>
+        This is a deterministic evaluation of the human-verified FieldCore record — not a legal
+        determination — and does not execute any action.
       </div>
     </div>
   );
 }
 
 // ── History table ─────────────────────────────────────────────────────────────
+// Correction 14: historical evaluations clearly labeled
 
-function EvaluationHistory({ accountId }) {
+function EvaluationHistory({ refreshKey }) {
   const [rows,    setRows]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -213,19 +480,32 @@ function EvaluationHistory({ accountId }) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   if (loading) return <AuLoading />;
 
   return (
     <div className="au-table-card">
       <div className="au-card-header">
-        <span className="au-card-title">Recent Evaluations</span>
+        <span className="au-card-title">Evaluation History</span>
         <button className="au-btn au-btn--ghost" onClick={load} style={{ fontSize: 12 }}>
           Refresh
         </button>
       </div>
       <AuError msg={error} />
+
+      {/* Correction 14: disclaimer on history section too */}
+      <div style={{
+        margin: '0 16px 12px', padding: '8px 12px',
+        background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
+        fontSize: 11, color: '#6B7280', lineHeight: 1.5,
+      }}>
+        Historical evaluations reflect the instrument record as it existed at the time of each
+        evaluation. They are not current determinations. This is a deterministic evaluation of
+        the human-verified FieldCore record — not a legal determination — and does not execute
+        any action.
+      </div>
+
       {!rows.length ? (
         <AuEmpty text="No evaluations yet." />
       ) : (
@@ -236,14 +516,16 @@ function EvaluationHistory({ accountId }) {
               <th>Reason</th>
               <th>Action Key</th>
               <th>Instrument</th>
-              <th>Evaluated At</th>
+              <th>Evaluated At (Historical)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(row => (
               <tr key={row.id}>
                 <td><OutcomeBadge outcome={row.outcome} /></td>
-                <td><ReasonChip code={row.reason_code} /></td>
+                <td>
+                  <ReasonChip code={row.reason_code} />
+                </td>
                 <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
                   {row.requested_action_key || '—'}
                 </td>
@@ -252,6 +534,12 @@ function EvaluationHistory({ accountId }) {
                 </td>
                 <td style={{ fontSize: 12, color: 'var(--steel)' }}>
                   {fmtDateTime(row.evaluated_at)}
+                  <span style={{
+                    marginLeft: 6, fontSize: 10, color: '#9CA3AF',
+                    background: '#F3F4F6', padding: '1px 5px', borderRadius: 3,
+                  }}>
+                    historical
+                  </span>
                 </td>
               </tr>
             ))}
@@ -278,7 +566,9 @@ export default function AuthorityEvaluate() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Authority Evaluator</div>
-          <div className="au-page-subtitle">Determine if a delegate is authorized to perform an action</div>
+          <div className="au-page-subtitle">
+            Determine if a delegate is authorized to perform an action under a verified instrument
+          </div>
         </div>
       </div>
 
@@ -288,7 +578,7 @@ export default function AuthorityEvaluate() {
           {latestResult && <EvaluationResultCard result={latestResult} />}
         </div>
         <div>
-          <EvaluationHistory key={historyKey} />
+          <EvaluationHistory refreshKey={historyKey} />
         </div>
       </div>
     </div>

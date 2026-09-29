@@ -723,6 +723,29 @@ async function getInstrument(accountId, instrumentId) {
   return instr;
 }
 
+async function listInstruments(accountId, { limit = 50, offset = 0, status } = {}) {
+  await _assertInstitutionAccount(accountId);
+  const safeLimit  = Math.min(Math.max(parseInt(limit,  10) || 50, 1), 200);
+  const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+  const params = [accountId];
+  let filter = '';
+  if (status) {
+    params.push(status);
+    filter = `AND status = $${params.length}`;
+  }
+  params.push(safeLimit, safeOffset);
+  const { rows } = await pool.query(
+    `SELECT id, instrument_type, status, effective_date, expiration_date,
+            jurisdiction, created_at, updated_at
+     FROM authority_instruments
+     WHERE account_id = $1 ${filter}
+     ORDER BY created_at DESC, id DESC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+  return rows;
+}
+
 /**
  * Evaluate whether an actor may verify an instrument.
  *
@@ -2226,6 +2249,7 @@ module.exports = {
   // Instruments
   createInstrument,
   getInstrument,
+  listInstruments,
   transitionInstrument,
   canVerifyInstrument,
   // Case-Instrument

@@ -213,6 +213,17 @@ router.delete('/cases/:caseId/instruments/:instrumentId', async (req, res) => {
 // Authority Instruments
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// GET /api/authority/instruments — list instruments for this institution account
+router.get('/instruments', async (req, res) => {
+  try {
+    const { limit, offset, status } = req.query;
+    const instrs = await authorityService.listInstruments(req.accountId, { limit, offset, status });
+    res.json(instrs);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 // POST /api/authority/instruments
 router.post('/instruments', async (req, res) => {
   try {

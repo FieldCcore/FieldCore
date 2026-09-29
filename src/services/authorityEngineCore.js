@@ -16,23 +16,30 @@
  *   - Any module that calls Date.now() or new Date() internally
  *     (authorityCrypto is permitted — it uses crypto.randomBytes, not clock)
  *
- * Evaluation order (hard-coded; first failing check wins):
- *   1. Input guard — requesting party provided
+ * Evaluation order (hard-coded; first failing check wins for hard-gate paths):
+ *   1. Input guard — delegate party provided
  *   2. Instrument status checks (terminal statuses → NOT_AUTHORIZED)
  *   3. Policy registry — instrument type semantics known
- *   4. Requesting party is an agent-role participant (active)
- *   5. Effective / expiration date bounds (against action_time)
- *   6. Action key is present and not prohibited
- *   7. Action domain is supported
- *   8. Restrictions apply (monetary_limit, date_window, unknown → MANUAL_REVIEW)
- *   9. All checks passed → AUTHORIZED
+ *   4. Principal party check (if provided, must be in principalRoles)
+ *   5. Delegate party role check — agent/conditional/unknown/principal
+ *   6. Delegate participant active status
+ *   7. Effective / expiration date bounds (against action_time)
+ *   8. Action key format valid, not prohibited, grant exists
+ *   9. Action key format valid (isActionKeyValid)
+ *  10. Restrictions — sort by id, collect ALL results, aggregate
+ *  11. All checks passed → AUTHORIZED
  *
- * @param {object} inputs         - pre-loaded canonical data (from loader)
- * @param {object} request        - EvaluationRequest (requestingPartyId, actionKey, amount, currency)
- * @param {object} temporalContext - { evaluated_at: ISOString, action_time: ISOString|null }
- * @param {object} policyRegistry - { getPolicyForType, isActionDomainSupported }
- * @param {object} restrictionEvaluators - { evaluateRestriction }
- * @returns {{ outcome, reasonCode, reasonDetail? }}
+ * Rich output fields:
+ *   decision                — primary outcome string (AUTHORIZED | NOT_AUTHORIZED | ...)
+ *   outcome                 — alias for decision (backward compat)
+ *   reasonCodes             — array of all reason codes
+ *   reasonCode              — alias for reasonCodes[0] (backward compat)
+ *   missingFields           — array of field names that prevented determination
+ *   manualReviewReasons     — array of human-readable reasons requiring review
+ *   matchedPermissionIds    — IDs of permissions that matched the action
+ *   appliedRestrictionIds   — IDs of restrictions that were evaluated and passed
+ *   blockingPermissionIds   — IDs of permissions that blocked the action
+ *   blockingRestrictionIds  — IDs of restrictions that blocked the action
  */
 
 const { OUTCOMES } = require('./authorityReasonCodes');
@@ -46,134 +53,279 @@ function _toDateStr(d) {
   return String(d).slice(0, 10);
 }
 
+// Build an empty rich output scaffold (all arrays initialized).
+function _emptyOutput() {
+  return {
+    missingFields:          [],
+    manualReviewReasons:    [],
+    matchedPermissionIds:   [],
+    appliedRestrictionIds:  [],
+    blockingPermissionIds:  [],
+    blockingRestrictionIds: [],
+  };
+}
+
+// Build a hard-gate result (single reason code, no restriction traversal).
+function _hardGate(decision, reasonCode, extra = {}) {
+  const base = _emptyOutput();
+  return {
+    decision,
+    outcome:                decision,  // backward compat
+    reasonCodes:            [reasonCode],
+    reasonCode,                        // backward compat alias
+    missingFields:          extra.missingFields          || base.missingFields,
+    manualReviewReasons:    extra.manualReviewReasons    || base.manualReviewReasons,
+    matchedPermissionIds:   extra.matchedPermissionIds   || base.matchedPermissionIds,
+    appliedRestrictionIds:  [],
+    blockingPermissionIds:  extra.blockingPermissionIds  || base.blockingPermissionIds,
+    blockingRestrictionIds: [],
+  };
+}
+
+// Build the AUTHORIZED result.
+function _authorized(matchedPermissionIds, appliedRestrictionIds) {
+  return {
+    decision:               OUTCOMES.AUTHORIZED,
+    outcome:                OUTCOMES.AUTHORIZED,
+    reasonCodes:            ['EXPLICITLY_GRANTED'],
+    reasonCode:             'EXPLICITLY_GRANTED',
+    missingFields:          [],
+    manualReviewReasons:    [],
+    matchedPermissionIds:   matchedPermissionIds || [],
+    appliedRestrictionIds:  appliedRestrictionIds || [],
+    blockingPermissionIds:  [],
+    blockingRestrictionIds: [],
+  };
+}
+
+// Map a restriction reason code to its outcome key.
+function _outcomeForRestrictionCode(reasonCode) {
+  const map = {
+    MISSING_REQUEST_AMOUNT:      'INSUFFICIENT_INFO',
+    MISSING_CURRENCY:            'INSUFFICIENT_INFO',
+    MISSING_ACTION_TIME:         'INSUFFICIENT_INFO',
+    MONETARY_LIMIT_EXCEEDED:     'NOT_AUTHORIZED',
+    DATE_WINDOW_RESTRICTION:     'NOT_AUTHORIZED',
+    CURRENCY_MISMATCH:           'MANUAL_REVIEW',
+    BOUNDARY_SEMANTICS_UNDEFINED:'MANUAL_REVIEW',
+    CUMULATIVE_LIMIT_UNSUPPORTED:'MANUAL_REVIEW',
+    TIMEZONE_BOUNDARY_AMBIGUOUS: 'MANUAL_REVIEW',
+  };
+  return map[reasonCode] || 'MANUAL_REVIEW';
+}
+
+// Aggregate outcome precedence: NOT_AUTHORIZED > MANUAL_REVIEW > INSUFFICIENT_INFO > AUTHORIZED
+const OUTCOME_RANK = {
+  [OUTCOMES.NOT_AUTHORIZED]:    4,
+  [OUTCOMES.MANUAL_REVIEW]:     3,
+  [OUTCOMES.INSUFFICIENT_INFO]: 2,
+  [OUTCOMES.AUTHORIZED]:        1,
+};
+
+/**
+ * @param {object} inputs         - { instrument, participants, permissions, restrictions }
+ * @param {object} request        - { delegatePartyId?, requestingPartyId?, principalPartyId?,
+ *                                    actionKey, amount, currency }
+ * @param {object} temporalContext - { evaluated_at: ISOString, action_time: ISOString|null }
+ * @param {object} policyRegistry - { getPolicyForType, isActionKeyValid }
+ * @param {object} restrictionEvaluators - { evaluateRestriction }
+ * @returns {object}  Rich evaluation result
+ */
 function evaluate(inputs, request, temporalContext, policyRegistry, restrictionEvaluators) {
   const { instrument, participants, permissions, restrictions } = inputs;
-  const { requestingPartyId, actionKey, amount, currency }     = request;
-  const { action_time }                                        = temporalContext;
+  // Correction 1: accept delegatePartyId with backward-compat fallback to requestingPartyId
+  const delegatePartyId  = request.delegatePartyId || request.requestingPartyId || null;
+  const principalPartyId = request.principalPartyId || null;
+  const { actionKey, amount, currency }            = request;
+  const { action_time }                            = temporalContext;
 
   // ── 1. Input guard ──────────────────────────────────────────────────────────
-  if (!requestingPartyId) {
-    return { outcome: OUTCOMES.INSUFFICIENT_INFO, reasonCode: 'REQUESTING_PARTY_UNKNOWN' };
+  if (!delegatePartyId) {
+    return _hardGate(OUTCOMES.INSUFFICIENT_INFO, 'REQUESTING_PARTY_UNKNOWN',
+      { missingFields: ['delegatePartyId'] });
   }
 
   if (!instrument) {
-    return { outcome: OUTCOMES.INSUFFICIENT_INFO, reasonCode: 'NO_INSTRUMENT_PROVIDED' };
+    return _hardGate(OUTCOMES.INSUFFICIENT_INFO, 'NO_INSTRUMENT_PROVIDED',
+      { missingFields: ['instrument'] });
   }
 
   // ── 2. Instrument status ────────────────────────────────────────────────────
   const status = instrument.status;
-  if (status === 'REVOKED') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'INSTRUMENT_REVOKED' };
-  }
-  if (status === 'EXPIRED') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'INSTRUMENT_EXPIRED_STATUS' };
-  }
-  if (status === 'SUPERSEDED') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'INSTRUMENT_SUPERSEDED' };
-  }
-  if (status === 'REJECTED') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'INSTRUMENT_REJECTED' };
-  }
-  if (status !== 'VERIFIED') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'INSTRUMENT_NOT_VERIFIED' };
-  }
+  if (status === 'REVOKED')    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'INSTRUMENT_REVOKED');
+  if (status === 'EXPIRED')    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'INSTRUMENT_EXPIRED_STATUS');
+  if (status === 'SUPERSEDED') return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'INSTRUMENT_SUPERSEDED');
+  if (status === 'REJECTED')   return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'INSTRUMENT_REJECTED');
+  if (status !== 'VERIFIED')   return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'INSTRUMENT_NOT_VERIFIED');
 
   // ── 3. Policy registry — instrument type semantics ──────────────────────────
   const policy = policyRegistry.getPolicyForType(instrument.instrument_type);
   if (!policy) {
-    return { outcome: OUTCOMES.MANUAL_REVIEW, reasonCode: 'UNKNOWN_INSTRUMENT_TYPE' };
+    return _hardGate(OUTCOMES.MANUAL_REVIEW, 'UNKNOWN_INSTRUMENT_TYPE',
+      { manualReviewReasons: [`Instrument type '${instrument.instrument_type}' has no confirmed policy`] });
   }
 
-  // ── 4. Requesting party is an active agent ──────────────────────────────────
-  const agentParticipant = (participants || []).find(
-    p => p.party_id === requestingPartyId && policy.agentRoles.has(p.role)
+  // ── 4. Principal party check ────────────────────────────────────────────────
+  // Correction 4: if principalPartyId provided, verify it is in a principalRole participant slot
+  if (principalPartyId) {
+    const principalParticipant = (participants || []).find(
+      p => p.party_id === principalPartyId
+    );
+    if (!principalParticipant || !policy.principalRoles.has(principalParticipant.role)) {
+      return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'PRINCIPAL_MISMATCH');
+    }
+  }
+
+  // ── 5. Delegate party role check ────────────────────────────────────────────
+  // Correction 2: check ALL role sets before returning NOT_AUTHORIZED
+  const delegateParticipant = (participants || []).find(
+    p => p.party_id === delegatePartyId
   );
-  if (!agentParticipant) {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'REQUESTING_PARTY_NOT_AGENT' };
-  }
-  if (agentParticipant.status !== 'active') {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'PARTICIPANT_INACTIVE' };
+
+  if (!delegateParticipant) {
+    // Not in instrument at all
+    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'REQUESTING_PARTY_NOT_AGENT');
   }
 
-  // ── 5. Effective / expiration date bounds ───────────────────────────────────
-  // Normalize to YYYY-MM-DD strings — DB returns date columns as JS Date objects.
-  const effDate  = instrument.effective_date
-    ? _toDateStr(instrument.effective_date)
-    : null;
-  const expDate  = instrument.expiration_date
-    ? _toDateStr(instrument.expiration_date)
-    : null;
+  const delegateRole = delegateParticipant.role;
+
+  if (policy.principalRoles.has(delegateRole)) {
+    // Principal cannot act as agent
+    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'REQUESTING_PARTY_NOT_AGENT');
+  }
+
+  if (policy.conditionalRoles && policy.conditionalRoles.has(delegateRole)) {
+    // Correction 3: conditional roles (co_agent, successor_agent) require activation state
+    return _hardGate(OUTCOMES.MANUAL_REVIEW, 'CONDITIONAL_ROLE_ACTIVATION_UNDEFINED',
+      { manualReviewReasons: [`Delegate role '${delegateRole}' is conditional and activation state is not defined`] });
+  }
+
+  if (!policy.agentRoles.has(delegateRole)) {
+    // Role exists but is unrecognized for acting semantics
+    return _hardGate(OUTCOMES.MANUAL_REVIEW, 'UNDEFINED_ROLE_SEMANTICS',
+      { manualReviewReasons: [`Delegate role '${delegateRole}' has no machine-readable acting semantics`] });
+  }
+
+  // ── 6. Delegate participant active status ───────────────────────────────────
+  if (delegateParticipant.status !== 'active') {
+    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'DELEGATE_PARTICIPANT_INACTIVE');
+  }
+
+  // ── 7. Effective / expiration date bounds ───────────────────────────────────
+  const effDate = instrument.effective_date  ? _toDateStr(instrument.effective_date)  : null;
+  const expDate = instrument.expiration_date ? _toDateStr(instrument.expiration_date) : null;
 
   if (effDate || expDate) {
     if (!action_time) {
-      return { outcome: OUTCOMES.INSUFFICIENT_INFO, reasonCode: 'MISSING_ACTION_TIME' };
+      return _hardGate(OUTCOMES.INSUFFICIENT_INFO, 'MISSING_ACTION_TIME',
+        { missingFields: ['action_time'] });
     }
     const actionDate = String(action_time).slice(0, 10);
     if (effDate && actionDate < effDate) {
-      return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'BEFORE_EFFECTIVE_DATE' };
+      return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'BEFORE_EFFECTIVE_DATE');
     }
     if (expDate && actionDate > expDate) {
-      return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'AFTER_EXPIRATION_DATE' };
+      return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'AFTER_EXPIRATION_DATE');
     }
   }
 
-  // ── 6. Action key present and not prohibited ────────────────────────────────
+  // ── 8. Action key — format, prohibition, grant ─────────────────────────────
   if (!actionKey) {
-    return { outcome: OUTCOMES.INSUFFICIENT_INFO, reasonCode: 'ACTION_NOT_IN_INSTRUMENT' };
+    return _hardGate(OUTCOMES.INSUFFICIENT_INFO, 'ACTION_NOT_IN_INSTRUMENT',
+      { missingFields: ['actionKey'] });
   }
 
-  // Check for explicit prohibition first (most restrictive wins)
+  // Check for explicit prohibition (most restrictive wins)
   const prohibitedPerm = (permissions || []).find(
     p => p.action_key === actionKey && p.grant_type === 'prohibited'
   );
   if (prohibitedPerm) {
-    return { outcome: OUTCOMES.NOT_AUTHORIZED, reasonCode: 'ACTION_EXPLICITLY_PROHIBITED' };
+    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'ACTION_EXPLICITLY_PROHIBITED',
+      { blockingPermissionIds: [prohibitedPerm.id] });
   }
 
   const grantedPerm = (permissions || []).find(
     p => p.action_key === actionKey && p.grant_type === 'granted'
   );
   if (!grantedPerm) {
-    return { outcome: OUTCOMES.INSUFFICIENT_INFO, reasonCode: 'ACTION_NOT_IN_INSTRUMENT' };
+    // Correction 5: no grant → NOT_AUTHORIZED / NO_APPLICABLE_GRANT (not INSUFFICIENT_INFO)
+    return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'NO_APPLICABLE_GRANT');
   }
 
-  // ── 7. Action domain supported ──────────────────────────────────────────────
-  if (!policyRegistry.isActionDomainSupported(actionKey)) {
-    return { outcome: OUTCOMES.MANUAL_REVIEW, reasonCode: 'UNSUPPORTED_ACTION_DOMAIN' };
+  // ── 9. Action key format validation (format only, no allowlist) ─────────────
+  // Correction 6: use isActionKeyValid (format-only) instead of isActionDomainSupported (allowlist)
+  if (!policyRegistry.isActionKeyValid(actionKey)) {
+    return _hardGate(OUTCOMES.MANUAL_REVIEW, 'UNSUPPORTED_ACTION_DOMAIN',
+      { manualReviewReasons: [`Action key '${actionKey}' has invalid format`] });
   }
 
-  // ── 8. Restrictions ─────────────────────────────────────────────────────────
-  // Apply restrictions that are either instrument-wide or scoped to the granted permission.
-  const applicableRestrictions = (restrictions || []).filter(
-    r => r.permission_id === null || r.permission_id === grantedPerm.id
-  );
+  // ── 10. Restrictions ─────────────────────────────────────────────────────────
+  // Apply restrictions scoped to this permission or instrument-wide (null permission_id).
+  // Correction 9: sort by id for deterministic order, collect ALL results.
+  const applicableRestrictions = [...(restrictions || [])]
+    .filter(r => r.permission_id === null || r.permission_id === grantedPerm.id)
+    .sort((a, b) => a.id < b.id ? -1 : 1);
+
+  const allReasonCodes      = [];
+  const allMissingFields    = [];
+  const allManualReasons    = [];
+  const passedRestrictionIds   = [];
+  const blockingRestrictionIds = [];
+  let aggregatedOutcome     = OUTCOMES.AUTHORIZED;
 
   for (const restriction of applicableRestrictions) {
     const result = restrictionEvaluators.evaluateRestriction(
       restriction, { amount, currency }, temporalContext
     );
     if (result.unknown) {
-      return { outcome: OUTCOMES.MANUAL_REVIEW, reasonCode: 'UNKNOWN_RESTRICTION_TYPE',
-               reasonDetail: restriction.restriction_type };
-    }
-    if (!result.pass) {
-      return { outcome: OUTCOMES[_outcomeKeyFor(result.reasonCode)], reasonCode: result.reasonCode };
+      const code = 'UNKNOWN_RESTRICTION_TYPE';
+      allReasonCodes.push(code);
+      allManualReasons.push(`Unknown restriction type: ${restriction.restriction_type}`);
+      blockingRestrictionIds.push(restriction.id);
+      if (OUTCOME_RANK[OUTCOMES.MANUAL_REVIEW] > OUTCOME_RANK[aggregatedOutcome]) {
+        aggregatedOutcome = OUTCOMES.MANUAL_REVIEW;
+      }
+    } else if (!result.pass) {
+      const code = result.reasonCode;
+      allReasonCodes.push(code);
+      blockingRestrictionIds.push(restriction.id);
+      const outcomeKey = _outcomeForRestrictionCode(code);
+      const thisOutcome = OUTCOMES[outcomeKey];
+      if (OUTCOME_RANK[thisOutcome] > OUTCOME_RANK[aggregatedOutcome]) {
+        aggregatedOutcome = thisOutcome;
+      }
+      if (outcomeKey === 'INSUFFICIENT_INFO') {
+        allMissingFields.push(code === 'MISSING_REQUEST_AMOUNT' ? 'amount'
+          : code === 'MISSING_CURRENCY' ? 'currency'
+          : code === 'MISSING_ACTION_TIME' ? 'action_time'
+          : code);
+      } else if (outcomeKey === 'MANUAL_REVIEW') {
+        allManualReasons.push(code);
+      }
+    } else {
+      passedRestrictionIds.push(restriction.id);
     }
   }
 
-  // ── 9. All checks passed ────────────────────────────────────────────────────
-  return { outcome: OUTCOMES.AUTHORIZED, reasonCode: 'EXPLICITLY_GRANTED' };
-}
+  // ── 11. Result assembly ─────────────────────────────────────────────────────
+  if (allReasonCodes.length === 0) {
+    // All restrictions passed (or none applicable)
+    return _authorized([grantedPerm.id], passedRestrictionIds);
+  }
 
-// Map a reason code to its OUTCOMES key (e.g. 'MONETARY_LIMIT_EXCEEDED' → 'NOT_AUTHORIZED')
-function _outcomeKeyFor(reasonCode) {
-  const map = {
-    MISSING_REQUEST_AMOUNT:  'INSUFFICIENT_INFO',
-    MISSING_ACTION_TIME:     'INSUFFICIENT_INFO',
-    MONETARY_LIMIT_EXCEEDED: 'NOT_AUTHORIZED',
-    DATE_WINDOW_RESTRICTION: 'NOT_AUTHORIZED',
+  // Correction 10: aggregate all reason codes in result
+  return {
+    decision:               aggregatedOutcome,
+    outcome:                aggregatedOutcome,
+    reasonCodes:            allReasonCodes,
+    reasonCode:             allReasonCodes[0],
+    missingFields:          allMissingFields,
+    manualReviewReasons:    allManualReasons,
+    matchedPermissionIds:   [grantedPerm.id],
+    appliedRestrictionIds:  passedRestrictionIds,
+    blockingPermissionIds:  [],
+    blockingRestrictionIds: blockingRestrictionIds,
   };
-  return map[reasonCode] || 'MANUAL_REVIEW';
 }
 
 module.exports = { evaluate };

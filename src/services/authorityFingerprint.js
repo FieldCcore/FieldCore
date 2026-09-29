@@ -27,6 +27,9 @@
 
 const crypto = require('crypto');
 
+// Stable algorithm identifier stored per evaluation row.
+const FINGERPRINT_ALGORITHM = 'sha256-v1';
+
 /**
  * Compute the canonical rules fingerprint for an instrument.
  *
@@ -63,6 +66,17 @@ function computeFingerprint(instrument, participants, permissions, restrictions)
 }
 
 /**
+ * Recompute fingerprint from a structured object (used for freshness checks).
+ * Accepts the same shape as _loadCanonicalData returns.
+ *
+ * @param {{ instrument, participants, permissions, restrictions }} data
+ * @returns {string}  hex SHA-256 digest (64 chars)
+ */
+function recomputeFingerprint({ instrument, participants, permissions, restrictions }) {
+  return computeFingerprint(instrument, participants, permissions, restrictions);
+}
+
+/**
  * Capture the mutable evaluation-state snapshot (excluded from fingerprint).
  * This is stored alongside the fingerprint to reconstruct what the instrument
  * state was at the moment of evaluation.
@@ -81,4 +95,4 @@ function captureEvaluationState(instrument) {
   };
 }
 
-module.exports = { computeFingerprint, captureEvaluationState };
+module.exports = { FINGERPRINT_ALGORITHM, computeFingerprint, recomputeFingerprint, captureEvaluationState };

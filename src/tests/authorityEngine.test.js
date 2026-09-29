@@ -281,10 +281,13 @@ describe('Policy registry', () => {
     expect(p.principalRoles.has('principal')).toBe(true);
   });
 
-  test('3.2 durable_power_of_attorney includes co_agent and successor_agent', () => {
+  test('3.2 durable_power_of_attorney — co_agent and successor_agent are in conditionalRoles', () => {
     const p = policyRegistry.getPolicyForType('durable_power_of_attorney');
-    expect(p.agentRoles.has('co_agent')).toBe(true);
-    expect(p.agentRoles.has('successor_agent')).toBe(true);
+    // Correction 3: co_agent and successor_agent are conditional roles, not unambiguous agent roles
+    expect(p.conditionalRoles.has('co_agent')).toBe(true);
+    expect(p.conditionalRoles.has('successor_agent')).toBe(true);
+    expect(p.agentRoles.has('co_agent')).toBe(false);
+    expect(p.agentRoles.has('successor_agent')).toBe(false);
   });
 
   test('3.3 guardianship_order has guardian as agent', () => {
@@ -292,10 +295,12 @@ describe('Policy registry', () => {
     expect(p.agentRoles.has('guardian')).toBe(true);
   });
 
-  test('3.4 trust has trustee and co_trustee as agents', () => {
+  test('3.4 trust — trustee is agent, co_trustee is conditional', () => {
     const p = policyRegistry.getPolicyForType('trust');
     expect(p.agentRoles.has('trustee')).toBe(true);
-    expect(p.agentRoles.has('co_trustee')).toBe(true);
+    // Correction 3: co_trustee is a conditional role (requires external activation state)
+    expect(p.conditionalRoles.has('co_trustee')).toBe(true);
+    expect(p.agentRoles.has('co_trustee')).toBe(false);
   });
 
   test('3.5 healthcare_proxy returns null (MANUAL_REVIEW path)', () => {
@@ -313,22 +318,28 @@ describe('Policy registry', () => {
     expect(p).toBeNull();
   });
 
-  test('3.8 BANKING domain is supported', () => {
-    expect(policyRegistry.isActionDomainSupported('BANKING.WIRE_TRANSFER')).toBe(true);
+  test('3.8 BANKING.WIRE_TRANSFER passes format validation', () => {
+    // Correction 6: format-only (no allowlist) — any DOMAIN.ACTION is valid
+    expect(policyRegistry.isActionKeyValid('BANKING.WIRE_TRANSFER')).toBe(true);
   });
 
-  test('3.9 CUSTOM_DOMAIN is supported', () => {
-    expect(policyRegistry.isActionDomainSupported('CUSTOM_DOMAIN.NEW_ACTION')).toBe(true);
+  test('3.9 CUSTOM_DOMAIN.NEW_ACTION passes format validation', () => {
+    expect(policyRegistry.isActionKeyValid('CUSTOM_DOMAIN.NEW_ACTION')).toBe(true);
   });
 
-  test('3.10 unknown domain returns false', () => {
-    expect(policyRegistry.isActionDomainSupported('WEIRD_DOMAIN.ACTION')).toBe(false);
+  test('3.10 WEIRD_DOMAIN.ACTION passes format validation (no allowlist)', () => {
+    // Correction 6: no allowlist — any valid-format key is accepted
+    expect(policyRegistry.isActionKeyValid('WEIRD_DOMAIN.ACTION')).toBe(true);
+    // isActionDomainSupported is a deprecated alias — same behavior
+    expect(policyRegistry.isActionDomainSupported('WEIRD_DOMAIN.ACTION')).toBe(true);
   });
 
-  test('3.11 action key with no dot returns false', () => {
-    expect(policyRegistry.isActionDomainSupported('BANKING')).toBe(false);
-    expect(policyRegistry.isActionDomainSupported('')).toBe(false);
-    expect(policyRegistry.isActionDomainSupported(null)).toBe(false);
+  test('3.11 invalid-format action keys return false', () => {
+    expect(policyRegistry.isActionKeyValid('BANKING')).toBe(false);  // no dot
+    expect(policyRegistry.isActionKeyValid('')).toBe(false);
+    expect(policyRegistry.isActionKeyValid(null)).toBe(false);
+    expect(policyRegistry.isActionKeyValid('lower.ACTION')).toBe(false);  // lowercase domain
+    expect(policyRegistry.isActionKeyValid('BANKING.lower_action')).toBe(false);  // lowercase action
   });
 
   test('3.12 POLICY_VERSION is a non-empty string', () => {
@@ -345,26 +356,26 @@ describe('Restriction evaluators', () => {
   const ctx = { evaluated_at: '2026-06-15T10:00:00Z', action_time: '2026-06-15T10:00:00Z' };
 
   // monetary_limit
-  test('4.1 monetary_limit passes when amount < limit', () => {
+  test('4.1 monetary_limit passes when amount < limit (with matching currency)', () => {
     const r = evaluateRestriction(
       { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD' } },
-      { amount: 5000 }, ctx
+      { amount: 5000, currency: 'USD' }, ctx
     );
     expect(r).toEqual({ pass: true });
   });
 
-  test('4.2 monetary_limit passes when amount == limit', () => {
+  test('4.2 monetary_limit passes when amount == limit (with matching currency)', () => {
     const r = evaluateRestriction(
       { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD' } },
-      { amount: 10000 }, ctx
+      { amount: 10000, currency: 'USD' }, ctx
     );
     expect(r).toEqual({ pass: true });
   });
 
-  test('4.3 monetary_limit fails when amount > limit', () => {
+  test('4.3 monetary_limit fails when amount > limit (with matching currency)', () => {
     const r = evaluateRestriction(
       { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD' } },
-      { amount: 15000 }, ctx
+      { amount: 15000, currency: 'USD' }, ctx
     );
     expect(r.pass).toBe(false);
     expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
@@ -608,7 +619,8 @@ describe('Pure engine core', () => {
     const inactiveParts = [{ party_id: AGENT_ID, role: 'agent', status: 'inactive' }];
     const r = run({ inputs: { participants: inactiveParts } });
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
-    expect(r.reasonCode).toBe('PARTICIPANT_INACTIVE');
+    // Correction 2: new code is DELEGATE_PARTICIPANT_INACTIVE (PARTICIPANT_INACTIVE is legacy alias)
+    expect(r.reasonCode).toBe('DELEGATE_PARTICIPANT_INACTIVE');
   });
 
   test('6.10 NOT_AUTHORIZED — principal role cannot act as agent', () => {
@@ -630,10 +642,11 @@ describe('Pure engine core', () => {
     expect(r.reasonCode).toBe('AFTER_EXPIRATION_DATE');
   });
 
-  test('6.13 INSUFFICIENT_INFO — action key not in instrument', () => {
+  test('6.13 NOT_AUTHORIZED — action key has no grant in instrument', () => {
     const r = run({ req: { ...REQ, actionKey: 'BANKING.ACH_TRANSFER' } });
-    expect(r.outcome).toBe(OUTCOMES.INSUFFICIENT_INFO);
-    expect(r.reasonCode).toBe('ACTION_NOT_IN_INSTRUMENT');
+    // Correction 5: no grant → NOT_AUTHORIZED / NO_APPLICABLE_GRANT (not INSUFFICIENT_INFO)
+    expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
+    expect(r.reasonCode).toBe('NO_APPLICABLE_GRANT');
   });
 
   test('6.14 NOT_AUTHORIZED — action explicitly prohibited', () => {
@@ -645,11 +658,13 @@ describe('Pure engine core', () => {
     expect(r.reasonCode).toBe('ACTION_EXPLICITLY_PROHIBITED');
   });
 
-  test('6.15 MANUAL_REVIEW — unsupported action domain', () => {
+  test('6.15 AUTHORIZED — unknown domain with valid format and grant passes (no allowlist)', () => {
+    // Correction 6: allowlist removed — any DOMAIN.ACTION format is valid.
+    // ALIEN_DOMAIN.ACTION is syntactically valid and has a grant, so AUTHORIZED.
     const altPerms = [{ id: 'perm-1', action_key: 'ALIEN_DOMAIN.ACTION', grant_type: 'granted' }];
     const r = run({ inputs: { permissions: altPerms }, req: { ...REQ, actionKey: 'ALIEN_DOMAIN.ACTION' } });
-    expect(r.outcome).toBe(OUTCOMES.MANUAL_REVIEW);
-    expect(r.reasonCode).toBe('UNSUPPORTED_ACTION_DOMAIN');
+    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
+    expect(r.reasonCode).toBe('EXPLICITLY_GRANTED');
   });
 
   test('6.16 NOT_AUTHORIZED — monetary_limit exceeded', () => {
@@ -659,7 +674,7 @@ describe('Pure engine core', () => {
       permission_id: 'perm-1',
       effective_from: null, effective_to: null,
     }];
-    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 15000 } });
+    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 15000, currency: 'USD' } });
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
     expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
   });
@@ -671,7 +686,7 @@ describe('Pure engine core', () => {
       permission_id: 'perm-1',
       effective_from: null, effective_to: null,
     }];
-    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 10000 } });
+    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 10000, currency: 'USD' } });
     expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
   });
 
@@ -717,7 +732,7 @@ describe('Pure engine core', () => {
       permission_id: null,
       effective_from: null, effective_to: null,
     }];
-    const r = run({ inputs: { restrictions: restrInstrWide }, req: { ...REQ, amount: 9000 } });
+    const r = run({ inputs: { restrictions: restrInstrWide }, req: { ...REQ, amount: 9000, currency: 'USD' } });
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
     expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
   });
@@ -817,6 +832,7 @@ describe('Service — AUTHORIZED happy path', () => {
         requestingPartyId: agentParty.id,
         actionKey:         'BANKING.WIRE_TRANSFER',
         amount:            5000,
+        currency:          'USD',
         idempotencyKey:    idKey,
       },
       { accountId, userId, ipAddress: null }
@@ -1010,13 +1026,14 @@ describe('Service — temporal bounds', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Service — permission checks', () => {
-  test('12.1 action not in instrument → INSUFFICIENT_INFORMATION', async () => {
+  test('12.1 action not in instrument → NOT_AUTHORIZED / NO_APPLICABLE_GRANT', async () => {
+    // Correction 5: a missing grant is NOT missing data — it is a definitive denial.
     const r = await evaluationService.evaluateAuthority(
       { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.ACH_TRANSFER', idempotencyKey: ik() },
       { accountId, userId, ipAddress: null }
     );
-    expect(r.outcome).toBe(OUTCOMES.INSUFFICIENT_INFO);
-    expect(r.reasonCode).toBe('ACTION_NOT_IN_INSTRUMENT');
+    expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
+    expect(r.reasonCode).toBe('NO_APPLICABLE_GRANT');
   });
 
   test('12.2 prohibited action → NOT_AUTHORIZED', async () => {
@@ -1048,7 +1065,7 @@ describe('Service — permission checks', () => {
 describe('Service — restriction evaluation', () => {
   test('13.1 amount within monetary_limit → AUTHORIZED', async () => {
     const r = await evaluationService.evaluateAuthority(
-      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 9999, idempotencyKey: ik() },
+      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 9999, currency: 'USD', idempotencyKey: ik() },
       { accountId, userId, ipAddress: null }
     );
     expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
@@ -1056,7 +1073,7 @@ describe('Service — restriction evaluation', () => {
 
   test('13.2 amount exceeds monetary_limit → NOT_AUTHORIZED', async () => {
     const r = await evaluationService.evaluateAuthority(
-      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 15000, idempotencyKey: ik() },
+      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 15000, currency: 'USD', idempotencyKey: ik() },
       { accountId, userId, ipAddress: null }
     );
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
@@ -1169,39 +1186,37 @@ describe('Idempotency — valid replay', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Idempotency — stale replay', () => {
-  test('17.1 changed instrumentId with same key → MANUAL_REVIEW IDEMPOTENCY_REPLAY_STALE', async () => {
+  test('17.1 changed instrumentId with same key → HTTP 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    // Correction 8: different request fingerprint → 409 conflict (not a MANUAL_REVIEW decision).
     const idKey = ik();
-    // First evaluation
     await evaluationService.evaluateAuthority(
-      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 5000, idempotencyKey: idKey },
+      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 5000, currency: 'USD', idempotencyKey: idKey },
       { accountId, userId, ipAddress: null }
     );
-    // Second evaluation — different instrumentId, same key
     const diffInstr = await authorityService.createInstrument(accountId, userId, {
       instrumentType: 'power_of_attorney',
       effectiveDate:  '2025-01-01',
     });
-    const r2 = await evaluationService.evaluateAuthority(
-      { instrumentId: diffInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: idKey },
-      { accountId, userId, ipAddress: null }
-    );
-    expect(r2.outcome).toBe(OUTCOMES.MANUAL_REVIEW);
-    expect(r2.reasonCode).toBe('IDEMPOTENCY_REPLAY_STALE');
-    expect(r2.isReplay).toBe(true);
+    await expect(
+      evaluationService.evaluateAuthority(
+        { instrumentId: diffInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: idKey },
+        { accountId, userId, ipAddress: null }
+      )
+    ).rejects.toMatchObject({ statusCode: 409, reasonCode: 'IDEMPOTENCY_KEY_CONFLICT' });
   });
 
-  test('17.2 changed requestingPartyId with same key → MANUAL_REVIEW IDEMPOTENCY_REPLAY_STALE', async () => {
+  test('17.2 changed requestingPartyId with same key → HTTP 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
     const idKey = ik();
     await evaluationService.evaluateAuthority(
-      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 5000, idempotencyKey: idKey },
+      { instrumentId: verifiedInstr.id, requestingPartyId: agentParty.id, actionKey: 'BANKING.WIRE_TRANSFER', amount: 5000, currency: 'USD', idempotencyKey: idKey },
       { accountId, userId, ipAddress: null }
     );
-    const r2 = await evaluationService.evaluateAuthority(
-      { instrumentId: verifiedInstr.id, requestingPartyId: principalParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: idKey },
-      { accountId, userId, ipAddress: null }
-    );
-    expect(r2.outcome).toBe(OUTCOMES.MANUAL_REVIEW);
-    expect(r2.reasonCode).toBe('IDEMPOTENCY_REPLAY_STALE');
+    await expect(
+      evaluationService.evaluateAuthority(
+        { instrumentId: verifiedInstr.id, requestingPartyId: principalParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: idKey },
+        { accountId, userId, ipAddress: null }
+      )
+    ).rejects.toMatchObject({ statusCode: 409, reasonCode: 'IDEMPOTENCY_KEY_CONFLICT' });
   });
 });
 

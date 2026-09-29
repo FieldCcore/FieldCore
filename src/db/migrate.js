@@ -3030,6 +3030,38 @@ const MIGRATIONS = [
   // Drop FK on requesting_party_id — evaluations may record unknown/external party IDs.
   `ALTER TABLE authority_evaluations
      DROP CONSTRAINT IF EXISTS authority_evaluations_requesting_party_id_fkey`,
+
+  // Correction: drop FK constraints on principal_party_id and delegate_party_id —
+  // evaluations may record unknown/external party IDs (FK would violate on unknown UUIDs).
+  `ALTER TABLE authority_evaluations
+     DROP CONSTRAINT IF EXISTS authority_evaluations_principal_party_id_fkey`,
+  `ALTER TABLE authority_evaluations
+     DROP CONSTRAINT IF EXISTS authority_evaluations_delegate_party_id_fkey`,
+
+  // Stage 4 corrections: add rich output columns (additive, idempotent).
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS principal_party_id UUID`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS delegate_party_id UUID`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS reason_codes JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS missing_fields JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS manual_review_reasons JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS matched_permission_ids JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS applied_restriction_ids JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS blocking_permission_ids JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS blocking_restriction_ids JSONB`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS rule_version TEXT`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS action_time_source TEXT`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS request_fingerprint TEXT`,
+  `ALTER TABLE authority_evaluations ADD COLUMN IF NOT EXISTS fingerprint_algorithm TEXT`,
+
+  // Indexes for the new columns.
+  `CREATE INDEX IF NOT EXISTS idx_ae_request_fingerprint
+     ON authority_evaluations(account_id, idempotency_key, request_fingerprint)`,
+  `CREATE INDEX IF NOT EXISTS idx_ae_principal_party
+     ON authority_evaluations(account_id, principal_party_id)
+     WHERE principal_party_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_ae_delegate_party
+     ON authority_evaluations(account_id, delegate_party_id)
+     WHERE delegate_party_id IS NOT NULL`,
 ];
 
 async function runMigrations() {
