@@ -4,31 +4,66 @@ import { AuLoading, AuError, AuEmpty, fmtDateTime } from './AuthorityShared';
 
 // ── Currency exponent map (ISO 4217) ─────────────────────────────────────────
 // Correction 8: no blind ×100. Use known exponent for each currency.
+// Expanded to match the backend map more closely.
 
 const CURRENCY_EXPONENTS = {
+  // Two-decimal
+  USD: 2, EUR: 2, GBP: 2, CAD: 2, AUD: 2, NZD: 2,
+  CHF: 2, SEK: 2, NOK: 2, DKK: 2, SGD: 2, HKD: 2,
+  MXN: 2, BRL: 2, ZAR: 2, INR: 2, CNY: 2,
+  AED: 2, SAR: 2, QAR: 2, MYR: 2, THB: 2, PHP: 2,
+  IDR: 2, PLN: 2, CZK: 2, HUF: 2, RON: 2, TRY: 2,
+  ILS: 2, EGP: 2, MAD: 2, NGN: 2, GHS: 2, KES: 2,
+  COP: 2, PEN: 2, ARS: 2, CLP: 2,
+  // Zero-decimal
+  JPY: 0, KRW: 0, VND: 0, PYG: 0, UGX: 0, RWF: 0,
+  GNF: 0, XOF: 0, XAF: 0, XPF: 0, BIF: 0, DJF: 0,
+  KMF: 0, MGA: 0,
+  // Three-decimal
   BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
-  JPY: 0, KRW: 0, VND: 0, IDR: 0, UGX: 0, RWF: 0, GNF: 0, PYG: 0,
-  CLF: 4,
+  // Four-decimal
+  CLF: 4, UYW: 4,
 };
 
 function currencyExponent(code) {
   if (!code) return 2;
-  return CURRENCY_EXPONENTS[code.toUpperCase()] !== undefined
-    ? CURRENCY_EXPONENTS[code.toUpperCase()]
+  return CURRENCY_EXPONENTS[String(code).toUpperCase()] !== undefined
+    ? CURRENCY_EXPONENTS[String(code).toUpperCase()]
     : 2;
 }
 
 /**
  * Convert a display amount string (e.g. "10.00") to minor units (integer).
- * Uses ISO 4217 exponent — does NOT blindly multiply by 100.
+ * Uses the same integer-only algorithm as the backend authorityCurrencyExponents.
+ *
+ * Returns:
+ *   integer minor units on success
+ *   null if the display is empty
+ *   { error: string } for invalid format or excess fractional digits
  */
-function toMinorUnits(display, currencyCode) {
+export function toMinorUnits(display, currencyCode) {
   if (display === '' || display === null || display === undefined) return null;
-  const exp    = currencyExponent(currencyCode);
-  const factor = Math.pow(10, exp);
-  const parsed = parseFloat(display);
-  if (!Number.isFinite(parsed)) return null;
-  return Math.round(parsed * factor);
+  const exp = currencyExponent(currencyCode);
+  const str = String(display).trim();
+  // Only plain decimal notation is allowed — reject scientific notation, etc.
+  if (!/^-?\d+(\.\d+)?$/.test(str)) return null;
+  const dotIdx = str.indexOf('.');
+  if (dotIdx === -1) {
+    const val = parseInt(str, 10);
+    if (isNaN(val)) return null;
+    const factor = Math.pow(10, exp);
+    return val * factor;
+  }
+  const fractionalPart = str.slice(dotIdx + 1);
+  if (fractionalPart.length > exp) {
+    return { error: `${String(currencyCode || '').toUpperCase() || 'This currency'} allows only ${exp} decimal places.` };
+  }
+  const paddedFraction = fractionalPart.padEnd(exp, '0');
+  const negative       = str.startsWith('-');
+  const intAbs         = parseInt(str.slice(0, dotIdx).replace('-', '') || '0', 10);
+  const fracVal        = parseInt(paddedFraction || '0', 10);
+  const result         = intAbs * Math.pow(10, exp) + fracVal;
+  return negative ? -result : result;
 }
 
 function fromMinorUnits(minor, currencyCode) {
@@ -42,10 +77,10 @@ function fromMinorUnits(minor, currencyCode) {
 // Correction 14: show all four outcome states with clear labeling
 
 const OUTCOME_META = {
-  AUTHORIZED:               { label: 'Authorized',             color: '#166534', bg: '#DCFCE7', icon: '✓' },
-  NOT_AUTHORIZED:           { label: 'Not Authorized',         color: '#991B1B', bg: '#FEE2E2', icon: '✗' },
+  AUTHORIZED:               { label: 'Authorized',               color: '#166534', bg: '#DCFCE7', icon: '✓' },
+  NOT_AUTHORIZED:           { label: 'Not Authorized',           color: '#991B1B', bg: '#FEE2E2', icon: '✗' },
   INSUFFICIENT_INFORMATION: { label: 'Insufficient Information', color: '#92400E', bg: '#FEF3C7', icon: '?' },
-  MANUAL_REVIEW:            { label: 'Manual Review Required', color: '#5B21B6', bg: '#EDE9FE', icon: '!' },
+  MANUAL_REVIEW:            { label: 'Manual Review Required',   color: '#5B21B6', bg: '#EDE9FE', icon: '!' },
 };
 
 function OutcomeBadge({ outcome }) {
@@ -171,7 +206,9 @@ function PartyPicker({ value, onChange, placeholder, required }) {
 }
 
 // ── Evaluation form ───────────────────────────────────────────────────────────
-// Correction 14: use canonical pickers; correct money conversion; rich fields
+// Part 8 closure: requestedAt is set automatically at submission — never
+// exposed as a user-editable field. Part 9 closure: the money parser matches
+// the backend integer-only algorithm.
 
 function EvaluationForm({ onResult }) {
   const [form, setForm] = useState({
@@ -179,10 +216,8 @@ function EvaluationForm({ onResult }) {
     principalPartyId: '',
     delegatePartyId:  '',
     actionKey:        '',
-    amount:           '',   // display value (e.g. "50.00")
+    amount:           '',
     currency:         'USD',
-    actionTime:       '',
-    requestedAt:      '',
     idempotencyKey:   '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -209,12 +244,14 @@ function EvaluationForm({ onResult }) {
         instrumentId:      form.instrumentId,
         delegatePartyId:   form.delegatePartyId || undefined,
         idempotencyKey:    form.idempotencyKey.trim(),
+        // Part 8 closure: always set requestedAt to now at submission
+        requestedAt:       new Date().toISOString(),
       };
 
       if (form.principalPartyId) payload.principalPartyId = form.principalPartyId;
       if (form.actionKey.trim()) payload.actionKey = form.actionKey.trim();
 
-      // Correction 8: use currency exponent — no blind ×100
+      // Part 9 closure: single money parser, integer-only algorithm
       if (form.amount !== '') {
         const minor = toMinorUnits(form.amount, form.currency);
         if (minor === null) {
@@ -222,15 +259,13 @@ function EvaluationForm({ onResult }) {
           setSubmitting(false);
           return;
         }
+        if (typeof minor === 'object' && minor.error) {
+          setFieldError(minor.error);
+          setSubmitting(false);
+          return;
+        }
         payload.amount   = minor;
         payload.currency = form.currency.trim().toUpperCase() || 'USD';
-      }
-
-      if (form.actionTime.trim()) {
-        payload.actionTime  = new Date(form.actionTime.trim()).toISOString();
-      }
-      if (form.requestedAt.trim()) {
-        payload.requestedAt = new Date(form.requestedAt.trim()).toISOString();
       }
 
       const res = await api.post('/authority/evaluate', payload);
@@ -251,7 +286,7 @@ function EvaluationForm({ onResult }) {
         }
       }
       if (err.response?.status === 422) {
-        setError('Request time is outside the supported ±5 minute window. Please use a current requestedAt timestamp.');
+        setError('Request time is outside the supported ±5 minute window. Please try again.');
         setSubmitting(false);
         return;
       }
@@ -274,9 +309,9 @@ function EvaluationForm({ onResult }) {
         </div>
 
         <div className="au-form-group">
-          <label className="au-label">Principal Party (optional — verifies instrument ownership)</label>
+          <label className="au-label">Principal Party *</label>
           <PartyPicker value={form.principalPartyId} onChange={v => set('principalPartyId', v)}
-            placeholder="— No principal check —" required={false} />
+            placeholder="— Select principal —" required />
         </div>
 
         <div className="au-form-group">
@@ -286,10 +321,10 @@ function EvaluationForm({ onResult }) {
         </div>
 
         <div className="au-form-group">
-          <label className="au-label">Action Key</label>
+          <label className="au-label">Action Key *</label>
           <input className="au-input" value={form.actionKey}
             onChange={e => set('actionKey', e.target.value)}
-            placeholder="e.g. BANKING.WIRE_TRANSFER" />
+            placeholder="e.g. BANKING.WIRE_TRANSFER" required />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 10 }}>
@@ -305,12 +340,6 @@ function EvaluationForm({ onResult }) {
               onChange={e => set('currency', e.target.value.toUpperCase())}
               maxLength={3} placeholder="USD" />
           </div>
-        </div>
-
-        <div className="au-form-group">
-          <label className="au-label">Action Time (optional, defaults to now)</label>
-          <input className="au-input" type="datetime-local" value={form.actionTime}
-            onChange={e => set('actionTime', e.target.value)} />
         </div>
 
         <div className="au-form-group">
@@ -350,7 +379,6 @@ function EvaluationForm({ onResult }) {
 // stale replay must NOT show prior decision
 
 function EvaluationResultCard({ result }) {
-  // Correction 14: stale replay must not display the prior decision
   if (result._stale) {
     return (
       <div className="au-card" style={{ padding: 24, borderLeft: '4px solid #F59E0B' }}>
@@ -386,7 +414,6 @@ function EvaluationResultCard({ result }) {
       </div>
 
       <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
-        {/* Reason codes */}
         {reasonCodes.length > 0 && (
           <div>
             <span style={{ color: 'var(--steel)', display: 'block', marginBottom: 4, fontSize: 12 }}>
@@ -398,22 +425,10 @@ function EvaluationResultCard({ result }) {
           </div>
         )}
 
-        {/* Missing fields */}
-        <StringList
-          items={result.missingFields}
-          label="Missing Fields"
-          color="#92400E"
-        />
+        <StringList items={result.missingFields}       label="Missing Fields"        color="#92400E" />
+        <StringList items={result.manualReviewReasons} label="Manual Review Reasons" color="#5B21B6" />
 
-        {/* Manual review reasons */}
-        <StringList
-          items={result.manualReviewReasons}
-          label="Manual Review Reasons"
-          color="#5B21B6"
-        />
-
-        {/* Permission IDs */}
-        <IdList ids={result.matchedPermissionIds} label="Matched Permission IDs" />
+        <IdList ids={result.matchedPermissionIds}  label="Matched Permission IDs" />
         <IdList ids={result.appliedRestrictionIds} label="Applied Restriction IDs" />
         <IdList ids={result.blockingPermissionIds} label="Blocking Permission IDs" />
         <IdList ids={result.blockingRestrictionIds} label="Blocking Restriction IDs" />
@@ -436,7 +451,7 @@ function EvaluationResultCard({ result }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
             <span style={{ color: 'var(--steel)', fontSize: 12 }}>Evaluated At</span>
-            <div style={{ fontSize: 12 }}>{fmtDateTime(result.evaluated_at)}</div>
+            <div style={{ fontSize: 12 }}>{fmtDateTime(result.evaluated_at || result.evaluatedAt)}</div>
           </div>
           {result.replayCheckedAt && (
             <div>
@@ -447,7 +462,6 @@ function EvaluationResultCard({ result }) {
         </div>
       </div>
 
-      {/* Disclaimer — Correction 14 */}
       <div style={{
         marginTop: 16, padding: '10px 12px',
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
@@ -461,7 +475,6 @@ function EvaluationResultCard({ result }) {
 }
 
 // ── History table ─────────────────────────────────────────────────────────────
-// Correction 14: historical evaluations clearly labeled
 
 function EvaluationHistory({ refreshKey }) {
   const [rows,    setRows]    = useState([]);
@@ -494,7 +507,6 @@ function EvaluationHistory({ refreshKey }) {
       </div>
       <AuError msg={error} />
 
-      {/* Correction 14: disclaimer on history section too */}
       <div style={{
         margin: '0 16px 12px', padding: '8px 12px',
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
@@ -523,9 +535,7 @@ function EvaluationHistory({ refreshKey }) {
             {rows.map(row => (
               <tr key={row.id}>
                 <td><OutcomeBadge outcome={row.outcome} /></td>
-                <td>
-                  <ReasonChip code={row.reason_code} />
-                </td>
+                <td><ReasonChip code={row.reason_code} /></td>
                 <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
                   {row.requested_action_key || '—'}
                 </td>
@@ -555,11 +565,25 @@ function EvaluationHistory({ refreshKey }) {
 export default function AuthorityEvaluate() {
   const [latestResult, setLatestResult] = useState(null);
   const [historyKey,   setHistoryKey]   = useState(0);
+  const [caps,         setCaps]         = useState(null); // null = loading, [] = loaded (may be empty)
+  const [capsError,    setCapsError]    = useState('');
+
+  useEffect(() => {
+    api.get('/authority/capabilities')
+      .then(r => setCaps(r.data.capabilities || []))
+      .catch(err => {
+        setCapsError(err.response?.data?.error || 'Failed to load capabilities.');
+        setCaps([]);
+      });
+  }, []);
 
   function handleResult(result) {
     setLatestResult(result);
     setHistoryKey(k => k + 1);
   }
+
+  const hasEvaluateCap = Array.isArray(caps) && caps.includes('AUTHORITY_EVALUATE');
+  const capsLoading    = caps === null;
 
   return (
     <div className="au-page">
@@ -572,15 +596,30 @@ export default function AuthorityEvaluate() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <EvaluationForm onResult={handleResult} />
-          {latestResult && <EvaluationResultCard result={latestResult} />}
+      {capsLoading ? (
+        <AuLoading />
+      ) : !hasEvaluateCap ? (
+        <div className="au-card" style={{ padding: 24 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: '#5B21B6', fontSize: 14 }}>
+            AUTHORITY_EVALUATE Capability Required
+          </div>
+          <div style={{ color: '#374151', fontSize: 13, lineHeight: 1.6 }}>
+            You do not have the AUTHORITY_EVALUATE capability. Contact your institution
+            administrator to request access to the Authority Evaluator.
+          </div>
+          {capsError && <AuError msg={capsError} />}
         </div>
-        <div>
-          <EvaluationHistory refreshKey={historyKey} />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <EvaluationForm onResult={handleResult} />
+            {latestResult && <EvaluationResultCard result={latestResult} />}
+          </div>
+          <div>
+            <EvaluationHistory refreshKey={historyKey} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

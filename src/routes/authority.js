@@ -631,18 +631,33 @@ router.post('/candidates/:candidateId/reject', async (req, res) => {
 
 const evaluationService = require('../services/authorityEvaluationService');
 
+// Part 4 closure: AUTHORITY_EVALUATE capability gate.
+async function _requireAuthorityEvaluateCap(req, res, next) {
+  try {
+    const allowed = await _hasCapability(req.userId, 'AUTHORITY_EVALUATE');
+    if (!allowed) {
+      return res.status(403).json({ error: 'AUTHORITY_EVALUATE capability required.' });
+    }
+    next();
+  } catch (err) {
+    handleError(res, err);
+  }
+}
+
 // POST /api/authority/evaluate
 // Body: { instrumentId, delegatePartyId, principalPartyId, actionKey, amount?,
-//         currency?, actionTime?, requestedAt, idempotencyKey }
-router.post('/evaluate', async (req, res) => {
+//         currency?, requestedAt, idempotencyKey }
+// Part 1 closure: `actionTime` is NOT accepted — the action time is derived
+// from `requestedAt`.
+router.post('/evaluate', _requireAuthorityEvaluateCap, async (req, res) => {
   try {
     const {
       instrumentId, delegatePartyId, principalPartyId, actionKey,
-      amount, currency, actionTime, requestedAt, idempotencyKey,
+      amount, currency, requestedAt, idempotencyKey,
     } = req.body || {};
 
     const result = await evaluationService.evaluateAuthority(
-      { instrumentId, delegatePartyId, principalPartyId, actionKey, amount, currency, actionTime, requestedAt, idempotencyKey },
+      { instrumentId, delegatePartyId, principalPartyId, actionKey, amount, currency, requestedAt, idempotencyKey },
       { accountId: req.accountId, userId: req.userId, ipAddress: req.ip || null }
     );
     res.status(result.isReplay ? 200 : 201).json(result);
@@ -653,7 +668,7 @@ router.post('/evaluate', async (req, res) => {
 
 // GET /api/authority/evaluations — list evaluations for this account
 // Query: ?instrumentId=<uuid>&limit=<n>&offset=<n>
-router.get('/evaluations', async (req, res) => {
+router.get('/evaluations', _requireAuthorityEvaluateCap, async (req, res) => {
   try {
     const { instrumentId, limit, offset } = req.query;
     const rows = await evaluationService.listEvaluations(
@@ -666,7 +681,7 @@ router.get('/evaluations', async (req, res) => {
 });
 
 // GET /api/authority/evaluations/:evaluationId
-router.get('/evaluations/:evaluationId', async (req, res) => {
+router.get('/evaluations/:evaluationId', _requireAuthorityEvaluateCap, async (req, res) => {
   try {
     const row = await evaluationService.getEvaluation(req.accountId, req.params.evaluationId);
     res.json(row);

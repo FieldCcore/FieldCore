@@ -101,15 +101,17 @@ function _authorized(matchedPermissionIds, appliedRestrictionIds) {
 // Map a restriction reason code to its outcome key.
 function _outcomeForRestrictionCode(reasonCode) {
   const map = {
-    MISSING_REQUEST_AMOUNT:      'INSUFFICIENT_INFO',
-    MISSING_CURRENCY:            'INSUFFICIENT_INFO',
-    MISSING_ACTION_TIME:         'INSUFFICIENT_INFO',
-    MONETARY_LIMIT_EXCEEDED:     'NOT_AUTHORIZED',
-    DATE_WINDOW_RESTRICTION:     'NOT_AUTHORIZED',
-    CURRENCY_MISMATCH:           'MANUAL_REVIEW',
-    BOUNDARY_SEMANTICS_UNDEFINED:'MANUAL_REVIEW',
-    CUMULATIVE_LIMIT_UNSUPPORTED:'MANUAL_REVIEW',
-    TIMEZONE_BOUNDARY_AMBIGUOUS: 'MANUAL_REVIEW',
+    MISSING_REQUEST_AMOUNT:              'INSUFFICIENT_INFO',
+    MISSING_CURRENCY:                    'INSUFFICIENT_INFO',
+    MISSING_ACTION_TIME:                 'INSUFFICIENT_INFO',
+    MONETARY_LIMIT_EXCEEDED:             'NOT_AUTHORIZED',
+    DATE_WINDOW_RESTRICTION:             'NOT_AUTHORIZED',
+    CURRENCY_MISMATCH:                   'MANUAL_REVIEW',
+    BOUNDARY_SEMANTICS_UNDEFINED:        'MANUAL_REVIEW',
+    CUMULATIVE_LIMIT_UNSUPPORTED:        'MANUAL_REVIEW',
+    TIMEZONE_BOUNDARY_AMBIGUOUS:         'MANUAL_REVIEW',
+    TIMEZONE_AMBIGUOUS:                  'MANUAL_REVIEW',
+    AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED: 'MANUAL_REVIEW',
   };
   return map[reasonCode] || 'MANUAL_REVIEW';
 }
@@ -235,18 +237,30 @@ function evaluate(inputs, request, temporalContext, policyRegistry, restrictionE
       { missingFields: ['actionKey'] });
   }
 
-  // Check for explicit prohibition (most restrictive wins)
+  // Part 5 closure: participant-scoped permissions.
+  // authority_permissions.participant_id references authority_instrument_parties(id)
+  // — the instrument-party ROW id, not the party UUID. Filter permissions to those
+  // that are either instrument-wide (participant_id === null) or scoped to the
+  // delegate's participant row.
+  const delegateParticipantRowId = delegateParticipant ? delegateParticipant.id : null;
+
+  function _permAppliesToDelegate(p) {
+    return p.participant_id == null || p.participant_id === delegateParticipantRowId;
+  }
+
+  // Check for explicit prohibition (most restrictive wins) — respect participant scoping
   const prohibitedPerm = (permissions || []).find(
-    p => p.action_key === actionKey && p.grant_type === 'prohibited'
+    p => p.action_key === actionKey && p.grant_type === 'prohibited' && _permAppliesToDelegate(p)
   );
   if (prohibitedPerm) {
     return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'ACTION_EXPLICITLY_PROHIBITED',
       { blockingPermissionIds: [prohibitedPerm.id] });
   }
 
-  // Part 9 closure: collect ALL grants for this action key, sort deterministically by id.
+  // Part 9 closure: collect ALL grants for this action key that apply to the
+  // delegate participant, sort deterministically by id.
   const grantedPerms = [...(permissions || [])]
-    .filter(p => p.action_key === actionKey && p.grant_type === 'granted')
+    .filter(p => p.action_key === actionKey && p.grant_type === 'granted' && _permAppliesToDelegate(p))
     .sort((a, b) => a.id < b.id ? -1 : 1);
   if (grantedPerms.length === 0) {
     return _hardGate(OUTCOMES.NOT_AUTHORIZED, 'NO_APPLICABLE_GRANT');

@@ -18,6 +18,7 @@
  */
 
 const { REASON_CODES } = require('./authorityReasonCodes');
+const { evaluateDateBoundary } = require('./authorityTimezone');
 
 // Normalize a date value (string or JS Date) to 'YYYY-MM-DD'.
 function _toDateStr(d) {
@@ -25,12 +26,6 @@ function _toDateStr(d) {
   if (typeof d === 'string') return d.slice(0, 10);
   if (d instanceof Date) return d.toISOString().slice(0, 10);
   return String(d).slice(0, 10);
-}
-
-// Returns true if the ISO timestamp string includes timezone information.
-function _hasTimezone(isoStr) {
-  if (typeof isoStr !== 'string') return false;
-  return /[Zz]|[+-]\d{2}:\d{2}$/.test(isoStr);
 }
 
 // ── monetary_limit ────────────────────────────────────────────────────────────
@@ -75,11 +70,14 @@ function _evaluateMonetaryLimit(restriction, request) {
     return { pass: false, reasonCode: 'MONETARY_LIMIT_EXCEEDED' };
   }
 
-  // Correction 7c: exact boundary with undefined inclusive/exclusive semantics
-  if (reqAmount === limitAmount && params.boundary_inclusive === undefined) {
-    // amount === limit passes (inclusive-by-default) unless semantics are explicitly ambiguous
-    // Only escalate if the restriction explicitly declares it is a strict boundary
-    // (i.e., neither true nor false is present) — per spec, pass for standard case
+  // Part 6 closure: exact-boundary monetary semantics
+  if (reqAmount === limitAmount) {
+    if (params.boundary_inclusive === true) return { pass: true };
+    if (params.boundary_inclusive === false) {
+      return { pass: false, reasonCode: 'MONETARY_LIMIT_EXCEEDED' };
+    }
+    // Semantics not declared → MANUAL_REVIEW via AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED
+    return { pass: false, reasonCode: 'AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED' };
   }
 
   return { pass: true };
@@ -95,26 +93,22 @@ function _evaluateDateWindow(restriction, _request, context) {
     return { pass: false, reasonCode: 'MISSING_ACTION_TIME' };
   }
 
-  // Compare date portions only; normalize DB Date objects or strings to 'YYYY-MM-DD'
-  const actionDate = _toDateStr(actionTime);
   const from = restriction.effective_from ? _toDateStr(restriction.effective_from) : null;
   const to   = restriction.effective_to   ? _toDateStr(restriction.effective_to)   : null;
 
-  if (from && actionDate < from) {
-    return { pass: false, reasonCode: 'DATE_WINDOW_RESTRICTION' };
-  }
-  if (to && actionDate > to) {
-    return { pass: false, reasonCode: 'DATE_WINDOW_RESTRICTION' };
-  }
-
-  // Correction 7d: exact boundary at 'from' without timezone → TIMEZONE_BOUNDARY_AMBIGUOUS
-  if (from && actionDate === from && !_hasTimezone(String(context.action_time))) {
-    return { pass: false, reasonCode: 'TIMEZONE_BOUNDARY_AMBIGUOUS' };
+  // Part 7 closure: use the timezone envelope for date-only boundary checks.
+  if (from) {
+    const result = evaluateDateBoundary(String(actionTime), 'from', from);
+    if (result === 'BEFORE')    return { pass: false, reasonCode: 'DATE_WINDOW_RESTRICTION' };
+    if (result === 'AMBIGUOUS') return { pass: false, reasonCode: 'TIMEZONE_AMBIGUOUS' };
+    // INSIDE: continue
   }
 
-  // Correction 7e: exact boundary at 'to' → BOUNDARY_SEMANTICS_UNDEFINED
-  if (to && actionDate === to) {
-    return { pass: false, reasonCode: 'BOUNDARY_SEMANTICS_UNDEFINED' };
+  if (to) {
+    const result = evaluateDateBoundary(String(actionTime), 'to', to);
+    if (result === 'AFTER')     return { pass: false, reasonCode: 'DATE_WINDOW_RESTRICTION' };
+    if (result === 'AMBIGUOUS') return { pass: false, reasonCode: 'TIMEZONE_AMBIGUOUS' };
+    // INSIDE: continue
   }
 
   return { pass: true };

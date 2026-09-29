@@ -5,13 +5,14 @@
  *
  * evaluateAuthority(request, actorContext, opts) is the single public entry point.
  * It:
- *   1. Validates inputs (both identities mandatory; requestedAt required with idempotencyKey)
+ *   1. Validates inputs (both identities mandatory; requestedAt required; strict schema)
  *   2. Opens DB transaction, takes FOR SHARE lock on instrument
  *   3. Captures evaluatedAt AFTER lock acquisition (post-lock temporal consistency)
- *   4. Checks idempotency — returns cached result or HTTP 409 on conflict / stale
- *   5. Delegates to pure engine core (no I/O in core)
- *   6. Persists the evaluation row atomically with audit inside the transaction
- *   7. Returns the evaluation result
+ *   4. Validates requestedAt vs evaluatedAt skew AFTER the lock (Part 2 closure)
+ *   5. Checks idempotency — returns cached result or HTTP 409 on conflict / stale
+ *   6. Delegates to pure engine core (no I/O in core)
+ *   7. Persists the evaluation row atomically with audit inside the transaction
+ *   8. Returns the evaluation result
  *
  * Concurrency note:
  *   We take SELECT ... FOR SHARE on the instrument to prevent concurrent
@@ -23,6 +24,13 @@
  *
  * Audit:
  *   Every evaluation (including replays) writes one audit record inside its transaction.
+ *
+ *   Stale-replay audit exception: when the freshness check fails, we ROLLBACK
+ *   (a stale replay must not commit any state change). The stale-replay event
+ *   is then written via `audit.log` (pool-level, outside any transaction). This
+ *   is the correct pattern because (a) there is no active transaction to attach
+ *   the audit row to after ROLLBACK, and (b) the event records an attempted
+ *   (rejected) replay, not a committed state change.
  */
 
 const pool        = require('../db/pool');
@@ -40,6 +48,15 @@ const { OUTCOMES }               = require('./authorityReasonCodes');
 
 // Maximum allowed clock skew between evaluatedAt and requestedAt (5 minutes).
 const REQUEST_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+// Part 10 closure: strict request schema — only these top-level fields are accepted.
+const KNOWN_REQUEST_FIELDS = new Set([
+  'instrumentId', 'delegatePartyId', 'principalPartyId', 'actionKey',
+  'idempotencyKey', 'requestedAt', 'amount', 'currency',
+]);
+
+// Statuses that are terminal (evaluation of a replay must fail freshness).
+const TERMINAL_STATUSES = new Set(['REVOKED', 'EXPIRED', 'SUPERSEDED', 'REJECTED']);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,9 +85,10 @@ function _conflict(msg, extra = {}) {
   return e;
 }
 
-function _unprocessable(msg) {
+function _unprocessable(msg, extra = {}) {
   const e = new Error(msg);
   e.statusCode = 422;
+  Object.assign(e, extra);
   return e;
 }
 
@@ -83,11 +101,28 @@ async function _assertInstitutionAccount(accountId) {
   }
 }
 
+/**
+ * Part 12 closure: validate that a party belongs to the same tenant.
+ * The FKs on principal_party_id and delegate_party_id have been dropped —
+ * this service-level check is the enforcer.
+ */
+async function _assertPartyBelongsToTenant(txClient, accountId, partyId, label) {
+  const { rows } = await txClient.query(
+    `SELECT id FROM authority_parties WHERE id = $1 AND account_id = $2`,
+    [partyId, accountId]
+  );
+  if (!rows.length) {
+    throw _badRequest(`${label} does not belong to this account.`);
+  }
+}
+
 // ── Request fingerprint ───────────────────────────────────────────────────────
 
 /**
- * Compute a SHA-256 fingerprint over the normalized evaluation request fields.
- * Used for idempotency conflict detection (different request → HTTP 409).
+ * Compute a SHA-256 fingerprint over the SEMANTIC content of the evaluation
+ * request. Delivery metadata (idempotencyKey, requestedAt) is intentionally
+ * excluded so that legitimate retries of the same semantic request produce
+ * the same fingerprint even when time has passed.
  */
 function computeRequestFingerprint(request) {
   const normalized = {
@@ -97,7 +132,6 @@ function computeRequestFingerprint(request) {
     actionKey:        request.actionKey        || null,
     amount:           request.amount           !== undefined ? request.amount : null,
     currency:         request.currency         || null,
-    actionTime:       request.actionTime       || null,
   };
   return crypto.createHash('sha256')
     .update(JSON.stringify(normalized), 'utf8')
@@ -165,8 +199,12 @@ async function _checkIdempotency(txClient, accountId, idempotencyKey) {
             canonical_rules_fingerprint, evaluation_state_snapshot,
             instrument_id, requesting_party_id, delegate_party_id,
             principal_party_id, requested_action_key,
-            evaluated_at, policy_version, rule_version,
-            request_fingerprint
+            evaluated_at, action_time, action_time_source,
+            policy_version, rule_version,
+            request_fingerprint,
+            missing_fields, manual_review_reasons,
+            matched_permission_ids, applied_restriction_ids,
+            blocking_permission_ids, blocking_restriction_ids
      FROM authority_evaluations
      WHERE account_id = $1 AND idempotency_key = $2`,
     [accountId, idempotencyKey]
@@ -175,79 +213,168 @@ async function _checkIdempotency(txClient, accountId, idempotencyKey) {
 }
 
 /**
- * 8-point idempotency freshness model.
+ * Part 3 closure — full replay freshness model (13 checks).
  *
- * Check 1: request_fingerprint — different normalized request → KEY_CONFLICT
- * Check 2: instrument_id
- * Check 3: delegate_party_id
- * Check 4: action_key
- * Check 5: principal_party_id
- * Check 6: policy_version
- * Check 7: canonical_rules_fingerprint (instrument state / rules changed)
- * Check 8: instrument lifecycle status — if REVOKED/EXPIRED/SUPERSEDED since original evaluation
+ * Preconditions:
+ *   - Caller has already taken FOR SHARE on the instrument.
+ *   - Caller has already validated the requestedAt-vs-replayCheckedAt skew
+ *     window BEFORE calling this function (check #3 lives in the service).
+ *   - Caller has already validated policy_version equality (check #12 lives
+ *     in the service so we can short-circuit before loading data).
+ *
+ * Checks performed here (all must pass):
+ *   1. Instrument exists (currentData not null) — 'instrument_not_found'
+ *   4. Lifecycle status transition eligibility — 'instrument_status_changed'
+ *   5. Current status is NOT terminal — 'instrument_status_ineligible'
+ *   6. Effective-date eligibility (using replayCheckedAt date)
+ *      — 'before_effective_date'
+ *   7. Expiration-date eligibility (using replayCheckedAt date)
+ *      — 'after_expiration_date'
+ *   8. Every date_window restriction that was applicable in the original
+ *      evaluation must produce the same outcome with replayCheckedAt as
+ *      action time — 'date_window_changed'
+ *   9. canonical_rules_fingerprint match — 'canonical_rules_fingerprint_changed'
+ *  10. evaluation_state_snapshot mutable fields match current state
+ *      — 'evaluation_state_changed'
+ *  11. rule_version match — 'rule_version_changed'
+ *  13. Handler versions are composed into policy_version — no separate check.
  *
  * Returns { fresh: true } or { fresh: false, staleReason: string }.
  */
-function _validateReplayFreshness(existing, request, currentData) {
-  const currentFingerprint = currentData ? recomputeFingerprint(currentData) : null;
-  const newFingerprint = computeRequestFingerprint(request);
+function _validateReplayFreshness(existing, request, currentData, replayCheckedAt, restrictionsForRecheck, opts = {}) {
+  // Check 1: instrument exists
+  if (!currentData || !currentData.instrument) {
+    return { fresh: false, staleReason: 'instrument_not_found' };
+  }
 
-  // Check 1: request fingerprint
+  // Check request-fingerprint match (semantic content); belongs alongside the
+  // 8-check idempotency conflict path.
+  const currentFingerprint = recomputeFingerprint(currentData);
+  const newFingerprint     = computeRequestFingerprint(request);
+
   if (existing.request_fingerprint && newFingerprint !== existing.request_fingerprint) {
     return { fresh: false, staleReason: 'request_fingerprint_mismatch' };
   }
 
-  // Check 2: instrument ID
+  // Semantic identity of the request (unchanged from prior implementation).
   if (existing.instrument_id !== request.instrumentId) {
     return { fresh: false, staleReason: 'instrument_id_changed' };
   }
-
-  // Check 3: delegate party
-  const newDelegate = request.delegatePartyId || null;
+  const newDelegate      = request.delegatePartyId || null;
   const existingDelegate = existing.delegate_party_id || existing.requesting_party_id || null;
   if (existingDelegate !== newDelegate) {
     return { fresh: false, staleReason: 'delegate_party_changed' };
   }
-
-  // Check 4: action key
   if (existing.requested_action_key !== (request.actionKey || null)) {
     return { fresh: false, staleReason: 'action_key_changed' };
   }
-
-  // Check 5: principal party
   if ((existing.principal_party_id || null) !== (request.principalPartyId || null)) {
     return { fresh: false, staleReason: 'principal_party_changed' };
   }
 
-  // Check 6: policy version (requires policyRegistry reference — passed separately)
-  // NOTE: caller must pass policyRegistry.POLICY_VERSION for this check — see call site.
+  const currentStatus = currentData.instrument.status;
 
-  // Check 7: canonical rules fingerprint
-  if (currentFingerprint && existing.canonical_rules_fingerprint !== currentFingerprint) {
-    return { fresh: false, staleReason: 'canonical_rules_fingerprint_changed' };
+  // Parse original snapshot once.
+  let originalSnapshot = null;
+  try {
+    originalSnapshot = typeof existing.evaluation_state_snapshot === 'string'
+      ? JSON.parse(existing.evaluation_state_snapshot)
+      : existing.evaluation_state_snapshot;
+  } catch { originalSnapshot = null; }
+  const originalStatus = originalSnapshot && originalSnapshot.status;
+
+  // Check 4: lifecycle status transition.
+  // If the current status differs from the original AND is terminal, that is a
+  // stale transition. If both are still VERIFIED, we continue.
+  if (originalStatus && originalStatus !== currentStatus) {
+    return { fresh: false, staleReason: 'instrument_status_changed' };
   }
 
-  // Check 8: instrument lifecycle status — if instrument transitioned to terminal status since
-  // original evaluation, the replay is stale regardless of fingerprint equality.
-  if (currentData && currentData.instrument) {
-    const currentStatus = currentData.instrument.status;
-    const TERMINAL_STATUSES = new Set(['REVOKED', 'EXPIRED', 'SUPERSEDED', 'REJECTED']);
-    if (TERMINAL_STATUSES.has(currentStatus)) {
-      // Parse snapshot to compare against original status
-      let originalStatus = null;
-      try {
-        const snap = typeof existing.evaluation_state_snapshot === 'string'
-          ? JSON.parse(existing.evaluation_state_snapshot)
-          : existing.evaluation_state_snapshot;
-        originalStatus = snap && snap.status;
-      } catch {}
-      if (originalStatus && originalStatus !== currentStatus) {
-        return { fresh: false, staleReason: 'instrument_status_changed' };
+  // Check 5: current status must not be terminal.
+  if (TERMINAL_STATUSES.has(currentStatus)) {
+    return { fresh: false, staleReason: 'instrument_status_ineligible' };
+  }
+
+  // Check 6 & 7: effective-date / expiration-date eligibility using replayCheckedAt.
+  const replayDate = String(replayCheckedAt).slice(0, 10);
+  const effDate = currentData.instrument.effective_date
+    ? _dateToStr(currentData.instrument.effective_date) : null;
+  const expDate = currentData.instrument.expiration_date
+    ? _dateToStr(currentData.instrument.expiration_date) : null;
+
+  if (effDate && replayDate < effDate) {
+    return { fresh: false, staleReason: 'before_effective_date' };
+  }
+  if (expDate && replayDate > expDate) {
+    return { fresh: false, staleReason: 'after_expiration_date' };
+  }
+
+  // Check 8: date_window restrictions produce the same outcome at replayCheckedAt.
+  // Re-evaluate each date_window restriction using replayCheckedAt; if any goes
+  // from "would-pass" at original action time to "would-fail" at replay time (or
+  // vice-versa), consider the replay stale.
+  if (restrictionsForRecheck && restrictionsForRecheck.evaluators &&
+      restrictionsForRecheck.originalActionTime && Array.isArray(currentData.restrictions)) {
+    const evaluators = restrictionsForRecheck.evaluators;
+    const originalActionTime = restrictionsForRecheck.originalActionTime;
+    for (const r of currentData.restrictions) {
+      if (r.restriction_type !== 'date_window') continue;
+      const originalCtx = { evaluated_at: existing.evaluated_at, action_time: originalActionTime };
+      const replayCtx   = { evaluated_at: replayCheckedAt, action_time: replayCheckedAt };
+      const originalResult = evaluators.evaluateRestriction(r, {}, originalCtx);
+      const replayResult   = evaluators.evaluateRestriction(r, {}, replayCtx);
+      const originalPass = !!originalResult.pass;
+      const replayPass   = !!replayResult.pass;
+      if (originalPass !== replayPass) {
+        return { fresh: false, staleReason: 'date_window_changed' };
+      }
+      // If reason codes differ between the two evaluations, we also treat as stale.
+      if (!originalPass && !replayPass &&
+          originalResult.reasonCode !== replayResult.reasonCode) {
+        return { fresh: false, staleReason: 'date_window_changed' };
       }
     }
   }
 
+  // Check 9: canonical rules fingerprint.
+  if (existing.canonical_rules_fingerprint !== currentFingerprint) {
+    return { fresh: false, staleReason: 'canonical_rules_fingerprint_changed' };
+  }
+
+  // Check 10: mutable evaluation state snapshot fields match current instrument state.
+  const currentSnapshot = captureEvaluationState(currentData.instrument);
+  if (originalSnapshot) {
+    const keys = ['status', 'verified_at', 'revoked_at', 'expired_at', 'rejected_at', 'superseded_by'];
+    for (const k of keys) {
+      // Normalize date-ish values by stringifying non-null/undefined.
+      const a = _normSnapshotVal(originalSnapshot[k]);
+      const b = _normSnapshotVal(currentSnapshot[k]);
+      if (a !== b) {
+        return { fresh: false, staleReason: 'evaluation_state_changed' };
+      }
+    }
+  }
+
+  // Check 11: rule_version match. (policy_version is checked separately by caller.)
+  if (opts.currentRuleVersion && existing.rule_version &&
+      existing.rule_version !== opts.currentRuleVersion) {
+    return { fresh: false, staleReason: 'rule_version_changed' };
+  }
+
   return { fresh: true };
+}
+
+function _dateToStr(d) {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
+function _normSnapshotVal(v) {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
 }
 
 // ── Persister ─────────────────────────────────────────────────────────────────
@@ -326,32 +453,33 @@ async function _persistEvaluation(txClient, {
 /**
  * evaluateAuthority(request, actorContext, opts) → EvaluationResult
  *
+ * Required request fields:
+ *   instrumentId, delegatePartyId, principalPartyId, actionKey, requestedAt, idempotencyKey
+ * Optional request fields:
+ *   amount, currency
+ *
+ * NOTE: `actionTime` is NOT a request field (Part 1 closure). The action time is
+ * derived from `requestedAt` and stored as `action_time` on the evaluation row.
+ *
  * @param {object} request
- *   instrumentId        {string}   UUID of the authority_instruments row [REQUIRED]
- *   delegatePartyId     {string}   UUID of the delegate party [REQUIRED]
- *   principalPartyId    {string}   UUID of the principal party [REQUIRED]
- *   actionKey           {string}   e.g. "BANKING.WIRE_TRANSFER"
- *   amount              {number|null}  integer minor-units (required for monetary restrictions)
- *   currency            {string|null}  ISO 4217 (e.g. "USD")
- *   actionTime          {string|null}  ISO-8601 timestamp for date checks
- *   requestedAt         {string}   ISO-8601 timestamp when request was created [REQUIRED when idempotencyKey provided]
- *   idempotencyKey      {string}   caller-supplied deduplication key [REQUIRED]
- *
- * @param {object} actorContext
- *   accountId           {string}  from req.accountId (JWT)
- *   userId              {string}  from req.userId (JWT)
- *   ipAddress           {string|null}
- *
+ * @param {object} actorContext  { accountId, userId, ipAddress }
  * @param {object} [opts]
- *   clockFn             {function}  Injectable clock — returns Date. Defaults to () => new Date()
- *   _policyRegistry     {object}    Injectable policy registry (TEST-ONLY). Defaults to production registry.
- *
+ *   clockFn         {function}  Injectable clock — returns Date. Defaults to () => new Date()
+ *   _policyRegistry {object}    Injectable policy registry (TEST-ONLY).
  * @returns {Promise<EvaluationResult>}
  */
 async function evaluateAuthority(request, actorContext, opts = {}) {
+  // Part 10 closure: strict schema — reject unknown top-level fields.
+  if (request && typeof request === 'object') {
+    const unknownFields = Object.keys(request).filter(k => !KNOWN_REQUEST_FIELDS.has(k));
+    if (unknownFields.length > 0) {
+      throw _badRequest(`Unknown request fields: ${unknownFields.join(', ')}`);
+    }
+  }
+
   const {
     instrumentId, actionKey,
-    amount, currency, actionTime, idempotencyKey,
+    amount, currency, idempotencyKey,
     requestedAt,
     delegatePartyId,
     principalPartyId,
@@ -364,31 +492,22 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
   const policyRegistry = opts._policyRegistry || _defaultPolicyRegistry;
 
   // ── Validate required inputs ──────────────────────────────────────────────
-  if (!instrumentId)    throw _badRequest('instrumentId is required.');
-  if (!idempotencyKey)  throw _badRequest('idempotencyKey is required.');
-  if (!delegatePartyId) throw _badRequest('delegatePartyId is required.');
+  if (!instrumentId)     throw _badRequest('instrumentId is required.');
+  if (!idempotencyKey)   throw _badRequest('idempotencyKey is required.');
+  if (!delegatePartyId)  throw _badRequest('delegatePartyId is required.');
   if (!principalPartyId) throw _badRequest('principalPartyId is required.');
-
-  // Closure Part 6: requestedAt is required when idempotencyKey is supplied
-  if (!requestedAt) {
-    throw _badRequest('requestedAt is required when idempotencyKey is provided.');
-  }
+  if (!actionKey)        throw _badRequest('actionKey is required.');
+  if (!requestedAt)      throw _badRequest('requestedAt is required.');
 
   await _assertInstitutionAccount(accountId);
 
-  // Pre-transaction clock read for skew validation
-  const preTxTime      = clockFn();
-  const preTxMs        = preTxTime.getTime();
-
-  // Validate requestedAt
+  // Part 2 closure: basic ISO-8601 syntax check pre-transaction (not the
+  // authoritative skew check — that runs AFTER the lock).
   const requestedAtMs = new Date(requestedAt).getTime();
   if (isNaN(requestedAtMs)) {
-    throw _unprocessable('requestedAt is not a valid ISO-8601 timestamp.');
-  }
-  if (Math.abs(preTxMs - requestedAtMs) > REQUEST_CLOCK_SKEW_MS) {
-    throw _unprocessable(
-      `requestedAt is too far from server time (max skew: ${REQUEST_CLOCK_SKEW_MS / 1000}s).`
-    );
+    throw _unprocessable('requestedAt is not a valid ISO-8601 timestamp.', {
+      reasonCode: 'REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW',
+    });
   }
 
   const requestFingerprint = computeRequestFingerprint(request);
@@ -403,8 +522,18 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       // Load current canonical data (also acquires FOR SHARE)
       const currentData = await _loadCanonicalData(txClient, accountId, existing.instrument_id);
 
-      // Capture evaluatedAt AFTER lock acquisition
-      const evaluatedAt = clockFn().toISOString();
+      // Capture replayCheckedAt AFTER lock acquisition
+      const replayCheckedAt = clockFn().toISOString();
+      const replayCheckedAtMs = new Date(replayCheckedAt).getTime();
+
+      // Part 2 closure: authoritative skew check for the REPLAY path.
+      if (Math.abs(replayCheckedAtMs - requestedAtMs) > REQUEST_CLOCK_SKEW_MS) {
+        await txClient.query('ROLLBACK');
+        throw _unprocessable(
+          `requestedAt is too far from server time (max skew: ${REQUEST_CLOCK_SKEW_MS / 1000}s).`,
+          { reasonCode: 'REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW' }
+        );
+      }
 
       // Policy version check (requires live policyRegistry reference)
       if (existing.policy_version !== policyRegistry.POLICY_VERSION) {
@@ -422,11 +551,20 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
         });
       }
 
-      const freshness = _validateReplayFreshness(existing, request, currentData);
+      const freshness = _validateReplayFreshness(
+        existing, request, currentData, replayCheckedAt,
+        {
+          evaluators: restrictionEvaluators,
+          originalActionTime: existing.action_time,
+        },
+        { currentRuleVersion: policyRegistry.POLICY_VERSION }
+      );
 
       if (!freshness.fresh) {
         const staleReason = freshness.staleReason;
         await txClient.query('ROLLBACK');
+        // Stale-replay audit is written outside the transaction — see the
+        // header comment for the architectural rationale.
         await audit.log(
           accountId, userId, 'authority.evaluation.replay_stale',
           'authority_evaluation', existing.id,
@@ -440,7 +578,7 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
         });
       }
 
-      // Valid replay — audit inside a minimal inner transaction (Part 13)
+      // Valid replay — audit inside the transaction and commit.
       await audit.logInTx(
         txClient, accountId, userId, 'authority.evaluation.replayed',
         'authority_evaluation', existing.id,
@@ -453,22 +591,33 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
         ? (Array.isArray(existing.reason_codes) ? existing.reason_codes : JSON.parse(existing.reason_codes))
         : (existing.reason_code ? [existing.reason_code] : []);
 
+      // Part 13 closure: return a complete result object for replays.
       return {
         evaluationId:           existing.id,
+        instrumentId:           existing.instrument_id,
+        principalPartyId:       existing.principal_party_id || null,
+        delegatePartyId:        existing.delegate_party_id  || existing.requesting_party_id || null,
+        actionKey:              existing.requested_action_key || null,
         decision:               existing.outcome,
         outcome:                existing.outcome,
         reasonCodes:            existingReasonCodes,
         reasonCode:             existing.reason_code || existingReasonCodes[0] || null,
         reasonDetail:           existing.reason_detail || null,
-        missingFields:          [],
-        manualReviewReasons:    [],
-        matchedPermissionIds:   [],
-        appliedRestrictionIds:  [],
-        blockingPermissionIds:  [],
-        blockingRestrictionIds: [],
+        missingFields:          _parseJsonArray(existing.missing_fields),
+        manualReviewReasons:    _parseJsonArray(existing.manual_review_reasons),
+        matchedPermissionIds:   _parseJsonArray(existing.matched_permission_ids),
+        appliedRestrictionIds:  _parseJsonArray(existing.applied_restriction_ids),
+        blockingPermissionIds:  _parseJsonArray(existing.blocking_permission_ids),
+        blockingRestrictionIds: _parseJsonArray(existing.blocking_restriction_ids),
+        ruleVersion:            existing.rule_version || existing.policy_version || null,
+        policyRegistryVersion:  existing.policy_version || null,
+        evaluatedAt:            existing.evaluated_at,
+        actionTime:             existing.action_time || null,
+        actionTimeSource:       existing.action_time_source || null,
+        instrumentStatusAtEvaluation: (currentData && currentData.instrument && currentData.instrument.status) || null,
         isReplay:               true,
         replayed:               true,
-        replayCheckedAt:        evaluatedAt,
+        replayCheckedAt,
         evaluated_at:           existing.evaluated_at,
       };
     }
@@ -481,12 +630,30 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
     }
     const { instrument, participants, permissions, restrictions } = canonicalData;
 
-    // ── Capture evaluatedAt AFTER lock acquisition (Closure Part 5) ──────
+    // ── Capture evaluatedAt AFTER lock acquisition (Closure Part 5/2) ────
     const evaluatedAt = clockFn().toISOString();
+    const evaluatedAtMs = new Date(evaluatedAt).getTime();
+
+    // Part 2 closure: authoritative skew check — POST-lock.
+    if (Math.abs(evaluatedAtMs - requestedAtMs) > REQUEST_CLOCK_SKEW_MS) {
+      await txClient.query('ROLLBACK');
+      throw _unprocessable(
+        `requestedAt is too far from server time (max skew: ${REQUEST_CLOCK_SKEW_MS / 1000}s).`,
+        { reasonCode: 'REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW' }
+      );
+    }
+
+    // Part 12 closure: tenant-safe party references.
+    await _assertPartyBelongsToTenant(txClient, accountId, delegatePartyId,  'delegatePartyId');
+    await _assertPartyBelongsToTenant(txClient, accountId, principalPartyId, 'principalPartyId');
 
     // ── Compute fingerprint and state snapshot ────────────────────────────
     const fingerprint   = computeFingerprint(instrument, participants, permissions, restrictions);
     const stateSnapshot = captureEvaluationState(instrument);
+
+    // Part 1 closure: derive effective action time from requestedAt.
+    const effectiveActionTime = requestedAt;
+    const actionTimeSource    = 'requestedAt';
 
     // ── Pure evaluation ───────────────────────────────────────────────────
     const engineRequest = {
@@ -496,7 +663,6 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       amount,
       currency,
     };
-    const effectiveActionTime = actionTime || evaluatedAt;
     const temporalContext = { evaluated_at: evaluatedAt, action_time: effectiveActionTime };
 
     const engineResult = evaluate(
@@ -520,7 +686,14 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       blockingRestrictionIds,
     } = engineResult;
 
-    const actionTimeSource = actionTime ? 'request' : 'evaluated_at';
+    // Part 11 closure: build encrypted runtime context.
+    const runtimeContext = {
+      requestedAt,
+      actionTime:       effectiveActionTime,
+      actionTimeSource,
+    };
+    if (amount !== undefined && amount !== null) runtimeContext.amount   = amount;
+    if (currency)                                runtimeContext.currency = currency;
 
     // ── Persist result + audit inside transaction ─────────────────────────
     const evaluationId = await _persistEvaluation(txClient, {
@@ -534,9 +707,9 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       policyVersion:     policyRegistry.POLICY_VERSION,
       fingerprint,
       stateSnapshot,
-      runtimeContext:    null,
+      runtimeContext,
       evaluatedAt,
-      actionTime:        actionTime || null,
+      actionTime:        effectiveActionTime,
       actionKey:         actionKey  || null,
       principalPartyId:  principalPartyId  || null,
       delegatePartyId:   delegatePartyId   || null,
@@ -560,8 +733,13 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
 
     await txClient.query('COMMIT');
 
+    // Part 13 closure: complete result object.
     return {
       evaluationId,
+      instrumentId,
+      principalPartyId:       principalPartyId  || null,
+      delegatePartyId:        delegatePartyId   || null,
+      actionKey:              actionKey         || null,
       decision,
       outcome:                decision,
       reasonCodes:            reasonCodes || [reasonCode],
@@ -573,6 +751,12 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       appliedRestrictionIds:  appliedRestrictionIds  || [],
       blockingPermissionIds:  blockingPermissionIds  || [],
       blockingRestrictionIds: blockingRestrictionIds || [],
+      ruleVersion:            policyRegistry.POLICY_VERSION,
+      policyRegistryVersion:  policyRegistry.POLICY_VERSION,
+      evaluatedAt,
+      actionTime:             effectiveActionTime,
+      actionTimeSource,
+      instrumentStatusAtEvaluation: instrument.status,
       isReplay:               false,
       replayed:               false,
       evaluated_at:           evaluatedAt,
@@ -584,7 +768,14 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
     if (err.code === '23505' && idempotencyKey) {
       try {
         const { rows } = await pool.query(
-          `SELECT id, outcome, reason_codes, reason_code, reason_detail, evaluated_at
+          `SELECT id, instrument_id, principal_party_id, delegate_party_id,
+                  requesting_party_id, requested_action_key,
+                  outcome, reason_codes, reason_code, reason_detail,
+                  missing_fields, manual_review_reasons,
+                  matched_permission_ids, applied_restriction_ids,
+                  blocking_permission_ids, blocking_restriction_ids,
+                  rule_version, policy_version, evaluated_at, action_time,
+                  action_time_source
            FROM authority_evaluations
            WHERE account_id = $1 AND idempotency_key = $2`,
           [accountId, idempotencyKey]
@@ -596,17 +787,27 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
             : (row.reason_code ? [row.reason_code] : []);
           return {
             evaluationId:           row.id,
+            instrumentId:           row.instrument_id,
+            principalPartyId:       row.principal_party_id || null,
+            delegatePartyId:        row.delegate_party_id  || row.requesting_party_id || null,
+            actionKey:              row.requested_action_key || null,
             decision:               row.outcome,
             outcome:                row.outcome,
             reasonCodes:            existingReasonCodes,
             reasonCode:             row.reason_code || existingReasonCodes[0] || null,
             reasonDetail:           row.reason_detail || null,
-            missingFields:          [],
-            manualReviewReasons:    [],
-            matchedPermissionIds:   [],
-            appliedRestrictionIds:  [],
-            blockingPermissionIds:  [],
-            blockingRestrictionIds: [],
+            missingFields:          _parseJsonArray(row.missing_fields),
+            manualReviewReasons:    _parseJsonArray(row.manual_review_reasons),
+            matchedPermissionIds:   _parseJsonArray(row.matched_permission_ids),
+            appliedRestrictionIds:  _parseJsonArray(row.applied_restriction_ids),
+            blockingPermissionIds:  _parseJsonArray(row.blocking_permission_ids),
+            blockingRestrictionIds: _parseJsonArray(row.blocking_restriction_ids),
+            ruleVersion:            row.rule_version || row.policy_version || null,
+            policyRegistryVersion:  row.policy_version || null,
+            evaluatedAt:            row.evaluated_at,
+            actionTime:             row.action_time || null,
+            actionTimeSource:       row.action_time_source || null,
+            instrumentStatusAtEvaluation: null,
             isReplay:               true,
             replayed:               true,
             replayCheckedAt:        new Date().toISOString(),
@@ -621,8 +822,21 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
   }
 }
 
+function _parseJsonArray(v) {
+  if (Array.isArray(v)) return v;
+  if (!v) return [];
+  try {
+    const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * getEvaluation — read a single evaluation record.
+ * NOTE: runtime_context is intentionally NOT selected — the encrypted payload
+ * is never exposed on read.
  */
 async function getEvaluation(accountId, evaluationId) {
   const { rows } = await pool.query(
@@ -646,6 +860,7 @@ async function getEvaluation(accountId, evaluationId) {
 
 /**
  * listEvaluations — paginated list.
+ * NOTE: runtime_context is intentionally NOT selected.
  */
 async function listEvaluations(accountId, { instrumentId, limit = 50, offset = 0 } = {}) {
   const params = [accountId];

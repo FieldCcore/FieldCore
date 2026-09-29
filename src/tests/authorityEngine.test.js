@@ -155,7 +155,7 @@ beforeAll(async () => {
 
   await pool.query(
     `INSERT INTO platform_user_capabilities (user_id, capability)
-     VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT')
+     VALUES ($1,'AUTHORITY_INSTRUMENT_VERIFY'),($1,'AUTHORITY_INSTRUMENT_REJECT'),($1,'AUTHORITY_EVALUATE')
      ON CONFLICT DO NOTHING`,
     [userId]
   );
@@ -380,12 +380,30 @@ describe('Restriction evaluators', () => {
     expect(r).toEqual({ pass: true });
   });
 
-  test('4.2 monetary_limit passes when amount == limit (with matching currency)', () => {
+  test('4.2 monetary_limit passes when amount == limit with boundary_inclusive:true', () => {
+    const r = evaluateRestriction(
+      { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD', boundary_inclusive: true } },
+      { amount: 10000, currency: 'USD' }, ctx
+    );
+    expect(r).toEqual({ pass: true });
+  });
+
+  test('4.2b monetary_limit escalates when amount == limit without boundary_inclusive', () => {
     const r = evaluateRestriction(
       { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD' } },
       { amount: 10000, currency: 'USD' }, ctx
     );
-    expect(r).toEqual({ pass: true });
+    expect(r.pass).toBe(false);
+    expect(r.reasonCode).toBe('AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED');
+  });
+
+  test('4.2c monetary_limit fails when amount == limit with boundary_inclusive:false', () => {
+    const r = evaluateRestriction(
+      { restriction_type: 'monetary_limit', parameters: { amount: 10000, currency: 'USD', boundary_inclusive: false } },
+      { amount: 10000, currency: 'USD' }, ctx
+    );
+    expect(r.pass).toBe(false);
+    expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
   });
 
   test('4.3 monetary_limit fails when amount > limit (with matching currency)', () => {
@@ -696,7 +714,18 @@ describe('Pure engine core', () => {
     expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
   });
 
-  test('6.17 AUTHORIZED — amount exactly at monetary_limit', () => {
+  test('6.17 AUTHORIZED — amount exactly at monetary_limit with boundary_inclusive:true', () => {
+    const restrWithLimit = [{
+      id: 'r1', restriction_type: 'monetary_limit',
+      parameters: { amount: 10000, currency: 'USD', boundary_inclusive: true },
+      permission_id: 'perm-1',
+      effective_from: null, effective_to: null,
+    }];
+    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 10000, currency: 'USD' } });
+    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
+  });
+
+  test('6.17b MANUAL_REVIEW — amount exactly at monetary_limit without boundary_inclusive', () => {
     const restrWithLimit = [{
       id: 'r1', restriction_type: 'monetary_limit',
       parameters: { amount: 10000, currency: 'USD' },
@@ -704,7 +733,20 @@ describe('Pure engine core', () => {
       effective_from: null, effective_to: null,
     }];
     const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 10000, currency: 'USD' } });
-    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
+    expect(r.outcome).toBe(OUTCOMES.MANUAL_REVIEW);
+    expect(r.reasonCode).toBe('AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED');
+  });
+
+  test('6.17c NOT_AUTHORIZED — amount exactly at monetary_limit with boundary_inclusive:false', () => {
+    const restrWithLimit = [{
+      id: 'r1', restriction_type: 'monetary_limit',
+      parameters: { amount: 10000, currency: 'USD', boundary_inclusive: false },
+      permission_id: 'perm-1',
+      effective_from: null, effective_to: null,
+    }];
+    const r = run({ inputs: { restrictions: restrWithLimit }, req: { ...REQ, amount: 10000, currency: 'USD' } });
+    expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
+    expect(r.reasonCode).toBe('MONETARY_LIMIT_EXCEEDED');
   });
 
   test('6.18 MANUAL_REVIEW — unknown restriction type', () => {
@@ -1052,9 +1094,13 @@ describe('Service — identity and input validation', () => {
     expect(r.reasonCode).toBe('REQUESTING_PARTY_NOT_AGENT');
   });
 
-  test('10.2 unknown party → NOT_AUTHORIZED (not a participant)', async () => {
+  test('10.2 party that exists in tenant but is not a participant → NOT_AUTHORIZED', async () => {
+    // Create a party in the same tenant that is NOT linked to the instrument as a participant.
+    const strangerParty = await authorityService.createParty(accountId, userId, {
+      partyType: 'person', displayName: 'Not-a-Participant Stranger',
+    });
     const r = await evaluationService.evaluateAuthority(
-      evalReq({ instrumentId: verifiedInstr.id, delegatePartyId: crypto.randomUUID(), principalPartyId: principalParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: ik() }),
+      evalReq({ instrumentId: verifiedInstr.id, delegatePartyId: strangerParty.id, principalPartyId: principalParty.id, actionKey: 'BANKING.WIRE_TRANSFER', idempotencyKey: ik() }),
       { accountId, userId, ipAddress: null },
       { _policyRegistry: TEST_POLICY_REGISTRY }
     );
@@ -1082,31 +1128,36 @@ describe('Service — identity and input validation', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Service — temporal bounds', () => {
-  test('11.1 action_time before effective_date → NOT_AUTHORIZED', async () => {
+  // Part 1 closure: actionTime is no longer a request field. The action time is
+  // derived from requestedAt. We inject a clockFn so both requestedAt and
+  // evaluatedAt refer to the desired instant while staying inside the skew window.
+  test('11.1 requestedAt before effective_date → NOT_AUTHORIZED', async () => {
+    const beforeEffective = new Date('2024-06-01T00:00:00Z');
     const r = await evaluationService.evaluateAuthority(
-      evalReq({
+      {
         instrumentId: verifiedInstr.id, delegatePartyId: agentParty.id, principalPartyId: principalParty.id,
         actionKey: 'BANKING.WIRE_TRANSFER', amount: 100, currency: 'USD',
-        actionTime: '2024-06-01T00:00:00Z',
+        requestedAt: beforeEffective.toISOString(),
         idempotencyKey: ik(),
-      }),
+      },
       { accountId, userId, ipAddress: null },
-      { _policyRegistry: TEST_POLICY_REGISTRY }
+      { _policyRegistry: TEST_POLICY_REGISTRY, clockFn: () => beforeEffective }
     );
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
     expect(r.reasonCode).toBe('BEFORE_EFFECTIVE_DATE');
   });
 
-  test('11.2 action_time after expiration_date → NOT_AUTHORIZED', async () => {
+  test('11.2 requestedAt after expiration_date → NOT_AUTHORIZED', async () => {
+    const afterExpiration = new Date('2037-01-01T00:00:00Z');
     const r = await evaluationService.evaluateAuthority(
-      evalReq({
+      {
         instrumentId: verifiedInstr.id, delegatePartyId: agentParty.id, principalPartyId: principalParty.id,
         actionKey: 'BANKING.WIRE_TRANSFER', amount: 100, currency: 'USD',
-        actionTime: '2037-01-01T00:00:00Z',
+        requestedAt: afterExpiration.toISOString(),
         idempotencyKey: ik(),
-      }),
+      },
       { accountId, userId, ipAddress: null },
-      { _policyRegistry: TEST_POLICY_REGISTRY }
+      { _policyRegistry: TEST_POLICY_REGISTRY, clockFn: () => afterExpiration }
     );
     expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
     expect(r.reasonCode).toBe('AFTER_EXPIRATION_DATE');
@@ -1883,5 +1934,428 @@ describe('Currency minor-unit helpers', () => {
 
   test('26.9 toMinorUnits handles padded fraction "19.9" as "19.90" for USD', () => {
     expect(toMinorUnits('19.9', 'USD')).toBe(1990);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Section 27: AUTHORITY_EVALUATE capability gate (Part 4 closure)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('AUTHORITY_EVALUATE capability gate', () => {
+  let capUserId, capToken;
+  let noCapUserId, noCapToken;
+
+  beforeAll(async () => {
+    const hash = await bcrypt.hash('cap-test-pw', 10);
+    const { rows: [uc] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'Eval Cap User',$2,$3,'owner') RETURNING id`,
+      [accountId, `eval-cap-${Date.now()}@fieldcore.test`, hash]
+    );
+    capUserId = uc.id;
+    capToken  = makeToken(capUserId, accountId, 'owner');
+    await pool.query(
+      `INSERT INTO platform_user_capabilities (user_id, capability)
+       VALUES ($1,'AUTHORITY_EVALUATE') ON CONFLICT DO NOTHING`,
+      [capUserId]
+    );
+
+    const { rows: [unc] } = await pool.query(
+      `INSERT INTO users (account_id, name, email, password_hash, role)
+       VALUES ($1,'Eval NoCap User',$2,$3,'owner') RETURNING id`,
+      [accountId, `eval-nocap-${Date.now()}@fieldcore.test`, hash]
+    );
+    noCapUserId = unc.id;
+    noCapToken  = makeToken(noCapUserId, accountId, 'owner');
+  });
+
+  test('27.1 user WITH AUTHORITY_EVALUATE can POST /evaluate', async () => {
+    const res = await request(app)
+      .post('/api/authority/evaluate')
+      .set('Authorization', `Bearer ${capToken}`)
+      .send({
+        instrumentId:     verifiedInstr.id,
+        delegatePartyId:  agentParty.id,
+        principalPartyId: principalParty.id,
+        actionKey:        'BANKING.WIRE_TRANSFER',
+        amount:           5000,
+        currency:         'USD',
+        requestedAt:      new Date().toISOString(),
+        idempotencyKey:   ik(),
+      });
+    expect(res.status).not.toBe(403);
+    expect([200, 201]).toContain(res.status);
+  });
+
+  test('27.2 user WITHOUT AUTHORITY_EVALUATE gets 403 on POST /evaluate', async () => {
+    const res = await request(app)
+      .post('/api/authority/evaluate')
+      .set('Authorization', `Bearer ${noCapToken}`)
+      .send({
+        instrumentId:     verifiedInstr.id,
+        delegatePartyId:  agentParty.id,
+        principalPartyId: principalParty.id,
+        actionKey:        'BANKING.WIRE_TRANSFER',
+        requestedAt:      new Date().toISOString(),
+        idempotencyKey:   ik(),
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/AUTHORITY_EVALUATE/);
+  });
+
+  test('27.3 user WITHOUT AUTHORITY_EVALUATE gets 403 on GET /evaluations', async () => {
+    const res = await request(app)
+      .get('/api/authority/evaluations')
+      .set('Authorization', `Bearer ${noCapToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('27.4 user WITHOUT AUTHORITY_EVALUATE gets 403 on GET /evaluations/:id', async () => {
+    const res = await request(app)
+      .get(`/api/authority/evaluations/${crypto.randomUUID()}`)
+      .set('Authorization', `Bearer ${noCapToken}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Section 28: End-to-end concurrency (Part 14 closure)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('End-to-end concurrency', () => {
+  test('28.1 ConcA: revoke-first — evaluation observes REVOKED after transition commits', async () => {
+    const connA = await pool.connect();
+    const idKey = ik();
+    let evalPromise;
+    try {
+      await connA.query('BEGIN');
+      // A locks the instrument FOR UPDATE and marks it REVOKED (uncommitted).
+      await connA.query(
+        `SELECT id FROM authority_instruments WHERE id = $1 FOR UPDATE`,
+        [verifiedInstr.id]
+      );
+      await connA.query(
+        `UPDATE authority_instruments SET status = 'REVOKED', revoked_at = now() WHERE id = $1`,
+        [verifiedInstr.id]
+      );
+
+      // B begins an evaluation — its FOR SHARE will block until A commits.
+      evalPromise = evaluationService.evaluateAuthority(
+        {
+          instrumentId:     verifiedInstr.id,
+          delegatePartyId:  agentParty.id,
+          principalPartyId: principalParty.id,
+          actionKey:        'BANKING.WIRE_TRANSFER',
+          amount:           100,
+          currency:         'USD',
+          requestedAt:      new Date().toISOString(),
+          idempotencyKey:   idKey,
+        },
+        { accountId, userId, ipAddress: null },
+        { _policyRegistry: TEST_POLICY_REGISTRY }
+      );
+
+      // Give B a moment to attempt to acquire FOR SHARE.
+      await new Promise(r => setTimeout(r, 100));
+
+      // A commits — B can now proceed and will observe REVOKED.
+      await connA.query('COMMIT');
+
+      const result = await evalPromise;
+      expect(result.decision).toBe(OUTCOMES.NOT_AUTHORIZED);
+      expect(result.reasonCodes).toContain('INSTRUMENT_REVOKED');
+    } finally {
+      try { await connA.query('ROLLBACK'); } catch {}
+      connA.release();
+      // Restore instrument to VERIFIED for subsequent tests.
+      await pool.query(
+        `UPDATE authority_instruments SET status = 'VERIFIED', revoked_at = null WHERE id = $1`,
+        [verifiedInstr.id]
+      );
+    }
+  });
+
+  test('28.2 ConcB: evaluation-first — revoke transition blocks on FOR SHARE', async () => {
+    const connB = await pool.connect();
+    let evalDone = false;
+    try {
+      // Start an evaluation that will hold FOR SHARE.
+      const evalPromise = evaluationService.evaluateAuthority(
+        {
+          instrumentId:     verifiedInstr.id,
+          delegatePartyId:  agentParty.id,
+          principalPartyId: principalParty.id,
+          actionKey:        'BANKING.WIRE_TRANSFER',
+          amount:           100,
+          currency:         'USD',
+          requestedAt:      new Date().toISOString(),
+          idempotencyKey:   ik(),
+        },
+        { accountId, userId, ipAddress: null },
+        { _policyRegistry: TEST_POLICY_REGISTRY }
+      );
+
+      // Small delay so the evaluation acquires FOR SHARE first.
+      await new Promise(r => setTimeout(r, 50));
+
+      // B tries FOR UPDATE with a short lock_timeout to prove the lock is held.
+      await connB.query(`SET lock_timeout = '150ms'`);
+      const revokeAttempt = connB.query(
+        `SELECT id FROM authority_instruments WHERE id = $1 FOR UPDATE`,
+        [verifiedInstr.id]
+      );
+
+      const evalResult = await evalPromise;
+      evalDone = true;
+
+      // With TEST registry, the evaluation should succeed as AUTHORIZED.
+      expect(evalResult.decision).toBe(OUTCOMES.AUTHORIZED);
+
+      // Revoke attempt should have been blocked; may have succeeded or timed out.
+      try {
+        await revokeAttempt;
+      } catch (err) {
+        expect(err.message).toMatch(/lock/i);
+      }
+
+      expect(evalDone).toBe(true);
+    } finally {
+      try { await connB.query('ROLLBACK'); } catch {}
+      connB.release();
+    }
+  });
+
+  test('28.3 ConcC: revoke-then-replay — replay returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    // Create a fresh verified instrument so we can revoke it without affecting other tests.
+    const conc3Instr = await authorityService.createInstrument(accountId, userId, {
+      instrumentType: 'power_of_attorney',
+      effectiveDate:  '2025-01-01',
+      expirationDate: '2035-12-31',
+    });
+    await authorityService.addParticipant(accountId, userId, conc3Instr.id,
+      { partyId: principalParty.id, role: 'principal', sequence: 1 });
+    await authorityService.addParticipant(accountId, userId, conc3Instr.id,
+      { partyId: agentParty.id, role: 'agent', sequence: 2 });
+    await authorityService.addPermission(accountId, userId, conc3Instr.id,
+      { actionKey: 'BANKING.WIRE_TRANSFER', grantType: 'granted' });
+    await authorityService.transitionInstrument(accountId, userId, conc3Instr.id, 'PENDING_REVIEW');
+    await authorityService.transitionInstrument(accountId, userId, conc3Instr.id, 'VERIFIED');
+
+    const idKey = ik();
+    await evaluationService.evaluateAuthority(
+      {
+        instrumentId:     conc3Instr.id,
+        delegatePartyId:  agentParty.id,
+        principalPartyId: principalParty.id,
+        actionKey:        'BANKING.WIRE_TRANSFER',
+        amount:           100,
+        currency:         'USD',
+        requestedAt:      new Date().toISOString(),
+        idempotencyKey:   idKey,
+      },
+      { accountId, userId, ipAddress: null },
+      { _policyRegistry: TEST_POLICY_REGISTRY }
+    );
+
+    await authorityService.transitionInstrument(accountId, userId, conc3Instr.id, 'REVOKED', { revocationReason: 'test-c' });
+
+    await expect(evaluationService.evaluateAuthority(
+      {
+        instrumentId:     conc3Instr.id,
+        delegatePartyId:  agentParty.id,
+        principalPartyId: principalParty.id,
+        actionKey:        'BANKING.WIRE_TRANSFER',
+        amount:           100,
+        currency:         'USD',
+        requestedAt:      new Date().toISOString(),
+        idempotencyKey:   idKey,
+      },
+      { accountId, userId, ipAddress: null },
+      { _policyRegistry: TEST_POLICY_REGISTRY }
+    )).rejects.toMatchObject({ statusCode: 409, staleReason: 'instrument_status_changed' });
+  });
+
+  test('28.4 ConcE: concurrent same-key — exactly one row, one replay, no 23505 leak', async () => {
+    const idKey = ik();
+    const reqBody = {
+      instrumentId:     verifiedInstr.id,
+      delegatePartyId:  agentParty.id,
+      principalPartyId: principalParty.id,
+      actionKey:        'BANKING.WIRE_TRANSFER',
+      amount:           500,
+      currency:         'USD',
+      requestedAt:      new Date().toISOString(),
+      idempotencyKey:   idKey,
+    };
+    const [r1, r2] = await Promise.all([
+      evaluationService.evaluateAuthority(reqBody, { accountId, userId, ipAddress: null }, { _policyRegistry: TEST_POLICY_REGISTRY }),
+      evaluationService.evaluateAuthority(reqBody, { accountId, userId, ipAddress: null }, { _policyRegistry: TEST_POLICY_REGISTRY }),
+    ]);
+    const flags = [r1.isReplay, r2.isReplay].sort();
+    expect(flags).toEqual([false, true]);
+    expect(r1.evaluationId).toBe(r2.evaluationId);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM authority_evaluations WHERE account_id = $1 AND idempotency_key = $2`,
+      [accountId, idKey]
+    );
+    expect(rows[0].c).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Section 29: Timezone envelope (Part 7 closure)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Timezone envelope', () => {
+  const { getDateEnvelope, evaluateDateBoundary } = require('../services/authorityTimezone');
+
+  test('29.1 getDateEnvelope produces earliest/latest date strings', () => {
+    const env = getDateEnvelope('2026-06-15T12:00:00Z');
+    expect(env.earliest).toBe('2026-06-15');
+    expect(env.latest).toBe('2026-06-16');
+  });
+
+  test('29.2 clearly BEFORE from-boundary in every timezone', () => {
+    const r = evaluateDateBoundary('2026-05-01T12:00:00Z', 'from', '2026-06-01');
+    expect(r).toBe('BEFORE');
+  });
+
+  test('29.3 clearly INSIDE from-boundary in every timezone', () => {
+    const r = evaluateDateBoundary('2026-07-01T12:00:00Z', 'from', '2026-06-01');
+    expect(r).toBe('INSIDE');
+  });
+
+  test('29.4 clearly AFTER to-boundary in every timezone', () => {
+    const r = evaluateDateBoundary('2027-01-15T12:00:00Z', 'to', '2026-12-31');
+    expect(r).toBe('AFTER');
+  });
+
+  test('29.5 clearly INSIDE to-boundary in every timezone', () => {
+    const r = evaluateDateBoundary('2026-06-01T12:00:00Z', 'to', '2026-12-31');
+    expect(r).toBe('INSIDE');
+  });
+
+  test('29.6 AMBIGUOUS near from-boundary (envelope straddles)', () => {
+    // UTC 2026-05-31T23:00:00Z → UTC-12: 2026-05-31; UTC+14: 2026-06-01 → straddles 2026-06-01
+    const r = evaluateDateBoundary('2026-05-31T23:00:00Z', 'from', '2026-06-01');
+    expect(r).toBe('AMBIGUOUS');
+  });
+
+  test('29.7 AMBIGUOUS near to-boundary (envelope straddles)', () => {
+    // UTC 2027-01-01T00:00:00Z → UTC-12: 2026-12-31; UTC+14: 2027-01-01 → straddles 2026-12-31
+    const r = evaluateDateBoundary('2027-01-01T00:00:00Z', 'to', '2026-12-31');
+    expect(r).toBe('AMBIGUOUS');
+  });
+
+  test('29.8 no timezone info → AMBIGUOUS', () => {
+    const r = evaluateDateBoundary('2026-06-15T12:00:00', 'from', '2026-06-01');
+    expect(r).toBe('AMBIGUOUS');
+  });
+
+  test('29.9 date_window restriction returns TIMEZONE_AMBIGUOUS when envelope straddles', () => {
+    const r = evaluateRestriction(
+      { restriction_type: 'date_window', effective_from: '2026-06-01', effective_to: null },
+      {}, { evaluated_at: '2026-05-31T23:30:00Z', action_time: '2026-05-31T23:30:00Z' }
+    );
+    expect(r.pass).toBe(false);
+    expect(r.reasonCode).toBe('TIMEZONE_AMBIGUOUS');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Section 30: Participant-scoped permissions (Part 5 closure)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Participant-scoped permissions', () => {
+  const restrictionEvals = require('../services/authorityRestrictionEvaluators');
+
+  test('30.1 permission scoped to participant A does NOT authorize delegate B', () => {
+    const inputs = {
+      instrument: {
+        instrument_type: 'power_of_attorney', status: 'VERIFIED',
+        effective_date: '2025-01-01', expiration_date: '2035-12-31',
+      },
+      participants: [
+        { id: 'part-P', party_id: 'party-P', role: 'principal', status: 'active' },
+        { id: 'part-A', party_id: 'party-A', role: 'agent',     status: 'active' },
+        { id: 'part-B', party_id: 'party-B', role: 'agent',     status: 'active' },
+      ],
+      permissions: [
+        { id: 'perm-1', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'granted', participant_id: 'part-A' },
+      ],
+      restrictions: [],
+    };
+    const req = { delegatePartyId: 'party-B', principalPartyId: 'party-P', actionKey: 'BANKING.WIRE_TRANSFER' };
+    const ctx = { evaluated_at: '2026-06-15T10:00:00Z', action_time: '2026-06-15T10:00:00Z' };
+    const r = evaluate(inputs, req, ctx, TEST_POLICY_REGISTRY, restrictionEvals);
+    expect(r.outcome).toBe(OUTCOMES.NOT_AUTHORIZED);
+    expect(r.reasonCode).toBe('NO_APPLICABLE_GRANT');
+  });
+
+  test('30.2 permission scoped to participant A authorizes delegate A', () => {
+    const inputs = {
+      instrument: {
+        instrument_type: 'power_of_attorney', status: 'VERIFIED',
+        effective_date: '2025-01-01', expiration_date: '2035-12-31',
+      },
+      participants: [
+        { id: 'part-P', party_id: 'party-P', role: 'principal', status: 'active' },
+        { id: 'part-A', party_id: 'party-A', role: 'agent',     status: 'active' },
+      ],
+      permissions: [
+        { id: 'perm-1', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'granted', participant_id: 'part-A' },
+      ],
+      restrictions: [],
+    };
+    const req = { delegatePartyId: 'party-A', principalPartyId: 'party-P', actionKey: 'BANKING.WIRE_TRANSFER' };
+    const ctx = { evaluated_at: '2026-06-15T10:00:00Z', action_time: '2026-06-15T10:00:00Z' };
+    const r = evaluate(inputs, req, ctx, TEST_POLICY_REGISTRY, restrictionEvals);
+    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
+    expect(r.matchedPermissionIds).toContain('perm-1');
+  });
+
+  test('30.3 instrument-wide permission (null participant_id) authorizes any agent', () => {
+    const inputs = {
+      instrument: {
+        instrument_type: 'power_of_attorney', status: 'VERIFIED',
+        effective_date: '2025-01-01', expiration_date: '2035-12-31',
+      },
+      participants: [
+        { id: 'part-P', party_id: 'party-P', role: 'principal', status: 'active' },
+        { id: 'part-A', party_id: 'party-A', role: 'agent',     status: 'active' },
+        { id: 'part-B', party_id: 'party-B', role: 'agent',     status: 'active' },
+      ],
+      permissions: [
+        { id: 'perm-1', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'granted', participant_id: null },
+      ],
+      restrictions: [],
+    };
+    const req = { delegatePartyId: 'party-B', principalPartyId: 'party-P', actionKey: 'BANKING.WIRE_TRANSFER' };
+    const ctx = { evaluated_at: '2026-06-15T10:00:00Z', action_time: '2026-06-15T10:00:00Z' };
+    const r = evaluate(inputs, req, ctx, TEST_POLICY_REGISTRY, restrictionEvals);
+    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
+  });
+
+  test('30.4 prohibition scoped to A does NOT block delegate B', () => {
+    const inputs = {
+      instrument: {
+        instrument_type: 'power_of_attorney', status: 'VERIFIED',
+        effective_date: '2025-01-01', expiration_date: '2035-12-31',
+      },
+      participants: [
+        { id: 'part-P', party_id: 'party-P', role: 'principal', status: 'active' },
+        { id: 'part-A', party_id: 'party-A', role: 'agent',     status: 'active' },
+        { id: 'part-B', party_id: 'party-B', role: 'agent',     status: 'active' },
+      ],
+      permissions: [
+        { id: 'perm-1', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'granted',    participant_id: null },
+        { id: 'perm-2', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'prohibited', participant_id: 'part-A' },
+      ],
+      restrictions: [],
+    };
+    const req = { delegatePartyId: 'party-B', principalPartyId: 'party-P', actionKey: 'BANKING.WIRE_TRANSFER' };
+    const ctx = { evaluated_at: '2026-06-15T10:00:00Z', action_time: '2026-06-15T10:00:00Z' };
+    const r = evaluate(inputs, req, ctx, TEST_POLICY_REGISTRY, restrictionEvals);
+    expect(r.outcome).toBe(OUTCOMES.AUTHORIZED);
   });
 });

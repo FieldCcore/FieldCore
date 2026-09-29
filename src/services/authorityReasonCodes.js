@@ -69,10 +69,14 @@ const REASON_CODES = Object.freeze({
   BOUNDARY_SEMANTICS_UNDEFINED:          { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Amount or date is exactly at a restriction boundary and inclusive/exclusive semantics are not defined' },
   CUMULATIVE_LIMIT_UNSUPPORTED:          { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Restriction specifies cumulative, periodic, or aggregate limits which require external state' },
   TIMEZONE_BOUNDARY_AMBIGUOUS:           { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Date window boundary outcome is timezone-dependent and no canonical timezone is defined' },
+  TIMEZONE_AMBIGUOUS:                    { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Date window envelope spans the boundary and outcome is timezone-dependent' },
+  AMOUNT_BOUNDARY_SEMANTICS_UNDEFINED:   { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Amount is exactly at monetary limit and inclusive/exclusive boundary semantics are not defined' },
+  PERMISSION_SCOPE_SEMANTICS_UNDEFINED:  { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Participant-scoped permission semantics are undefined for this configuration' },
   // Idempotency codes — these are HTTP transport errors, NOT evaluation decisions.
   // They are registered here only so the codebase has a canonical source of truth.
   IDEMPOTENCY_KEY_CONFLICT:              { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Idempotency key reused with a different request fingerprint (HTTP 409 only — not an evaluation decision)' },
   IDEMPOTENCY_REPLAY_STALE:              { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'Idempotency replay rejected: current state no longer matches original evaluation (HTTP 409 only — not an evaluation decision)' },
+  REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW: { outcome: OUTCOMES.MANUAL_REVIEW,     label: 'requestedAt is outside the supported ±5 minute skew window relative to server-observed time (HTTP 422 only — not an evaluation decision)' },
 });
 
 /**
