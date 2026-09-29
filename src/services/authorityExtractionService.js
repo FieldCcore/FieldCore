@@ -655,7 +655,7 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue, opt
     if (!actionKey) return null;
     // Upsert: ignore if permission already exists for this action
     await txClient.query(
-      `INSERT INTO authority_instrument_permissions
+      `INSERT INTO authority_permissions
          (account_id, instrument_id, action_key, grant_type)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (account_id, instrument_id, action_key) DO NOTHING`,
@@ -674,13 +674,13 @@ async function _applyField(txClient, accountId, instr, fieldKey, plainValue, opt
     }
     // Insert only if no existing restriction of this type
     const { rows: existingRows } = await txClient.query(
-      `SELECT id FROM authority_instrument_restrictions
+      `SELECT id FROM authority_restrictions
         WHERE account_id = $1 AND instrument_id = $2 AND restriction_type = $3`,
       [accountId, instr.id, restrictionType],
     );
     if (existingRows.length === 0) {
       await txClient.query(
-        `INSERT INTO authority_instrument_restrictions
+        `INSERT INTO authority_restrictions
            (account_id, instrument_id, restriction_type, parameters)
          VALUES ($1, $2, $3, $4)`,
         [accountId, instr.id, restrictionType, JSON.stringify(params)],
@@ -848,7 +848,7 @@ async function listCandidatesForCase(accountId, caseId) {
   LEFT JOIN authority_extraction_evidence e ON e.candidate_id = c.id
       WHERE c.account_id = $1 AND r.case_id = $2
       GROUP BY c.id
-      ORDER BY c.created_at`,
+      ORDER BY c.created_at, c.id`,
     [accountId, caseId],
   );
 

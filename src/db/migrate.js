@@ -2812,6 +2812,7 @@ const MIGRATIONS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_authority_perms_instrument ON authority_permissions(account_id, instrument_id)`,
   `CREATE INDEX IF NOT EXISTS idx_authority_perms_key        ON authority_permissions(action_key)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_authority_perms_uniq ON authority_permissions(account_id, instrument_id, action_key)`,
 
   // ── Authority Restrictions ────────────────────────────────────────────────────────────────
   // restriction_type and parameters are validated in service layer.

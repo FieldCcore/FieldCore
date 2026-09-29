@@ -13,7 +13,8 @@
  *      is used unconditionally during the test suite.
  *
  * Implementation notes (SDK version 0.30.1):
- *   - PDF documents passed as inline base64 via the "pdfs-2024-09-25" beta
+ *   - PDF documents passed as inline base64 using the GA document content block
+ *     (type: "document", source.media_type: "application/pdf"); no beta header required
  *   - Structured output via tool_choice: { type: "tool" } — the model is forced
  *     to call the named tool, giving us a validated JSON response body
  *   - Timeout set to 60 s via AbortSignal; the worker enforces its own timeout
@@ -148,7 +149,7 @@ async function extract(documentBuffer, documentId) {
 
   let response;
   try {
-    response = await client.beta.messages.create(
+    response = await client.messages.create(
       {
         model: 'claude-opus-4-5',
         max_tokens: 4096,
@@ -175,10 +176,7 @@ async function extract(documentBuffer, documentId) {
           },
         ],
       },
-      {
-        headers: { 'anthropic-beta': 'pdfs-2024-09-25' },
-        signal: controller.signal,
-      },
+      { signal: controller.signal },
     );
   } catch (err) {
     clearTimeout(timeout);

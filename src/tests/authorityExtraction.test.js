@@ -1548,3 +1548,137 @@ describe('Candidate decision audit atomicity', () => {
     expect(after.n).toBe(before.n);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 17: Canonical Party Audit — Transactional Event Sequence
+//
+// The create_new acceptance flow must transactionally produce all four writes:
+//   1. authority_parties INSERT (canonical party row)
+//   2. authority.party.created audit (via audit.logInTx inside createParty)
+//   3. authority_extraction_candidates UPDATE (accepted status + canonical_party_id)
+//   4. EXTRACTION_CANDIDATE_ACCEPTED audit (via audit.logInTx in acceptCandidate)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Canonical party audit — transactional event sequence', () => {
+  // Test 85
+  test('successful create_new produces both party-created and candidate-accepted audit records', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    const { rows: [partyBefore] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'authority.party.created'`, [accountId]
+    );
+    const { rows: [candBefore] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`, [accountId]
+    );
+
+    await extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+      rowVersion:  nameCand.rowVersion,
+      partyAction: 'create_new',
+    });
+
+    const { rows: [partyAfter] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'authority.party.created'`, [accountId]
+    );
+    const { rows: [candAfter] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`, [accountId]
+    );
+    expect(partyAfter.n).toBe(partyBefore.n + 1);
+    expect(candAfter.n).toBe(candBefore.n + 1);
+  });
+
+  // Test 86: forced candidate audit failure — party and its audit must be rolled back
+  test('forced candidate audit failure rolls back party creation and leaves candidate pending', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    const { rows: [partyCountBefore] } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM authority_parties WHERE account_id = $1`, [accountId]
+    );
+    const { rows: [partyAuditBefore] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'authority.party.created'`, [accountId]
+    );
+    const { rows: [candAuditBefore] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`, [accountId]
+    );
+
+    const auditMod = require('../services/audit');
+    // Let the first logInTx call (party audit) succeed, fail on the second (candidate audit).
+    const original = auditMod.logInTx.bind(auditMod);
+    let callCount = 0;
+    const spy = jest.spyOn(auditMod, 'logInTx').mockImplementation(async (...args) => {
+      callCount++;
+      if (callCount === 2) throw new Error('simulated candidate audit failure');
+      return original(...args);
+    });
+
+    await expect(
+      extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+        rowVersion:  nameCand.rowVersion,
+        partyAction: 'create_new',
+      })
+    ).rejects.toThrow();
+
+    spy.mockRestore();
+
+    // Candidate stays pending
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    expect(refreshed.find(c => c.id === nameCand.id).status).toBe('pending');
+
+    // No orphan party (party INSERT was rolled back with the transaction)
+    const { rows: [partyCountAfter] } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM authority_parties WHERE account_id = $1`, [accountId]
+    );
+    expect(partyCountAfter.c).toBe(partyCountBefore.c);
+
+    // No party-created audit committed (rolled back with the transaction)
+    const { rows: [partyAuditAfter] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'authority.party.created'`, [accountId]
+    );
+    expect(partyAuditAfter.n).toBe(partyAuditBefore.n);
+
+    // No candidate-accepted audit committed
+    const { rows: [candAuditAfter] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'EXTRACTION_CANDIDATE_ACCEPTED'`, [accountId]
+    );
+    expect(candAuditAfter.n).toBe(candAuditBefore.n);
+  });
+
+  // Test 87: no duplicate party-created audit — logInTx writes exactly one record, no post-commit repeat
+  test('successful create_new emits exactly one party-created audit record (no duplicate)', async () => {
+    const { kase } = await setupCaseThroughHumanReview();
+    const cands = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const nameCand = cands.find(c => c.fieldKey === 'principal_name' && c.status === 'pending');
+    if (!nameCand || !nameCand.proposedValue) return;
+
+    await extractionService.acceptCandidate(accountId, userId, nameCand.id, {
+      rowVersion:  nameCand.rowVersion,
+      partyAction: 'create_new',
+    });
+
+    const refreshed = await extractionService.listCandidatesForCase(accountId, kase.id);
+    const accepted  = refreshed.find(c => c.id === nameCand.id);
+    expect(accepted.canonicalPartyId).not.toBeNull();
+
+    // Query the canonical party's audit records — must be exactly 1
+    const { rows: [auditCount] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM audit_logs
+        WHERE account_id = $1 AND action = 'authority.party.created'
+          AND entity_id = $2`,
+      [accountId, accepted.canonicalPartyId]
+    );
+    expect(auditCount.n).toBe(1);
+  });
+});

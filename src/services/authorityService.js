@@ -340,8 +340,17 @@ async function createParty(accountId, userId, { partyType, displayName, external
     [accountId, partyType, encryptedName, externalReference || null, userId]
   );
 
-  // When called inside a transaction the caller is responsible for the audit record.
-  if (!txClient) {
+  // Canonical party-created audit — written transactionally when inside a tx so
+  // the audit record is atomic with the party row (logInTx propagates errors,
+  // causing the transaction to roll back if the audit write fails).
+  if (txClient) {
+    await auditService.logInTx(txClient,
+      accountId, userId, 'authority.party.created',
+      'authority_party', party.id,
+      { party_type: partyType },
+      null
+    );
+  } else {
     await auditService.log(
       accountId, userId, 'authority.party.created',
       'authority_party', party.id,
