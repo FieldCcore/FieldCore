@@ -21,20 +21,29 @@ const INSTRUMENT_ROW = {
   status: 'VERIFIED', effective_date: '2025-01-01', expiration_date: '2035-12-31',
 };
 
-const PARTY_PRINCIPAL = {
-  id: 'party-uuid-00000001', display_name: 'Principal Party', party_type: 'person', status: 'active',
-};
-
-const PARTY_DELEGATE = {
-  id: 'party-uuid-00000002', display_name: 'Delegate Party', party_type: 'person', status: 'active',
+// Instrument detail (returned by GET /authority/instruments/:id)
+const INSTRUMENT_DETAIL = {
+  ...INSTRUMENT_ROW,
+  participants: [
+    { id: 'part-1', party_id: 'party-uuid-00000001', role: 'principal', sequence: 1,
+      status: 'active', conditions: null, party_type: 'person',
+      display_name: 'Principal Party', external_reference: null },
+    { id: 'part-2', party_id: 'party-uuid-00000002', role: 'agent', sequence: 1,
+      status: 'active', conditions: null, party_type: 'person',
+      display_name: 'Delegate Party', external_reference: null },
+  ],
+  permissions: [
+    { id: 'perm-1', action_key: 'BANKING.WIRE_TRANSFER', grant_type: 'granted',
+      participant_id: 'part-2', created_at: '2025-01-01T00:00:00Z' },
+  ],
 };
 
 function setupApi({ caps = ['AUTHORITY_EVALUATE'], evaluations = [], evalResponse = null } = {}) {
   api.get.mockImplementation((url) => {
-    if (url.includes('/authority/capabilities')) return Promise.resolve({ data: { capabilities: caps } });
-    if (url.includes('/authority/instruments'))  return Promise.resolve({ data: [INSTRUMENT_ROW] });
-    if (url.includes('/authority/parties'))      return Promise.resolve({ data: [PARTY_PRINCIPAL, PARTY_DELEGATE] });
-    if (url.includes('/authority/evaluations'))  return Promise.resolve({ data: evaluations });
+    if (url.includes('/authority/capabilities'))        return Promise.resolve({ data: { capabilities: caps } });
+    if (url.match(/\/authority\/instruments\/[^?]+$/)) return Promise.resolve({ data: INSTRUMENT_DETAIL });
+    if (url.includes('/authority/instruments'))         return Promise.resolve({ data: [INSTRUMENT_ROW] });
+    if (url.includes('/authority/evaluations'))         return Promise.resolve({ data: evaluations });
     return Promise.reject(new Error(`Unexpected GET: ${url}`));
   });
   if (evalResponse) {
@@ -96,7 +105,7 @@ describe('toMinorUnits — money parser parity with backend', () => {
   });
 });
 
-// ── Capability gating (Part 4) ───────────────────────────────────────────────
+// ── Capability gating ────────────────────────────────────────────────────────
 
 describe('AuthorityEvaluate — capability gating', () => {
   beforeEach(() => {
@@ -125,51 +134,106 @@ describe('AuthorityEvaluate — capability gating', () => {
   });
 });
 
-// ── Page rendering (branding, disclaimer, labels) ─────────────────────────────
+// ── Page rendering ────────────────────────────────────────────────────────────
 
 describe('AuthorityEvaluate — page rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders the "Authority Evaluator" title', async () => {
+  it('renders the "Evaluator" page title', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText('Authority Evaluator')).toBeTruthy();
+      expect(screen.getByText('Evaluator')).toBeTruthy();
     });
   });
 
-  it('renders the Delegate Party picker label', async () => {
+  it('renders the instrument picker with VERIFIED instruments', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText(/Delegate Party/)).toBeTruthy();
+      expect(screen.getByText('Evaluate Authority')).toBeTruthy();
+      // Verified instrument picker is present
+      const select = screen.getAllByRole('combobox')[0];
+      expect(select).toBeTruthy();
     });
   });
 
-  it('renders the Generate button for idempotency key', async () => {
+  it('does NOT expose an idempotency key input field', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => {
-      expect(screen.getByText('Generate')).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    expect(screen.queryByPlaceholderText(/Deduplication key/)).toBeNull();
+    expect(screen.queryByText('Generate')).toBeNull();
   });
 
-  it('renders the Action Key input', async () => {
+  it('does NOT expose a free-text Action Key input', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/BANKING\.WIRE_TRANSFER/)).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    expect(screen.queryByPlaceholderText(/BANKING\.WIRE_TRANSFER/)).toBeNull();
   });
 
   it('renders the disclaimer on the history section', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText(/not a legal determination/)).toBeTruthy();
+      expect(screen.getByText(/records only/)).toBeTruthy();
     });
+  });
+
+  it('Evaluate button is disabled until all required fields are filled', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+
+    const submitBtn = screen.getByRole('button', { name: /Evaluate/i });
+    // Initially disabled — no fields filled
+    expect(submitBtn).toHaveProperty('disabled', true);
+  });
+});
+
+// ── Instrument-scoped participant + action selectors ─────────────────────────
+
+describe('AuthorityEvaluate — instrument-scoped selectors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function selectInstrument() {
+    setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [] });
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    // Wait for instrument picker to finish loading
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+
+    const instrSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(instrSelect, { target: { value: INSTRUMENT_ROW.id } });
+    // Wait for instrument detail to load (principal/delegate/action selects appear)
+    await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
+  }
+
+  it('shows principal participant from instrument detail after instrument selection', async () => {
+    await selectInstrument();
+    expect(screen.getByText(/Principal Party/)).toBeTruthy();
+  });
+
+  it('shows delegate participant from instrument detail after instrument selection', async () => {
+    await selectInstrument();
+    expect(screen.getByText(/Delegate Party/)).toBeTruthy();
+  });
+
+  it('shows action key from instrument permissions as a dropdown option', async () => {
+    await selectInstrument();
+    expect(screen.getByText('BANKING.WIRE_TRANSFER')).toBeTruthy();
+  });
+
+  it('does NOT show the party list endpoint for participants', async () => {
+    await selectInstrument();
+    // /authority/parties should never be called
+    const partyCalls = api.get.mock.calls.filter(c => c[0].includes('/authority/parties'));
+    expect(partyCalls.length).toBe(0);
   });
 });
 
@@ -244,7 +308,6 @@ describe('AuthorityEvaluate — stale replay display', () => {
   it('shows "Evaluation Record Changed" instead of a prior decision on stale replay', async () => {
     setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [] });
 
-    // 409 with IDEMPOTENCY_REPLAY_STALE
     api.post.mockRejectedValue({
       response: {
         status: 409,
@@ -253,43 +316,32 @@ describe('AuthorityEvaluate — stale replay display', () => {
     });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    // Wait for the form to appear
     await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
-    // Wait for pickers to load their data
-    await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
-    await waitFor(() => expect(screen.queryByText(/Loading parties/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    // Directly invoke the form's submit path by simulating the exact rejected call
-    api.post.mockRejectedValueOnce({
-      response: {
-        status: 409,
-        data: { code: 'IDEMPOTENCY_REPLAY_STALE', staleReason: 'instrument_status_changed' },
-      },
-    });
+    // Select instrument (triggers detail load)
+    const instrSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(instrSelect, { target: { value: INSTRUMENT_ROW.id } });
+    await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
-    // Fill required fields (comboboxes are: 0=instrument, 1=principal, 2=delegate)
-    const inputs   = screen.getAllByRole('combobox');
-    fireEvent.change(inputs[0], { target: { value: INSTRUMENT_ROW.id } });
-    fireEvent.change(inputs[1], { target: { value: PARTY_PRINCIPAL.id } });
-    fireEvent.change(inputs[2], { target: { value: PARTY_DELEGATE.id } });
-    const actionKeyInput = screen.getByPlaceholderText(/BANKING\.WIRE_TRANSFER/);
-    fireEvent.change(actionKeyInput, { target: { value: 'BANKING.WIRE_TRANSFER' } });
-    const idKeyInput = screen.getByPlaceholderText(/Deduplication key/);
-    fireEvent.change(idKeyInput, { target: { value: 'test-key-001' } });
+    // Fill principal, delegate, action key
+    const selects = screen.getAllByRole('combobox');
+    // selects: [instrument, principal, delegate, action]
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
-    // Submit (form.submit bypasses HTML5 required validation in jsdom)
-    const form = actionKeyInput.closest('form');
+    const form = selects[0].closest('form');
     fireEvent.submit(form);
 
     await waitFor(() => {
       expect(screen.getByText(/Evaluation Record Changed/i)).toBeTruthy();
     });
-    // Should NOT show any prior outcome badge
     expect(screen.queryByText('Authorized')).toBeNull();
   });
 });
 
-// ── requestedAt is set automatically at submission (Part 8) ──────────────────
+// ── requestedAt is set automatically at submission ───────────────────────────
 
 describe('AuthorityEvaluate — automatic requestedAt', () => {
   beforeEach(() => {
@@ -310,22 +362,22 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
-    await waitFor(() => expect(screen.queryByText(/Loading parties/)).toBeNull());
 
     // No labeled "requestedAt" input in the form
     expect(screen.queryByLabelText(/Requested At/i)).toBeNull();
 
-    // Submit a complete request
-    const inputs = screen.getAllByRole('combobox');
-    fireEvent.change(inputs[0], { target: { value: INSTRUMENT_ROW.id } });
-    fireEvent.change(inputs[1], { target: { value: PARTY_PRINCIPAL.id } });
-    fireEvent.change(inputs[2], { target: { value: PARTY_DELEGATE.id } });
-    const actionKeyInput = screen.getByPlaceholderText(/BANKING\.WIRE_TRANSFER/);
-    fireEvent.change(actionKeyInput, { target: { value: 'BANKING.WIRE_TRANSFER' } });
-    const idKeyInput = screen.getByPlaceholderText(/Deduplication key/);
-    fireEvent.change(idKeyInput, { target: { value: 'auto-req-key' } });
+    // Select instrument → loads detail
+    const instrSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(instrSelect, { target: { value: INSTRUMENT_ROW.id } });
+    await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
-    const form = actionKeyInput.closest('form');
+    // Fill principal, delegate, action key
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+
+    const form = selects[0].closest('form');
     fireEvent.submit(form);
 
     await waitFor(() => expect(api.post).toHaveBeenCalled());
@@ -336,6 +388,38 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
     expect(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(payload.requestedAt)).toBe(true);
     // actionTime must NOT be present
     expect(payload.actionTime).toBeUndefined();
+    // idempotencyKey must be auto-generated (present, non-empty, not user-supplied)
+    expect(typeof payload.idempotencyKey).toBe('string');
+    expect(payload.idempotencyKey.length).toBeGreaterThan(0);
+  });
+
+  it('sends principalPartyId and delegatePartyId from selected participants', async () => {
+    setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [] });
+    api.post.mockResolvedValue({
+      data: { evaluationId: 'eval-1', outcome: 'AUTHORIZED', isReplay: false },
+    });
+
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
+
+    const instrSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(instrSelect, { target: { value: INSTRUMENT_ROW.id } });
+    await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
+
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+
+    fireEvent.submit(selects[0].closest('form'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const [, payload] = api.post.mock.calls[0];
+    expect(payload.principalPartyId).toBe('party-uuid-00000001');
+    expect(payload.delegatePartyId).toBe('party-uuid-00000002');
+    expect(payload.actionKey).toBe('BANKING.WIRE_TRANSFER');
+    expect(payload.instrumentId).toBe(INSTRUMENT_ROW.id);
   });
 });
 

@@ -13,7 +13,6 @@ export function AuLoading() {
 export function AuEmpty({ text = 'Nothing here yet.' }) {
   return (
     <div className="au-empty">
-      <div className="au-empty-icon">○</div>
       <div className="au-empty-text">{text}</div>
     </div>
   );

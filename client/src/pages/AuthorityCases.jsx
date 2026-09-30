@@ -55,7 +55,7 @@ export default function AuthorityCases() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Cases</div>
-          <div className="au-page-subtitle">All Authority review cases</div>
+          <div className="au-page-subtitle">All cases tracked by this institution</div>
         </div>
         <button className="au-btn au-btn--primary" onClick={() => setCreating(c => !c)}>
           {creating ? 'Cancel' : '+ New Case'}
@@ -114,7 +114,7 @@ export default function AuthorityCases() {
                 {cases.map(c => (
                   <tr key={c.id} onClick={() => nav(`/authority/cases/${c.id}`)}>
                     <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
-                      {c.external_case_reference || c.id.slice(0, 8) + '…'}
+                      {c.external_case_reference || <span style={{ color: 'var(--steel)', fontStyle: 'italic' }}>No reference</span>}
                     </td>
                     <td><AuBadge status={c.status} /></td>
                     <td>{c.document_count ?? 0}</td>

@@ -743,14 +743,15 @@ describe('Authority dashboard — product naming (Problem 6)', () => {
     vi.clearAllMocks();
   });
 
-  it('subtitle is "Institution authority operations", not the old FieldCore Authority string', async () => {
+  it('shows "Dashboard" title with a purpose-oriented subtitle', async () => {
     api.get.mockResolvedValue({ data: [] });
 
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
 
-    await waitFor(() => screen.getByText('Authority Dashboard'));
-    expect(screen.getByText('Institution authority operations')).toBeTruthy();
-    expect(screen.queryByText(/FieldCore Authority/i)).toBeNull();
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText(/Review queue activity/i)).toBeTruthy();
+    expect(screen.queryByText('Authority Dashboard')).toBeNull();
+    expect(screen.queryByText('Institution authority operations')).toBeNull();
   });
 
   it('does not contain "institution review portal" anywhere in visible text', async () => {
@@ -758,7 +759,7 @@ describe('Authority dashboard — product naming (Problem 6)', () => {
 
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
 
-    await waitFor(() => screen.getByText('Authority Dashboard'));
+    await waitFor(() => screen.getByText('Dashboard'));
     expect(screen.queryByText(/institution review portal/i)).toBeNull();
   });
 });

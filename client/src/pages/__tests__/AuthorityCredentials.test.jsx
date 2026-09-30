@@ -79,13 +79,13 @@ describe('AuthorityCredentials', () => {
 
   // ── Branding and page identity ─────────────────────────────────────────────
 
-  it('shows functional title (not "FieldCore Authority")', async () => {
+  it('shows functional title "API Access" (not the legacy "Authority API Credentials")', async () => {
     setupApi();
     renderPage();
     await waitFor(() => screen.getByTestId('authority-credentials-page'));
-    const title = screen.getByRole('heading', { level: 1 });
-    expect(title.textContent).toBe('Authority API Credentials');
-    expect(title.textContent).not.toContain('FieldCore Authority');
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    expect(page).toContain('API Access');
+    expect(page).not.toContain('Authority API Credentials');
   });
 
   it('does not render raw secret or verifier text in list view', async () => {
@@ -146,7 +146,22 @@ describe('AuthorityCredentials', () => {
     setupApi({ flagEnabled: false, credentials: [] });
     renderPage();
     await waitFor(() => screen.getByTestId('flag-off-message'));
-    expect(screen.getByTestId('flag-off-message').textContent).toContain('not enabled');
+    expect(screen.getByTestId('flag-off-message').textContent).toContain('not currently enabled');
+    expect(screen.getByTestId('flag-off-message').textContent).toContain('FieldCore environment');
+  });
+
+  it('hides credentials-list when flag is OFF and no credentials exist', async () => {
+    setupApi({ flagEnabled: false, credentials: [] });
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(screen.queryByTestId('credentials-list')).toBeNull();
+  });
+
+  it('shows credentials-list when flag is OFF but existing credentials exist', async () => {
+    setupApi({ flagEnabled: false, credentials: [CRED_ACTIVE] });
+    renderPage();
+    await waitFor(() => screen.getByTestId('credentials-list'));
+    expect(screen.getByTestId('credentials-list')).toBeTruthy();
   });
 
   it('does not show create button when flag is OFF', async () => {
@@ -324,7 +339,9 @@ describe('AuthorityCredentials', () => {
     setupApi();
     renderPage();
     await waitFor(() => screen.getByTestId('api-disclaimer'));
-    expect(screen.getByTestId('api-disclaimer').textContent).toContain('server-side use only');
+    const disclaimer = screen.getByTestId('api-disclaimer').textContent;
+    expect(disclaimer).toContain('Revocation is immediate');
+    expect(disclaimer).toContain('cannot be retrieved again');
   });
 
   // ── Rotation workflow explanation ──────────────────────────────────────────

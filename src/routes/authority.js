@@ -240,7 +240,7 @@ router.post('/instruments', async (req, res) => {
 // GET /api/authority/instruments/:instrumentId
 router.get('/instruments/:instrumentId', async (req, res) => {
   try {
-    const instr = await authorityService.getInstrument(req.accountId, req.params.instrumentId);
+    const instr = await authorityService.getInstrumentDetail(req.accountId, req.params.instrumentId);
     res.json(instr);
   } catch (err) {
     handleError(res, err);

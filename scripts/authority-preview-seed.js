@@ -48,6 +48,7 @@ const OWNER_EMAIL    = 'institution@getfieldcore.com';
 const REVIEWER_EMAIL = 'reviewer@getfieldcore.com';
 const SEED_PASSWORD  = 'institution2024';
 const CASE_REF       = 'PREVIEW-CASE-001';
+const CASE_REF_2     = 'PREVIEW-CASE-002';
 
 // ── Display names (no __PREVIEW__ prefix — clean for UI walkthrough) ──────────
 const INST_NAME      = 'Harborview Trust & Advisory (Demo)';
@@ -280,14 +281,68 @@ async function run() {
   );
   console.log('[authority-preview-seed] Review note added');
 
+  // ── 16. Create second instrument (unlinked pending) ───────────────────────────
+  const instr2 = await authorityService.createInstrument(acct.id, owner.id, {
+    instrumentType: 'trust',
+    effectiveDate:  '2024-06-01',
+    expirationDate: '2029-06-01',
+    jurisdiction:   'NY',
+  });
+  console.log(`[authority-preview-seed] Second instrument created: ${instr2.id}`);
+
+  // ── 17. Create second case and link second instrument ─────────────────────────
+  const kase2 = await authorityService.createCase(acct.id, owner.id, {
+    externalCaseReference: CASE_REF_2,
+  });
+  await authorityService.linkInstrumentToCase(acct.id, owner.id, kase2.id, instr2.id);
+  await authorityService.transitionCase(acct.id, owner.id, kase2.id, 'AWAITING_DOCUMENTS');
+
+  // ── 18. Add participants to second instrument ─────────────────────────────────
+  await authorityService.addParticipant(acct.id, owner.id, instr2.id, {
+    partyId:  principal.id,
+    role:     'principal',
+    sequence: 1,
+  });
+  await authorityService.addParticipant(acct.id, owner.id, instr2.id, {
+    partyId:  agent.id,
+    role:     'trustee',
+    sequence: 1,
+  });
+  console.log('[authority-preview-seed] Second instrument participants added');
+
+  // ── 19. Add permission to second instrument ───────────────────────────────────
+  await authorityService.addPermission(acct.id, owner.id, instr2.id, {
+    actionKey:     'REAL_ESTATE.SIGN_DEED',
+    grantType:     'granted',
+    participantId: null,
+  });
+  console.log('[authority-preview-seed] Second instrument permission added');
+
+  // ── 20. Advance second instrument to PENDING_REVIEW ──────────────────────────
+  await authorityService.transitionInstrument(acct.id, owner.id, instr2.id, 'PENDING_REVIEW', {
+    actorType: 'human',
+  });
+
+  // ── 21. Advance second case to PENDING_HUMAN_REVIEW via direct SQL ────────────
+  //        ⚠  DEVELOPMENT PREVIEW ONLY — same bypass as case 1 above.
+  await pool.query(
+    `UPDATE authority_cases
+     SET status = 'PENDING_HUMAN_REVIEW', status_changed_at = NOW(), updated_at = NOW()
+     WHERE id = $1`,
+    [kase2.id]
+  );
+  console.log('[authority-preview-seed] Second case → PENDING_HUMAN_REVIEW (direct SQL, unassigned)');
+
   await pool.end();
 
   console.log('');
   console.log('[authority-preview-seed] ✓ Complete.');
   console.log('');
   console.log('  Institution account:', acct.id);
-  console.log('  Case ID:            ', kase.id, `(ref: ${CASE_REF})`);
-  console.log('  Instrument ID:      ', instr.id);
+  console.log('  Case 1 (in review): ', kase.id,  `(ref: ${CASE_REF})  — HUMAN_REVIEW_IN_PROGRESS`);
+  console.log('  Case 2 (queued):    ', kase2.id, `(ref: ${CASE_REF_2}) — PENDING_HUMAN_REVIEW`);
+  console.log('  Instrument 1 ID:    ', instr.id,  '(durable_power_of_attorney)');
+  console.log('  Instrument 2 ID:    ', instr2.id, '(trust)');
   console.log('');
   console.log('  Login credentials:');
   console.log(`    Owner:    ${OWNER_EMAIL} / ${SEED_PASSWORD}`);

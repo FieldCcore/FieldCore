@@ -723,6 +723,41 @@ async function getInstrument(accountId, instrumentId) {
   return instr;
 }
 
+async function getInstrumentDetail(accountId, instrumentId) {
+  const instr = await getInstrument(accountId, instrumentId);
+
+  const [{ rows: participants }, { rows: permissions }] = await Promise.all([
+    pool.query(
+      `SELECT aip.id, aip.party_id, aip.role, aip.sequence, aip.status, aip.conditions,
+              ap.party_type, ap.display_name AS encrypted_name, ap.external_reference
+       FROM authority_instrument_parties aip
+       JOIN authority_parties ap ON ap.account_id = aip.account_id AND ap.id = aip.party_id
+       WHERE aip.account_id = $1 AND aip.instrument_id = $2
+       ORDER BY aip.sequence ASC NULLS LAST, aip.created_at ASC`,
+      [accountId, instrumentId]
+    ),
+    pool.query(
+      `SELECT id, action_key, grant_type, participant_id, created_at
+       FROM authority_permissions
+       WHERE account_id = $1 AND instrument_id = $2
+       ORDER BY created_at ASC`,
+      [accountId, instrumentId]
+    ),
+  ]);
+
+  return {
+    ...instr,
+    participants: participants.map(p => ({
+      ...p,
+      display_name: (() => {
+        try { return authorityCrypto.decrypt(p.encrypted_name); } catch { return null; }
+      })(),
+      encrypted_name: undefined,
+    })),
+    permissions,
+  };
+}
+
 async function listInstruments(accountId, { limit = 50, offset = 0, status } = {}) {
   await _assertInstitutionAccount(accountId);
   const safeLimit  = Math.min(Math.max(parseInt(limit,  10) || 50, 1), 200);
@@ -2260,6 +2295,7 @@ module.exports = {
   // Instruments
   createInstrument,
   getInstrument,
+  getInstrumentDetail,
   listInstruments,
   transitionInstrument,
   canVerifyInstrument,

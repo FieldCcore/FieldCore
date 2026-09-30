@@ -340,19 +340,28 @@ export default function AuthorityCredentials() {
 
   return (
     <div className="au-page" data-testid="authority-credentials-page">
-      <div className="au-page__header">
-        <h1 className="au-page__title">Authority API Credentials</h1>
-        <p className="au-page__subtitle">
-          Manage machine-to-machine credentials for institution server-side systems.
-        </p>
+      <div className="au-page-header">
+        <div>
+          <div className="au-page-title">API Access</div>
+          <div className="au-page-subtitle">
+            Credentials for server-side systems to call the FieldCore Authority API
+          </div>
+        </div>
+      </div>
+
+      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-concept-explanation">
+        API credentials let your institution's back-end systems query Authority decisions
+        programmatically — for example, to verify a power of attorney before processing a
+        transaction. Each credential is a secret token scoped to one or more actions. Credentials
+        are for server-side use only and must never be embedded in browser or mobile code.
       </div>
 
       {!flagEnabled && (
         <div className="au-info" data-testid="flag-off-message">
-          External API access is not enabled for this account.
+          External API access is not currently enabled in this FieldCore environment.
           {(hasManage || hasRead) && credentials.length > 0
-            ? ' You can view and revoke existing credentials below. Contact support to enable external API access.'
-            : ' Contact support to enable external API access.'}
+            ? ' You can view and revoke existing credentials below.'
+            : ''}
         </div>
       )}
 
@@ -403,44 +412,44 @@ export default function AuthorityCredentials() {
         </div>
       )}
 
-      <div className="au-section" data-testid="credentials-list">
-        <h2 className="au-section-title">Credentials</h2>
-        {credentials.length === 0 ? (
-          <AuEmpty text="No credentials yet." />
-        ) : (
-          <table className="au-table" data-testid="credentials-table">
-            <thead>
-              <tr>
-                <th>Label</th>
-                <th>Public ID</th>
-                <th>Scopes</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Last Used</th>
-                <th>Revoked</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {credentials.map(c => (
-                <CredentialRow
-                  key={c.id}
-                  cred={c}
-                  canManage={hasManage}
-                  onRevoke={setRevokeTarget}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {(flagEnabled || credentials.length > 0) && (
+        <div className="au-section" data-testid="credentials-list">
+          <h2 className="au-section-title">Credentials</h2>
+          {credentials.length === 0 ? (
+            <AuEmpty text="No credentials yet. Use the button above to create one." />
+          ) : (
+            <table className="au-table" data-testid="credentials-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Public ID</th>
+                  <th>Scopes</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Last Used</th>
+                  <th>Revoked</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {credentials.map(c => (
+                  <CredentialRow
+                    key={c.id}
+                    cred={c}
+                    canManage={hasManage}
+                    onRevoke={setRevokeTarget}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="au-disclaimer" data-testid="api-disclaimer">
-        API credentials are machine-to-machine tokens. The raw secret is shown
-        once at creation and cannot be retrieved. Store it securely. Revocation
-        takes effect immediately. Historical evaluation records remain available
-        after revocation. This API is for server-side use only — do not use
-        credentials in browsers or client-side code.
+        Secrets are shown once at creation and cannot be retrieved again. Store them in a
+        secrets manager. Revocation is immediate — any server using the credential will lose
+        access. Historical evaluation records remain available after revocation.
       </div>
     </div>
   );

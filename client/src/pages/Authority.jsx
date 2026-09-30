@@ -22,14 +22,15 @@ export default function Authority() {
     <div className="au-page">
       <div className="au-page-header">
         <div>
-          <div className="au-page-title">Authority Dashboard</div>
-          <div className="au-page-subtitle">Institution authority operations</div>
+          <div className="au-page-title">Dashboard</div>
+          <div className="au-page-subtitle">Review queue activity and open cases at a glance</div>
         </div>
         <Link to="/authority/cases">
           <button className="au-btn au-btn--primary">+ New Case</button>
         </Link>
       </div>
 
+      <div className="au-section-heading">Review Queue Summary</div>
       <div className="au-kpi-strip">
         <div className="au-kpi-card">
           <div className="au-kpi-label">Pending Review</div>
@@ -78,7 +79,7 @@ export default function Authority() {
               {queue.slice(0, 8).map(c => (
                 <tr key={c.id} onClick={() => { window.location.href = `/authority/cases/${c.id}`; }}>
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
-                    {c.external_case_reference || c.id.slice(0, 8) + '…'}
+                    {c.external_case_reference || <span style={{ color: 'var(--steel)', fontStyle: 'italic' }}>No reference</span>}
                   </td>
                   <td><AuBadge status={c.status} /></td>
                   <td>{c.document_count}</td>

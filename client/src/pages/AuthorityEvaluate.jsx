@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { AuLoading, AuError, AuEmpty, fmtDateTime } from './AuthorityShared';
 
@@ -150,14 +150,14 @@ function StringList({ items, label, color }) {
   );
 }
 
-// ── Instrument picker ────────────────────────────────────────────────────────
+// ── Instrument picker (VERIFIED only) ───────────────────────────────────────
 
 function InstrumentPicker({ value, onChange }) {
   const [instruments, setInstruments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/authority/instruments?limit=100')
+    api.get('/authority/instruments?limit=100&status=VERIFIED')
       .then(r => setInstruments(r.data))
       .catch(() => setInstruments([]))
       .finally(() => setLoading(false));
@@ -165,95 +165,154 @@ function InstrumentPicker({ value, onChange }) {
 
   if (loading) return <select className="au-input" disabled><option>Loading instruments…</option></select>;
 
+  if (instruments.length === 0) {
+    return (
+      <div style={{ padding: '10px 12px', background: '#FEF3C7', border: '1px solid #FDE68A',
+        borderRadius: 6, fontSize: 13, color: '#92400E' }}>
+        No verified instruments found. An instrument must be reviewed and verified before it can
+        be used for evaluations.
+      </div>
+    );
+  }
+
   return (
     <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
-      <option value="">— Select an instrument —</option>
+      <option value="">— Select a verified instrument —</option>
       {instruments.map(i => (
         <option key={i.id} value={i.id}>
-          [{i.status}] {i.instrument_type} · {i.id.slice(0, 8)}…
-          {i.effective_date ? ` (eff: ${i.effective_date.slice ? i.effective_date.slice(0,10) : String(i.effective_date).slice(0,10)})` : ''}
+          {(i.instrument_type || '').replace(/_/g, ' ')}
+          {i.effective_date ? ` · eff. ${String(i.effective_date).slice(0, 10)}` : ''}
+          {i.expiration_date ? ` – ${String(i.expiration_date).slice(0, 10)}` : ''}
+          {` [${i.jurisdiction || '—'}]`}
         </option>
       ))}
     </select>
   );
 }
 
-// ── Party picker ─────────────────────────────────────────────────────────────
+// ── Participant selector (scoped to loaded instrument detail) ─────────────────
 
-function PartyPicker({ value, onChange, placeholder, required }) {
-  const [parties, setParties] = useState([]);
-  const [loading, setLoading] = useState(true);
+const PRINCIPAL_ROLES = new Set(['principal']);
+const DELEGATE_ROLES  = new Set([
+  'agent', 'co_agent', 'successor_agent', 'guardian',
+  'trustee', 'co_trustee', 'authorized_representative',
+]);
 
-  useEffect(() => {
-    api.get('/authority/parties?limit=100')
-      .then(r => setParties(r.data))
-      .catch(() => setParties([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <select className="au-input" disabled><option>Loading parties…</option></select>;
-
+function ParticipantSelect({ participants, filterFn, value, onChange, placeholder }) {
+  const filtered = (participants || []).filter(filterFn);
   return (
-    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required={required}>
-      <option value="">{placeholder || '— Select a party —'}</option>
-      {parties.map(p => (
-        <option key={p.id} value={p.id}>
-          {p.display_name || p.id.slice(0, 8)} · {p.party_type} [{p.status}]
+    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
+      <option value="">{placeholder}</option>
+      {filtered.map(p => (
+        <option key={p.party_id} value={p.party_id}>
+          {p.display_name || p.party_id.slice(0, 8)} · {p.role}
         </option>
+      ))}
+    </select>
+  );
+}
+
+// ── Action key selector (from instrument permissions) ────────────────────────
+
+function ActionKeySelect({ permissions, value, onChange }) {
+  const grantedPermissions = (permissions || []).filter(p => p.grant_type === 'granted');
+  if (grantedPermissions.length === 0) {
+    return (
+      <div style={{ padding: '10px 12px', background: '#F3F4F6', borderRadius: 6,
+        fontSize: 13, color: '#6B7280' }}>
+        No granted permissions on this instrument.
+      </div>
+    );
+  }
+  return (
+    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
+      <option value="">— Select an action —</option>
+      {grantedPermissions.map(p => (
+        <option key={p.id} value={p.action_key}>{p.action_key}</option>
       ))}
     </select>
   );
 }
 
 // ── Evaluation form ───────────────────────────────────────────────────────────
-// Part 8 closure: requestedAt is set automatically at submission — never
-// exposed as a user-editable field. Part 9 closure: the money parser matches
-// the backend integer-only algorithm.
 
 function EvaluationForm({ onResult }) {
-  const [form, setForm] = useState({
-    instrumentId:     '',
-    principalPartyId: '',
-    delegatePartyId:  '',
-    actionKey:        '',
-    amount:           '',
-    currency:         'USD',
-    idempotencyKey:   '',
-  });
+  const [instrumentId,     setInstrumentId]     = useState('');
+  const [principalPartyId, setPrincipalPartyId] = useState('');
+  const [delegatePartyId,  setDelegatePartyId]  = useState('');
+  const [actionKey,        setActionKey]        = useState('');
+  const [amount,           setAmount]           = useState('');
+  const [currency,         setCurrency]         = useState('USD');
+
+  // Instrument detail (participants + permissions) — loaded after instrument selection
+  const [instrDetail,    setInstrDetail]    = useState(null);
+  const [instrLoading,   setInstrLoading]   = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
   const [fieldError, setFieldError] = useState('');
 
-  function set(field, val) { setForm(f => ({ ...f, [field]: val })); }
+  // Idempotency key held in a ref — not in form state, not persisted to storage.
+  // Generated once per logical submission; cleared on settle or decision-driving input change.
+  const idempKeyRef = useRef(null);
 
-  function generateKey() {
+  function generateIdempKey() {
     const array = new Uint8Array(16);
     window.crypto.getRandomValues(array);
-    const hex = Array.from(array).map(b => b.toString(16).padStart(2,'0')).join('');
-    set('idempotencyKey', hex);
+    return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
   }
+
+  // Reset dependent fields and idempotency key when instrument changes
+  function handleInstrumentChange(id) {
+    setInstrumentId(id);
+    setPrincipalPartyId('');
+    setDelegatePartyId('');
+    setActionKey('');
+    idempKeyRef.current = null;
+    setError('');
+    setFieldError('');
+    if (!id) { setInstrDetail(null); return; }
+    setInstrLoading(true);
+    api.get(`/authority/instruments/${id}`)
+      .then(r => setInstrDetail(r.data))
+      .catch(() => setInstrDetail(null))
+      .finally(() => setInstrLoading(false));
+  }
+
+  // Reset idempotency key whenever any decision-driving field changes
+  function handleFieldChange(setter) {
+    return (val) => {
+      setter(val);
+      idempKeyRef.current = null;
+    };
+  }
+
+  const canSubmit = instrumentId && principalPartyId && delegatePartyId && actionKey && !submitting;
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!canSubmit) return;
     setError('');
     setFieldError('');
-    setSubmitting(true);
 
+    // Generate idempotency key for this logical submission if not already set
+    if (!idempKeyRef.current) {
+      idempKeyRef.current = generateIdempKey();
+    }
+
+    setSubmitting(true);
     try {
       const payload = {
-        instrumentId:      form.instrumentId,
-        delegatePartyId:   form.delegatePartyId || undefined,
-        idempotencyKey:    form.idempotencyKey.trim(),
-        // Part 8 closure: always set requestedAt to now at submission
-        requestedAt:       new Date().toISOString(),
+        instrumentId,
+        principalPartyId,
+        delegatePartyId,
+        actionKey,
+        idempotencyKey: idempKeyRef.current,
+        requestedAt:    new Date().toISOString(),
       };
 
-      if (form.principalPartyId) payload.principalPartyId = form.principalPartyId;
-      if (form.actionKey.trim()) payload.actionKey = form.actionKey.trim();
-
-      // Part 9 closure: single money parser, integer-only algorithm
-      if (form.amount !== '') {
-        const minor = toMinorUnits(form.amount, form.currency);
+      if (amount !== '') {
+        const minor = toMinorUnits(amount, currency);
         if (minor === null) {
           setFieldError('Amount must be a valid number (e.g. 50.00 for $50.00).');
           setSubmitting(false);
@@ -265,22 +324,24 @@ function EvaluationForm({ onResult }) {
           return;
         }
         payload.amount   = minor;
-        payload.currency = form.currency.trim().toUpperCase() || 'USD';
+        payload.currency = currency.trim().toUpperCase() || 'USD';
       }
 
       const res = await api.post('/authority/evaluate', payload);
+      idempKeyRef.current = null;
       onResult({ ...res.data, _stale: false });
     } catch (err) {
-      // Correction 14: stale replay (409 IDEMPOTENCY_REPLAY_STALE) must NOT show prior decision
       if (err.response?.status === 409) {
         const code = err.response?.data?.code || err.response?.data?.error || '';
         if (code === 'IDEMPOTENCY_REPLAY_STALE') {
+          idempKeyRef.current = null;
           onResult({ _stale: true, _staleReason: err.response?.data?.staleReason });
           setSubmitting(false);
           return;
         }
         if (code === 'IDEMPOTENCY_KEY_CONFLICT') {
-          setError('This idempotency key was used with a different request. Generate a new key to run a new evaluation.');
+          idempKeyRef.current = null;
+          setError('A conflict was detected. Please change a field and try again.');
           setSubmitting(false);
           return;
         }
@@ -290,11 +351,15 @@ function EvaluationForm({ onResult }) {
         setSubmitting(false);
         return;
       }
+      // Transport or server error — keep the key so retrying the same request is idempotent
       setError(err.response?.data?.error || 'Evaluation failed.');
     } finally {
       setSubmitting(false);
     }
   }
+
+  const participants = instrDetail?.participants || [];
+  const permissions  = instrDetail?.permissions  || [];
 
   return (
     <form className="au-card" style={{ padding: 24 }} onSubmit={handleSubmit}>
@@ -304,56 +369,75 @@ function EvaluationForm({ onResult }) {
 
       <div style={{ display: 'grid', gap: 14 }}>
         <div className="au-form-group">
-          <label className="au-label">Instrument *</label>
-          <InstrumentPicker value={form.instrumentId} onChange={v => set('instrumentId', v)} />
+          <label className="au-label">Verified Instrument *</label>
+          <InstrumentPicker value={instrumentId} onChange={handleInstrumentChange} />
         </div>
 
-        <div className="au-form-group">
-          <label className="au-label">Principal Party *</label>
-          <PartyPicker value={form.principalPartyId} onChange={v => set('principalPartyId', v)}
-            placeholder="— Select principal —" required />
-        </div>
+        {instrLoading && (
+          <div style={{ fontSize: 13, color: 'var(--steel)' }}>Loading instrument details…</div>
+        )}
 
-        <div className="au-form-group">
-          <label className="au-label">Delegate Party *</label>
-          <PartyPicker value={form.delegatePartyId} onChange={v => set('delegatePartyId', v)}
-            placeholder="— Select delegate —" required />
-        </div>
+        {instrumentId && !instrLoading && (
+          <>
+            <div className="au-form-group">
+              <label className="au-label">Principal *</label>
+              {participants.filter(p => PRINCIPAL_ROLES.has(p.role)).length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--steel)' }}>
+                  No principal participants on this instrument.
+                </div>
+              ) : (
+                <ParticipantSelect
+                  participants={participants}
+                  filterFn={p => PRINCIPAL_ROLES.has(p.role)}
+                  value={principalPartyId}
+                  onChange={handleFieldChange(setPrincipalPartyId)}
+                  placeholder="— Select principal —"
+                />
+              )}
+            </div>
 
-        <div className="au-form-group">
-          <label className="au-label">Action Key *</label>
-          <input className="au-input" value={form.actionKey}
-            onChange={e => set('actionKey', e.target.value)}
-            placeholder="e.g. BANKING.WIRE_TRANSFER" required />
-        </div>
+            <div className="au-form-group">
+              <label className="au-label">Delegate *</label>
+              {participants.filter(p => DELEGATE_ROLES.has(p.role)).length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--steel)' }}>
+                  No delegate participants on this instrument.
+                </div>
+              ) : (
+                <ParticipantSelect
+                  participants={participants}
+                  filterFn={p => DELEGATE_ROLES.has(p.role)}
+                  value={delegatePartyId}
+                  onChange={handleFieldChange(setDelegatePartyId)}
+                  placeholder="— Select delegate —"
+                />
+              )}
+            </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 10 }}>
-          <div className="au-form-group">
-            <label className="au-label">Amount (optional)</label>
-            <input className="au-input" type="text" value={form.amount}
-              onChange={e => set('amount', e.target.value)}
-              placeholder={`e.g. 50.00 (in ${form.currency || 'major units'})`} />
-          </div>
-          <div className="au-form-group">
-            <label className="au-label">Currency</label>
-            <input className="au-input" value={form.currency}
-              onChange={e => set('currency', e.target.value.toUpperCase())}
-              maxLength={3} placeholder="USD" />
-          </div>
-        </div>
+            <div className="au-form-group">
+              <label className="au-label">Action *</label>
+              <ActionKeySelect
+                permissions={permissions}
+                value={actionKey}
+                onChange={handleFieldChange(setActionKey)}
+              />
+            </div>
 
-        <div className="au-form-group">
-          <label className="au-label">Idempotency Key *</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="au-input" style={{ flex: 1 }} value={form.idempotencyKey}
-              onChange={e => set('idempotencyKey', e.target.value)}
-              placeholder="Deduplication key — generate one for each new evaluation" required />
-            <button type="button" className="au-btn au-btn--secondary"
-              onClick={generateKey} style={{ whiteSpace: 'nowrap' }}>
-              Generate
-            </button>
-          </div>
-        </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 10 }}>
+              <div className="au-form-group">
+                <label className="au-label">Amount (optional)</label>
+                <input className="au-input" type="text" value={amount}
+                  onChange={e => { setAmount(e.target.value); idempKeyRef.current = null; }}
+                  placeholder={`e.g. 50.00 (in ${currency || 'major units'})`} />
+              </div>
+              <div className="au-form-group">
+                <label className="au-label">Currency</label>
+                <input className="au-input" value={currency}
+                  onChange={e => { setCurrency(e.target.value.toUpperCase()); idempKeyRef.current = null; }}
+                  maxLength={3} placeholder="USD" />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {fieldError && (
@@ -366,7 +450,7 @@ function EvaluationForm({ onResult }) {
       <AuError msg={error} />
 
       <div style={{ marginTop: 20 }}>
-        <button type="submit" className="au-btn au-btn--primary" disabled={submitting}>
+        <button type="submit" className="au-btn au-btn--primary" disabled={!canSubmit}>
           {submitting ? 'Evaluating…' : 'Evaluate'}
         </button>
       </div>
@@ -495,8 +579,6 @@ function EvaluationHistory({ refreshKey }) {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  if (loading) return <AuLoading />;
-
   return (
     <div className="au-table-card">
       <div className="au-card-header">
@@ -512,13 +594,12 @@ function EvaluationHistory({ refreshKey }) {
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
         fontSize: 11, color: '#6B7280', lineHeight: 1.5,
       }}>
-        Historical evaluations reflect the instrument record as it existed at the time of each
-        evaluation. They are not current determinations. This is a deterministic evaluation of
-        the human-verified FieldCore record — not a legal determination — and does not execute
-        any action.
+        Each row shows a past evaluation result. Results reflect the instrument as it existed
+        at that time and are not updated retroactively. They are records only — they do not
+        execute any action or constitute a legal determination.
       </div>
 
-      {!rows.length ? (
+      {loading ? <AuLoading /> : !rows.length ? (
         <AuEmpty text="No evaluations yet." />
       ) : (
         <table className="au-table au-table--no-hover">
@@ -589,9 +670,9 @@ export default function AuthorityEvaluate() {
     <div className="au-page">
       <div className="au-page-header">
         <div>
-          <div className="au-page-title">Authority Evaluator</div>
+          <div className="au-page-title">Evaluator</div>
           <div className="au-page-subtitle">
-            Determine if a delegate is authorized to perform an action under a verified instrument
+            Check whether a delegate may act under a verified instrument for a specific action
           </div>
         </div>
       </div>

@@ -10465,6 +10465,16 @@ tr:focus-within .inv-row-actions,
 .au-kpi-value { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
 .au-kpi-meta  { font-size: 12px; color: var(--steel); margin-top: 4px; }
 
+/* ── Section heading ─────────────────────────────────────── */
+.au-section-heading {
+  font-size: 11px; font-weight: 600; color: var(--steel);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 10px;
+}
+.au-section-title {
+  font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 12px;
+}
+
 /* ── Table ───────────────────────────────────────────────── */
 .au-table-card {
   background: #fff; border: 1px solid var(--lightgray); border-radius: var(--r-lg);
@@ -10615,6 +10625,9 @@ tr:focus-within .inv-row-actions,
 /* ── Error / info banners ────────────────────────────────── */
 .au-error { background: var(--red-lt); border: 1px solid #FFCDD2; border-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; color: var(--red); margin-bottom: 12px; }
 .au-info  { background: var(--blue-lt); border: 1px solid #BBDEFB; border-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; color: var(--blue); margin-bottom: 12px; }
+
+/* ── Disclaimer / legal note ─────────────────────────────── */
+.au-disclaimer { font-size: 11px; color: var(--steel); line-height: 1.6; margin-top: 16px; padding: 10px 14px; background: var(--offwhite); border-radius: var(--r-sm); }
 
 /* ── Inline loading ──────────────────────────────────────── */
 .au-loading { display: flex; align-items: center; justify-content: center; padding: 32px; color: var(--steel); font-size: 14px; }

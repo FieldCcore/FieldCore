@@ -702,7 +702,7 @@ function AppShell() {
             </button>
             <div className="tb-title-wrap">
               <div className="tb-title">{pageTitle}</div>
-              {user?.accountName && (
+              {user?.accountName && !isInstitution && (
                 <div className="tb-entity-label">{user.accountName}</div>
               )}
             </div>
