@@ -3062,6 +3062,89 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_ae_delegate_party
      ON authority_evaluations(account_id, delegate_party_id)
      WHERE delegate_party_id IS NOT NULL`,
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Stage 5: External Authority Evaluation API — API credentials + actor columns
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Additive migration. All existing authority_evaluations rows will get
+  // actor_type='user' via the DEFAULT (which we later drop). No FK is added
+  // from evaluation.requesting_user_id to users(id) — user rows may be deleted
+  // over time and evaluation rows must remain immutable for audit.
+
+  // API credentials table — stores HMAC verifiers ONLY, never raw secrets.
+  `CREATE TABLE IF NOT EXISTS authority_api_credentials (
+     id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     account_id             UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     public_id              TEXT NOT NULL,
+     secret_verifier        TEXT NOT NULL,
+     verifier_version       INTEGER NOT NULL DEFAULT 1,
+     algorithm              TEXT NOT NULL DEFAULT 'hmac-sha256',
+     label                  TEXT NOT NULL CHECK (char_length(label) <= 100),
+     status                 TEXT NOT NULL DEFAULT 'active'
+       CHECK (status IN ('active','revoked')),
+     scopes                 TEXT[] NOT NULL,
+     created_by_user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+     revoked_by_user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+     revoked_at             TIMESTAMPTZ,
+     revocation_reason      TEXT CHECK (revocation_reason IS NULL OR char_length(revocation_reason) <= 500),
+     last_used_at           TIMESTAMPTZ,
+     replaces_credential_id UUID REFERENCES authority_api_credentials(id) ON DELETE RESTRICT,
+     UNIQUE (account_id, id)
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_authority_api_credentials_public_id
+     ON authority_api_credentials(public_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_api_credentials_account
+     ON authority_api_credentials(account_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_authority_api_credentials_replaces
+     ON authority_api_credentials(replaces_credential_id)
+     WHERE replaces_credential_id IS NOT NULL`,
+
+  // Actor columns on authority_evaluations.
+  // requesting_user_id is a NEW column (no legacy value to relax).
+  `ALTER TABLE authority_evaluations
+     ADD COLUMN IF NOT EXISTS requesting_user_id UUID`,
+  `ALTER TABLE authority_evaluations
+     ADD COLUMN IF NOT EXISTS requesting_api_credential_id UUID
+       REFERENCES authority_api_credentials(id) ON DELETE RESTRICT`,
+  `ALTER TABLE authority_evaluations
+     ADD COLUMN IF NOT EXISTS actor_type TEXT NOT NULL DEFAULT 'user'
+       CHECK (actor_type IN ('user','api_credential'))`,
+
+  // CHECK constraint: exactly-one of (user_id, api_credential_id) is set,
+  // matching actor_type. Applied additively via a named constraint so we
+  // can look it up in tests / down-migrations.
+  // Existing rows (all pre-Stage-5) have actor_type='user' and
+  // requesting_user_id=NULL and requesting_api_credential_id=NULL — this
+  // does NOT satisfy the exactly-one rule. To keep the migration additive
+  // and non-destructive, the CHECK is enforced with a NOT VALID clause:
+  // new rows are validated, existing rows are grandfathered.
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conname = 'authority_evaluations_actor_exclusive'
+     ) THEN
+       ALTER TABLE authority_evaluations
+         ADD CONSTRAINT authority_evaluations_actor_exclusive
+         CHECK (
+           (actor_type = 'user'
+             AND requesting_api_credential_id IS NULL)
+           OR
+           (actor_type = 'api_credential'
+             AND requesting_api_credential_id IS NOT NULL
+             AND requesting_user_id IS NULL)
+         )
+         NOT VALID;
+     END IF;
+   END $$`,
+
+  `CREATE INDEX IF NOT EXISTS idx_ae_requesting_user
+     ON authority_evaluations(account_id, requesting_user_id)
+     WHERE requesting_user_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_ae_requesting_api_credential
+     ON authority_evaluations(account_id, requesting_api_credential_id)
+     WHERE requesting_api_credential_id IS NOT NULL`,
 ];
 
 async function runMigrations() {
