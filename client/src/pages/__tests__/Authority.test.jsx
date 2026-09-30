@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
@@ -244,9 +244,13 @@ describe('AuthorityWorkspace capability gating', () => {
 
     await waitFor(() => screen.getByText('Verify Instrument'));
 
-    // Simulate clicking Verify — window.confirm is not available in jsdom, mock it
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    screen.getByText('Verify Instrument').click();
+    // Click the DecisionBar button — this opens a ConfirmDialog (no window.confirm)
+    fireEvent.click(screen.getByText('Verify Instrument'));
+
+    // Two "Verify Instrument" elements now exist: the DecisionBar btn + the dialog confirm btn
+    await waitFor(() => expect(screen.getAllByText('Verify Instrument').length).toBeGreaterThan(1));
+    const verifyBtns = screen.getAllByText('Verify Instrument');
+    fireEvent.click(verifyBtns[verifyBtns.length - 1]);
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalled();
@@ -371,6 +375,8 @@ describe('AuthorityWorkspace — Add Participant gating (Issue A)', () => {
       documents: [], assignments: [], notes: [],
     }, []);
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Parties/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Parties/ }));
     await waitFor(() => { expect(screen.getByText('+ Add Participant')).toBeTruthy(); });
   });
 
@@ -405,6 +411,8 @@ describe('AuthorityWorkspace — Add Participant gating (Issue A)', () => {
       notes: [],
     }, ['AUTHORITY_INSTRUMENT_VERIFY']);
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Parties/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Parties/ }));
     await waitFor(() => { expect(screen.getByText('+ Add Participant')).toBeTruthy(); });
   });
 
@@ -421,8 +429,10 @@ describe('AuthorityWorkspace — Add Participant gating (Issue A)', () => {
     });
 
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Parties/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Parties/ }));
     await waitFor(() => screen.getByText('+ Add Participant'));
-    screen.getByText('+ Add Participant').click();
+    fireEvent.click(screen.getByText('+ Add Participant'));
 
     await waitFor(() => {
       const calls = api.get.mock.calls.filter(c => c[0].includes('/authority/parties'));
@@ -532,7 +542,9 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
-    await waitFor(() => { expect(screen.getByText(/AI Extraction/i)).toBeTruthy(); });
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
+    await waitFor(() => { expect(screen.getByText(/AI extraction/i)).toBeTruthy(); });
   });
 
   it('displays run status badge for completed run', async () => {
@@ -552,6 +564,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_FAILED] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText('timeout')).toBeTruthy(); });
   });
 
@@ -562,6 +576,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText(/Instrument Type/i)).toBeTruthy(); });
   });
 
@@ -576,6 +592,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED], candidates: [xssCand] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => {
       // Text should appear escaped, not as an actual script element
       expect(screen.queryByText('<script>alert(1)</script>')).toBeTruthy();
@@ -590,6 +608,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText('Accept')).toBeTruthy(); });
   });
 
@@ -600,6 +620,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED], candidates: [CANDIDATE_PENDING] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText('Reject')).toBeTruthy(); });
   });
 
@@ -620,6 +642,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_FAILED] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText('Retry')).toBeTruthy(); });
   });
 
@@ -640,6 +664,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED], candidates: [] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText(/No candidates were extracted/i)).toBeTruthy(); });
   });
 
@@ -650,6 +676,8 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [{ ...EXTRACTION_RUN_COMPLETED, status: 'pending', completed_at: null }], candidates: [] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
+    await waitFor(() => screen.getByRole('tab', { name: /Extraction/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Extraction/ }));
     await waitFor(() => { expect(screen.getByText(/Extraction in progress/i)).toBeTruthy(); });
   });
 

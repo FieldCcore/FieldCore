@@ -82,7 +82,8 @@ import AuthorityQueue    from './pages/AuthorityQueue';
 import AuthorityCases    from './pages/AuthorityCases';
 import AuthorityWorkspace from './pages/AuthorityWorkspace';
 import AuthorityParties  from './pages/AuthorityParties';
-import AuthorityEvaluate from './pages/AuthorityEvaluate';
+import AuthorityEvaluate     from './pages/AuthorityEvaluate';
+import AuthorityCredentials  from './pages/AuthorityCredentials';
 import EntitySwitcher  from './components/EntitySwitcher';
 import PlanGate         from './components/PlanGate';
 import NotificationBell from './components/NotificationBell';
@@ -349,10 +350,11 @@ function AppShell() {
   const { user, logout, accounts } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
-  const [callerOpen,  setCallerOpen]  = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [openMenu,    setOpenMenu]    = useState(null); // 'create' | null
-  const [dialerOpen,  setDialerOpen]  = useState(false);
+  const [callerOpen,       setCallerOpen]       = useState(false);
+  const [sidebarOpen,      setSidebarOpen]       = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed]  = useState(false);
+  const [openMenu,         setOpenMenu]          = useState(null); // 'create' | null
+  const [dialerOpen,       setDialerOpen]        = useState(false);
 
   const phoneRef       = useRef(null);
   const openCreateMenu = useCallback(() => setOpenMenu(m => m === 'create' ? null : 'create'), []);
@@ -505,20 +507,24 @@ function AppShell() {
     <NavLink
       to={to}
       end={end}
+      title={sidebarCollapsed ? label : undefined}
       className={({ isActive }) =>
         isActive || (to === '/clients' && isClientProfile) ? 'ni active' : 'ni'
       }
     >
-      <Icon />{label}
+      <Icon /><span className="ni-label">{label}</span>
       {badge && <span className="ni-badge">{badge}</span>}
     </NavLink>
   );
 
   return (
-    <div className="app" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div className={`app${sidebarCollapsed ? ' app--sb-collapsed' : ''}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
         <Link to="/dashboard" className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
+          <div className="sb-logo-compact">
+            <span className="sb-logo-compact-text">F<span>C</span></span>
+          </div>
         </Link>
 
         <EntitySwitcher />
@@ -574,11 +580,12 @@ function AppShell() {
                 {user?.account_type === 'institution' && user?.authority_enabled && (
                   <>
                     <div className="nav-section">Authority</div>
-                    {ni('/authority',          true,  IcoAuthority, 'Dashboard',  null)}
-                    {ni('/authority/queue',    false, IcoAuthority, 'Queue',      null)}
-                    {ni('/authority/cases',    false, IcoAuthority, 'Cases',      null)}
-                    {ni('/authority/parties',  false, IcoTeam,      'Parties',    null)}
-                    {ni('/authority/evaluate', false, IcoAuthority, 'Evaluate',   null)}
+                    {ni('/authority',               true,  IcoAuthority, 'Dashboard',   null)}
+                    {ni('/authority/queue',         false, IcoAuthority, 'Queue',       null)}
+                    {ni('/authority/cases',         false, IcoAuthority, 'Cases',       null)}
+                    {ni('/authority/parties',       false, IcoTeam,      'Parties',     null)}
+                    {ni('/authority/evaluate',      false, IcoAuthority, 'Evaluate',    null)}
+                    {ni('/authority/credentials',   false, IcoSettings,  'Credentials', null)}
                   </>
                 )}
 
@@ -611,6 +618,17 @@ function AppShell() {
             aria-label="Log out"
           ><IcoLogout /></button>
         </div>
+        <button
+          className="sb-collapse-btn"
+          onClick={() => setSidebarCollapsed(c => !c)}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {sidebarCollapsed
+              ? <polyline points="9 18 15 12 9 6"/>
+              : <polyline points="15 18 9 12 15 6"/>}
+          </svg>
+        </button>
       </aside>
 
       <div className="main">
@@ -676,7 +694,8 @@ function AppShell() {
             <Route path="/authority/cases"        element={<ProtectedRoute><AuthorityGate><AuthorityCases /></AuthorityGate></ProtectedRoute>}     />
             <Route path="/authority/cases/:caseId" element={<ProtectedRoute><AuthorityGate><AuthorityWorkspace /></AuthorityGate></ProtectedRoute>} />
             <Route path="/authority/parties"      element={<ProtectedRoute><AuthorityGate><AuthorityParties /></AuthorityGate></ProtectedRoute>}   />
-            <Route path="/authority/evaluate"    element={<ProtectedRoute><AuthorityGate><AuthorityEvaluate /></AuthorityGate></ProtectedRoute>}  />
+            <Route path="/authority/evaluate"     element={<ProtectedRoute><AuthorityGate><AuthorityEvaluate /></AuthorityGate></ProtectedRoute>}      />
+            <Route path="/authority/credentials" element={<ProtectedRoute><AuthorityGate><AuthorityCredentials /></AuthorityGate></ProtectedRoute>}  />
           </Routes>
         </div>
 
