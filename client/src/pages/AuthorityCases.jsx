@@ -120,7 +120,7 @@ export default function AuthorityCases() {
                     <td>{c.document_count ?? 0}</td>
                     <td>{c.instrument_count ?? 0}</td>
                     <td style={{ fontSize: 12, color: 'var(--steel)' }}>
-                      {c.assigned_to ? '✓' : '—'}
+                      {c.assigned_to ? (c.reviewer_name || '—') : 'Unassigned'}
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--steel)' }}>
                       {fmtDate(c.created_at)}

@@ -84,7 +84,7 @@ export default function Authority() {
                   <td>{c.document_count}</td>
                   <td>{c.instrument_count}</td>
                   <td style={{ fontSize: 12, color: 'var(--steel)' }}>
-                    {c.assigned_to ? 'Assigned' : '—'}
+                    {c.assigned_to ? (c.reviewer_name || '—') : 'Unassigned'}
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--steel)' }}>
                     {fmtDate(c.status_changed_at)}

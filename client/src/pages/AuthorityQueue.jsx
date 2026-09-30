@@ -35,7 +35,7 @@ export default function AuthorityQueue() {
 
   function renderAssignment(c) {
     if (!c.assigned_to) {
-      return <span style={{ color: 'var(--steel)', fontSize: 12 }}>—</span>;
+      return <span style={{ color: 'var(--steel)', fontSize: 12 }}>Unassigned</span>;
     }
     if (c.assigned_to === user?.id) {
       return <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>You</span>;

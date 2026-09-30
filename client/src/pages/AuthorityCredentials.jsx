@@ -285,25 +285,25 @@ export default function AuthorityCredentials() {
       const [capRes, listRes] = await Promise.all([
         api.get('/authority/capabilities'),
         api.get('/authority/credentials').catch(e => {
-          // 503 or 403 from AUTHORITY_ENABLED check — still show page state
-          if (e.status === 503 || e.status === 404) return null;
+          // 503 or 404 from AUTHORITY_ENABLED check — still show page state
+          if (e.response?.status === 503 || e.response?.status === 404) return null;
           throw e;
         }),
       ]);
 
-      const caps = capRes.capabilities || capRes || [];
+      const caps = capRes.data?.capabilities || [];
       const capSet = new Set(Array.isArray(caps) ? caps : []);
       setHasManage(capSet.has('AUTHORITY_API_CREDENTIAL_MANAGE'));
       setHasRead(capSet.has('AUTHORITY_API_CREDENTIAL_READ'));
       setHasEvaluate(capSet.has('AUTHORITY_EVALUATE'));
 
       if (listRes) {
-        setCredentials(listRes.credentials || []);
-        setValidScopes(listRes.valid_scopes || []);
-        setFlagEnabled(!!listRes.flag_enabled);
+        setCredentials(listRes.data?.credentials || []);
+        setValidScopes(listRes.data?.valid_scopes || []);
+        setFlagEnabled(!!listRes.data?.flag_enabled);
       }
     } catch (err) {
-      setError(err.message || 'Failed to load credentials.');
+      setError(err.response?.data?.error || err.message || 'Failed to load credentials.');
     } finally {
       setLoading(false);
     }
