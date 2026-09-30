@@ -2151,8 +2151,12 @@ async function listCases(accountId, { status, limit = 50, offset = 0 } = {}) {
 
   const { rows } = await pool.query(
     `SELECT ac.id, ac.status, ac.external_case_reference, ac.created_at, ac.updated_at,
-            COUNT(aci.instrument_id)::int AS instrument_count,
-            COUNT(CASE WHEN ad.status = 'active' THEN 1 END)::int AS document_count
+            COUNT(DISTINCT aci.instrument_id)::int AS instrument_count,
+            COUNT(CASE WHEN ad.status = 'active' THEN 1 END)::int AS document_count,
+            (SELECT ara.assigned_to
+             FROM authority_review_assignments ara
+             WHERE ara.account_id = ac.account_id AND ara.case_id = ac.id AND ara.status = 'active'
+             LIMIT 1) AS assigned_to
      FROM authority_cases ac
      LEFT JOIN authority_case_instruments aci
            ON aci.account_id = ac.account_id AND aci.case_id = ac.id

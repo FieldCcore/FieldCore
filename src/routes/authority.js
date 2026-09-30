@@ -120,10 +120,10 @@ router.patch('/parties/:partyId/status', async (req, res) => {
 router.get('/capabilities', async (req, res) => {
   try {
     const { rows } = await require('../db/pool').query(
-      `SELECT capability, granted_at
+      `SELECT capability, created_at
        FROM platform_user_capabilities
        WHERE user_id = $1 AND capability LIKE 'AUTHORITY_%'
-       ORDER BY granted_at ASC`,
+       ORDER BY created_at ASC`,
       [req.userId]
     );
     res.json({ capabilities: rows.map(r => r.capability) });

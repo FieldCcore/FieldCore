@@ -152,7 +152,7 @@ router.post('/login', async (req, res) => {
       return res.status(429).json({ error: `Account locked. Try again in ${bf.minutesLeft} minutes.` });
     }
     const { rows } = await pool.query(
-      `SELECT u.*, a.name AS account_name, a.plan, a.plan_status, a.onboarded
+      `SELECT u.*, a.name AS account_name, a.plan, a.plan_status, a.onboarded, a.account_type
        FROM users u
        JOIN accounts a ON a.id = u.account_id
        WHERE lower(u.email) = lower($1)
@@ -181,15 +181,17 @@ router.post('/login', async (req, res) => {
       token:        accessToken,  // kept as 'token' for backward compat
       refreshToken,
       user: {
-        id:          user.id,
-        name:        user.name,
-        email:       user.email,
-        role:        user.role,
-        accountId:   user.account_id,
-        accountName: user.account_name,
-        plan:        user.plan,
-        planStatus:  user.plan_status,
-        onboarded:   user.onboarded,
+        id:                user.id,
+        name:              user.name,
+        email:             user.email,
+        role:              user.role,
+        accountId:         user.account_id,
+        accountName:       user.account_name,
+        account_type:      user.account_type,
+        plan:              user.plan,
+        planStatus:        user.plan_status,
+        onboarded:         user.onboarded,
+        authority_enabled: process.env.AUTHORITY_ENABLED === 'true',
       },
     });
   } catch (err) {

@@ -12,7 +12,7 @@ vi.mock('../../api', () => ({
 }));
 
 import { useAuth } from '../../context/AuthContext';
-import { AuthorityGate } from '../../App';
+import { AuthorityGate, getNavSections } from '../../App';
 
 function renderGate(user) {
   useAuth.mockReturnValue({ user });
@@ -49,5 +49,67 @@ describe('Authority nav gating (AuthorityGate)', () => {
 
     expect(screen.getByText('Authority Unavailable')).toBeInTheDocument();
     expect(screen.queryByTestId('authority-content')).not.toBeInTheDocument();
+  });
+});
+
+// ── Nav section isolation (getNavSections pure-function tests) ────────────────
+// These tests verify the sidebar section visibility logic directly, without
+// rendering the full App, so they stay fast and dependency-free.
+
+describe('Sidebar nav section isolation', () => {
+
+  it('institution owner with authority_enabled=true — authority section visible', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.authority).toBe(true);
+  });
+
+  it('institution owner with authority_enabled=true — operations section hidden', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.operations).toBe(false);
+  });
+
+  it('institution owner with authority_enabled=true — finance section hidden', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.finance).toBe(false);
+  });
+
+  it('institution owner with authority_enabled=true — crm section hidden', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.crm).toBe(false);
+  });
+
+  it('institution owner with authority_enabled=true — team/fleet/entities admin links hidden', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.adminTeamFleet).toBe(false);
+  });
+
+  it('institution owner with authority_enabled=true — settings admin link visible', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.adminSettings).toBe(true);
+  });
+
+  it('field_service owner — operations visible, authority hidden', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.operations).toBe(true);
+    expect(s.authority).toBe(false);
+    expect(s.finance).toBe(true);
+    expect(s.crm).toBe(true);
+    expect(s.adminTeamFleet).toBe(true);
+  });
+
+  it('institution owner with authority_enabled=false — falls back to field_service nav', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: false });
+    expect(s.authority).toBe(false);
+    expect(s.operations).toBe(true);
+    expect(s.finance).toBe(true);
+  });
+
+  it('institution manager with authority_enabled=true — same isolation applies', () => {
+    const s = getNavSections({ role: 'manager', account_type: 'institution', authority_enabled: true });
+    expect(s.authority).toBe(true);
+    expect(s.operations).toBe(false);
+    expect(s.finance).toBe(false);
+    expect(s.crm).toBe(false);
+    expect(s.adminSettings).toBe(false);
   });
 });

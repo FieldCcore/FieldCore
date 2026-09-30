@@ -107,6 +107,26 @@ function TechRoute({ children }) {
   return children;
 }
 
+/**
+ * Pure helper: returns which sidebar section groups are visible for a given user.
+ * Exported for testing nav isolation logic without rendering the full App.
+ */
+export function getNavSections(user) {
+  const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
+  const role      = user?.role || 'tech';
+  const isOwner   = role === 'owner';
+  const isManager = role === 'manager';
+  const isStaff   = role === 'staff';
+  return {
+    operations:     !isInstitution,
+    finance:        !isInstitution && (isOwner || isManager || isStaff),
+    crm:            !isInstitution && (isOwner || isManager || isStaff),
+    authority:      isInstitution,
+    adminSettings:  isOwner,
+    adminTeamFleet: isOwner && !isInstitution,
+  };
+}
+
 export function AuthorityGate({ children }) {
   const { user } = useAuth();
   if (!user?.authority_enabled || user?.account_type !== 'institution') {
@@ -531,23 +551,28 @@ function AppShell() {
 
         <nav className="sb-nav">
           {(() => {
-            const role      = user?.role || 'tech';
-            const isOwner   = role === 'owner';
-            const isManager = role === 'manager';
-            const isStaff   = role === 'staff';
-            const isTech    = role === 'tech';
+            const role          = user?.role || 'tech';
+            const isOwner       = role === 'owner';
+            const isManager     = role === 'manager';
+            const isStaff       = role === 'staff';
+            const isTech        = role === 'tech';
+            const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
 
             return (
               <>
-                {/* Operations — all roles see Dashboard + Calendar; Dispatch hidden from tech/staff */}
-                <div className="nav-section">Operations</div>
-                {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
-                {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
-                {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
-                {(isOwner || isManager) && ni('/projects', false, IcoProjects, 'Projects', null)}
+                {/* Operations — hidden for institution accounts */}
+                {!isInstitution && (
+                  <>
+                    <div className="nav-section">Operations</div>
+                    {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
+                    {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
+                    {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
+                    {(isOwner || isManager) && ni('/projects', false, IcoProjects, 'Projects', null)}
+                  </>
+                )}
 
-                {/* Finance — owner + manager see all; staff sees invoices only */}
-                {(isOwner || isManager || isStaff) && (
+                {/* Finance — owner + manager see all; staff sees invoices only; hidden for institution */}
+                {!isInstitution && (isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">Finance</div>
                     {(isOwner || isManager) && ni('/revenue',   false, IcoRevenue,  'Revenue',   null)}
@@ -558,8 +583,8 @@ function AppShell() {
                   </>
                 )}
 
-                {/* CRM — owner + manager + staff see clients; phone hidden from staff */}
-                {(isOwner || isManager || isStaff) && (
+                {/* CRM — owner + manager + staff see clients; phone hidden from staff; hidden for institution */}
+                {!isInstitution && (isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">CRM</div>
                     {ni('/clients',        false, IcoClients, 'Clients',        null)}
@@ -577,7 +602,7 @@ function AppShell() {
                 )}
 
                 {/* Authority — institution accounts only, and only when feature flag is on */}
-                {user?.account_type === 'institution' && user?.authority_enabled && (
+                {isInstitution && (
                   <>
                     <div className="nav-section">Authority</div>
                     {ni('/authority',               true,  IcoAuthority, 'Dashboard',   null)}
@@ -589,13 +614,13 @@ function AppShell() {
                   </>
                 )}
 
-                {/* Admin — owner only */}
+                {/* Admin — owner only; institution sees Settings only */}
                 {isOwner && (
                   <>
                     <div className="nav-section">Admin</div>
-                    {ni('/team',     false, IcoTeam,     'Team',     null)}
-                    {ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
-                    {ni('/entities', false, IcoTeam,     'Entities', null)}
+                    {!isInstitution && ni('/team',     false, IcoTeam,     'Team',     null)}
+                    {!isInstitution && ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
+                    {!isInstitution && ni('/entities', false, IcoTeam,     'Entities', null)}
                     {ni('/account',  false, IcoSettings, 'Settings', null)}
                   </>
                 )}

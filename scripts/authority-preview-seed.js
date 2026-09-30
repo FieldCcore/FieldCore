@@ -66,8 +66,8 @@ async function run() {
 
   // ── 1. Create institution account ────────────────────────────────────────────
   const { rows: [acct] } = await pool.query(
-    `INSERT INTO accounts (name, plan, account_type)
-     VALUES ($1, 'institution', 'institution')
+    `INSERT INTO accounts (name, plan, account_type, onboarded)
+     VALUES ($1, 'institution', 'institution', true)
      RETURNING id`,
     [INST_NAME]
   );
@@ -93,10 +93,16 @@ async function run() {
   );
   console.log(`[authority-preview-seed] Reviewer user: ${reviewer.id}  (${REVIEWER_EMAIL})`);
 
-  // ── 4. Grant review capabilities to reviewer ─────────────────────────────────
+  // ── 4. Grant capabilities ─────────────────────────────────────────────────────
+  //       Owner gets full Authority access (all read + review + evaluate + credentials).
+  //       Reviewer gets the narrower review-only set (verify + reject).
+  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_INSTRUMENT_VERIFY');
+  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_INSTRUMENT_REJECT');
+  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_EVALUATE');
+  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_API_CREDENTIAL_READ');
   await authorityService.grantCapability(null, reviewer.id, 'AUTHORITY_INSTRUMENT_VERIFY');
   await authorityService.grantCapability(null, reviewer.id, 'AUTHORITY_INSTRUMENT_REJECT');
-  console.log('[authority-preview-seed] Capabilities granted to reviewer');
+  console.log('[authority-preview-seed] Capabilities granted to owner and reviewer');
 
   // ── 5. Create three synthetic parties ────────────────────────────────────────
   const principal = await authorityService.createParty(acct.id, owner.id, {
@@ -194,10 +200,12 @@ async function run() {
   console.log('[authority-preview-seed] Instrument → PENDING_REVIEW');
 
   // ── 13. Bypass document guard via direct SQL → PENDING_HUMAN_REVIEW ──────────
+  //        ⚠  DEVELOPMENT PREVIEW ONLY — never replicate this pattern in production.
   //        The AWAITING_DOCUMENTS → PENDING_EXTRACTION → EXTRACTION_COMPLETE →
   //        PENDING_HUMAN_REVIEW lifecycle requires a real uploaded document for
-  //        PENDING_EXTRACTION.  No R2 bucket is configured locally, so we advance
-  //        directly via SQL.  This respects the DB CHECK constraint on status.
+  //        PENDING_EXTRACTION (guarded by the service layer).  No R2 bucket is
+  //        configured locally, so we advance directly via SQL.  This respects the
+  //        DB CHECK constraint on status but bypasses the document-existence guard.
   await pool.query(
     `UPDATE authority_cases
      SET status = 'PENDING_HUMAN_REVIEW', status_changed_at = NOW(), updated_at = NOW()

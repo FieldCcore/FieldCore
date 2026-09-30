@@ -300,6 +300,44 @@ describe('AuthorityCases endpoint', () => {
   });
 });
 
+// ── Cases list: assigned_to display ──────────────────────────────────────────
+
+describe('AuthorityCases — assigned_to display', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+  });
+
+  it('shows checkmark when case has an active assignment (assigned_to truthy)', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'case-uuid-assign-1', status: 'HUMAN_REVIEW_IN_PROGRESS',
+        external_case_reference: 'TEST-ASS-001',
+        assigned_to: 'reviewer-uuid-001',
+        document_count: 0, instrument_count: 1,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+    });
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('✓')).toBeInTheDocument());
+  });
+
+  it('shows dash when case has no active assignment (assigned_to null)', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'case-uuid-noassign-1', status: 'PENDING_HUMAN_REVIEW',
+        external_case_reference: 'TEST-NOASS-001',
+        assigned_to: null,
+        document_count: 0, instrument_count: 1,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+    });
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('—')).toBeInTheDocument());
+  });
+});
+
 // ── Parties page: correct endpoint ───────────────────────────────────────────
 
 describe('AuthorityParties endpoint', () => {
