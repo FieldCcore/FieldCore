@@ -23,7 +23,7 @@ export default function Authority() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Authority Dashboard</div>
-          <div className="au-page-subtitle">FieldCore Authority — institution review portal</div>
+          <div className="au-page-subtitle">Institution authority operations</div>
         </div>
         <Link to="/authority/cases">
           <button className="au-btn au-btn--primary">+ New Case</button>

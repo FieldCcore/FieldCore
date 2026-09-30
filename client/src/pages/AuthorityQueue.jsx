@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 import { AuLoading, AuError, AuBadge, AuEmpty, fmtDate } from './AuthorityShared';
 
 export default function AuthorityQueue() {
@@ -9,6 +10,7 @@ export default function AuthorityQueue() {
   const [error,    setError]    = useState('');
   const [claiming, setClaiming] = useState(null);
   const nav = useNavigate();
+  const { user } = useAuth();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -29,6 +31,51 @@ export default function AuthorityQueue() {
       setError(e.response?.data?.error || 'Failed to claim case.');
       setClaiming(null);
     }
+  }
+
+  function renderAssignment(c) {
+    if (!c.assigned_to) {
+      return <span style={{ color: 'var(--steel)', fontSize: 12 }}>—</span>;
+    }
+    if (c.assigned_to === user?.id) {
+      return <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>You</span>;
+    }
+    return (
+      <span style={{ fontSize: 12, color: 'var(--slate)' }}>
+        {c.reviewer_name || 'Reviewer'}
+      </span>
+    );
+  }
+
+  function renderAction(c) {
+    if (c.assigned_to === user?.id) {
+      return (
+        <button
+          className="au-btn au-btn--outline"
+          style={{ padding: '5px 12px', fontSize: 12 }}
+          onClick={() => nav(`/authority/cases/${c.id}`)}
+          data-testid={`continue-btn-${c.id}`}
+        >
+          Continue
+        </button>
+      );
+    }
+    if (c.assigned_to) {
+      return (
+        <span style={{ fontSize: 12, color: 'var(--steel)' }}>Assigned</span>
+      );
+    }
+    return (
+      <button
+        className="au-btn au-btn--primary"
+        style={{ padding: '5px 12px', fontSize: 12 }}
+        disabled={claiming === c.id}
+        onClick={() => handleClaim(c.id)}
+        data-testid={`claim-btn-${c.id}`}
+      >
+        {claiming === c.id ? 'Claiming…' : 'Claim'}
+      </button>
+    );
   }
 
   return (
@@ -69,21 +116,12 @@ export default function AuthorityQueue() {
                     <td><AuBadge status={c.status} /></td>
                     <td>{c.document_count}</td>
                     <td>{c.instrument_count}</td>
-                    <td style={{ fontSize: 12, color: 'var(--steel)' }}>
-                      {c.assigned_to ? '✓ Assigned' : '—'}
-                    </td>
+                    <td>{renderAssignment(c)}</td>
                     <td style={{ fontSize: 12, color: 'var(--steel)' }}>
                       {fmtDate(c.status_changed_at)}
                     </td>
                     <td onClick={e => e.stopPropagation()}>
-                      <button
-                        className="au-btn au-btn--primary"
-                        style={{ padding: '5px 12px', fontSize: 12 }}
-                        disabled={claiming === c.id}
-                        onClick={() => handleClaim(c.id)}
-                      >
-                        {claiming === c.id ? 'Claiming…' : 'Claim'}
-                      </button>
+                      {renderAction(c)}
                     </td>
                   </tr>
                 ))}

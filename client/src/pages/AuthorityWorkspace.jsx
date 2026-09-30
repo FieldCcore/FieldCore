@@ -29,6 +29,15 @@ const CASE_STAGES = [
   'COMPLETED',
 ];
 
+// Never surface raw SQL or internal stack traces to users.
+function safeApiError(e, fallback) {
+  const msg = e?.response?.data?.error || '';
+  if (/column|does not exist|syntax error|relation|pg\s*error|ERROR:/i.test(msg)) {
+    return fallback;
+  }
+  return msg || fallback;
+}
+
 const TABS = [
   { id: 'overview',    label: 'Overview' },
   { id: 'parties',     label: 'Parties' },
@@ -1116,7 +1125,7 @@ export default function AuthorityWorkspace() {
       setRuns(runsRes.data || []);
       setCandidates(candsRes.data || []);
       setError('');
-    }).catch(e => setError(e.response?.data?.error || 'Failed to load workspace.'));
+    }).catch(e => setError(safeApiError(e, 'Unable to load this case. Please refresh to try again.')));
   }, [caseId]);
 
   useEffect(() => {
@@ -1166,6 +1175,13 @@ export default function AuthorityWorkspace() {
     return (
       <div className="fc-workspace" style={{ padding: 24 }}>
         <AuError msg={error || 'Workspace not available.'} />
+        <button
+          className="au-btn au-btn--outline"
+          style={{ marginTop: 12 }}
+          onClick={() => { setError(''); setLoading(true); load().finally(() => setLoading(false)); }}
+        >
+          Retry
+        </button>
       </div>
     );
   }

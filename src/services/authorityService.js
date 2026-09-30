@@ -1579,7 +1579,8 @@ async function getReviewQueue(accountId, userId) {
        COALESCE(doc_counts.cnt, 0)  AS document_count,
        COALESCE(instr_counts.cnt, 0) AS instrument_count,
        ra.assigned_to,
-       ra.claimed_at
+       ra.claimed_at,
+       u.name AS reviewer_name
      FROM authority_cases ac
      LEFT JOIN (
        SELECT case_id, account_id, COUNT(*) AS cnt
@@ -1599,6 +1600,7 @@ async function getReviewQueue(accountId, userId) {
        ORDER BY claimed_at ASC
        LIMIT 1
      ) ra ON true
+     LEFT JOIN users u ON u.id = ra.assigned_to
      WHERE ac.account_id = $1
        AND ac.status IN ('PENDING_HUMAN_REVIEW', 'HUMAN_REVIEW_IN_PROGRESS')
      ORDER BY ac.status_changed_at ASC`,
@@ -2156,7 +2158,12 @@ async function listCases(accountId, { status, limit = 50, offset = 0 } = {}) {
             (SELECT ara.assigned_to
              FROM authority_review_assignments ara
              WHERE ara.account_id = ac.account_id AND ara.case_id = ac.id AND ara.status = 'active'
-             LIMIT 1) AS assigned_to
+             LIMIT 1) AS assigned_to,
+            (SELECT u.name
+             FROM authority_review_assignments ara
+             JOIN users u ON u.id = ara.assigned_to
+             WHERE ara.account_id = ac.account_id AND ara.case_id = ac.id AND ara.status = 'active'
+             LIMIT 1) AS reviewer_name
      FROM authority_cases ac
      LEFT JOIN authority_case_instruments aci
            ON aci.account_id = ac.account_id AND aci.case_id = ac.id

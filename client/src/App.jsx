@@ -118,12 +118,16 @@ export function getNavSections(user) {
   const isManager = role === 'manager';
   const isStaff   = role === 'staff';
   return {
-    operations:     !isInstitution,
-    finance:        !isInstitution && (isOwner || isManager || isStaff),
-    crm:            !isInstitution && (isOwner || isManager || isStaff),
-    authority:      isInstitution,
-    adminSettings:  isOwner,
-    adminTeamFleet: isOwner && !isInstitution,
+    operations:        !isInstitution,
+    finance:           !isInstitution && (isOwner || isManager || isStaff),
+    crm:               !isInstitution && (isOwner || isManager || isStaff),
+    authority:         isInstitution,
+    adminSettings:     isOwner,
+    adminTeamFleet:    isOwner && !isInstitution,
+    entitySwitcher:    !isInstitution,
+    institutionCtx:    isInstitution,
+    headerPhone:       !isInstitution,
+    headerCreateMenu:  !isInstitution && (isOwner || isManager),
   };
 }
 
@@ -141,11 +145,12 @@ export function AuthorityGate({ children }) {
 }
 
 const PAGE_TITLES = {
-  '/authority':           'Authority',
-  '/authority/queue':     'Review Queue',
-  '/authority/cases':     'Cases',
-  '/authority/parties':   'Parties',
-  '/authority/evaluate':  'Evaluate',
+  '/authority':               'Dashboard',
+  '/authority/queue':         'Review Queue',
+  '/authority/cases':         'Cases',
+  '/authority/parties':       'Parties',
+  '/authority/evaluate':      'Evaluate',
+  '/authority/credentials':   'API Access',
   '/dashboard':          'Dashboard',
   '/dispatch':           'Dispatch',
   '/jobs':               'Calendar',
@@ -370,6 +375,7 @@ function AppShell() {
   const { user, logout, accounts } = useAuth();
   const nav = useNavigate();
   const isPublicBook = pathname.startsWith('/book/');
+  const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
   const [callerOpen,       setCallerOpen]       = useState(false);
   const [sidebarOpen,      setSidebarOpen]       = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed]  = useState(false);
@@ -414,10 +420,10 @@ function AppShell() {
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
-  // Auto-show CallerID on live inbound calls
+  // Auto-show CallerID on live inbound calls — not applicable for institution accounts
   const lastCallIdRef = React.useRef(null);
   useEffect(() => {
-    if (!user) return;
+    if (!user || isInstitution) return;
     let cancelled = false;
     async function pollInbound() {
       try {
@@ -430,7 +436,7 @@ function AppShell() {
     }
     const iv = setInterval(pollInbound, 5000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [user]);
+  }, [user, isInstitution]);
 
   // Track accountId changes — a key change here remounts all routes including Dispatch
   const prevAccountId = useRef(user?.accountId);
@@ -540,39 +546,66 @@ function AppShell() {
   return (
     <div className={`app${sidebarCollapsed ? ' app--sb-collapsed' : ''}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
-        <Link to="/dashboard" className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
+        <Link to={isInstitution ? '/authority' : '/dashboard'} className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>
           <div className="sb-logo-compact">
             <span className="sb-logo-compact-text">F<span>C</span></span>
           </div>
         </Link>
 
-        <EntitySwitcher />
+        {isInstitution ? (
+          <div className="entity-panel" data-testid="institution-context">
+            <div className="entity-section-label">Institution</div>
+            <div style={{ padding: '6px 12px 10px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.4 }}>
+              {user?.accountName || 'Institution Account'}
+            </div>
+          </div>
+        ) : (
+          <EntitySwitcher />
+        )}
 
         <nav className="sb-nav">
           {(() => {
-            const role          = user?.role || 'tech';
-            const isOwner       = role === 'owner';
-            const isManager     = role === 'manager';
-            const isStaff       = role === 'staff';
-            const isTech        = role === 'tech';
-            const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
+            const role      = user?.role || 'tech';
+            const isOwner   = role === 'owner';
+            const isManager = role === 'manager';
+            const isStaff   = role === 'staff';
+            const isTech    = role === 'tech';
+
+            if (isInstitution) {
+              return (
+                <>
+                  {/* Institution — Authority-only navigation */}
+                  {ni('/authority',             true,  IcoAuthority, 'Dashboard',  null)}
+                  <div className="nav-section">WORK</div>
+                  {ni('/authority/queue',       false, IcoAuthority, 'Queue',      null)}
+                  {ni('/authority/cases',       false, IcoAuthority, 'Cases',      null)}
+                  {ni('/authority/parties',     false, IcoTeam,      'Parties',    null)}
+                  <div className="nav-section">DECISIONS</div>
+                  {ni('/authority/evaluate',    false, IcoAuthority, 'Evaluate',   null)}
+                  <div className="nav-section">INTEGRATIONS</div>
+                  {ni('/authority/credentials', false, IcoSettings,  'API Access', null)}
+                  {isOwner && (
+                    <>
+                      <div className="nav-section">ACCOUNT</div>
+                      {ni('/account', false, IcoSettings, 'Settings', null)}
+                    </>
+                  )}
+                </>
+              );
+            }
 
             return (
               <>
-                {/* Operations — hidden for institution accounts */}
-                {!isInstitution && (
-                  <>
-                    <div className="nav-section">Operations</div>
-                    {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
-                    {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
-                    {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
-                    {(isOwner || isManager) && ni('/projects', false, IcoProjects, 'Projects', null)}
-                  </>
-                )}
+                {/* Operations — all roles see Dashboard + Calendar; Dispatch hidden from tech/staff */}
+                <div className="nav-section">Operations</div>
+                {ni('/dashboard', true,  IcoDash,     'Dashboard', null)}
+                {ni('/jobs?view=month', false, IcoCalendar, 'Calendar',  null)}
+                {(isOwner || isManager) && ni('/dispatch', false, IcoDispatch, 'Dispatch', null)}
+                {(isOwner || isManager) && ni('/projects', false, IcoProjects, 'Projects', null)}
 
-                {/* Finance — owner + manager see all; staff sees invoices only; hidden for institution */}
-                {!isInstitution && (isOwner || isManager || isStaff) && (
+                {/* Finance — owner + manager see all; staff sees invoices only */}
+                {(isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">Finance</div>
                     {(isOwner || isManager) && ni('/revenue',   false, IcoRevenue,  'Revenue',   null)}
@@ -583,8 +616,8 @@ function AppShell() {
                   </>
                 )}
 
-                {/* CRM — owner + manager + staff see clients; phone hidden from staff; hidden for institution */}
-                {!isInstitution && (isOwner || isManager || isStaff) && (
+                {/* CRM — owner + manager + staff see clients; phone hidden from staff */}
+                {(isOwner || isManager || isStaff) && (
                   <>
                     <div className="nav-section">CRM</div>
                     {ni('/clients',        false, IcoClients, 'Clients',        null)}
@@ -601,26 +634,13 @@ function AppShell() {
                   </>
                 )}
 
-                {/* Authority — institution accounts only, and only when feature flag is on */}
-                {isInstitution && (
-                  <>
-                    <div className="nav-section">Authority</div>
-                    {ni('/authority',               true,  IcoAuthority, 'Dashboard',   null)}
-                    {ni('/authority/queue',         false, IcoAuthority, 'Queue',       null)}
-                    {ni('/authority/cases',         false, IcoAuthority, 'Cases',       null)}
-                    {ni('/authority/parties',       false, IcoTeam,      'Parties',     null)}
-                    {ni('/authority/evaluate',      false, IcoAuthority, 'Evaluate',    null)}
-                    {ni('/authority/credentials',   false, IcoSettings,  'Credentials', null)}
-                  </>
-                )}
-
-                {/* Admin — owner only; institution sees Settings only */}
+                {/* Admin — owner only */}
                 {isOwner && (
                   <>
                     <div className="nav-section">Admin</div>
-                    {!isInstitution && ni('/team',     false, IcoTeam,     'Team',     null)}
-                    {!isInstitution && ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
-                    {!isInstitution && ni('/entities', false, IcoTeam,     'Entities', null)}
+                    {ni('/team',     false, IcoTeam,     'Team',     null)}
+                    {ni('/fleet',    false, IcoDispatch, 'Fleet',    null)}
+                    {ni('/entities', false, IcoTeam,     'Entities', null)}
                     {ni('/account',  false, IcoSettings, 'Settings', null)}
                   </>
                 )}
@@ -670,16 +690,19 @@ function AppShell() {
             </div>
           </div>
           <div className="tb-right">
-            <GlobalSearch />
-            <NotificationBell />
-            <HdrBtn
-              ref={phoneRef}
-              icon={Phone}
-              label="Make a call"
-              onClick={openDialer}
-              variant="neutral"
-            />
-            {(user?.role === 'owner' || user?.role === 'manager') && (
+            {!isInstitution && <GlobalSearch />}
+            {!isInstitution && <NotificationBell />}
+            {!isInstitution && (
+              <HdrBtn
+                ref={phoneRef}
+                icon={Phone}
+                label="Make a call"
+                onClick={openDialer}
+                variant="neutral"
+                data-testid="phone-btn"
+              />
+            )}
+            {!isInstitution && (user?.role === 'owner' || user?.role === 'manager') && (
               <CreateMenu
                 open={openMenu === 'create'}
                 onOpen={openCreateMenu}
@@ -724,28 +747,30 @@ function AppShell() {
           </Routes>
         </div>
 
-        <nav className="mobile-bottom-nav">
-          <NavLink to="/dashboard" end className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
-            <IcoDash /><span>Home</span>
-          </NavLink>
-          <NavLink to="/dispatch" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
-            <IcoDispatch /><span>Dispatch</span>
-          </NavLink>
-          <NavLink to="/jobs?view=month" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
-            <IcoCalendar /><span>Calendar</span>
-          </NavLink>
-          <NavLink to="/clients" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
-            <IcoClients /><span>Clients</span>
-          </NavLink>
-          <button className="mbn-item" onClick={() => setSidebarOpen(o => !o)}>
-            <IcoSettings /><span>More</span>
-          </button>
-        </nav>
+        {!isInstitution && (
+          <nav className="mobile-bottom-nav">
+            <NavLink to="/dashboard" end className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+              <IcoDash /><span>Home</span>
+            </NavLink>
+            <NavLink to="/dispatch" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+              <IcoDispatch /><span>Dispatch</span>
+            </NavLink>
+            <NavLink to="/jobs?view=month" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+              <IcoCalendar /><span>Calendar</span>
+            </NavLink>
+            <NavLink to="/clients" className={({isActive}) => 'mbn-item' + (isActive ? ' active' : '')}>
+              <IcoClients /><span>Clients</span>
+            </NavLink>
+            <button className="mbn-item" onClick={() => setSidebarOpen(o => !o)}>
+              <IcoSettings /><span>More</span>
+            </button>
+          </nav>
+        )}
       </div>
 
       {sidebarOpen && <div className="sb-overlay" onClick={() => setSidebarOpen(false)} />}
-      {callerOpen && <CallerID onClose={() => setCallerOpen(false)} />}
-      {dialerOpen && <MakeACallDialer onClose={closeDialer} />}
+      {!isInstitution && callerOpen && <CallerID onClose={() => setCallerOpen(false)} />}
+      {!isInstitution && dialerOpen && <MakeACallDialer onClose={closeDialer} />}
     </div>
   );
 }

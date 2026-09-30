@@ -96,10 +96,19 @@ async function run() {
   // ── 4. Grant capabilities ─────────────────────────────────────────────────────
   //       Owner gets full Authority access (all read + review + evaluate + credentials).
   //       Reviewer gets the narrower review-only set (verify + reject).
-  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_INSTRUMENT_VERIFY');
-  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_INSTRUMENT_REJECT');
-  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_EVALUATE');
-  await authorityService.grantCapability(null, owner.id,    'AUTHORITY_API_CREDENTIAL_READ');
+  //       Owner: broad preview set — all inspectable features.
+  //       Reviewer: narrower review-only set.
+  const ownerCaps = [
+    'AUTHORITY_INSTRUMENT_VERIFY',
+    'AUTHORITY_INSTRUMENT_REJECT',
+    'AUTHORITY_EVALUATE',
+    'AUTHORITY_API_CREDENTIAL_READ',
+    'AUTHORITY_API_CREDENTIAL_MANAGE',
+    'AUTHORITY_EXTRACTION_MANAGE',
+  ];
+  for (const cap of ownerCaps) {
+    await authorityService.grantCapability(null, owner.id, cap);
+  }
   await authorityService.grantCapability(null, reviewer.id, 'AUTHORITY_INSTRUMENT_VERIFY');
   await authorityService.grantCapability(null, reviewer.id, 'AUTHORITY_INSTRUMENT_REJECT');
   console.log('[authority-preview-seed] Capabilities granted to owner and reviewer');
