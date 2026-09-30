@@ -59,6 +59,8 @@ const agreementsRouter         = require('./routes/agreements');
 const servicesRouter           = require('./routes/services');
 const uploadsRouter            = require('./routes/uploads');
 const authorityRouter          = require('./routes/authority');
+const authorityExternalRouter  = require('./routes/authorityExternal');
+const authorityCredentialsRouter = require('./routes/authorityCredentials');
 
 function buildAllowedOrigins() {
   const origins = [];
@@ -165,6 +167,12 @@ app.use(cors({
 // Webhook routes must come before JSON body parser — they need raw body for signature verification
 app.use('/api/webhooks', webhooksRouter);
 
+// Stage 5 external Authority API — mounted BEFORE the global JSON body parser
+// so the router can enforce its own strict 100kb limit. The router applies
+// pre-auth rate limiting, correlation IDs, its own JSON parser, and machine
+// credential authentication.
+app.use('/api/v1/authority', authorityExternalRouter);
+
 // Request size limit — prevent oversized payload attacks
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -241,6 +249,7 @@ app.use('/api/services',                       generalLimiter, servicesRouter);
 // The previously public /uploads static route has been removed — all file access requires auth.
 app.use('/api/uploads',                        generalLimiter, uploadsRouter);
 // FieldCore Authority — internal/unstable; gated by AUTHORITY_ENABLED + requireAuth in the router
+app.use('/api/authority/credentials',          generalLimiter, authorityCredentialsRouter);
 app.use('/api/authority',                      generalLimiter, authorityRouter);
 
 app.get('/health', async (req, res) => {
