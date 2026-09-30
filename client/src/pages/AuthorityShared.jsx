@@ -18,9 +18,23 @@ export function AuEmpty({ text = 'Nothing here yet.' }) {
   );
 }
 
-export function AuError({ msg }) {
+export function AuError({ msg, onRetry }) {
   if (!msg) return null;
-  return <div className="au-error">{msg}</div>;
+  return (
+    <div className="au-error" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span>{msg}</span>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="au-btn au-btn--ghost"
+          style={{ fontSize: 12, padding: '2px 8px', flexShrink: 0 }}
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function AuInfo({ children }) {

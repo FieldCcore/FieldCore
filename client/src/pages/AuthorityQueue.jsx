@@ -88,9 +88,9 @@ export default function AuthorityQueue() {
         <button className="au-btn au-btn--outline" onClick={load}>Refresh</button>
       </div>
 
-      <AuError msg={error} />
-
-      {loading ? <AuLoading /> : (
+      {loading ? <AuLoading /> : error ? (
+        <AuError msg={error} onRetry={load} />
+      ) : (
         <div className="au-table-card">
           {!queue.length ? (
             <AuEmpty text="No cases in the review queue." />

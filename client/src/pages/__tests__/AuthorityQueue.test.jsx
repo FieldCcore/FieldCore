@@ -164,3 +164,42 @@ describe('AuthorityQueue — assignment identity and claim gating (Problem 2)', 
     expect(document.querySelectorAll('[data-testid^="claim-btn-"]').length).toBe(0);
   });
 });
+
+// ── Concern 1: 4-state model — loading/empty/error/data are mutually exclusive ─
+
+describe('AuthorityQueue — Concern 1: 4-state model', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUser();
+  });
+
+  it('loading state only — empty state is absent while loading', async () => {
+    // Promise that never resolves, keeping the component in loading state
+    api.get.mockReturnValue(new Promise(() => {}));
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    expect(screen.getByText('Loading…')).toBeTruthy();
+    expect(screen.queryByText('No cases in the review queue.')).toBeNull();
+  });
+
+  it('empty state only — loading is absent after successful empty response', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('No cases in the review queue.')).toBeTruthy());
+    expect(screen.queryByText('Loading…')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('error replaces empty — error and empty state never appear together', async () => {
+    api.get.mockRejectedValue({ response: { data: { error: 'Failed to load queue.' } } });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Failed to load queue.')).toBeTruthy());
+    expect(screen.queryByText('No cases in the review queue.')).toBeNull();
+  });
+
+  it('error state renders a Retry button', async () => {
+    api.get.mockRejectedValue({ response: { data: { error: 'Network error' } } });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Network error')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeTruthy();
+  });
+});

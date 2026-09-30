@@ -167,10 +167,11 @@ function InstrumentPicker({ value, onChange }) {
 
   if (instruments.length === 0) {
     return (
-      <div style={{ padding: '10px 12px', background: '#FEF3C7', border: '1px solid #FDE68A',
-        borderRadius: 6, fontSize: 13, color: '#92400E' }}>
-        No verified instruments found. An instrument must be reviewed and verified before it can
-        be used for evaluations.
+      <div data-testid="no-eligible-instruments-state"
+        style={{ padding: '10px 12px', background: '#FEF3C7', border: '1px solid #FDE68A',
+          borderRadius: 6, fontSize: 13, color: '#92400E' }}>
+        No verified Authority Instruments are available for evaluation. Instruments become
+        available after a reviewer verifies them.
       </div>
     );
   }
@@ -191,12 +192,8 @@ function InstrumentPicker({ value, onChange }) {
 }
 
 // ── Participant selector (scoped to loaded instrument detail) ─────────────────
-
-const PRINCIPAL_ROLES = new Set(['principal']);
-const DELEGATE_ROLES  = new Set([
-  'agent', 'co_agent', 'successor_agent', 'guardian',
-  'trustee', 'co_trustee', 'authorized_representative',
-]);
+// Uses is_valid_principal / is_valid_delegate from the backend's canonical
+// VALID_PARTICIPANT_ROLES classification — not a hand-written frontend role list.
 
 function ParticipantSelect({ participants, filterFn, value, onChange, placeholder }) {
   const filtered = (participants || []).filter(filterFn);
@@ -213,24 +210,102 @@ function ParticipantSelect({ participants, filterFn, value, onChange, placeholde
 }
 
 // ── Action key selector (from instrument permissions) ────────────────────────
+// Concern 10: humanized labels with exact key as secondary text, plus
+// "Other action" fallback with DOMAIN.ACTION validation.
+
+const ACTION_KEY_RE = /^[A-Z][A-Z0-9_]{0,29}\.[A-Z][A-Z0-9_]{0,29}$/;
+const CUSTOM_ACTION_SENTINEL = '__CUSTOM__';
+
+function humanizeActionKey(key) {
+  if (!key) return '';
+  const dot = key.indexOf('.');
+  if (dot === -1) return key;
+  const toWords = s => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
+  return `${toWords(key.slice(0, dot))} · ${toWords(key.slice(dot + 1))}`;
+}
 
 function ActionKeySelect({ permissions, value, onChange }) {
   const grantedPermissions = (permissions || []).filter(p => p.grant_type === 'granted');
-  if (grantedPermissions.length === 0) {
-    return (
-      <div style={{ padding: '10px 12px', background: '#F3F4F6', borderRadius: 6,
-        fontSize: 13, color: '#6B7280' }}>
-        No granted permissions on this instrument.
-      </div>
-    );
+  const knownKeys = new Set(grantedPermissions.map(p => p.action_key));
+
+  // customMode tracks whether the user is in "Other action" entry mode.
+  // It's internal state so that selecting the sentinel doesn't hide the input
+  // when the parent resets value to '' (the sentinel itself is never a valid action key).
+  const isCustomValue = Boolean(value) && !knownKeys.has(value);
+  const [customMode, setCustomMode] = React.useState(isCustomValue);
+  const [customKey, setCustomKey] = React.useState(isCustomValue ? value : '');
+  const [customError, setCustomError] = React.useState('');
+
+  const selectValue = customMode ? CUSTOM_ACTION_SENTINEL : value;
+
+  function handleSelectChange(e) {
+    const sel = e.target.value;
+    if (sel === CUSTOM_ACTION_SENTINEL) {
+      setCustomMode(true);
+      onChange('');
+    } else {
+      setCustomMode(false);
+      setCustomKey('');
+      setCustomError('');
+      onChange(sel);
+    }
   }
+
+  function handleCustomKeyChange(e) {
+    const raw = e.target.value.toUpperCase();
+    setCustomKey(raw);
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      setCustomError('');
+      onChange('');
+    } else if (ACTION_KEY_RE.test(trimmed)) {
+      setCustomError('');
+      onChange(trimmed);
+    } else {
+      setCustomError('Use format DOMAIN.ACTION (e.g. BANKING.WIRE_TRANSFER)');
+      onChange('');
+    }
+  }
+
   return (
-    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
-      <option value="">— Select an action —</option>
-      {grantedPermissions.map(p => (
-        <option key={p.id} value={p.action_key}>{p.action_key}</option>
-      ))}
-    </select>
+    <div>
+      <select className="au-input" value={selectValue} onChange={handleSelectChange}
+        data-testid="action-key-select">
+        <option value="">— Select an action —</option>
+        {grantedPermissions.map(p => (
+          <option key={p.id} value={p.action_key}>
+            {humanizeActionKey(p.action_key)}
+          </option>
+        ))}
+        <option value={CUSTOM_ACTION_SENTINEL}>Other action (enter key)…</option>
+      </select>
+
+      {value && !customMode && (
+        <div style={{ marginTop: 4, fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--steel)' }}
+          data-testid="action-key-exact">
+          {value}
+        </div>
+      )}
+
+      {customMode && (
+        <div style={{ marginTop: 6 }}>
+          <input
+            className="au-input"
+            value={customKey}
+            onChange={handleCustomKeyChange}
+            placeholder="DOMAIN.ACTION"
+            style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}
+            data-testid="action-key-custom-input"
+          />
+          {customError && (
+            <div style={{ fontSize: 11, color: '#991B1B', marginTop: 3 }}
+              data-testid="action-key-custom-error">
+              {customError}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -252,9 +327,11 @@ function EvaluationForm({ onResult }) {
   const [error,      setError]      = useState('');
   const [fieldError, setFieldError] = useState('');
 
-  // Idempotency key held in a ref — not in form state, not persisted to storage.
-  // Generated once per logical submission; cleared on settle or decision-driving input change.
-  const idempKeyRef = useRef(null);
+  // Idempotency key and requestedAt held in refs — not in form state, not persisted to storage.
+  // Both generated once per logical submission; cleared together on settle or decision-driving
+  // input change. Retrying the same logical submission reuses both values unchanged.
+  const idempKeyRef    = useRef(null);
+  const requestedAtRef = useRef(null);
 
   function generateIdempKey() {
     const array = new Uint8Array(16);
@@ -262,13 +339,14 @@ function EvaluationForm({ onResult }) {
     return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // Reset dependent fields and idempotency key when instrument changes
+  // Reset dependent fields and idempotency state when instrument changes
   function handleInstrumentChange(id) {
     setInstrumentId(id);
     setPrincipalPartyId('');
     setDelegatePartyId('');
     setActionKey('');
-    idempKeyRef.current = null;
+    idempKeyRef.current    = null;
+    requestedAtRef.current = null;
     setError('');
     setFieldError('');
     if (!id) { setInstrDetail(null); return; }
@@ -279,11 +357,12 @@ function EvaluationForm({ onResult }) {
       .finally(() => setInstrLoading(false));
   }
 
-  // Reset idempotency key whenever any decision-driving field changes
+  // Clear idempotency state whenever any decision-driving field changes
   function handleFieldChange(setter) {
     return (val) => {
       setter(val);
-      idempKeyRef.current = null;
+      idempKeyRef.current    = null;
+      requestedAtRef.current = null;
     };
   }
 
@@ -295,9 +374,11 @@ function EvaluationForm({ onResult }) {
     setError('');
     setFieldError('');
 
-    // Generate idempotency key for this logical submission if not already set
+    // Freeze idempotency key and requestedAt for this logical submission.
+    // Both are generated once and reused across automatic transport retries.
     if (!idempKeyRef.current) {
-      idempKeyRef.current = generateIdempKey();
+      idempKeyRef.current    = generateIdempKey();
+      requestedAtRef.current = new Date().toISOString();
     }
 
     setSubmitting(true);
@@ -308,7 +389,7 @@ function EvaluationForm({ onResult }) {
         delegatePartyId,
         actionKey,
         idempotencyKey: idempKeyRef.current,
-        requestedAt:    new Date().toISOString(),
+        requestedAt:    requestedAtRef.current,
       };
 
       if (amount !== '') {
@@ -328,19 +409,22 @@ function EvaluationForm({ onResult }) {
       }
 
       const res = await api.post('/authority/evaluate', payload);
-      idempKeyRef.current = null;
+      idempKeyRef.current    = null;
+      requestedAtRef.current = null;
       onResult({ ...res.data, _stale: false });
     } catch (err) {
       if (err.response?.status === 409) {
         const code = err.response?.data?.code || err.response?.data?.error || '';
         if (code === 'IDEMPOTENCY_REPLAY_STALE') {
-          idempKeyRef.current = null;
+          idempKeyRef.current    = null;
+          requestedAtRef.current = null;
           onResult({ _stale: true, _staleReason: err.response?.data?.staleReason });
           setSubmitting(false);
           return;
         }
         if (code === 'IDEMPOTENCY_KEY_CONFLICT') {
-          idempKeyRef.current = null;
+          idempKeyRef.current    = null;
+          requestedAtRef.current = null;
           setError('A conflict was detected. Please change a field and try again.');
           setSubmitting(false);
           return;
@@ -371,6 +455,12 @@ function EvaluationForm({ onResult }) {
         <div className="au-form-group">
           <label className="au-label">Verified Instrument *</label>
           <InstrumentPicker value={instrumentId} onChange={handleInstrumentChange} />
+          {!instrumentId && (
+            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+              Choose an instrument first. Principal and delegate options come from that
+              instrument's recorded participants.
+            </div>
+          )}
         </div>
 
         {instrLoading && (
@@ -381,14 +471,14 @@ function EvaluationForm({ onResult }) {
           <>
             <div className="au-form-group">
               <label className="au-label">Principal *</label>
-              {participants.filter(p => PRINCIPAL_ROLES.has(p.role)).length === 0 ? (
+              {participants.filter(p => p.is_valid_principal).length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--steel)' }}>
                   No principal participants on this instrument.
                 </div>
               ) : (
                 <ParticipantSelect
                   participants={participants}
-                  filterFn={p => PRINCIPAL_ROLES.has(p.role)}
+                  filterFn={p => p.is_valid_principal}
                   value={principalPartyId}
                   onChange={handleFieldChange(setPrincipalPartyId)}
                   placeholder="— Select principal —"
@@ -398,14 +488,14 @@ function EvaluationForm({ onResult }) {
 
             <div className="au-form-group">
               <label className="au-label">Delegate *</label>
-              {participants.filter(p => DELEGATE_ROLES.has(p.role)).length === 0 ? (
+              {participants.filter(p => p.is_valid_delegate).length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--steel)' }}>
                   No delegate participants on this instrument.
                 </div>
               ) : (
                 <ParticipantSelect
                   participants={participants}
-                  filterFn={p => DELEGATE_ROLES.has(p.role)}
+                  filterFn={p => p.is_valid_delegate}
                   value={delegatePartyId}
                   onChange={handleFieldChange(setDelegatePartyId)}
                   placeholder="— Select delegate —"
@@ -416,6 +506,7 @@ function EvaluationForm({ onResult }) {
             <div className="au-form-group">
               <label className="au-label">Action *</label>
               <ActionKeySelect
+                key={instrumentId}
                 permissions={permissions}
                 value={actionKey}
                 onChange={handleFieldChange(setActionKey)}
@@ -426,13 +517,13 @@ function EvaluationForm({ onResult }) {
               <div className="au-form-group">
                 <label className="au-label">Amount (optional)</label>
                 <input className="au-input" type="text" value={amount}
-                  onChange={e => { setAmount(e.target.value); idempKeyRef.current = null; }}
+                  onChange={e => { setAmount(e.target.value); idempKeyRef.current = null; requestedAtRef.current = null; }}
                   placeholder={`e.g. 50.00 (in ${currency || 'major units'})`} />
               </div>
               <div className="au-form-group">
                 <label className="au-label">Currency</label>
                 <input className="au-input" value={currency}
-                  onChange={e => { setCurrency(e.target.value.toUpperCase()); idempKeyRef.current = null; }}
+                  onChange={e => { setCurrency(e.target.value.toUpperCase()); idempKeyRef.current = null; requestedAtRef.current = null; }}
                   maxLength={3} placeholder="USD" />
               </div>
             </div>
@@ -450,9 +541,21 @@ function EvaluationForm({ onResult }) {
       <AuError msg={error} />
 
       <div style={{ marginTop: 20 }}>
-        <button type="submit" className="au-btn au-btn--primary" disabled={!canSubmit}>
+        <button
+          type="submit"
+          className="au-btn au-btn--primary"
+          disabled={!canSubmit}
+          aria-describedby={!canSubmit && !submitting ? 'evaluate-form-hint' : undefined}
+        >
           {submitting ? 'Evaluating…' : 'Evaluate'}
         </button>
+        {!canSubmit && !submitting && (
+          <div id="evaluate-form-hint"
+            style={{ fontSize: 12, color: 'var(--steel)', marginTop: 6 }}
+            data-testid="evaluate-btn-hint">
+            Select an instrument, principal, delegate, and action to evaluate.
+          </div>
+        )}
       </div>
     </form>
   );
@@ -587,19 +690,20 @@ function EvaluationHistory({ refreshKey }) {
           Refresh
         </button>
       </div>
-      <AuError msg={error} />
-
       <div style={{
-        margin: '0 16px 12px', padding: '8px 12px',
+        margin: '12px 16px 14px', padding: '8px 12px',
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
         fontSize: 11, color: '#6B7280', lineHeight: 1.5,
       }}>
-        Each row shows a past evaluation result. Results reflect the instrument as it existed
-        at that time and are not updated retroactively. They are records only — they do not
-        execute any action or constitute a legal determination.
+        Each row shows what FieldCore determined at evaluation time, based on the
+        instrument record as it existed then. The underlying instrument may later change
+        status (e.g. revoked or expired); historical results are preserved for audit and
+        are not automatically updated. Run a new evaluation for a current answer.
       </div>
 
-      {loading ? <AuLoading /> : !rows.length ? (
+      {loading ? <AuLoading /> : error ? (
+        <AuError msg={error} onRetry={load} />
+      ) : !rows.length ? (
         <AuEmpty text="No evaluations yet." />
       ) : (
         <table className="au-table au-table--no-hover">

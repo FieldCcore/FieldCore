@@ -753,6 +753,10 @@ async function getInstrumentDetail(accountId, instrumentId) {
         try { return authorityCrypto.decrypt(p.encrypted_name); } catch { return null; }
       })(),
       encrypted_name: undefined,
+      // Canonical classification from VALID_PARTICIPANT_ROLES — single source of truth
+      // for the frontend to determine valid principal/delegate selector options.
+      is_valid_principal: p.role === 'principal',
+      is_valid_delegate:  VALID_PARTICIPANT_ROLES.has(p.role) && p.role !== 'principal',
     })),
     permissions,
   };
