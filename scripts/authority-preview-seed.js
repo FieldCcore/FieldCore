@@ -12,8 +12,8 @@
  *  - Requires AUTHORITY_PREVIEW_SEED_ENABLED=true.
  *  - Does NOT create fake document rows pointing to non-existent R2 content.
  *  - Does NOT create fake extraction evidence.
- *  - All synthetic data is clearly marked with "__PREVIEW__" prefix.
- *  - Idempotent: aborts early if the preview institution already exists.
+ *  - Idempotent: if the preview owner email already exists, scoped reset runs
+ *    first so the seed can re-create with clean data.
  *
  * Usage:
  *   node scripts/authority-preview-seed.js
@@ -42,26 +42,74 @@ const bcrypt           = require('bcryptjs');
 const pool             = require('../src/db/pool');
 const authorityService = require('../src/services/authorityService');
 
-const SEED_TAG         = '__PREVIEW__';
-const OWNER_EMAIL      = 'institution@getfieldcore.com';
-const REVIEWER_EMAIL   = 'reviewer@getfieldcore.com';
-const SEED_PASSWORD    = 'institution2024';
-const INST_NAME        = `${SEED_TAG} FieldCore Institution`;
-const CASE_REF         = 'PREVIEW-CASE-001';
+// Internal tag for review notes — never shown in UI display fields
+const SEED_TAG       = '__PREVIEW__';
+const OWNER_EMAIL    = 'institution@getfieldcore.com';
+const REVIEWER_EMAIL = 'reviewer@getfieldcore.com';
+const SEED_PASSWORD  = 'institution2024';
+const CASE_REF       = 'PREVIEW-CASE-001';
+
+// ── Display names (no __PREVIEW__ prefix — clean for UI walkthrough) ──────────
+const INST_NAME      = 'Harborview Trust & Advisory (Demo)';
+const OWNER_NAME     = 'Morgan Chen';
+const REVIEWER_NAME  = 'Alex Rivera';
+const PARTY_PRINCIPAL_NAME = 'Eleanor Whitfield';
+const PARTY_AGENT_NAME     = 'James Thatcher';
+const PARTY_COAGENT_NAME   = 'Meridian Trust Services LLC';
+
+/**
+ * Delete all data owned by the preview account (identified by OWNER_EMAIL).
+ * Uses direct SQL to bypass service-layer guards (e.g. party identity lock).
+ * Safe: only runs after the production guard above, never in NODE_ENV=production.
+ */
+async function scopedReset(client) {
+  const { rows } = await client.query(
+    `SELECT id, account_id FROM users WHERE email = $1 LIMIT 1`,
+    [OWNER_EMAIL]
+  );
+  if (!rows.length) return false;
+
+  const accountId = rows[0].account_id;
+  console.log(`[authority-preview-seed] Resetting preview data for account ${accountId}…`);
+
+  // Delete in dependency order — deepest children first
+  await client.query(`DELETE FROM authority_review_notes WHERE account_id = $1`,      [accountId]);
+  await client.query(`DELETE FROM authority_review_assignments WHERE account_id = $1`, [accountId]);
+  await client.query(`DELETE FROM authority_documents WHERE account_id = $1`,          [accountId]);
+  await client.query(`DELETE FROM authority_permissions WHERE account_id = $1`,        [accountId]);
+  await client.query(`DELETE FROM authority_restrictions WHERE account_id = $1`,       [accountId]);
+  await client.query(`DELETE FROM authority_instrument_parties WHERE account_id = $1`, [accountId]);
+  await client.query(`DELETE FROM authority_case_instruments WHERE account_id = $1`,   [accountId]);
+  await client.query(`DELETE FROM authority_cases WHERE account_id = $1`,              [accountId]);
+  await client.query(`DELETE FROM authority_instruments WHERE account_id = $1`,        [accountId]);
+  await client.query(`DELETE FROM authority_parties WHERE account_id = $1`,            [accountId]);
+  await client.query(
+    `DELETE FROM authority_api_credentials WHERE account_id = $1`,
+    [accountId]
+  );
+  await client.query(
+    `DELETE FROM platform_user_capabilities WHERE user_id IN (SELECT id FROM users WHERE account_id = $1)`,
+    [accountId]
+  );
+  await client.query(`DELETE FROM users WHERE account_id = $1`,    [accountId]);
+  await client.query(`DELETE FROM accounts WHERE id = $1`,         [accountId]);
+
+  console.log('[authority-preview-seed] Scoped reset complete.');
+  return true;
+}
 
 async function run() {
   console.log('[authority-preview-seed] Starting…');
 
-  // ── Idempotency guard ────────────────────────────────────────────────────────
-  const { rows: existing } = await pool.query(
-    `SELECT id FROM accounts WHERE name = $1 AND account_type = 'institution' LIMIT 1`,
-    [INST_NAME]
-  );
-  if (existing.length) {
-    console.log(`[authority-preview-seed] Preview institution already exists (${existing[0].id}). Skipping.`);
-    console.log(`  Login: ${OWNER_EMAIL} / ${SEED_PASSWORD}`);
-    await pool.end();
-    return;
+  // ── Idempotency guard (by owner email, not name) ─────────────────────────────
+  const client = await pool.connect();
+  try {
+    const wasReset = await scopedReset(client);
+    if (wasReset) {
+      console.log('[authority-preview-seed] Previous preview data removed — re-creating with clean names.');
+    }
+  } finally {
+    client.release();
   }
 
   // ── 1. Create institution account ────────────────────────────────────────────
@@ -79,7 +127,7 @@ async function run() {
     `INSERT INTO users (account_id, role, name, email, password_hash)
      VALUES ($1, 'owner', $2, $3, $4)
      RETURNING id`,
-    [acct.id, `${SEED_TAG} Institution Owner`, OWNER_EMAIL, ownerHash]
+    [acct.id, OWNER_NAME, OWNER_EMAIL, ownerHash]
   );
   console.log(`[authority-preview-seed] Owner user: ${owner.id}  (${OWNER_EMAIL})`);
 
@@ -89,15 +137,11 @@ async function run() {
     `INSERT INTO users (account_id, role, name, email, password_hash)
      VALUES ($1, 'owner', $2, $3, $4)
      RETURNING id`,
-    [acct.id, `${SEED_TAG} Institution Reviewer`, REVIEWER_EMAIL, reviewerHash]
+    [acct.id, REVIEWER_NAME, REVIEWER_EMAIL, reviewerHash]
   );
   console.log(`[authority-preview-seed] Reviewer user: ${reviewer.id}  (${REVIEWER_EMAIL})`);
 
   // ── 4. Grant capabilities ─────────────────────────────────────────────────────
-  //       Owner gets full Authority access (all read + review + evaluate + credentials).
-  //       Reviewer gets the narrower review-only set (verify + reject).
-  //       Owner: broad preview set — all inspectable features.
-  //       Reviewer: narrower review-only set.
   const ownerCaps = [
     'AUTHORITY_INSTRUMENT_VERIFY',
     'AUTHORITY_INSTRUMENT_REJECT',
@@ -116,19 +160,19 @@ async function run() {
   // ── 5. Create three synthetic parties ────────────────────────────────────────
   const principal = await authorityService.createParty(acct.id, owner.id, {
     partyType: 'person',
-    displayName: `${SEED_TAG} Margaret A. Holloway`,
+    displayName: PARTY_PRINCIPAL_NAME,
     externalReference: 'PARTY-PRINCIPAL-001',
   });
 
   const agent = await authorityService.createParty(acct.id, owner.id, {
     partyType: 'person',
-    displayName: `${SEED_TAG} Robert C. Holloway`,
+    displayName: PARTY_AGENT_NAME,
     externalReference: 'PARTY-AGENT-001',
   });
 
   const coAgent = await authorityService.createParty(acct.id, owner.id, {
     partyType: 'organization',
-    displayName: `${SEED_TAG} Holloway Family Trust Services LLC`,
+    displayName: PARTY_COAGENT_NAME,
     externalReference: 'PARTY-COAGENT-001',
   });
   console.log(`[authority-preview-seed] Parties created: principal=${principal.id}, agent=${agent.id}, co_agent=${coAgent.id}`);
@@ -153,7 +197,6 @@ async function run() {
   await authorityService.transitionCase(acct.id, owner.id, kase.id, 'AWAITING_DOCUMENTS');
 
   // ── 9. Add participants while case is AWAITING_DOCUMENTS ────────────────────
-  //       _assertIsActiveAssigneeForInstrument returns early here (no HUMAN_REVIEW_IN_PROGRESS cases)
   const p1 = await authorityService.addParticipant(acct.id, owner.id, instr.id, {
     partyId:  principal.id,
     role:     'principal',
@@ -250,7 +293,7 @@ async function run() {
   console.log(`    Owner:    ${OWNER_EMAIL} / ${SEED_PASSWORD}`);
   console.log(`    Reviewer: ${REVIEWER_EMAIL} / ${SEED_PASSWORD}`);
   console.log('');
-  console.log('  Access path: login → /authority/cases → click case row');
+  console.log('  Access path: login → /authority');
 }
 
 run().catch(err => {

@@ -1173,15 +1173,17 @@ export default function AuthorityWorkspace() {
 
   if (!workspace) {
     return (
-      <div className="fc-workspace" style={{ padding: 24 }}>
-        <AuError msg={error || 'Workspace not available.'} />
-        <button
-          className="au-btn au-btn--outline"
-          style={{ marginTop: 12 }}
-          onClick={() => { setError(''); setLoading(true); load().finally(() => setLoading(false)); }}
-        >
-          Retry
-        </button>
+      <div className="fc-workspace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{ textAlign: 'center', maxWidth: 420 }}>
+          <AuError msg={error || 'Workspace not available.'} />
+          <button
+            className="au-btn au-btn--outline"
+            style={{ marginTop: 16 }}
+            onClick={() => { setError(''); setLoading(true); load().finally(() => setLoading(false)); }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

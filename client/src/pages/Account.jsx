@@ -5,8 +5,6 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import BusinessSettings from './BusinessSettings';
 
-const TABS = ['My Account', 'Business', 'Billing'];
-
 const AUDIT_LABELS = {
   login:               'Signed in',
   logout_all_sessions: 'Signed out all devices',
@@ -18,6 +16,8 @@ const AUDIT_LABELS = {
 
 export default function Account() {
   const { user, logout } = useAuth();
+  const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
+  const tabs = isInstitution ? ['My Account'] : ['My Account', 'Business', 'Billing'];
   const [activeTab, setActiveTab] = useState('My Account');
   const [form,     setForm]     = useState({ current: '', next: '', confirm: '' });
   const [saving,   setSaving]   = useState(false);
@@ -98,12 +98,12 @@ export default function Account() {
     <div>
       {/* Subtitle only — topbar already renders "Settings" as page title */}
       <p style={{ fontSize: 13, color: 'var(--steel)', marginBottom: 16 }}>
-        Manage account, business, and billing preferences.
+        {isInstitution ? 'Manage your account and security settings.' : 'Manage account, business, and billing preferences.'}
       </p>
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--lightgray)', marginBottom: 22, overflowX: 'auto', gap: 0 }}>
-        {TABS.map(tab => (
+        {tabs.map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}

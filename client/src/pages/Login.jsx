@@ -21,7 +21,7 @@ export default function Login() {
     try {
       const u = await login(email, password);
       if (u.role === 'tech')                     nav('/tech',            { replace: true });
-      else if (u.account_type === 'institution') nav('/authority/cases', { replace: true });
+      else if (u.account_type === 'institution') nav('/authority', { replace: true });
       else                                        nav('/dashboard',       { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Sign in failed. Check your credentials.');
@@ -38,7 +38,7 @@ export default function Login() {
         </a>
 
         <h1 className="login-title">Sign in</h1>
-        <p className="login-sub">Access your operator dashboard.</p>
+        <p className="login-sub">Sign in to your FieldCore workspace.</p>
 
         {resetSuccess && <div className="login-success">Password updated. Sign in with your new credentials.</div>}
         {error && <div className="login-error">{error}</div>}
@@ -94,7 +94,7 @@ export default function Login() {
 
         <p className="login-footer">
           No account?{' '}
-          <a href="/#cta" className="login-link">Start free trial →</a>
+          <a href="/#cta" className="login-link">Service business? Start free trial →</a>
         </p>
         <p className="login-footer" style={{ marginTop: 10 }}>
           <a href="/" className="login-link" style={{ opacity: 0.55 }}>← Back to homepage</a>

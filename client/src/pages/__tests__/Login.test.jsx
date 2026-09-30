@@ -53,7 +53,7 @@ describe('Login routing', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true }));
   });
 
-  it('routes institution account to /authority/cases', async () => {
+  it('routes institution account to /authority', async () => {
     const loginFn = vi.fn().mockResolvedValue({
       role: 'owner',
       account_type: 'institution',
@@ -64,7 +64,7 @@ describe('Login routing', () => {
     renderLogin();
     await submitForm();
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/authority/cases', { replace: true }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/authority', { replace: true }));
   });
 
   it('routes tech role to /tech regardless of account_type', async () => {

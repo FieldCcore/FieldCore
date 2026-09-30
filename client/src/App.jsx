@@ -131,6 +131,13 @@ export function getNavSections(user) {
   };
 }
 
+export function getLandingRoute(user) {
+  if (!user) return '/login';
+  if (user.role === 'tech') return '/tech';
+  if (user.account_type === 'institution') return '/authority';
+  return '/dashboard';
+}
+
 export function AuthorityGate({ children }) {
   const { user } = useAuth();
   if (!user?.authority_enabled || user?.account_type !== 'institution') {
@@ -492,6 +499,11 @@ function AppShell() {
     );
   }
 
+  // Authenticated users at root → send to their dashboard
+  if (user && pathname === '/') {
+    return <Navigate to={getLandingRoute(user)} replace />;
+  }
+
   const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/tablet', '/book-confirm', '/about', '/blog', '/careers', '/contact', '/press', '/faq', '/updates', '/partners', '/terms', '/privacy', '/sms-terms', '/client'];
   if (pathname === '/' || PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/book-confirm') || pathname.startsWith('/pay/') || pathname.startsWith('/sign/') || pathname.startsWith('/review/')) {
     return (
@@ -655,7 +667,13 @@ function AppShell() {
           </div>
           <a href="/account" style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}>
             <div className="su-name">{(typeof user?.name === 'string' ? user.name : null) || '—'}</div>
-            <div className="su-role">{user && typeof user.role === 'string' ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}` : ''}</div>
+            <div className="su-role">
+              {user && typeof user.role === 'string'
+                ? isInstitution
+                  ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+                  : `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ${user.accountName || user.account_name || 'FieldCore'}`
+                : ''}
+            </div>
           </a>
           <button
             onClick={() => { logout(); nav('/login'); }}
