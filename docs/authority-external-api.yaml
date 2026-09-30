@@ -1,0 +1,544 @@
+openapi: 3.1.0
+info:
+  title: FieldCore Authority Evaluation API
+  version: "2026-09-29"
+  description: |
+    Machine-to-machine API for institution server-side systems to evaluate
+    authority instruments via FieldCore's deterministic engine.
+
+    ## Rollout status
+
+    This API is controlled by the `AUTHORITY_EXTERNAL_API_ENABLED` feature flag,
+    which is **OFF by default**. Both `AUTHORITY_ENABLED` and
+    `AUTHORITY_EXTERNAL_API_ENABLED` must be ON for this API to accept requests.
+
+    ## Authentication
+
+    All requests must include an `Authorization` header with a Bearer credential
+    issued through the FieldCore credential management interface:
+
+    ```
+    Authorization: Bearer fc_dev_<publicId>_<secret>
+    ```
+
+    Credentials are machine-to-machine tokens bound to a single institution
+    tenant. They are **not** user sessions and must not be used in browsers.
+
+    ## Required scopes
+
+    - `authority:evaluate` — required for POST /evaluations
+    - `authority:evaluations:read` — required for GET /evaluations/{id}
+
+    ## Idempotency
+
+    The `Idempotency-Key` header is **mandatory** for every evaluation request.
+    Combined with `requested_at`, it provides transport-level deduplication.
+    Idempotency is not authorization caching — the engine re-validates freshness
+    on every replay.
+
+    ## Current-action semantics
+
+    `requested_at` is the single authoritative action time. It must be an
+    ISO-8601 timestamp with explicit timezone information. The engine validates
+    that `requested_at` falls within ±5 minutes of the server-side `evaluated_at`
+    (captured after the instrument lock is acquired). Out-of-window requests are
+    rejected with `REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW`.
+
+    There is no historical simulation and no alternative time field.
+
+    ## Decision meanings
+
+    - `AUTHORIZED` — the engine found authorization under current canonical data
+      and approved deterministic rules
+    - `NOT_AUTHORIZED` — the engine found no valid authorization
+    - `INSUFFICIENT_INFORMATION` — required fields are missing to make a determination
+    - `MANUAL_REVIEW` — ambiguous semantics (e.g. undefined role, timezone
+      ambiguity); a human reviewer is required
+
+    **IMPORTANT DISCLAIMER**: `AUTHORIZED` means FieldCore's deterministic engine
+    found authorization according to the current human-verified canonical record
+    and approved rules. It is NOT legal advice, NOT a legal-validity
+    determination, NOT action execution, and NOT a guarantee that any downstream
+    action is lawful. `MANUAL_REVIEW` may be common where acting-role semantics
+    are not yet defined in the engine.
+
+    ## Rate limits
+
+    Default limits: 60 requests/min per credential, 300 requests/min per tenant
+    aggregate. Exceeded limits return HTTP 429 with a `Retry-After` header.
+
+    ## Request IDs
+
+    Every response includes a `request_id` (echoed from `X-Request-Id` if valid,
+    otherwise server-generated). Include this in support requests.
+
+servers:
+  - url: https://your-fieldcore-domain.example.com/api/v1/authority
+    description: FieldCore Authority API (requires AUTHORITY_EXTERNAL_API_ENABLED)
+
+security:
+  - BearerCredential: []
+
+paths:
+  /evaluations:
+    post:
+      operationId: createEvaluation
+      summary: Evaluate an authority instrument
+      description: |
+        Submit a current-action evaluation request. All four decisions
+        (AUTHORIZED, NOT_AUTHORIZED, INSUFFICIENT_INFORMATION, MANUAL_REVIEW)
+        return HTTP 200. The `Idempotency-Key` header and `requested_at`
+        body field are both mandatory.
+      security:
+        - BearerCredential: [authority:evaluate]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Caller-supplied deduplication key (1–200 characters, printable ASCII).
+            Must be unique per intended evaluation. Keys are namespaced to the
+            authenticated credential — the same key from two different credentials
+            produces independent evaluations.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: X-Request-Id
+          in: header
+          required: false
+          description: |
+            Optional client correlation ID. Must match `^[A-Za-z0-9_-]{1,64}$`.
+            Echoed in the response. If absent or invalid, a server-generated UUID
+            is used instead.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+            examples:
+              basic:
+                summary: Basic evaluation (synthetic)
+                value:
+                  instrument_id: "00000000-0000-0000-0000-000000000001"
+                  principal_party_id: "00000000-0000-0000-0000-000000000002"
+                  delegate_party_id: "00000000-0000-0000-0000-000000000003"
+                  action_key: "FINANCE.APPROVE_PAYMENT"
+                  requested_at: "2026-09-29T14:30:00Z"
+              with_amount:
+                summary: Evaluation with monetary restriction (synthetic)
+                value:
+                  instrument_id: "00000000-0000-0000-0000-000000000001"
+                  principal_party_id: "00000000-0000-0000-0000-000000000002"
+                  delegate_party_id: "00000000-0000-0000-0000-000000000003"
+                  action_key: "FINANCE.APPROVE_PAYMENT"
+                  requested_at: "2026-09-29T14:30:00Z"
+                  amount_minor: 150000
+                  currency: "USD"
+      responses:
+        '200':
+          description: |
+            Evaluation completed. All four decisions return 200. Check the
+            `decision` field for the outcome.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Echoed or server-generated correlation ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '400':
+          description: Unknown request fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed (malformed, unknown, revoked, or invalid credential)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                auth_failed:
+                  value:
+                    error: AUTHENTICATION_FAILED
+                    code: AUTHENTICATION_FAILED
+                    message: "Authentication failed."
+                    request_id: "abc123"
+        '403':
+          description: Insufficient scope or Authority API unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key conflict or stale replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
+        '413':
+          description: Request body too large (> 100 KB)
+        '415':
+          description: Unsupported media type (must be application/json)
+        '422':
+          description: Validation failed (missing fields, invalid format, out-of-window requested_at)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error (no details exposed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /evaluations/{id}:
+    get:
+      operationId: getEvaluation
+      summary: Retrieve a historical evaluation record
+      description: |
+        Returns a stored evaluation by ID. This is a HISTORICAL record — it
+        reflects the decision at the time of the original evaluation. It is
+        NOT current authorization and MUST NOT be used as evidence that an
+        action is authorized now.
+      security:
+        - BearerCredential: [authority:evaluations:read]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Request-Id
+          in: header
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,64}$'
+      responses:
+        '200':
+          description: Historical evaluation record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoricalEvaluationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Evaluation not found (or belongs to another tenant)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  securitySchemes:
+    BearerCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: fc_dev_<publicId>_<secret>
+      description: |
+        FieldCore API credential in the format `fc_dev_<16-char-publicId>_<43-char-secret>`.
+        Issued via the FieldCore credential management interface.
+        **Never send credentials in query strings or request bodies.**
+        Example (synthetic, will fail validation):
+        `fc_dev_AAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB`
+
+  schemas:
+    EvaluationRequest:
+      type: object
+      required:
+        - instrument_id
+        - principal_party_id
+        - delegate_party_id
+        - action_key
+        - requested_at
+      additionalProperties: false
+      properties:
+        instrument_id:
+          type: string
+          format: uuid
+          description: UUID of the authority instrument to evaluate
+        principal_party_id:
+          type: string
+          format: uuid
+          description: UUID of the principal party (grantor)
+        delegate_party_id:
+          type: string
+          format: uuid
+          description: UUID of the delegate party (grantee)
+        action_key:
+          type: string
+          description: |
+            Exact DOMAIN.ACTION identifier for the requested action.
+            Near-miss keys do not match. Example: `FINANCE.APPROVE_PAYMENT`
+        requested_at:
+          type: string
+          format: date-time
+          description: |
+            The current-action time as an ISO-8601 timestamp with explicit
+            timezone (Z or ±hh:mm). MANDATORY. Must be within ±5 minutes of
+            the server-side evaluated_at. There is no historical or future
+            simulation — this is the single authoritative action time.
+        amount_minor:
+          type: integer
+          description: |
+            Transaction amount in minor currency units (e.g. cents for USD).
+            Required if the instrument has monetary restrictions. Must be a
+            non-negative integer. Do not use floating-point values.
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 3-letter currency code. Required if amount_minor is present.
+
+    EvaluationResponse:
+      type: object
+      properties:
+        evaluation_id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum: [AUTHORIZED, NOT_AUTHORIZED, INSUFFICIENT_INFORMATION, MANUAL_REVIEW]
+          description: The engine decision. All four values return HTTP 200.
+        instrument_id:
+          type: string
+          format: uuid
+        principal_party_id:
+          type: string
+          format: uuid
+        delegate_party_id:
+          type: string
+          format: uuid
+        action_key:
+          type: string
+        reason_codes:
+          type: array
+          items:
+            type: string
+          description: All applicable reason codes for this decision
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: Fields required but not supplied (for INSUFFICIENT_INFORMATION)
+        manual_review_reasons:
+          type: array
+          items:
+            type: string
+          description: Reasons manual review is required (for MANUAL_REVIEW)
+        matched_permission_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        applied_restriction_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        blocking_permission_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        blocking_restriction_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        rule_version:
+          type: string
+          nullable: true
+        policy_registry_version:
+          type: string
+          nullable: true
+        evaluated_at:
+          type: string
+          format: date-time
+          description: Server timestamp captured after instrument lock acquisition
+        action_time:
+          type: string
+          format: date-time
+          description: Equals requested_at (single authoritative action time)
+        action_time_source:
+          type: string
+          enum: [requestedAt]
+        instrument_status_at_evaluation:
+          type: string
+          nullable: true
+        replayed:
+          type: boolean
+          description: True when this response was served from a fresh idempotent replay
+        replay_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+        request_id:
+          type: string
+          description: Correlation ID echoed from X-Request-Id or server-generated
+        api_version:
+          type: string
+          example: "2026-09-29"
+
+    HistoricalEvaluationResponse:
+      type: object
+      description: |
+        A stored evaluation record. This is HISTORICAL — it reflects the
+        decision at evaluation time, not current authorization status.
+        Do NOT use this to determine whether an action is authorized now.
+      properties:
+        evaluation_id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum: [AUTHORIZED, NOT_AUTHORIZED, INSUFFICIENT_INFORMATION, MANUAL_REVIEW]
+        instrument_id:
+          type: string
+          format: uuid
+        principal_party_id:
+          type: string
+          format: uuid
+          nullable: true
+        delegate_party_id:
+          type: string
+          format: uuid
+          nullable: true
+        action_key:
+          type: string
+          nullable: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+        evaluated_at:
+          type: string
+          format: date-time
+        action_time:
+          type: string
+          format: date-time
+          nullable: true
+        policy_registry_version:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+        api_version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Stable error code
+        code:
+          type: string
+          description: Same as error (for convenience)
+        message:
+          type: string
+          description: Human-readable description (safe; never contains credential values)
+        request_id:
+          type: string
+          nullable: true
+        api_version:
+          type: string
+
+    ConflictResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            stale_reason:
+              type: string
+              nullable: true
+              description: Machine-readable reason why the replay is stale
+            evaluation_id:
+              type: string
+              format: uuid
+              nullable: true
+
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient scope or API unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  x-error-codes:
+    AUTHENTICATION_FAILED:
+      http: 401
+      description: Malformed, unknown, revoked, expired, or invalid-secret credential
+    INSUFFICIENT_SCOPE:
+      http: 403
+      description: Credential is authenticated but missing the required scope
+    AUTHORITY_API_UNAVAILABLE:
+      http: 403
+      description: External API disabled, Authority feature off, or account ineligible
+    VALIDATION_FAILED:
+      http: 400/422
+      description: Unknown fields (400) or missing/invalid field values (422)
+    REQUESTED_AT_OUTSIDE_SUPPORTED_WINDOW:
+      http: 422
+      description: requested_at is more than ±5 minutes from server evaluated_at
+    NOT_FOUND:
+      http: 404
+      description: Resource not found or belongs to another tenant
+    IDEMPOTENCY_KEY_CONFLICT:
+      http: 409
+      description: Same key, different normalized request
+    IDEMPOTENCY_REPLAY_STALE:
+      http: 409
+      description: Replay freshness check failed (instrument changed, rule version changed, etc.)
+    RATE_LIMITED:
+      http: 429
+      description: Per-credential or per-tenant rate limit exceeded
+    SERVICE_UNAVAILABLE:
+      http: 503
+      description: Lock timeout — retry with backoff
+    INTERNAL_ERROR:
+      http: 500
+      description: Internal error (no details exposed)
