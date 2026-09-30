@@ -389,6 +389,8 @@ async function _persistEvaluation(txClient, {
   matchedPermissionIds, appliedRestrictionIds,
   blockingPermissionIds, blockingRestrictionIds,
   ruleVersion, actionTimeSource, requestFingerprint,
+  // Stage 5 additive:
+  actorType, requestingUserId, requestingApiCredentialId,
 }) {
   let encryptedContext = null;
   if (runtimeContext) {
@@ -412,8 +414,9 @@ async function _persistEvaluation(txClient, {
         matched_permission_ids, applied_restriction_ids,
         blocking_permission_ids, blocking_restriction_ids,
         rule_version, action_time_source, request_fingerprint,
-        fingerprint_algorithm)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+        fingerprint_algorithm,
+        actor_type, requesting_user_id, requesting_api_credential_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
      RETURNING id`,
     [
       accountId,                          // $1
@@ -443,6 +446,9 @@ async function _persistEvaluation(txClient, {
       actionTimeSource || null,           // $25
       requestFingerprint || null,         // $26
       FINGERPRINT_ALGORITHM,              // $27
+      actorType || 'user',                // $28  Stage 5
+      requestingUserId || null,           // $29
+      requestingApiCredentialId || null,  // $30
     ]
   );
   return rows[0].id;
@@ -461,8 +467,27 @@ async function _persistEvaluation(txClient, {
  * NOTE: `actionTime` is NOT a request field (Part 1 closure). The action time is
  * derived from `requestedAt` and stored as `action_time` on the evaluation row.
  *
+ * actorContext (Stage 4 shape — unchanged, backward compatible):
+ *   { accountId, userId, ipAddress }
+ *
+ * actorContext (Stage 5 additive — machine actor):
+ *   { actor_type: 'api_credential', credential_id, account_id, scopes: [...],
+ *     ipAddress? }
+ *   OR the equivalent legacy user actor written explicitly:
+ *   { actor_type: 'user', user_id, account_id, ipAddress? }
+ *
+ * When the user actor form is used, requesting_user_id is written on the
+ * evaluation row alongside actor_type='user'. Machine actor writes
+ * requesting_api_credential_id and actor_type='api_credential' — user_id is
+ * omitted entirely per the actor-exclusive CHECK constraint.
+ *
+ * CRITICAL: the external API path MUST call `evaluateAuthority(request,
+ * machineActor)` with NO third `opts` argument. `_policyRegistry` and
+ * `clockFn` are TEST-ONLY hooks; passing either from an external boundary
+ * would defeat the entire deterministic-engine guarantee.
+ *
  * @param {object} request
- * @param {object} actorContext  { accountId, userId, ipAddress }
+ * @param {object} actorContext
  * @param {object} [opts]
  *   clockFn         {function}  Injectable clock — returns Date. Defaults to () => new Date()
  *   _policyRegistry {object}    Injectable policy registry (TEST-ONLY).
@@ -485,7 +510,39 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
     principalPartyId,
   } = request;
 
-  const { accountId, userId, ipAddress } = actorContext;
+  // ── Actor normalization (Stage 5 additive) ────────────────────────────────
+  // Support three input shapes:
+  //   (a) Stage 4 legacy: { accountId, userId, ipAddress }         → 'user'
+  //   (b) Stage 5 user:   { actor_type:'user', user_id, account_id, ipAddress? }
+  //   (c) Stage 5 mach:   { actor_type:'api_credential', credential_id,
+  //                         account_id, scopes[], ipAddress? }
+  const _actorType   = (actorContext && actorContext.actor_type) || 'user';
+  const accountId    = actorContext && (actorContext.accountId ?? actorContext.account_id);
+  const userId       = _actorType === 'user'
+    ? (actorContext && (actorContext.userId ?? actorContext.user_id)) || null
+    : null;
+  const credentialId = _actorType === 'api_credential'
+    ? (actorContext && actorContext.credential_id) || null
+    : null;
+  const machineScopes = _actorType === 'api_credential' && Array.isArray(actorContext.scopes)
+    ? actorContext.scopes
+    : null;
+  const ipAddress    = actorContext && actorContext.ipAddress || null;
+
+  // Machine actor authorization gate (additive; user actor is unchanged).
+  if (_actorType === 'api_credential') {
+    if (process.env.AUTHORITY_EXTERNAL_API_ENABLED !== 'true') {
+      throw _forbidden('External Authority API is not enabled.');
+    }
+    if (!credentialId || !accountId) {
+      throw _badRequest('Machine actor context is incomplete.');
+    }
+    if (!machineScopes || !machineScopes.includes('authority:evaluate')) {
+      throw _forbidden('Credential is missing authority:evaluate scope.');
+    }
+    // AUTHORITY_ENABLED is checked below via _assertInstitutionAccount which
+    // ensures the account is an authority-eligible institution.
+  }
 
   // Injectable clock and policy registry (for testability)
   const clockFn        = opts.clockFn        || (() => new Date());
@@ -722,6 +779,9 @@ async function evaluateAuthority(request, actorContext, opts = {}) {
       ruleVersion:       policyRegistry.POLICY_VERSION,
       actionTimeSource,
       requestFingerprint,
+      actorType:                 _actorType,
+      requestingUserId:          userId,
+      requestingApiCredentialId: credentialId,
     });
 
     await audit.logInTx(

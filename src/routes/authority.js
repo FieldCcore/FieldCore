@@ -656,9 +656,13 @@ router.post('/evaluate', _requireAuthorityEvaluateCap, async (req, res) => {
       amount, currency, requestedAt, idempotencyKey,
     } = req.body || {};
 
+    // Stage 5 additive: pass explicit user-actor context. The Stage 4 legacy
+    // shape { accountId, userId, ipAddress } remains supported by the service
+    // for backward compatibility, but the explicit form documents intent.
     const result = await evaluationService.evaluateAuthority(
       { instrumentId, delegatePartyId, principalPartyId, actionKey, amount, currency, requestedAt, idempotencyKey },
-      { accountId: req.accountId, userId: req.userId, ipAddress: req.ip || null }
+      { actor_type: 'user', user_id: req.userId, account_id: req.accountId,
+        accountId: req.accountId, userId: req.userId, ipAddress: req.ip || null }
     );
     res.status(result.isReplay ? 200 : 201).json(result);
   } catch (err) {
