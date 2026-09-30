@@ -20,7 +20,9 @@ export default function Login() {
     setError('');
     try {
       const u = await login(email, password);
-      nav(u.role === 'tech' ? '/tech' : '/dashboard', { replace: true });
+      if (u.role === 'tech')                     nav('/tech',            { replace: true });
+      else if (u.account_type === 'institution') nav('/authority/cases', { replace: true });
+      else                                        nav('/dashboard',       { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Sign in failed. Check your credentials.');
     } finally {

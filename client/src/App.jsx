@@ -107,7 +107,7 @@ function TechRoute({ children }) {
   return children;
 }
 
-function AuthorityGate({ children }) {
+export function AuthorityGate({ children }) {
   const { user } = useAuth();
   if (!user?.authority_enabled || user?.account_type !== 'institution') {
     return (
