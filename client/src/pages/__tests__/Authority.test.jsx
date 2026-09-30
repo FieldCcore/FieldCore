@@ -310,32 +310,34 @@ describe('AuthorityCases — assigned_to display', () => {
     });
   });
 
-  it('shows checkmark when case has an active assignment (assigned_to truthy)', async () => {
+  it('shows reviewer name when case has an active assignment with reviewer_name', async () => {
     api.get.mockResolvedValue({
       data: [{
         id: 'case-uuid-assign-1', status: 'HUMAN_REVIEW_IN_PROGRESS',
         external_case_reference: 'TEST-ASS-001',
         assigned_to: 'reviewer-uuid-001',
+        reviewer_name: 'Jane Reviewer',
         document_count: 0, instrument_count: 1,
         created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
       }],
     });
     render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('✓')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Jane Reviewer')).toBeInTheDocument());
   });
 
-  it('shows dash when case has no active assignment (assigned_to null)', async () => {
+  it('shows "Unassigned" when case has no active assignment', async () => {
     api.get.mockResolvedValue({
       data: [{
         id: 'case-uuid-noassign-1', status: 'PENDING_HUMAN_REVIEW',
         external_case_reference: 'TEST-NOASS-001',
         assigned_to: null,
+        reviewer_name: null,
         document_count: 0, instrument_count: 1,
         created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
       }],
     });
     render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('—')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Unassigned')).toBeInTheDocument());
   });
 });
 

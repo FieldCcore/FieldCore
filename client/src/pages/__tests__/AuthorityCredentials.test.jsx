@@ -47,14 +47,16 @@ function setupApi({
 } = {}) {
   api.get.mockImplementation((url) => {
     if (url.includes('/authority/capabilities')) {
-      return Promise.resolve({ capabilities: caps });
+      return Promise.resolve({ data: { capabilities: caps } });
     }
     if (url.includes('/authority/credentials')) {
       if (listError) return Promise.reject(listError);
       return Promise.resolve({
-        credentials,
-        valid_scopes: ['authority:evaluate', 'authority:evaluations:read'],
-        flag_enabled: flagEnabled,
+        data: {
+          credentials,
+          valid_scopes: ['authority:evaluate', 'authority:evaluations:read'],
+          flag_enabled: flagEnabled,
+        },
       });
     }
     return Promise.reject(new Error(`Unexpected GET: ${url}`));

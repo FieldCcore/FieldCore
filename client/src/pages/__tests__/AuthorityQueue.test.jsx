@@ -123,7 +123,7 @@ describe('AuthorityQueue — assignment identity and claim gating (Problem 2)', 
     expect(claimBtns.length).toBe(0);
   });
 
-  it('unassigned cases show dash in Assigned To column', async () => {
+  it('unassigned cases show "Unassigned" in Assigned To column', async () => {
     api.get.mockResolvedValue({
       data: [{
         id: 'case-dash', status: 'PENDING_HUMAN_REVIEW',
@@ -136,7 +136,7 @@ describe('AuthorityQueue — assignment identity and claim gating (Problem 2)', 
 
     render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByText('—')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Unassigned')).toBeTruthy());
   });
 
   it('current user row shows "You" in Assigned To column', async () => {
