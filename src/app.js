@@ -169,11 +169,18 @@ app.use('/api/webhooks', webhooksRouter);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
+// Attach header-redaction helpers before any logging middleware runs so
+// downstream loggers can call req.redactedHeaders() safely.
+const { attachRedactionHelpers } = require('./middleware/redactHeaders');
+app.use(attachRedactionHelpers());
+
 app.use((req, res, next) => {
   const t0 = Date.now();
   res.on('finish', () => console.log(JSON.stringify({
     ts: new Date().toISOString(), method: req.method, path: req.path,
     status: res.statusCode, ms: Date.now() - t0,
+    // The Authorization header is deliberately excluded from this line.
+    // If a future change adds headers to the log, use req.redactedHeaders().
   })));
   next();
 });
