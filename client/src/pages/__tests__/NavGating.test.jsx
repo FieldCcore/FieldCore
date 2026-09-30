@@ -113,3 +113,71 @@ describe('Sidebar nav section isolation', () => {
     expect(s.adminSettings).toBe(false);
   });
 });
+
+// ── Problem 5: Entity switcher isolation ──────────────────────────────────────
+
+describe('Entity switcher isolation (Problem 5)', () => {
+
+  it('institution with authority_enabled=true — entitySwitcher is false', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.entitySwitcher).toBe(false);
+  });
+
+  it('institution with authority_enabled=true — institutionCtx is true', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.institutionCtx).toBe(true);
+  });
+
+  it('field_service owner — entitySwitcher is true', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.entitySwitcher).toBe(true);
+  });
+
+  it('field_service owner — institutionCtx is false', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.institutionCtx).toBe(false);
+  });
+
+  it('institution with authority_enabled=false falls back — entitySwitcher is true', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: false });
+    expect(s.entitySwitcher).toBe(true);
+    expect(s.institutionCtx).toBe(false);
+  });
+});
+
+// ── Problem 7: Header CRM control isolation ───────────────────────────────────
+
+describe('Header CRM control isolation (Problem 7)', () => {
+
+  it('institution owner — headerPhone is false', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.headerPhone).toBe(false);
+  });
+
+  it('institution owner — headerCreateMenu is false', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.headerCreateMenu).toBe(false);
+  });
+
+  it('institution manager — headerPhone and headerCreateMenu are both false', () => {
+    const s = getNavSections({ role: 'manager', account_type: 'institution', authority_enabled: true });
+    expect(s.headerPhone).toBe(false);
+    expect(s.headerCreateMenu).toBe(false);
+  });
+
+  it('field_service owner — headerPhone is true', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.headerPhone).toBe(true);
+  });
+
+  it('field_service owner — headerCreateMenu is true', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.headerCreateMenu).toBe(true);
+  });
+
+  it('field_service staff — headerPhone is true, headerCreateMenu is false', () => {
+    const s = getNavSections({ role: 'staff', account_type: 'field_service', authority_enabled: false });
+    expect(s.headerPhone).toBe(true);
+    expect(s.headerCreateMenu).toBe(false);
+  });
+});

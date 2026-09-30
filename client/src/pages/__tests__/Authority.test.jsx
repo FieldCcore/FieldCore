@@ -25,6 +25,7 @@ vi.mock('react-router-dom', async () => {
 import api from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { useParams } from 'react-router-dom';
+import AuthorityDashboard from '../Authority';
 import AuthorityWorkspace from '../AuthorityWorkspace';
 import AuthorityCases     from '../AuthorityCases';
 import AuthorityParties   from '../AuthorityParties';
@@ -727,5 +728,35 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
     await waitFor(() => { expect(screen.queryByText(/AI Extraction/i)).toBeNull(); });
+  });
+});
+
+// ── Problem 6: Product naming — "FieldCore Authority" must not appear in UI ───
+
+describe('Authority dashboard — product naming (Problem 6)', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'test-user-id', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('subtitle is "Institution authority operations", not the old FieldCore Authority string', async () => {
+    api.get.mockResolvedValue({ data: [] });
+
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+
+    await waitFor(() => screen.getByText('Authority Dashboard'));
+    expect(screen.getByText('Institution authority operations')).toBeTruthy();
+    expect(screen.queryByText(/FieldCore Authority/i)).toBeNull();
+  });
+
+  it('does not contain "institution review portal" anywhere in visible text', async () => {
+    api.get.mockResolvedValue({ data: [] });
+
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+
+    await waitFor(() => screen.getByText('Authority Dashboard'));
+    expect(screen.queryByText(/institution review portal/i)).toBeNull();
   });
 });
