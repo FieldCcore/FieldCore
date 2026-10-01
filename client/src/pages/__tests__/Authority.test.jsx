@@ -781,21 +781,22 @@ describe('Authority dashboard — KPI labels (C7/C8)', () => {
     expect(screen.getByText('pending + in-progress cases')).toBeTruthy();
   });
 
-  it('shows "Oldest Queue Case" KPI label (Batch1-P2)', async () => {
+  it('shows "Oldest in Queue" KPI label (Batch1-P2)', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('Oldest Queue Case')).toBeTruthy();
-    expect(screen.queryByText('Oldest in Queue')).toBeNull();
+    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.queryByText('Oldest Queue Case')).toBeNull();
     expect(screen.queryByText('Oldest Case')).toBeNull();
   });
 
-  it('Oldest Queue Case meta reads "by case creation date" (Batch1-P2)', async () => {
+  it('Oldest in Queue meta reads "in current review state since" (Batch1-P2)', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('by case creation date')).toBeTruthy();
+    expect(screen.getByText('in current review state since')).toBeTruthy();
     expect(screen.queryByText('oldest item created')).toBeNull();
+    expect(screen.queryByText('by case creation date')).toBeNull();
   });
 });
 
@@ -832,19 +833,70 @@ describe('Authority dashboard — Batch1-P2: KPI label and helper text', () => {
     vi.clearAllMocks();
   });
 
-  it('KPI label is "Oldest Queue Case", never the old "Oldest in Queue"', async () => {
+  it('KPI label is "Oldest in Queue", never "Oldest Queue Case" or "Oldest in Queue" old form', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('Oldest Queue Case')).toBeTruthy();
-    expect(screen.queryByText('Oldest in Queue')).toBeNull();
+    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.queryByText('Oldest Queue Case')).toBeNull();
   });
 
-  it('KPI helper is "by case creation date", never "oldest item created"', async () => {
+  it('KPI helper is "in current review state since", never "oldest item created" or "by case creation date"', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('by case creation date')).toBeTruthy();
+    expect(screen.getByText('in current review state since')).toBeTruthy();
     expect(screen.queryByText('oldest item created')).toBeNull();
+    expect(screen.queryByText('by case creation date')).toBeNull();
+  });
+});
+
+// ── Batch 1 Follow-Up — metric coherence: selection + displayed timestamp must match ──
+
+describe('Authority dashboard — Batch1-P2 follow-up: metric coherence', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('KPI shows status_changed_at of queue[0], not created_at, when creation and queue-entry order differ', async () => {
+    // CASE_A: created EARLIER (Jan 2026), entered queue LATER (Jun 2026)
+    // CASE_B: created LATER  (Apr 2026), entered queue EARLIER (Mar 2026)
+    // Backend returns [CASE_B, CASE_A] — sorted by status_changed_at ASC.
+    // queue[0] = CASE_B. KPI must show CASE_B's status_changed_at (Mar), not CASE_A's created_at (Jan).
+    const CASE_A = {
+      id: 'co-a', external_case_reference: 'CO-A', status: 'PENDING_HUMAN_REVIEW',
+      created_at: '2026-01-15T00:00:00Z',        // oldest creation
+      status_changed_at: '2026-06-10T00:00:00Z', // most recent queue entry
+      document_count: 0, instrument_count: 0,
+      assigned_to: null, reviewer_name: null,
+    };
+    const CASE_B = {
+      id: 'co-b', external_case_reference: 'CO-B', status: 'PENDING_HUMAN_REVIEW',
+      created_at: '2026-04-20T00:00:00Z',        // newer creation
+      status_changed_at: '2026-03-05T00:00:00Z', // oldest queue entry → queue[0]
+      document_count: 0, instrument_count: 0,
+      assigned_to: null, reviewer_name: null,
+    };
+    api.get.mockResolvedValue({ data: [CASE_B, CASE_A] }); // backend already sorted
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+
+    // fmtDate('2026-03-05') → "Mar 5, 2026"   (CASE_B status_changed_at — correct)
+    // fmtDate('2026-01-15') → "Jan 15, 2026"  (CASE_A created_at — wrong field)
+    const page = document.body.textContent;
+    expect(page).toContain('Mar');   // shows CASE_B status_changed_at (Mar 2026)
+    expect(page).not.toMatch(/Jan 15/); // does NOT show CASE_A created_at
+  });
+
+  it('KPI shows — when no queue cases exist', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    // All KPI value cells for empty queue show —
+    const vals = document.querySelectorAll('.au-kpi-value');
+    expect(Array.from(vals).some(v => v.textContent === '—')).toBe(true);
   });
 });
