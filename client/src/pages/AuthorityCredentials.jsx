@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { AuLoading, AuError, AuEmpty, fmtDateTime } from './AuthorityShared';
+import { AuLoading, AuError, AuEmpty, auStatusLabel, fmtDateTime } from './AuthorityShared';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ function ScopeBadge({ scope }) {
 
 function StatusBadge({ status }) {
   const cls = status === 'active' ? 'au-badge--active' : 'au-badge--revoked';
-  return <span className={`au-badge ${cls}`}>{status}</span>;
+  return <span className={`au-badge ${cls}`}>{auStatusLabel(status)}</span>;
 }
 
 // ── One-time secret display ───────────────────────────────────────────────────

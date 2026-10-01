@@ -33,22 +33,22 @@ export default function Authority() {
       <div className="au-section-heading">Review Queue Summary</div>
       <div className="au-kpi-strip">
         <div className="au-kpi-card">
-          <div className="au-kpi-label">Pending Review</div>
+          <div className="au-kpi-label">Pending review</div>
           <div className="au-kpi-value">{loading ? '—' : pending}</div>
           <div className="au-kpi-meta">cases awaiting reviewer</div>
         </div>
         <div className="au-kpi-card">
-          <div className="au-kpi-label">In Progress</div>
+          <div className="au-kpi-label">In progress</div>
           <div className="au-kpi-value">{loading ? '—' : inProgress}</div>
           <div className="au-kpi-meta">currently being reviewed</div>
         </div>
         <div className="au-kpi-card">
-          <div className="au-kpi-label">Total in Queue</div>
+          <div className="au-kpi-label">Total in queue</div>
           <div className="au-kpi-value">{loading ? '—' : queue.length}</div>
           <div className="au-kpi-meta">pending + in-progress cases</div>
         </div>
         <div className="au-kpi-card">
-          <div className="au-kpi-label">Oldest in Queue</div>
+          <div className="au-kpi-label">Oldest in queue</div>
           <div className="au-kpi-value" style={{ fontSize: 16, paddingTop: 4 }}>
             {loading || !queue.length ? '—' : fmtDate(queue[0]?.status_changed_at)}
           </div>
@@ -72,7 +72,7 @@ export default function Authority() {
                 <th>Documents</th>
                 <th>Instruments</th>
                 <th>Reviewer</th>
-                <th>In Queue Since</th>
+                <th>In queue since</th>
               </tr>
             </thead>
             <tbody>
@@ -94,7 +94,7 @@ export default function Authority() {
               ))}
               {!queue.length && (
                 <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--steel)', padding: 24 }}>
-                  No cases in review queue
+                  No cases in review queue.
                 </td></tr>
               )}
             </tbody>

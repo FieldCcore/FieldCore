@@ -77,10 +77,10 @@ function fromMinorUnits(minor, currencyCode) {
 // Correction 14: show all four outcome states with clear labeling
 
 const OUTCOME_META = {
-  AUTHORIZED:               { label: 'Authorized',               color: '#166534', bg: '#DCFCE7', icon: '✓' },
-  NOT_AUTHORIZED:           { label: 'Not Authorized',           color: '#991B1B', bg: '#FEE2E2', icon: '✗' },
-  INSUFFICIENT_INFORMATION: { label: 'Insufficient Information', color: '#92400E', bg: '#FEF3C7', icon: '?' },
-  MANUAL_REVIEW:            { label: 'Manual Review Required',   color: '#5B21B6', bg: '#EDE9FE', icon: '!' },
+  AUTHORIZED:               { label: 'Authorized',              color: '#166534', bg: '#DCFCE7', icon: '✓' },
+  NOT_AUTHORIZED:           { label: 'Not authorized',          color: '#991B1B', bg: '#FEE2E2', icon: '✗' },
+  INSUFFICIENT_INFORMATION: { label: 'Insufficient information', color: '#92400E', bg: '#FEF3C7', icon: '?' },
+  MANUAL_REVIEW:            { label: 'Manual review',           color: '#5B21B6', bg: '#EDE9FE', icon: '!' },
 };
 
 function OutcomeBadge({ outcome }) {
@@ -724,7 +724,7 @@ function EvaluationHistory({ refreshKey }) {
               <th>Reason</th>
               <th>Action Key</th>
               <th>Instrument</th>
-              <th>Evaluated At (Historical)</th>
+              <th>Evaluated at (historical)</th>
             </tr>
           </thead>
           <tbody>

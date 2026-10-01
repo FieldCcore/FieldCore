@@ -7,6 +7,8 @@ import ClientForm from '../components/ClientForm';
 import StatusBadge from '../components/StatusBadge';
 import ClientLocationField from '../components/ClientLocationField';
 
+const TIER_LABEL = { standard: 'Standard', vip: 'VIP', commercial: 'Commercial' };
+
 export default function ClientProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -117,7 +119,7 @@ export default function ClientProfile() {
       <div className="profile-header">
         <div>
           <h1>{client.name}</h1>
-          <span className={`badge badge-${client.tier}`}>{client.tier}</span>
+          <span className={`badge badge-${client.tier}`}>{TIER_LABEL[client.tier] || (client.tier ? client.tier.charAt(0).toUpperCase() + client.tier.slice(1) : '')}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {client.phone && (

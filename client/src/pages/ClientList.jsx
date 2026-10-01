@@ -14,6 +14,9 @@ function fmtDate(ts) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+const TIER_LABEL = { standard: 'Standard', vip: 'VIP', commercial: 'Commercial' };
+function tierLabel(t) { return TIER_LABEL[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : ''); }
+
 export default function ClientList() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
@@ -123,7 +126,7 @@ export default function ClientList() {
                   )}
                 </div>
                 <div>
-                  <span className={`badge badge-${c.tier}`}>{c.tier}</span>
+                  <span className={`badge badge-${c.tier}`}>{tierLabel(c.tier)}</span>
                 </div>
                 <div>
                   {c.phone && <div style={{ fontSize: 13, color: 'var(--slate)' }}>{c.phone}</div>}
@@ -161,7 +164,7 @@ export default function ClientList() {
                 <div className="cl-card-head">
                   <div>
                     <div className="cl-card-name">{c.name}</div>
-                    <span className={`badge badge-${c.tier}`}>{c.tier}</span>
+                    <span className={`badge badge-${c.tier}`}>{tierLabel(c.tier)}</span>
                   </div>
                   <div className="cl-card-since">
                     {c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}

@@ -4,7 +4,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import {
   AuBadge, AuLoading, AuError, AuEmpty,
-  instrumentTypeLabel, fmtEventLabel,
+  auStatusLabel, instrumentTypeLabel, fmtEventLabel,
 } from './AuthorityShared';
 import { formatDateOnly, formatTimestamp, truncateMiddle } from '../utils/formatters';
 
@@ -214,7 +214,7 @@ function LifecycleStrip({ status }) {
         const stageIdx = CASE_STAGES.indexOf(stage);
         const isActive = stage === status;
         const isDone   = activeIdx > -1 && stageIdx < activeIdx && !terminalSet.has(stage);
-        const label    = stage.replace(/_/g, ' ');
+        const label    = auStatusLabel(stage);
 
         return (
           <div key={stage} className="fc-lc-stage">
@@ -369,7 +369,7 @@ function PartiesTab({ instruments, canMutate, onMutated }) {
       {instruments.length === 0 && <AuEmpty text="No instruments linked." />}
       {instruments.map(instr => (
         <div key={instr.id} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', marginBottom: 8 }}>
             {instrumentTypeLabel(instr.instrument_type)} <AuBadge status={instr.status} />
           </div>
           <PartiesPanel
@@ -566,7 +566,7 @@ function PermissionsTab({ instruments, canMutate, onMutated }) {
 
         return (
           <div key={instr.id} style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', marginBottom: 8 }}>
               {instrumentTypeLabel(instr.instrument_type)}
             </div>
             {perms.length === 0
@@ -575,7 +575,7 @@ function PermissionsTab({ instruments, canMutate, onMutated }) {
                 <div key={p.id} className="fc-perm-row">
                   <span className="fc-action-key">{p.action_key}</span>
                   <span className={`au-badge au-badge--${p.grant_type === 'granted' ? 'verified' : 'rejected'}`}>
-                    {p.grant_type}
+                    {auStatusLabel(p.grant_type)}
                   </span>
                   <span style={{ flex: 1 }} />
                   {mutable && (
@@ -612,7 +612,7 @@ function RestrictionsTab({ instruments, canMutate, onMutated }) {
 
         return (
           <div key={instr.id} style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fc-text-dim)', marginBottom: 8 }}>
               {instrumentTypeLabel(instr.instrument_type)}
             </div>
             {mutable && (
@@ -770,7 +770,7 @@ function CandidateCard({ candidate, caps, caseId, onMutated }) {
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="fc-candidate-field">{fieldLabel(candidate.fieldKey)}</span>
             {pct != null && <span className="fc-candidate-confidence">{pct}% confidence</span>}
-            <span className="fc-candidate-status" style={{ marginLeft: 8, color: statusColor }}>{candidate.status}</span>
+            <span className="fc-candidate-status" style={{ marginLeft: 8, color: statusColor }}>{auStatusLabel(candidate.status)}</span>
           </div>
           <div className="fc-candidate-value">
             {/* Untrusted AI content rendered as plain text — never dangerouslySetInnerHTML */}
@@ -893,11 +893,11 @@ function ExtractionTab({ caseId, runs, candidates, caps, kaseStatus, onMutated }
                 fontSize: 11, fontWeight: 600,
                 background: { pending:'#f3f4f6', running:'#dbeafe', completed:'#dcfce7', failed:'#fee2e2', cancelled:'#f3f4f6' }[r.status] || '#f3f4f6',
                 color:      { pending:'#374151', running:'#1d4ed8', completed:'#15803d', failed:'#b91c1c', cancelled:'#6b7280' }[r.status] || '#374151',
-              }}>{r.status.toUpperCase()}</span>
+              }}>{auStatusLabel(r.status)}</span>
               <div style={{ flex: 1, fontSize: 12, color: 'var(--fc-text-muted)' }}>
                 {/* Original filename not displayed — show document id only */}
                 {truncateMiddle(r.document_id, 16)}
-                {r.run_kind === 'retry' && <span style={{ marginLeft: 6, color: '#7c3aed', fontSize: 10 }}>RETRY</span>}
+                {r.run_kind === 'retry' && <span style={{ marginLeft: 6, color: '#7c3aed', fontSize: 10 }}>Retry</span>}
                 {r.status === 'failed' && r.error_category && (
                   <span style={{ marginLeft: 6, color: '#b91c1c', fontSize: 10 }}>{r.error_category}</span>
                 )}

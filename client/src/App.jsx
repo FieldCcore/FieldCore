@@ -589,17 +589,17 @@ function AppShell() {
                 <>
                   {/* Institution — Authority-only navigation */}
                   {ni('/authority',             true,  IcoAuthority, 'Dashboard',  null)}
-                  <div className="nav-section">WORK</div>
+                  <div className="nav-section">Work</div>
                   {ni('/authority/queue',       false, IcoAuthority, 'Queue',      null)}
                   {ni('/authority/cases',       false, IcoAuthority, 'Cases',      null)}
                   {ni('/authority/parties',     false, IcoTeam,      'Parties',    null)}
-                  <div className="nav-section">DECISIONS</div>
+                  <div className="nav-section">Decisions</div>
                   {ni('/authority/evaluate',    false, IcoAuthority, 'Evaluate',   null)}
-                  <div className="nav-section">INTEGRATIONS</div>
+                  <div className="nav-section">Integrations</div>
                   {ni('/authority/credentials', false, IcoSettings,  'API Access', null)}
                   {isOwner && (
                     <>
-                      <div className="nav-section">ACCOUNT</div>
+                      <div className="nav-section">Account</div>
                       {ni('/account', false, IcoSettings, 'Settings', null)}
                     </>
                   )}

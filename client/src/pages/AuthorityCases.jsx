@@ -6,11 +6,11 @@ import { AuLoading, AuError, AuBadge, AuEmpty, fmtDate } from './AuthorityShared
 const STATUS_FILTER_OPTS = [
   { value: '', label: 'All statuses' },
   { value: 'DRAFT', label: 'Draft' },
-  { value: 'AWAITING_DOCUMENTS', label: 'Awaiting Documents' },
-  { value: 'PENDING_EXTRACTION', label: 'Pending Extraction' },
-  { value: 'EXTRACTION_COMPLETE', label: 'Extraction Complete' },
-  { value: 'PENDING_HUMAN_REVIEW', label: 'Pending Review' },
-  { value: 'HUMAN_REVIEW_IN_PROGRESS', label: 'In Review' },
+  { value: 'AWAITING_DOCUMENTS', label: 'Awaiting documents' },
+  { value: 'PENDING_EXTRACTION', label: 'Pending extraction' },
+  { value: 'EXTRACTION_COMPLETE', label: 'Extraction complete' },
+  { value: 'PENDING_HUMAN_REVIEW', label: 'Pending review' },
+  { value: 'HUMAN_REVIEW_IN_PROGRESS', label: 'In progress' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
@@ -102,7 +102,7 @@ export default function AuthorityCases() {
             <table className="au-table">
               <thead>
                 <tr>
-                  <th>Case Reference</th>
+                  <th>Case reference</th>
                   <th>Status</th>
                   <th>Documents</th>
                   <th>Instruments</th>
