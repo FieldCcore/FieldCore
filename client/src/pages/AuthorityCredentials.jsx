@@ -344,26 +344,40 @@ export default function AuthorityCredentials() {
         <div>
           <div className="au-page-title">API Access</div>
           <div className="au-page-subtitle">
-            Credentials for server-side systems to call the FieldCore Authority API
+            Integration area for institution software and IT teams
           </div>
         </div>
       </div>
 
-      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-concept-explanation">
-        API credentials let your institution's back-end systems query Authority decisions
-        programmatically — for example, to verify a power of attorney before processing a
-        transaction. Each credential is a secret token scoped to one or more actions. Credentials
-        are for server-side use only and must never be embedded in browser or mobile code.
-      </div>
-
       {!flagEnabled && (
-        <div className="au-info" data-testid="flag-off-message">
+        <div className="au-info" style={{ marginBottom: 16 }} data-testid="flag-off-message">
           External API access is not currently enabled in this FieldCore environment.
           {(hasManage || hasRead) && credentials.length > 0
             ? ' You can view and revoke existing credentials below.'
             : ''}
         </div>
       )}
+
+      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-concept-explanation">
+        <strong>What this is:</strong> API Access lets your institution's own software request
+        Authority evaluations from FieldCore automatically, instead of employees entering every
+        request in the web application.
+        <div style={{ margin: '8px 0 4px', fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
+          Your institution's system → FieldCore API → deterministic Authority evaluation → structured decision returned
+        </div>
+        Intended for IT, engineering, and integration administrators.
+      </div>
+
+      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-credential-explanation">
+        <strong>What an API credential is:</strong> The secure identity your institution's backend
+        software uses to authenticate when calling FieldCore's external API. Each credential is
+        scoped to one or more actions and is for server-side use only.
+        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--slate)' }}>
+          An API credential does <em>not</em> grant a delegate authority, replace human
+          verification, personally authorize an employee, or execute a banking transaction.
+          Credentials are for machine-to-machine authentication only.
+        </div>
+      </div>
 
       {newSecret && (
         <OneTimeSecretDisplay

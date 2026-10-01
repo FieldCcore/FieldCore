@@ -749,7 +749,7 @@ describe('Authority dashboard — product naming (Problem 6)', () => {
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
 
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText(/Review queue activity/i)).toBeTruthy();
+    expect(screen.getByText(/Operational home/i)).toBeTruthy();
     expect(screen.queryByText('Authority Dashboard')).toBeNull();
     expect(screen.queryByText('Institution authority operations')).toBeNull();
   });
@@ -761,5 +761,61 @@ describe('Authority dashboard — product naming (Problem 6)', () => {
 
     await waitFor(() => screen.getByText('Dashboard'));
     expect(screen.queryByText(/institution review portal/i)).toBeNull();
+  });
+});
+
+// ── Dashboard KPI labels: C7 and C8 ──────────────────────────────────────────
+
+describe('Authority dashboard — KPI labels (C7/C8)', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'test-user-id', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('Total in Queue meta reads "pending + in-progress cases" (C7)', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('pending + in-progress cases')).toBeTruthy();
+  });
+
+  it('shows "Oldest in Queue" KPI label, not "Oldest Case" (C8)', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.queryByText('Oldest Case')).toBeNull();
+  });
+
+  it('Oldest in Queue meta reads "oldest item created" (C8)', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('oldest item created')).toBeTruthy();
+  });
+});
+
+// ── C23: page subtitles for Cases and Parties ─────────────────────────────────
+
+describe('Authority page subtitles — C23', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'test-user-id', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('Cases page shows "Master Authority case register" subtitle', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/Master Authority case register/i)).toBeTruthy());
+  });
+
+  it('Parties page shows "Directory of people and organizations" subtitle', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityParties /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/Directory of people and organizations/i)).toBeTruthy());
   });
 });

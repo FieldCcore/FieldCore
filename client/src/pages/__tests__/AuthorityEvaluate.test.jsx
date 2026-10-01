@@ -816,3 +816,85 @@ describe('AuthorityEvaluate — safe rendering', () => {
     });
   });
 });
+
+// ── C2: history error clears on successful reload ─────────────────────────────
+
+describe('AuthorityEvaluate — C2: history error clears on reload', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('clears stale error after a successful reload', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/authority/capabilities')) return Promise.resolve({ data: { capabilities: ['AUTHORITY_EVALUATE'] } });
+      if (url.includes('/authority/instruments'))  return Promise.resolve({ data: [INSTRUMENT_ROW] });
+      if (url.includes('/authority/evaluations'))  return Promise.reject({ response: { data: { error: 'Network error' } } });
+      return Promise.reject(new Error(`Unexpected: ${url}`));
+    });
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Network error')).toBeTruthy());
+
+    api.get.mockImplementation((url) => {
+      if (url.includes('/authority/capabilities')) return Promise.resolve({ data: { capabilities: ['AUTHORITY_EVALUATE'] } });
+      if (url.includes('/authority/instruments'))  return Promise.resolve({ data: [INSTRUMENT_ROW] });
+      if (url.includes('/authority/evaluations'))  return Promise.resolve({ data: [] });
+      return Promise.reject(new Error(`Unexpected: ${url}`));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryByText('Network error')).toBeNull());
+    expect(screen.getByText('No evaluations yet.')).toBeTruthy();
+  });
+});
+
+// ── C12: monetary amount field ─────────────────────────────────────────────────
+
+const INSTR_WITH_MONETARY_LIMIT = {
+  ...INSTRUMENT_DETAIL,
+  restrictions: [
+    { id: 'restr-1', restriction_type: 'monetary_limit',
+      parameters: { limit: 500000, currency: 'USD' },
+      participant_id: null, effective_from: null, effective_to: null,
+      created_at: '2025-01-01T00:00:00Z' },
+  ],
+};
+
+describe('AuthorityEvaluate — C12: monetary amount field', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('amount input placeholder does not include currency text', async () => {
+    await selectInstrument();
+    const amountInput = screen.getByPlaceholderText('e.g. 50.00');
+    expect(amountInput).toBeTruthy();
+    expect(amountInput.placeholder).not.toMatch(/major units/);
+    expect(amountInput.placeholder).not.toMatch(/\bin\s+/);
+  });
+
+  it('shows monetary-limit hint when instrument has a monetary_limit restriction', async () => {
+    await selectInstrument({ instrDetail: INSTR_WITH_MONETARY_LIMIT });
+    expect(screen.getByTestId('monetary-limit-hint')).toBeTruthy();
+  });
+
+  it('monetary-limit hint text mentions monetary limit, amount, and currency', async () => {
+    await selectInstrument({ instrDetail: INSTR_WITH_MONETARY_LIMIT });
+    const hint = screen.getByTestId('monetary-limit-hint');
+    expect(hint.textContent).toContain('monetary limit');
+    expect(hint.textContent).toContain('amount');
+    expect(hint.textContent).toContain('currency');
+  });
+
+  it('does not show monetary-limit hint when instrument has no monetary_limit restriction', async () => {
+    await selectInstrument();
+    expect(screen.queryByTestId('monetary-limit-hint')).toBeNull();
+  });
+});
+
+// ── C23: Evaluator page subtitle ──────────────────────────────────────────────
+
+describe('AuthorityEvaluate — C23: page subtitle', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('shows deterministic authorization check subtitle', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Evaluator')).toBeTruthy());
+    expect(screen.getByText(/Deterministic authorization check/i)).toBeTruthy();
+  });
+});

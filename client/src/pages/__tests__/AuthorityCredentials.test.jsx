@@ -356,3 +356,75 @@ describe('AuthorityCredentials', () => {
   });
 
 });
+
+// ── C17/C18: API concept and credential explanations ─────────────────────────
+
+describe('AuthorityCredentials — C17/C18: explanation blocks', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('renders api-concept-explanation with "What this is:" copy', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('api-concept-explanation'));
+    const expl = screen.getByTestId('api-concept-explanation');
+    expect(expl.textContent).toContain('What this is:');
+    expect(expl.textContent).toContain('API Access');
+    expect(expl.textContent).toContain('Authority evaluations');
+  });
+
+  it('renders api-credential-explanation with "What an API credential is:" copy', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('api-credential-explanation'));
+    const expl = screen.getByTestId('api-credential-explanation');
+    expect(expl.textContent).toContain('What an API credential is:');
+    expect(expl.textContent).toContain('server-side use only');
+  });
+
+  it('api-credential-explanation contains machine-to-machine disclaimer', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('api-credential-explanation'));
+    const expl = screen.getByTestId('api-credential-explanation');
+    expect(expl.textContent).toContain('machine-to-machine');
+  });
+});
+
+// ── C19/C20: flag-off message ordering ───────────────────────────────────────
+
+describe('AuthorityCredentials — C19/C20: flag-off appears before explanation', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('flag-off message text precedes api-concept-explanation text in page content', async () => {
+    setupApi({ flagEnabled: false, credentials: [] });
+    renderPage();
+    await waitFor(() => screen.getByTestId('flag-off-message'));
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    const flagOffIdx = page.indexOf('not currently enabled');
+    const conceptIdx = page.indexOf('What this is:');
+    expect(flagOffIdx).toBeGreaterThan(-1);
+    expect(conceptIdx).toBeGreaterThan(-1);
+    expect(flagOffIdx).toBeLessThan(conceptIdx);
+  });
+
+  it('both flag-off message and concept explanation are present when flag is OFF', async () => {
+    setupApi({ flagEnabled: false, credentials: [] });
+    renderPage();
+    await waitFor(() => screen.getByTestId('flag-off-message'));
+    expect(screen.getByTestId('flag-off-message')).toBeTruthy();
+    expect(screen.getByTestId('api-concept-explanation')).toBeTruthy();
+  });
+});
+
+// ── C23: credentials page subtitle ───────────────────────────────────────────
+
+describe('AuthorityCredentials — C23: page subtitle', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('shows "Integration area for institution software and IT teams" subtitle', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(screen.getByText(/Integration area for institution software/i)).toBeTruthy();
+  });
+});

@@ -203,3 +203,18 @@ describe('AuthorityQueue — Concern 1: 4-state model', () => {
     expect(screen.getByRole('button', { name: /Retry/i })).toBeTruthy();
   });
 });
+
+// ── C23: page subtitle ────────────────────────────────────────────────────────
+
+describe('AuthorityQueue — C23: page subtitle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUser();
+  });
+
+  it('shows "Human review work inbox" subtitle', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/Human review work inbox/i)).toBeTruthy());
+  });
+});

@@ -54,7 +54,7 @@ export default function AuthorityParties() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Parties</div>
-          <div className="au-page-subtitle">Persons and organizations in Authority instruments</div>
+          <div className="au-page-subtitle">Directory of people and organizations participating in Authority relationships</div>
         </div>
         <button className="au-btn au-btn--primary" onClick={() => setCreating(c => !c)}>
           {creating ? 'Cancel' : '+ New Party'}

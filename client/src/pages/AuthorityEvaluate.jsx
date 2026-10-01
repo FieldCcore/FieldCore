@@ -518,7 +518,7 @@ function EvaluationForm({ onResult }) {
                 <label className="au-label">Amount (optional)</label>
                 <input className="au-input" type="text" value={amount}
                   onChange={e => { setAmount(e.target.value); idempKeyRef.current = null; requestedAtRef.current = null; }}
-                  placeholder={`e.g. 50.00 (in ${currency || 'major units'})`} />
+                  placeholder="e.g. 50.00" />
               </div>
               <div className="au-form-group">
                 <label className="au-label">Currency</label>
@@ -527,6 +527,13 @@ function EvaluationForm({ onResult }) {
                   maxLength={3} placeholder="USD" />
               </div>
             </div>
+            {(instrDetail?.restrictions || []).some(r => r.restriction_type === 'monetary_limit') && (
+              <div style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A',
+                borderRadius: 5, padding: '6px 10px', marginTop: 4 }}
+                data-testid="monetary-limit-hint">
+                This instrument includes a monetary limit. Enter an amount and currency for a complete evaluation.
+              </div>
+            )}
           </>
         )}
       </div>
@@ -670,6 +677,7 @@ function EvaluationHistory({ refreshKey }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await api.get('/authority/evaluations?limit=20');
       setRows(res.data);
@@ -776,7 +784,7 @@ export default function AuthorityEvaluate() {
         <div>
           <div className="au-page-title">Evaluator</div>
           <div className="au-page-subtitle">
-            Check whether a delegate may act under a verified instrument for a specific action
+            Deterministic authorization check using a human-verified instrument — does not establish legal validity, replace human review, or execute an action
           </div>
         </div>
       </div>

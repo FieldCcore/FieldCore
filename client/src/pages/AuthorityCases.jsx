@@ -55,7 +55,7 @@ export default function AuthorityCases() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Cases</div>
-          <div className="au-page-subtitle">All cases tracked by this institution</div>
+          <div className="au-page-subtitle">Master Authority case register, across all lifecycle states</div>
         </div>
         <button className="au-btn au-btn--primary" onClick={() => setCreating(c => !c)}>
           {creating ? 'Cancel' : '+ New Case'}

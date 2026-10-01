@@ -726,7 +726,7 @@ async function getInstrument(accountId, instrumentId) {
 async function getInstrumentDetail(accountId, instrumentId) {
   const instr = await getInstrument(accountId, instrumentId);
 
-  const [{ rows: participants }, { rows: permissions }] = await Promise.all([
+  const [{ rows: participants }, { rows: permissions }, { rows: restrictions }] = await Promise.all([
     pool.query(
       `SELECT aip.id, aip.party_id, aip.role, aip.sequence, aip.status, aip.conditions,
               ap.party_type, ap.display_name AS encrypted_name, ap.external_reference
@@ -739,6 +739,13 @@ async function getInstrumentDetail(accountId, instrumentId) {
     pool.query(
       `SELECT id, action_key, grant_type, participant_id, created_at
        FROM authority_permissions
+       WHERE account_id = $1 AND instrument_id = $2
+       ORDER BY created_at ASC`,
+      [accountId, instrumentId]
+    ),
+    pool.query(
+      `SELECT id, restriction_type, parameters, participant_id, effective_from, effective_to, created_at
+       FROM authority_restrictions
        WHERE account_id = $1 AND instrument_id = $2
        ORDER BY created_at ASC`,
       [accountId, instrumentId]
@@ -759,6 +766,7 @@ async function getInstrumentDetail(accountId, instrumentId) {
       is_valid_delegate:  VALID_PARTICIPANT_ROLES.has(p.role) && p.role !== 'principal',
     })),
     permissions,
+    restrictions,
   };
 }
 

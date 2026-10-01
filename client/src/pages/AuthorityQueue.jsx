@@ -83,7 +83,7 @@ export default function AuthorityQueue() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Review Queue</div>
-          <div className="au-page-subtitle">Cases pending human review</div>
+          <div className="au-page-subtitle">Human review work inbox — unassigned and in-progress cases for this institution</div>
         </div>
         <button className="au-btn au-btn--outline" onClick={load}>Refresh</button>
       </div>

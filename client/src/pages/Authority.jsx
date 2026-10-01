@@ -23,7 +23,7 @@ export default function Authority() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Dashboard</div>
-          <div className="au-page-subtitle">Review queue activity and open cases at a glance</div>
+          <div className="au-page-subtitle">Operational home — work requiring attention and current review status</div>
         </div>
         <Link to="/authority/cases">
           <button className="au-btn au-btn--primary">+ New Case</button>
@@ -45,14 +45,14 @@ export default function Authority() {
         <div className="au-kpi-card">
           <div className="au-kpi-label">Total in Queue</div>
           <div className="au-kpi-value">{loading ? '—' : queue.length}</div>
-          <div className="au-kpi-meta">open review items</div>
+          <div className="au-kpi-meta">pending + in-progress cases</div>
         </div>
         <div className="au-kpi-card">
-          <div className="au-kpi-label">Oldest Case</div>
+          <div className="au-kpi-label">Oldest in Queue</div>
           <div className="au-kpi-value" style={{ fontSize: 16, paddingTop: 4 }}>
-            {loading || !queue.length ? '—' : fmtDate(queue[queue.length - 1]?.status_changed_at)}
+            {loading || !queue.length ? '—' : fmtDate(queue[0]?.created_at)}
           </div>
-          <div className="au-kpi-meta">entered queue</div>
+          <div className="au-kpi-meta">oldest item created</div>
         </div>
       </div>
 
