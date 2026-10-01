@@ -114,7 +114,7 @@ function IdList({ ids, label }) {
   if (!ids || ids.length === 0) return null;
   return (
     <div>
-      <span style={{ color: 'var(--steel)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
+      <span style={{ color: 'var(--slate)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {ids.map(id => (
           <span key={id} style={{
@@ -134,7 +134,7 @@ function StringList({ items, label, color }) {
   if (!items || items.length === 0) return null;
   return (
     <div>
-      <span style={{ color: 'var(--steel)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
+      <span style={{ color: 'var(--slate)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {items.map((item, i) => (
           <span key={i} style={{
@@ -152,16 +152,22 @@ function StringList({ items, label, color }) {
 
 // ── Instrument picker (VERIFIED only) ───────────────────────────────────────
 
-function InstrumentPicker({ value, onChange }) {
+function InstrumentPicker({ value, onChange, onNoInstruments }) {
   const [instruments, setInstruments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.get('/authority/instruments?limit=100&status=VERIFIED')
-      .then(r => setInstruments(r.data))
-      .catch(() => setInstruments([]))
+      .then(r => {
+        setInstruments(r.data);
+        onNoInstruments?.(r.data.length === 0);
+      })
+      .catch(() => {
+        setInstruments([]);
+        onNoInstruments?.(true);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <select className="au-input" disabled><option>Loading instruments…</option></select>;
 
@@ -281,7 +287,7 @@ function ActionKeySelect({ permissions, value, onChange }) {
       </select>
 
       {value && !customMode && (
-        <div style={{ marginTop: 4, fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--steel)' }}
+        <div style={{ marginTop: 4, fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--slate)' }}
           data-testid="action-key-exact">
           {value}
         </div>
@@ -318,6 +324,7 @@ function EvaluationForm({ onResult }) {
   const [actionKey,        setActionKey]        = useState('');
   const [amount,           setAmount]           = useState('');
   const [currency,         setCurrency]         = useState('USD');
+  const [noInstruments,    setNoInstruments]    = useState(false);
 
   // Instrument detail (participants + permissions) — loaded after instrument selection
   const [instrDetail,    setInstrDetail]    = useState(null);
@@ -446,17 +453,15 @@ function EvaluationForm({ onResult }) {
   const permissions  = instrDetail?.permissions  || [];
 
   return (
-    <form className="au-card" style={{ padding: 24 }} onSubmit={handleSubmit}>
-      <div className="au-card-header" style={{ marginBottom: 20 }}>
-        <span className="au-card-title">Evaluate Authority</span>
-      </div>
-
+    <form className="au-card" style={{ padding: 24 }} onSubmit={handleSubmit}
+      data-testid="evaluation-form">
       <div style={{ display: 'grid', gap: 14 }}>
         <div className="au-form-group">
           <label className="au-label">Verified Instrument *</label>
-          <InstrumentPicker value={instrumentId} onChange={handleInstrumentChange} />
-          {!instrumentId && (
-            <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 4 }}>
+          <InstrumentPicker value={instrumentId} onChange={handleInstrumentChange}
+            onNoInstruments={setNoInstruments} />
+          {!instrumentId && !noInstruments && (
+            <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 4 }}>
               Choose an instrument first. Principal and delegate options come from that
               instrument's recorded participants.
             </div>
@@ -464,7 +469,7 @@ function EvaluationForm({ onResult }) {
         </div>
 
         {instrLoading && (
-          <div style={{ fontSize: 13, color: 'var(--steel)' }}>Loading instrument details…</div>
+          <div style={{ fontSize: 13, color: 'var(--slate)' }}>Loading instrument details…</div>
         )}
 
         {instrumentId && !instrLoading && (
@@ -472,7 +477,7 @@ function EvaluationForm({ onResult }) {
             <div className="au-form-group">
               <label className="au-label">Principal *</label>
               {participants.filter(p => p.is_valid_principal).length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--steel)' }}>
+                <div style={{ fontSize: 13, color: 'var(--slate)' }}>
                   No principal participants on this instrument.
                 </div>
               ) : (
@@ -489,7 +494,7 @@ function EvaluationForm({ onResult }) {
             <div className="au-form-group">
               <label className="au-label">Delegate *</label>
               {participants.filter(p => p.is_valid_delegate).length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--steel)' }}>
+                <div style={{ fontSize: 13, color: 'var(--slate)' }}>
                   No delegate participants on this instrument.
                 </div>
               ) : (
@@ -556,9 +561,9 @@ function EvaluationForm({ onResult }) {
         >
           {submitting ? 'Evaluating…' : 'Evaluate'}
         </button>
-        {!canSubmit && !submitting && (
+        {!canSubmit && !submitting && !noInstruments && (
           <div id="evaluate-form-hint"
-            style={{ fontSize: 12, color: 'var(--steel)', marginTop: 6 }}
+            style={{ fontSize: 12, color: 'var(--slate)', marginTop: 6 }}
             data-testid="evaluate-btn-hint">
             Select an instrument, principal, delegate, and action to evaluate.
           </div>
@@ -610,7 +615,7 @@ function EvaluationResultCard({ result }) {
       <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
         {reasonCodes.length > 0 && (
           <div>
-            <span style={{ color: 'var(--steel)', display: 'block', marginBottom: 4, fontSize: 12 }}>
+            <span style={{ color: 'var(--slate)', display: 'block', marginBottom: 4, fontSize: 12 }}>
               Reason Codes
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -629,14 +634,14 @@ function EvaluationResultCard({ result }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <span style={{ color: 'var(--steel)', fontSize: 12 }}>Evaluation ID</span>
+            <span style={{ color: 'var(--slate)', fontSize: 12 }}>Evaluation ID</span>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, wordBreak: 'break-all' }}>
               {result.evaluationId}
             </div>
           </div>
           {result.ruleVersion && (
             <div>
-              <span style={{ color: 'var(--steel)', fontSize: 12 }}>Rule Version</span>
+              <span style={{ color: 'var(--slate)', fontSize: 12 }}>Rule Version</span>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>{result.ruleVersion}</div>
             </div>
           )}
@@ -644,12 +649,12 @@ function EvaluationResultCard({ result }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <span style={{ color: 'var(--steel)', fontSize: 12 }}>Evaluated At</span>
+            <span style={{ color: 'var(--slate)', fontSize: 12 }}>Evaluated At</span>
             <div style={{ fontSize: 12 }}>{fmtDateTime(result.evaluated_at || result.evaluatedAt)}</div>
           </div>
           {result.replayCheckedAt && (
             <div>
-              <span style={{ color: 'var(--steel)', fontSize: 12 }}>Replay Checked At</span>
+              <span style={{ color: 'var(--slate)', fontSize: 12 }}>Replay Checked At</span>
               <div style={{ fontSize: 12 }}>{fmtDateTime(result.replayCheckedAt)}</div>
             </div>
           )}
@@ -659,7 +664,7 @@ function EvaluationResultCard({ result }) {
       <div style={{
         marginTop: 16, padding: '10px 12px',
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
-        fontSize: 11, color: '#6B7280', lineHeight: 1.5,
+        fontSize: 11, color: 'var(--slate)', lineHeight: 1.5,
       }}>
         This is a deterministic evaluation of the human-verified FieldCore record — not a legal
         determination — and does not execute any action.
@@ -701,12 +706,10 @@ function EvaluationHistory({ refreshKey }) {
       <div style={{
         margin: '12px 16px 14px', padding: '8px 12px',
         background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6,
-        fontSize: 11, color: '#6B7280', lineHeight: 1.5,
+        fontSize: 11, color: 'var(--slate)', lineHeight: 1.5,
       }}>
-        Each row shows what FieldCore determined at evaluation time, based on the
-        instrument record as it existed then. The underlying instrument may later change
-        status (e.g. revoked or expired); historical results are preserved for audit and
-        are not automatically updated. Run a new evaluation for a current answer.
+        Results reflect the instrument record at evaluation time and are preserved for audit.
+        Run a new evaluation for the current answer.
       </div>
 
       {loading ? <AuLoading /> : error ? (
@@ -735,10 +738,10 @@ function EvaluationHistory({ refreshKey }) {
                 <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
                   {row.instrument_id ? row.instrument_id.slice(0, 8) + '…' : '—'}
                 </td>
-                <td style={{ fontSize: 12, color: 'var(--steel)' }}>
+                <td style={{ fontSize: 12, color: 'var(--slate)' }}>
                   {fmtDateTime(row.evaluated_at)}
                   <span style={{
-                    marginLeft: 6, fontSize: 10, color: '#9CA3AF',
+                    marginLeft: 6, fontSize: 10, color: 'var(--slate)',
                     background: '#F3F4F6', padding: '1px 5px', borderRadius: 3,
                   }}>
                     historical
@@ -782,7 +785,7 @@ export default function AuthorityEvaluate() {
     <div className="au-page">
       <div className="au-page-header">
         <div>
-          <div className="au-page-title">Evaluator</div>
+          <div className="au-page-title">Evaluate</div>
           <div className="au-page-subtitle">
             Deterministic authorization check using a human-verified instrument — does not establish legal validity, replace human review, or execute an action
           </div>
@@ -798,7 +801,7 @@ export default function AuthorityEvaluate() {
           </div>
           <div style={{ color: '#374151', fontSize: 13, lineHeight: 1.6 }}>
             You do not have the AUTHORITY_EVALUATE capability. Contact your institution
-            administrator to request access to the Authority Evaluator.
+            administrator to request access.
           </div>
           {capsError && <AuError msg={capsError} />}
         </div>

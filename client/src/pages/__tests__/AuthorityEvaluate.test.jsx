@@ -70,7 +70,7 @@ function setupApi({ caps = ['AUTHORITY_EVALUATE'], evaluations = [], evalRespons
 async function selectInstrument(opts = {}) {
   setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [], ...opts });
   render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-  await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
   await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
   const instrSelect = screen.getAllByRole('combobox')[0];
@@ -133,14 +133,14 @@ describe('AuthorityEvaluate — capability gating', () => {
     await waitFor(() => {
       expect(screen.getByText(/AUTHORITY_EVALUATE Capability Required/i)).toBeTruthy();
     });
-    expect(screen.queryByText('Evaluate Authority')).toBeNull();
+    expect(screen.queryByTestId('evaluation-form')).toBeNull();
   });
 
   it('renders the form when AUTHORITY_EVALUATE is present', async () => {
     setupApi({ caps: ['AUTHORITY_EVALUATE'] });
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText('Evaluate Authority')).toBeTruthy();
+      expect(screen.getByTestId('evaluation-form')).toBeTruthy();
     });
   });
 });
@@ -150,19 +150,20 @@ describe('AuthorityEvaluate — capability gating', () => {
 describe('AuthorityEvaluate — page rendering', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('renders the "Evaluator" page title', async () => {
+  it('renders the "Evaluate" page title', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText('Evaluator')).toBeTruthy();
+      expect(screen.getByTestId('evaluation-form')).toBeTruthy();
     });
+    expect(document.querySelector('.au-page-title')?.textContent).toBe('Evaluate');
   });
 
   it('renders the instrument picker with VERIFIED instruments', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText('Evaluate Authority')).toBeTruthy();
+      expect(screen.getByTestId('evaluation-form')).toBeTruthy();
       const select = screen.getAllByRole('combobox')[0];
       expect(select).toBeTruthy();
     });
@@ -171,7 +172,7 @@ describe('AuthorityEvaluate — page rendering', () => {
   it('does NOT expose an idempotency key input field', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     expect(screen.queryByPlaceholderText(/Deduplication key/)).toBeNull();
     expect(screen.queryByText('Generate')).toBeNull();
   });
@@ -179,23 +180,23 @@ describe('AuthorityEvaluate — page rendering', () => {
   it('does NOT expose a free-text Action Key input before instrument is selected', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     // Before instrument selection, no action key inputs should exist
     expect(screen.queryByTestId('action-key-custom-input')).toBeNull();
   });
 
-  it('renders the history explanation mentioning instrument record changes', async () => {
+  it('renders the history explanation mentioning preserved audit records', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText(/instrument may later change status/i)).toBeTruthy();
+      expect(screen.getByText(/preserved for audit/i)).toBeTruthy();
     });
   });
 
   it('Evaluate button is disabled until all required fields are filled', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     const submitBtn = screen.getByRole('button', { name: /Evaluate/i });
     expect(submitBtn).toHaveProperty('disabled', true);
   });
@@ -203,14 +204,14 @@ describe('AuthorityEvaluate — page rendering', () => {
   it('shows hint text when Evaluate button is disabled', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     expect(screen.getByTestId('evaluate-btn-hint')).toBeTruthy();
   });
 
   it('helper text explains principal/delegate come from instrument participants', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
     expect(screen.getByText(/Principal and delegate options come from that/i)).toBeTruthy();
   });
@@ -229,10 +230,8 @@ describe('AuthorityEvaluate — Concern 8: no eligible instrument state', () => 
       return Promise.reject(new Error(`Unexpected GET: ${url}`));
     });
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    // Wait for capabilities to load first (otherwise InstrumentPicker hasn't mounted yet
-    // and "Loading instruments…" is absent from the initial <AuLoading/> render, causing
-    // the instruments waitFor to resolve too early).
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    // Wait for capabilities to load first (form mounts), then instruments to finish loading.
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
     expect(screen.getByTestId('no-eligible-instruments-state')).toBeTruthy();
     expect(screen.getByText(/No verified Authority Instruments are available/i)).toBeTruthy();
@@ -286,7 +285,7 @@ describe('AuthorityEvaluate — Concern 9: instrument-scoped selectors', () => {
   it('Principal and Delegate selects absent before instrument selection', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
     expect(screen.queryByText('Principal *')).toBeNull();
     expect(screen.queryByText('Delegate *')).toBeNull();
@@ -295,7 +294,7 @@ describe('AuthorityEvaluate — Concern 9: instrument-scoped selectors', () => {
   it('changing instrument resets principal and delegate selections', async () => {
     setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [] });
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     // Select first instrument
@@ -362,7 +361,7 @@ describe('AuthorityEvaluate — Concern 10: action selector', () => {
     });
     api.post.mockResolvedValue({ data: { evaluationId: 'e1', outcome: 'AUTHORIZED', isReplay: false } });
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -395,7 +394,7 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
 
   async function fillAndSubmit() {
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -428,7 +427,7 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
       .mockResolvedValueOnce({ data: { evaluationId: 'e1', outcome: 'AUTHORIZED', isReplay: false } });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -459,7 +458,7 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
       .mockResolvedValueOnce({ data: { evaluationId: 'e2', outcome: 'AUTHORIZED', isReplay: false } });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -489,7 +488,7 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
   it('no operator-facing idempotency key input exists', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     expect(screen.queryByLabelText(/idempotency/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/idempotency/i)).toBeNull();
   });
@@ -515,7 +514,7 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
       .mockResolvedValueOnce({ data: { evaluationId: 'e2', outcome: 'AUTHORIZED', isReplay: false } });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -545,7 +544,7 @@ describe('AuthorityEvaluate — Concern 12: submit gate', () => {
   it('Evaluate button is disabled with hint when no inputs filled', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     const btn = screen.getByRole('button', { name: /Evaluate/i });
     expect(btn.disabled).toBe(true);
     expect(screen.getByTestId('evaluate-btn-hint')).toBeTruthy();
@@ -554,7 +553,7 @@ describe('AuthorityEvaluate — Concern 12: submit gate', () => {
   it('Evaluate button becomes enabled once all required fields are filled', async () => {
     setupApi({ caps: ['AUTHORITY_EVALUATE'], evaluations: [] });
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -708,7 +707,7 @@ describe('AuthorityEvaluate — stale replay display', () => {
     });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -741,7 +740,7 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
     });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
 
     expect(screen.queryByLabelText(/Requested At/i)).toBeNull();
@@ -774,7 +773,7 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
     });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluate Authority')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
 
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
@@ -886,7 +885,7 @@ describe('AuthorityEvaluate — C12: monetary amount field', () => {
   });
 });
 
-// ── C23: Evaluator page subtitle ──────────────────────────────────────────────
+// ── C23: Evaluate page subtitle ───────────────────────────────────────────────
 
 describe('AuthorityEvaluate — C23: page subtitle', () => {
   beforeEach(() => { vi.clearAllMocks(); });
@@ -894,7 +893,92 @@ describe('AuthorityEvaluate — C23: page subtitle', () => {
   it('shows deterministic authorization check subtitle', async () => {
     setupApi();
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluator')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     expect(screen.getByText(/Deterministic authorization check/i)).toBeTruthy();
+  });
+});
+
+// ── Batch3-C1: Naming consistency ─────────────────────────────────────────────
+
+describe('AuthorityEvaluate — Batch3-C1: naming consistency', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('page title is "Evaluate" (not "Evaluator")', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    expect(document.querySelector('.au-page-title')?.textContent).toBe('Evaluate');
+  });
+
+  it('"Evaluator" does not appear anywhere on the page', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    expect(screen.queryByText(/Evaluator/i)).toBeNull();
+  });
+
+  it('"Evaluate Authority" does not appear anywhere on the page', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    expect(screen.queryByText(/Evaluate Authority/i)).toBeNull();
+  });
+});
+
+// ── Batch3-C2: No-instrument state — single authoritative message ──────────────
+
+describe('AuthorityEvaluate — Batch3-C2: no-instrument state message consolidation', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function setupNoInstruments() {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/authority/capabilities')) return Promise.resolve({ data: { capabilities: ['AUTHORITY_EVALUATE'] } });
+      if (url.includes('/authority/instruments'))  return Promise.resolve({ data: [] });
+      if (url.includes('/authority/evaluations'))  return Promise.resolve({ data: [] });
+      return Promise.reject(new Error(`Unexpected GET: ${url}`));
+    });
+  }
+
+  it('shows the no-eligible-instruments banner when instrument list is empty', async () => {
+    setupNoInstruments();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    expect(screen.getByTestId('no-eligible-instruments-state')).toBeTruthy();
+  });
+
+  it('does NOT show the "Choose an instrument first" helper when no instruments exist', async () => {
+    setupNoInstruments();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    expect(screen.queryByText(/Choose an instrument first/i)).toBeNull();
+  });
+
+  it('does NOT show the evaluate-btn-hint when no instruments exist', async () => {
+    setupNoInstruments();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    expect(screen.queryByTestId('evaluate-btn-hint')).toBeNull();
+  });
+});
+
+// ── Batch3-C3: History copy — concise ─────────────────────────────────────────
+
+describe('AuthorityEvaluate — Batch3-C3: history copy conciseness', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('history copy contains "preserved for audit"', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/preserved for audit/i)).toBeTruthy());
+  });
+
+  it('history copy does not repeat the full multi-sentence original block', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    expect(screen.queryByText(/instrument may later change status/i)).toBeNull();
   });
 });
