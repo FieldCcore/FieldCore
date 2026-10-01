@@ -34,7 +34,8 @@ function OneTimeSecretDisplay({ credential, publicId, label, onDismiss }) {
   return (
     <div className="au-one-time-secret" data-testid="one-time-secret-display">
       <div className="au-one-time-secret__warning">
-        Copy now — this secret will not be shown again.
+        This secret is shown only once and cannot be recovered later.
+        Store it securely on your server now. Never place it in browser or client-side code.
       </div>
       <div className="au-one-time-secret__meta">
         <span>Label: </span>
@@ -262,6 +263,49 @@ function CredentialRow({ cred, canManage, onRevoke }) {
   );
 }
 
+// ── Info panel ────────────────────────────────────────────────────────────────
+
+function CredentialInfoPanel({ flagEnabled }) {
+  return (
+    <aside className="au-cred-info-panel">
+      <div className="au-cred-info-panel__section" data-testid="api-concept-explanation">
+        <div className="au-cred-info-panel__heading">About API Access</div>
+        <div className="au-cred-info-panel__body">
+          Your institution's server-side software can request Authority evaluations from
+          FieldCore automatically, without staff entering each request in the web interface.
+        </div>
+      </div>
+
+      <div className="au-cred-info-panel__section" data-testid="api-credential-explanation">
+        <div className="au-cred-info-panel__heading">Scope</div>
+        <div className="au-cred-info-panel__body">
+          A credential is for machine-to-machine authentication only. It does not grant
+          delegate authority, replace human verification, or execute a transaction.
+        </div>
+      </div>
+
+      {flagEnabled && (
+        <div className="au-cred-info-panel__section">
+          <div className="au-cred-info-panel__heading">Rotation</div>
+          <div className="au-cred-info-panel__body">
+            <strong>Replace / rotate:</strong> create a new credential, update your server
+            to use it, then revoke the old one. Credentials remain active until explicitly revoked.
+          </div>
+        </div>
+      )}
+
+      <div className="au-cred-info-panel__section" data-testid="api-disclaimer">
+        <div className="au-cred-info-panel__heading">Security</div>
+        <div className="au-cred-info-panel__body">
+          Secrets are shown once at creation and cannot be retrieved again. Store them in a
+          secrets manager. Revocation is immediate — any server using the credential will lose
+          access. Historical evaluation records remain available after revocation.
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuthorityCredentials() {
@@ -344,7 +388,8 @@ export default function AuthorityCredentials() {
         <div>
           <div className="au-page-title">API Access</div>
           <div className="au-page-subtitle">
-            Integration area for institution software and IT teams
+            Connect your institution's server-side systems to FieldCore for automated
+            Authority evaluations. For IT, engineering, and integration administrators.
           </div>
         </div>
       </div>
@@ -357,27 +402,6 @@ export default function AuthorityCredentials() {
             : ''}
         </div>
       )}
-
-      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-concept-explanation">
-        <strong>What this is:</strong> API Access lets your institution's own software request
-        Authority evaluations from FieldCore automatically, instead of employees entering every
-        request in the web application.
-        <div style={{ margin: '8px 0 4px', fontSize: 12, color: 'var(--steel)', fontFamily: 'DM Mono, monospace' }}>
-          Your institution's system → FieldCore API → deterministic Authority evaluation → structured decision returned
-        </div>
-        Intended for IT, engineering, and integration administrators.
-      </div>
-
-      <div className="au-info" style={{ marginBottom: 16 }} data-testid="api-credential-explanation">
-        <strong>What an API credential is:</strong> The secure identity your institution's backend
-        software uses to authenticate when calling FieldCore's external API. Each credential is
-        scoped to one or more actions and is for server-side use only.
-        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--slate)' }}>
-          An API credential does <em>not</em> grant a delegate authority, replace human
-          verification, personally authorize an employee, or execute a banking transaction.
-          Credentials are for machine-to-machine authentication only.
-        </div>
-      </div>
 
       {newSecret && (
         <OneTimeSecretDisplay
@@ -405,33 +429,23 @@ export default function AuthorityCredentials() {
         />
       )}
 
-      {!showCreate && !newSecret && hasManage && flagEnabled && (
-        <div className="au-toolbar" data-testid="create-credential-toolbar">
-          <button
-            type="button"
-            className="au-btn au-btn--primary"
-            onClick={() => setShowCreate(true)}
-            data-testid="open-create-form-btn"
-          >
-            + New Credential
-          </button>
-        </div>
-      )}
+      <div className="au-cred-layout">
+        <section className="au-cred-layout__main" data-testid="credentials-list">
+          <div className="au-cred-layout__header">
+            <h2 className="au-section-title" style={{ marginBottom: 0 }}>API Credentials</h2>
+            {!showCreate && !newSecret && hasManage && flagEnabled && (
+              <button
+                type="button"
+                className="au-btn au-btn--primary"
+                onClick={() => setShowCreate(true)}
+                data-testid="open-create-form-btn"
+              >
+                + New Credential
+              </button>
+            )}
+          </div>
 
-      {!showCreate && !newSecret && flagEnabled && (
-        <div className="au-info" style={{ marginTop: 12, fontSize: '0.85rem' }}>
-          <strong>Replace / rotate:</strong> Create a new credential, update your server
-          to use the new credential, then revoke the old one using the Revoke button.
-          Old credentials remain active until explicitly revoked.
-        </div>
-      )}
-
-      {(flagEnabled || credentials.length > 0) && (
-        <div className="au-section" data-testid="credentials-list">
-          <h2 className="au-section-title">Credentials</h2>
-          {credentials.length === 0 ? (
-            <AuEmpty text="No credentials yet. Use the button above to create one." />
-          ) : (
+          {credentials.length > 0 ? (
             <table className="au-table" data-testid="credentials-table">
               <thead>
                 <tr>
@@ -456,14 +470,16 @@ export default function AuthorityCredentials() {
                 ))}
               </tbody>
             </table>
+          ) : flagEnabled ? (
+            <AuEmpty text="No credentials yet. Use the button above to create one." />
+          ) : (
+            <div className="au-cred-unavailable" data-testid="credentials-unavailable">
+              Not available — external API access is not enabled in this environment.
+            </div>
           )}
-        </div>
-      )}
+        </section>
 
-      <div className="au-disclaimer" data-testid="api-disclaimer">
-        Secrets are shown once at creation and cannot be retrieved again. Store them in a
-        secrets manager. Revocation is immediate — any server using the credential will lose
-        access. Historical evaluation records remain available after revocation.
+        <CredentialInfoPanel flagEnabled={flagEnabled} />
       </div>
     </div>
   );

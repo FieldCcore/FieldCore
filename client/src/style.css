@@ -10657,6 +10657,26 @@ tr:focus-within .inv-row-actions,
   .au-page { padding: 16px; }
 }
 
+/* ── Credentials two-column layout ──────────────────────── */
+.au-cred-layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+.au-cred-layout__main { min-width: 0; }
+.au-cred-layout__header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.au-cred-info-panel {
+  background: var(--offwhite); border: 1px solid var(--border);
+  border-radius: 6px; padding: 16px; font-size: 12px;
+}
+.au-cred-info-panel__section { margin-bottom: 14px; }
+.au-cred-info-panel__section:last-child { margin-bottom: 0; }
+.au-cred-info-panel__heading {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--slate); margin-bottom: 4px;
+}
+.au-cred-info-panel__body { color: var(--navy); line-height: 1.5; }
+.au-cred-unavailable { font-size: 13px; color: var(--slate); padding: 16px 0; }
+@media (max-width: 900px) { .au-cred-layout { grid-template-columns: 1fr; } }
+
 /* ── Sidebar collapse (desktop) ──────────────────────────── */
 .app--sb-collapsed { --sb: var(--fc-nav-width-collapsed); }
 .app--sb-collapsed .sb-word { display: none; }

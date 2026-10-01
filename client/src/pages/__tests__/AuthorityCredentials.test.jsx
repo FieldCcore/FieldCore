@@ -150,11 +150,12 @@ describe('AuthorityCredentials', () => {
     expect(screen.getByTestId('flag-off-message').textContent).toContain('FieldCore environment');
   });
 
-  it('hides credentials-list when flag is OFF and no credentials exist', async () => {
+  it('shows unavailable state when flag is OFF and no credentials exist', async () => {
     setupApi({ flagEnabled: false, credentials: [] });
     renderPage();
-    await waitFor(() => screen.getByTestId('authority-credentials-page'));
-    expect(screen.queryByTestId('credentials-list')).toBeNull();
+    await waitFor(() => screen.getByTestId('credentials-unavailable'));
+    expect(screen.getByTestId('credentials-unavailable')).toBeTruthy();
+    expect(screen.queryByTestId('credentials-table')).toBeNull();
   });
 
   it('shows credentials-list when flag is OFF but existing credentials exist', async () => {
@@ -201,7 +202,7 @@ describe('AuthorityCredentials', () => {
     await waitFor(() => screen.getByTestId('one-time-secret-display'));
     expect(screen.getByTestId('one-time-secret-display')).toBeTruthy();
     // Warning text must be present
-    expect(screen.getByTestId('one-time-secret-display').textContent).toContain('Copy now');
+    expect(screen.getByTestId('one-time-secret-display').textContent).toContain('shown only once');
     expect(screen.getByTestId('copy-secret-btn')).toBeTruthy();
     expect(screen.getByTestId('dismiss-secret-btn')).toBeTruthy();
   });
@@ -357,36 +358,34 @@ describe('AuthorityCredentials', () => {
 
 });
 
-// ── C17/C18: API concept and credential explanations ─────────────────────────
+// ── C17/C18: API concept and credential explanations (info panel) ─────────────
 
 describe('AuthorityCredentials — C17/C18: explanation blocks', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('renders api-concept-explanation with "What this is:" copy', async () => {
+  it('renders api-concept-explanation with purpose copy', async () => {
     setupApi();
     renderPage();
     await waitFor(() => screen.getByTestId('api-concept-explanation'));
     const expl = screen.getByTestId('api-concept-explanation');
-    expect(expl.textContent).toContain('What this is:');
     expect(expl.textContent).toContain('API Access');
     expect(expl.textContent).toContain('Authority evaluations');
   });
 
-  it('renders api-credential-explanation with "What an API credential is:" copy', async () => {
-    setupApi();
-    renderPage();
-    await waitFor(() => screen.getByTestId('api-credential-explanation'));
-    const expl = screen.getByTestId('api-credential-explanation');
-    expect(expl.textContent).toContain('What an API credential is:');
-    expect(expl.textContent).toContain('server-side use only');
-  });
-
-  it('api-credential-explanation contains machine-to-machine disclaimer', async () => {
+  it('renders api-credential-explanation with scope copy', async () => {
     setupApi();
     renderPage();
     await waitFor(() => screen.getByTestId('api-credential-explanation'));
     const expl = screen.getByTestId('api-credential-explanation');
     expect(expl.textContent).toContain('machine-to-machine');
+  });
+
+  it('api-credential-explanation does not claim to grant authority', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('api-credential-explanation'));
+    const expl = screen.getByTestId('api-credential-explanation');
+    expect(expl.textContent).toContain('does not grant');
   });
 });
 
@@ -395,13 +394,13 @@ describe('AuthorityCredentials — C17/C18: explanation blocks', () => {
 describe('AuthorityCredentials — C19/C20: flag-off appears before explanation', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('flag-off message text precedes api-concept-explanation text in page content', async () => {
+  it('flag-off message text precedes info panel content in page DOM order', async () => {
     setupApi({ flagEnabled: false, credentials: [] });
     renderPage();
     await waitFor(() => screen.getByTestId('flag-off-message'));
     const page = screen.getByTestId('authority-credentials-page').textContent;
     const flagOffIdx = page.indexOf('not currently enabled');
-    const conceptIdx = page.indexOf('What this is:');
+    const conceptIdx = page.indexOf('About API Access');
     expect(flagOffIdx).toBeGreaterThan(-1);
     expect(conceptIdx).toBeGreaterThan(-1);
     expect(flagOffIdx).toBeLessThan(conceptIdx);
@@ -421,10 +420,148 @@ describe('AuthorityCredentials — C19/C20: flag-off appears before explanation'
 describe('AuthorityCredentials — C23: page subtitle', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('shows "Integration area for institution software and IT teams" subtitle', async () => {
+  it('subtitle conveys server-side purpose and target audience', async () => {
     setupApi();
     renderPage();
     await waitFor(() => screen.getByTestId('authority-credentials-page'));
-    expect(screen.getByText(/Integration area for institution software/i)).toBeTruthy();
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    expect(page).toContain('server-side');
+    expect(page).toContain('automated');
+    expect(page).toContain('IT');
+  });
+});
+
+// ── Batch 4: Concern 1 — no documentation-heavy panels ───────────────────────
+
+describe('AuthorityCredentials — Batch4-C1: no documentation-heavy panels', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('page does not contain "What this is:" copy', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(screen.getByTestId('authority-credentials-page').textContent).not.toContain('What this is:');
+  });
+
+  it('page does not contain "What an API credential is:" copy', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(screen.getByTestId('authority-credentials-page').textContent).not.toContain('What an API credential is:');
+  });
+
+  it('credentials section renders immediately alongside info panel', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('credentials-list'));
+    expect(screen.getByTestId('credentials-list')).toBeTruthy();
+    expect(screen.getByTestId('api-concept-explanation')).toBeTruthy();
+  });
+});
+
+// ── Batch 4: Concern 2 — one-time secret warning completeness ────────────────
+
+describe('AuthorityCredentials — Batch4-C2: one-time secret warning', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  async function openSecretDisplay() {
+    setupApi();
+    api.post.mockResolvedValue({
+      credential: 'fc_dev_EEEEEEEEEEEEEEEE_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
+      credential_id: 'warn-cred-uuid',
+      public_id: 'EEEEEEEEEEEEEEEE',
+      label: 'Warning test',
+      scopes: ['authority:evaluate'],
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    renderPage();
+    await waitFor(() => screen.getByTestId('open-create-form-btn'));
+    fireEvent.click(screen.getByTestId('open-create-form-btn'));
+    fireEvent.change(screen.getByTestId('cred-label-input'), { target: { value: 'Warning test' } });
+    fireEvent.click(screen.getByTestId('scope-checkbox-authority:evaluate').querySelector('input'));
+    fireEvent.click(screen.getByTestId('create-credential-submit'));
+    await waitFor(() => screen.getByTestId('one-time-secret-display'));
+  }
+
+  it('warning states secret is shown only once', async () => {
+    await openSecretDisplay();
+    const warning = screen.getByTestId('one-time-secret-display').textContent;
+    expect(warning).toContain('shown only once');
+  });
+
+  it('warning states secret cannot be recovered later', async () => {
+    await openSecretDisplay();
+    const warning = screen.getByTestId('one-time-secret-display').textContent;
+    expect(warning).toContain('cannot be recovered');
+  });
+
+  it('warning instructs server-side storage', async () => {
+    await openSecretDisplay();
+    const warning = screen.getByTestId('one-time-secret-display').textContent;
+    expect(warning).toContain('server');
+  });
+
+  it('warning prohibits browser or client-side code', async () => {
+    await openSecretDisplay();
+    const warning = screen.getByTestId('one-time-secret-display').textContent;
+    expect(warning).toContain('browser');
+  });
+});
+
+// ── Batch 4: Concern 3 — two-column layout ────────────────────────────────────
+
+describe('AuthorityCredentials — Batch4-C3: two-column layout', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('au-cred-layout grid element is present', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(document.querySelector('.au-cred-layout')).toBeTruthy();
+  });
+
+  it('au-cred-layout__main (credentials column) is present', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(document.querySelector('.au-cred-layout__main')).toBeTruthy();
+  });
+
+  it('au-cred-info-panel (info column) is present', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    expect(document.querySelector('.au-cred-info-panel')).toBeTruthy();
+  });
+});
+
+// ── Batch 4: Concern 4 — admin hierarchy ─────────────────────────────────────
+
+describe('AuthorityCredentials — Batch4-C4: admin hierarchy', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('credentials section appears before info panel in DOM order', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    const credsIdx = page.indexOf('API Credentials');
+    const infoIdx  = page.indexOf('About API Access');
+    expect(credsIdx).toBeGreaterThan(-1);
+    expect(infoIdx).toBeGreaterThan(-1);
+    expect(credsIdx).toBeLessThan(infoIdx);
+  });
+
+  it('subtitle appears before credentials section', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    const subtitleIdx = page.indexOf('server-side');
+    const credsIdx    = page.indexOf('API Credentials');
+    expect(subtitleIdx).toBeGreaterThan(-1);
+    expect(credsIdx).toBeGreaterThan(-1);
+    expect(subtitleIdx).toBeLessThan(credsIdx);
   });
 });
