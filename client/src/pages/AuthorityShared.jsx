@@ -1,7 +1,62 @@
 import React from 'react';
 
+// ── Centralized Authority status presentation mapping ─────────────────────────
+// Internal lifecycle/status values → human-readable sentence-case labels.
+// Never show raw enum values to users. Unknown values fall back to a safe
+// readable form; a dev warning is emitted so new states are easy to notice.
+
+const AUTHORITY_STATUS_LABELS = {
+  // Case statuses (uppercase from backend)
+  DRAFT:                    'Draft',
+  AWAITING_DOCUMENTS:       'Awaiting documents',
+  PENDING_EXTRACTION:       'Pending extraction',
+  EXTRACTION_COMPLETE:      'Extraction complete',
+  PENDING_HUMAN_REVIEW:     'Pending review',
+  HUMAN_REVIEW_IN_PROGRESS: 'In progress',
+  COMPLETED:                'Completed',
+  CANCELLED:                'Cancelled',
+  // Instrument statuses (uppercase from backend)
+  UNVERIFIED:               'Unverified',
+  VERIFIED:                 'Verified',
+  PENDING_REVIEW:           'Pending review',
+  REJECTED:                 'Rejected',
+  REVOKED:                  'Revoked',
+  EXPIRED:                  'Expired',
+  SUPERSEDED:               'Superseded',
+  // Party / participant statuses (uppercase from backend)
+  ACTIVE:                   'Active',
+  INACTIVE:                 'Inactive',
+  // Permission grant types (lowercase from backend)
+  granted:                  'Granted',
+  denied:                   'Denied',
+  // Credential statuses (lowercase from backend)
+  active:                   'Active',
+  revoked:                  'Revoked',
+  // Extraction run statuses (lowercase from backend)
+  pending:                  'Pending',
+  running:                  'Running',
+  completed:                'Completed',
+  failed:                   'Failed',
+  cancelled:                'Cancelled',
+  // Candidate statuses (lowercase from backend)
+  accepted:                 'Accepted',
+  superseded:               'Superseded',
+};
+
+export function auStatusLabel(status) {
+  if (!status) return '—';
+  const s = String(status);
+  if (AUTHORITY_STATUS_LABELS[s] !== undefined) return AUTHORITY_STATUS_LABELS[s];
+  const up = s.toUpperCase();
+  if (AUTHORITY_STATUS_LABELS[up] !== undefined) return AUTHORITY_STATUS_LABELS[up];
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+    console.warn(`[AuBadge] unmapped status: "${s}"`);
+  }
+  return s.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+}
+
 export function AuBadge({ status }) {
-  const label = (status || '').replace(/_/g, ' ');
+  const label = auStatusLabel(status);
   const cls   = `au-badge au-badge--${(status || '').toLowerCase()}`;
   return <span className={cls}>{label}</span>;
 }
@@ -42,7 +97,9 @@ export function AuInfo({ children }) {
 }
 
 export function instrumentTypeLabel(type) {
-  return (type || '').replace(/_/g, ' ');
+  if (!type) return '';
+  const s = String(type).replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function fmtDate(d) {
