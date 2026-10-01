@@ -48,11 +48,11 @@ export default function Authority() {
           <div className="au-kpi-meta">pending + in-progress cases</div>
         </div>
         <div className="au-kpi-card">
-          <div className="au-kpi-label">Oldest in Queue</div>
+          <div className="au-kpi-label">Oldest Queue Case</div>
           <div className="au-kpi-value" style={{ fontSize: 16, paddingTop: 4 }}>
             {loading || !queue.length ? '—' : fmtDate(queue[0]?.created_at)}
           </div>
-          <div className="au-kpi-meta">oldest item created</div>
+          <div className="au-kpi-meta">by case creation date</div>
         </div>
       </div>
 

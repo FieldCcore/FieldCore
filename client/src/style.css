@@ -7571,6 +7571,7 @@ tr:focus-within .inv-row-actions,
 @media (min-width: 769px) {
   .tb-hamburger      { display: none; }
   .mobile-bottom-nav { display: none; }
+  .app--institution .topbar { display: none; }
 }
 
 @media (max-width: 768px) {
@@ -10443,7 +10444,7 @@ tr:focus-within .inv-row-actions,
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Page header ─────────────────────────────────────────── */
-.au-page { padding: 24px 28px; max-width: 1200px; }
+.au-page { padding: 24px 28px; max-width: var(--au-page-max-w, 1520px); }
 .au-page-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 24px;

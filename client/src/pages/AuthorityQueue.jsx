@@ -104,7 +104,7 @@ export default function AuthorityQueue() {
                   <th>Instruments</th>
                   <th>Assigned To</th>
                   <th>In Queue Since</th>
-                  <th></th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>

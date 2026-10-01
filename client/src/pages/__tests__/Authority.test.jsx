@@ -781,19 +781,21 @@ describe('Authority dashboard — KPI labels (C7/C8)', () => {
     expect(screen.getByText('pending + in-progress cases')).toBeTruthy();
   });
 
-  it('shows "Oldest in Queue" KPI label, not "Oldest Case" (C8)', async () => {
+  it('shows "Oldest Queue Case" KPI label (Batch1-P2)', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.getByText('Oldest Queue Case')).toBeTruthy();
+    expect(screen.queryByText('Oldest in Queue')).toBeNull();
     expect(screen.queryByText('Oldest Case')).toBeNull();
   });
 
-  it('Oldest in Queue meta reads "oldest item created" (C8)', async () => {
+  it('Oldest Queue Case meta reads "by case creation date" (Batch1-P2)', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('oldest item created')).toBeTruthy();
+    expect(screen.getByText('by case creation date')).toBeTruthy();
+    expect(screen.queryByText('oldest item created')).toBeNull();
   });
 });
 
@@ -817,5 +819,32 @@ describe('Authority page subtitles — C23', () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityParties /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText(/Directory of people and organizations/i)).toBeTruthy());
+  });
+});
+
+// ── Batch 1 — Problem 2: KPI label / helper consistency ──────────────────────
+
+describe('Authority dashboard — Batch1-P2: KPI label and helper text', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('KPI label is "Oldest Queue Case", never the old "Oldest in Queue"', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Oldest Queue Case')).toBeTruthy();
+    expect(screen.queryByText('Oldest in Queue')).toBeNull();
+  });
+
+  it('KPI helper is "by case creation date", never "oldest item created"', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('by case creation date')).toBeTruthy();
+    expect(screen.queryByText('oldest item created')).toBeNull();
   });
 });

@@ -556,7 +556,7 @@ function AppShell() {
   );
 
   return (
-    <div className={`app${sidebarCollapsed ? ' app--sb-collapsed' : ''}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div className={`app${sidebarCollapsed ? ' app--sb-collapsed' : ''}${isInstitution ? ' app--institution' : ''}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <aside className={'sb' + (sidebarOpen ? ' sb-open' : '')}>
         <Link to={isInstitution ? '/authority' : '/dashboard'} className="sb-logo" style={{ textDecoration: 'none', display: 'block' }}>
           <div className="sb-word">FIELD<span>CORE</span><sup className="sb-tm">™</sup></div>

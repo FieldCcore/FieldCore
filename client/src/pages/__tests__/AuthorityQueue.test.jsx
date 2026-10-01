@@ -218,3 +218,35 @@ describe('AuthorityQueue — C23: page subtitle', () => {
     await waitFor(() => expect(screen.getByText(/Human review work inbox/i)).toBeTruthy());
   });
 });
+
+// ── Batch 1 — Problem 3: "Action" column heading ──────────────────────────────
+
+const ONE_CASE = [{
+  id: 'case-p3', status: 'PENDING_HUMAN_REVIEW',
+  external_case_reference: 'P3-001',
+  assigned_to: null, reviewer_name: null,
+  document_count: 0, instrument_count: 1,
+  status_changed_at: '2026-01-01T00:00:00Z',
+}];
+
+describe('AuthorityQueue — Batch1-P3: Action column heading', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUser();
+  });
+
+  it('table has an "Action" column heading', async () => {
+    api.get.mockResolvedValue({ data: ONE_CASE });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: /^Action$/i })).toBeTruthy());
+  });
+
+  it('no empty column headings exist in queue table', async () => {
+    api.get.mockResolvedValue({ data: ONE_CASE });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: /^Action$/i })).toBeTruthy());
+    const headers = document.querySelectorAll('th');
+    const emptyHeaders = Array.from(headers).filter(th => th.textContent.trim() === '');
+    expect(emptyHeaders.length).toBe(0);
+  });
+});
