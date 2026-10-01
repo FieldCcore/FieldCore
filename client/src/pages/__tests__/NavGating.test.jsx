@@ -145,6 +145,37 @@ describe('Entity switcher isolation (Problem 5)', () => {
   });
 });
 
+// ── Batch 1 — Problem 1: institution app class / topbar suppression ──────────
+
+describe('Batch1-P1: institution app class and empty header suppression', () => {
+
+  it('institution+authority_enabled → isInstitution=true, applying app--institution CSS class', () => {
+    // isInstitution drives both the app--institution class on the root div
+    // (CSS: .app--institution .topbar { display: none }) and nav isolation.
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: true });
+    expect(s.institutionCtx).toBe(true);
+    expect(s.headerPhone).toBe(false);
+    expect(s.headerCreateMenu).toBe(false);
+    expect(s.authority).toBe(true);
+    expect(s.operations).toBe(false);
+  });
+
+  it('field_service → isInstitution=false, topbar remains visible (no app--institution class)', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'field_service', authority_enabled: false });
+    expect(s.institutionCtx).toBe(false);
+    expect(s.headerPhone).toBe(true);
+    expect(s.headerCreateMenu).toBe(true);
+    expect(s.authority).toBe(false);
+    expect(s.operations).toBe(true);
+  });
+
+  it('institution with authority_enabled=false does NOT enter institution mode', () => {
+    const s = getNavSections({ role: 'owner', account_type: 'institution', authority_enabled: false });
+    expect(s.institutionCtx).toBe(false);
+    expect(s.headerPhone).toBe(true);
+  });
+});
+
 // ── Problem 7: Header CRM control isolation ───────────────────────────────────
 
 describe('Header CRM control isolation (Problem 7)', () => {
