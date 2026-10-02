@@ -407,7 +407,7 @@ function JobQueue({ user, onSelect, onSelectSession, onLogout, onPwChange, avail
           }
           return items.map(item => {
             if (item.type === 'header') return (
-              <div key={item.key} style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 2px 2px' }}>
+              <div key={item.key} style={{ fontSize: 10, fontWeight: 800, color: C.muted, padding: '6px 2px 2px' }}>
                 {item.label}
               </div>
             );
@@ -427,7 +427,7 @@ function JobQueue({ user, onSelect, onSelectSession, onLogout, onPwChange, avail
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                     <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, textTransform: 'uppercase', letterSpacing: 1, background: C.blueLt, borderRadius: 4, padding: '2px 6px' }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, background: C.blueLt, borderRadius: 4, padding: '2px 6px' }}>
                           Day {s.day_number} of {s.total_sessions}
                         </span>
                       </div>
@@ -637,7 +637,7 @@ function EtaScreen({ job, onBack }) {
           {job.client_phone ? ` (${job.client_phone})` : ''}
         </div>
 
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>Minutes away</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 8 }}>Minutes away</div>
         <input
           type="number"
           min="1"
@@ -1020,27 +1020,27 @@ function DayCloseoutScreen({ session, onBack, onComplete }) {
             <div style={{ background: C.redLt, border: `1px solid rgba(198,40,40,.3)`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fc8181' }}>{error}</div>
           )}
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Work Completed Today</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Work Completed Today</div>
             <textarea rows={3} value={form.work_completed} onChange={set('work_completed')} placeholder="Describe what was accomplished…" style={inputStyle} />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Work Remaining</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Work Remaining</div>
             <textarea rows={2} value={form.work_remaining} onChange={set('work_remaining')} placeholder="What still needs to be done?" style={inputStyle} />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Overall Completion: <span style={{ color: C.sand }}>{form.completion_pct}%</span></div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Overall Completion: <span style={{ color: C.sand }}>{form.completion_pct}%</span></div>
             <input type="range" min="0" max="100" step="5" value={form.completion_pct} onChange={set('completion_pct')} style={{ width: '100%', accentColor: C.sand }} />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Hours Worked</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Hours Worked</div>
             <input type="number" step="0.25" min="0" value={form.actual_hours} onChange={set('actual_hours')} placeholder="e.g. 7.5" style={{ ...inputStyle, resize: undefined }} />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Blockers / Delays</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Blockers / Delays</div>
             <textarea rows={2} value={form.blockers} onChange={set('blockers')} placeholder="Any issues, missing materials, waiting on approvals?" style={inputStyle} />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Client-Facing Update</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Client-Facing Update</div>
             <textarea rows={2} value={form.client_notes} onChange={set('client_notes')} placeholder="Progress note to share with the client" style={inputStyle} />
           </div>
           <button type="submit" style={btn({ background: C.green, opacity: saving ? 0.65 : 1, marginTop: 4 })} disabled={saving}>
@@ -1145,7 +1145,7 @@ function SessionDetail({ session: initSession, onBack, onUpdate }) {
         {/* Header card */}
         <div style={{ background: C.navy2, borderRadius: 14, padding: 16, border: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, textTransform: 'uppercase', letterSpacing: 1, background: C.blueLt, borderRadius: 4, padding: '3px 8px' }}>
+            <span style={{ fontSize: 9, fontWeight: 800, color: C.blue, background: C.blueLt, borderRadius: 4, padding: '3px 8px' }}>
               Day {session.day_number} of {session.total_sessions}
             </span>
             <SessionStatusPill status={session.status} />
@@ -1163,7 +1163,7 @@ function SessionDetail({ session: initSession, onBack, onUpdate }) {
             session.description && { l: 'Notes', v: session.description },
           ].filter(Boolean).map((r, i, arr) => (
             <div key={i} style={{ display: 'flex', padding: '12px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : 'none', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, width: 60, flexShrink: 0 }}>{r.l}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0 }}>{r.l}</div>
               {r.link
                 ? <a href={r.link} target={r.link.startsWith('tel') ? '_self' : '_blank'} rel="noreferrer" style={{ fontSize: 13, color: C.sand, flex: 1, textDecoration: 'none' }}>{r.v}</a>
                 : <div style={{ fontSize: 13, color: C.white, flex: 1 }}>{r.v}</div>
@@ -1175,7 +1175,7 @@ function SessionDetail({ session: initSession, onBack, onUpdate }) {
         {/* Previous day work summary */}
         {session.work_remaining && (
           <div style={{ background: C.navy2, borderRadius: 14, padding: 14, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Carry-Over Work</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Carry-Over Work</div>
             <div style={{ fontSize: 13, color: C.white }}>{session.work_remaining}</div>
           </div>
         )}
@@ -1412,7 +1412,7 @@ function JobDetail({ job: initJob, onBack, onUpdate }) {
             job.checkin_at      && { l: 'Check-in', v: `GPS recorded at ${new Date(job.checkin_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` },
           ].filter(Boolean).map((r, i, arr) => (
             <div key={i} style={{ display: 'flex', padding: '12px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : 'none', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, width: 60, flexShrink: 0 }}>{r.l}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0 }}>{r.l}</div>
               {r.link
                 ? <a href={r.link} target={r.link.startsWith('tel') ? '_self' : '_blank'} rel="noreferrer" style={{ fontSize: 13, color: C.sand, flex: 1, textDecoration: 'none' }}>{r.v}</a>
                 : <div style={{ fontSize: 13, color: C.white, flex: 1 }}>{r.v}</div>

@@ -85,7 +85,6 @@ function SectionLabel({ children }) {
   return (
     <div style={{
       fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 6,
-      textTransform: 'uppercase', letterSpacing: '.5px',
     }}>
       {children}
     </div>

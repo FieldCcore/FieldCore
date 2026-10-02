@@ -110,7 +110,7 @@ function describeEvent(ev) {
     case 'job.geocode_failed': case 'job.geocode_failed_legacy':
       return 'Address could not be located';
     case 'job.emergency_activated': {
-      const p = (d.priority || '').toUpperCase();
+      const p = d.priority ? d.priority.charAt(0).toUpperCase() + d.priority.slice(1) : '';
       return `Emergency declared${p ? ` (${p})` : ''} by ${actor}`;
     }
     case 'job.emergency_updated':    return `Emergency updated by ${actor}`;

@@ -235,7 +235,7 @@ export default function Deposits() {
             ))}
 
             <div style={{ margin: '12px 16px 4px', padding: '10px 12px', background: 'var(--sand-lt)', borderRadius: 8, fontSize: 12, color: 'var(--slate)', borderLeft: '3px solid var(--sand)' }}>
-              <div style={{ fontWeight: 700, marginBottom: 5, color: 'var(--navy)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px' }}>Automatic Tier Overrides</div>
+              <div style={{ fontWeight: 700, marginBottom: 5, color: 'var(--navy)', fontSize: 11 }}>Automatic Tier Overrides</div>
               <div style={{ marginBottom: 3 }}>VIP clients — deposit waived on all services</div>
               <div>At-risk clients — global minimum always enforced</div>
             </div>

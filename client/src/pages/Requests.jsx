@@ -117,7 +117,7 @@ export default function Requests() {
     borderRadius: 6, fontSize: 13, fontFamily: 'inherit', background: 'var(--white)',
     color: 'var(--navy)', boxSizing: 'border-box',
   };
-  const labelStyle = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', display: 'block', marginBottom: 4 };
   const fieldStyle = { marginBottom: 14 };
 
   return (
@@ -162,7 +162,7 @@ export default function Requests() {
               <tr style={{ background: 'var(--navy)' }}>
                 {['Client', 'Service', 'Status', 'Requested', 'Source', 'Assigned To', ''].map(h => (
                   <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700,
-                    color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
+                    color: 'rgba(255,255,255,.55)', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
                 ))}

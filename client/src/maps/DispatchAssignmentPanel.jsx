@@ -316,7 +316,6 @@ export default function DispatchAssignmentPanel({ job, tech, validation, techLoc
           }}>
             <div style={{
               fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 8,
-              textTransform: 'uppercase', letterSpacing: '.5px',
             }}>
               Workload After Assignment
             </div>

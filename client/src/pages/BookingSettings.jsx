@@ -125,11 +125,11 @@ export default function BookingSettings() {
           {/* Booking Widget */}
           <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--lightgray)', background: 'var(--navy)' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(255,255,255,.55)' }}>Booking Widget</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)' }}>Booking Widget</div>
             </div>
             <div style={{ padding: '16px' }}>
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 6 }}>Embed code</div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 500, color: 'var(--steel)', marginBottom: 6 }}>Embed code</div>
                 <textarea
                   readOnly
                   value={embedCode || 'Loading…'}
@@ -148,7 +148,7 @@ export default function BookingSettings() {
               </div>
               {widgetUrl && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--steel)', marginBottom: 4 }}>Direct link</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 500, color: 'var(--steel)', marginBottom: 4 }}>Direct link</div>
                   <a href={widgetUrl} target="_blank" rel="noreferrer" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--sand-dark)', textDecoration: 'none', wordBreak: 'break-all' }}>
                     {widgetUrl}
                   </a>
@@ -160,7 +160,7 @@ export default function BookingSettings() {
           {/* Widget Settings */}
           <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--lightgray)', background: 'var(--navy)' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(255,255,255,.55)' }}>Widget Settings</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)' }}>Widget Settings</div>
             </div>
             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group">
@@ -202,7 +202,7 @@ export default function BookingSettings() {
           {/* Per-Service Deposit Rules */}
           <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--lightgray)', background: 'var(--navy)' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(255,255,255,.55)' }}>Per-Service Deposit Rules</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)' }}>Per-Service Deposit Rules</div>
             </div>
             <div style={{ padding: '16px' }}>
               <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.6, marginBottom: 16 }}>
@@ -217,7 +217,7 @@ export default function BookingSettings() {
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: i < rules.length - 1 ? '1px solid var(--lightgray)' : 'none', background: 'var(--white)' }}
                     >
                       <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{r.service}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 8px', borderRadius: 99, background: 'var(--sand-lt)', color: 'var(--sand-dark)' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--sand-lt)', color: 'var(--sand-dark)' }}>
                         {r.type === 'percent' ? `${r.amount}%` : `$${r.amount}`}
                       </span>
                       <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--lightgray)', background: 'var(--off)', color: 'var(--slate)' }}>
@@ -279,7 +279,7 @@ export default function BookingSettings() {
           {/* Services Offered */}
           <div style={{ background: 'var(--white)', border: '1px solid var(--lightgray)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--lightgray)', background: 'var(--navy)' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(255,255,255,.55)' }}>Services Offered</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)' }}>Services Offered</div>
             </div>
             <div style={{ padding: '16px' }}>
               <p style={{ fontSize: 12, color: 'var(--steel)', marginBottom: 14 }}>

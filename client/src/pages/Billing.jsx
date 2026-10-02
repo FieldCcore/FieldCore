@@ -157,21 +157,21 @@ function BankForm({ onSuccess, onCancel }) {
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>Account Holder Name</label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 5 }}>Account Holder Name</label>
         <input {...inp('account_holder_name')} placeholder="Jane Smith" required />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>Routing Number</label>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 5 }}>Routing Number</label>
           <input {...inp('routing_number')} placeholder="021000021" maxLength={9} required />
         </div>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>Account Number</label>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 5 }}>Account Number</label>
           <input {...inp('account_number')} placeholder="••••••••" required />
         </div>
       </div>
       <div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>Account Type</label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 5 }}>Account Type</label>
         <select value={form.account_type} onChange={e => setForm(p => ({ ...p, account_type: e.target.value }))}
           style={{ ...inp('account_type').style }}>
           <option value="individual">Individual</option>
@@ -216,7 +216,7 @@ function CancelModal({ onClose, onConfirmed }) {
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 8 }}>Why are you cancelling?</label>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 8 }}>Why are you cancelling?</label>
           {CANCEL_REASONS.map(r => (
             <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer', fontSize: 14, color: 'var(--navy)' }}>
               <input type="radio" name="cancel_reason" value={r} checked={reason === r} onChange={() => setReason(r)} />
@@ -226,7 +226,7 @@ function CancelModal({ onClose, onConfirmed }) {
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Additional feedback (optional)</label>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--steel)', display: 'block', marginBottom: 6 }}>Additional feedback (optional)</label>
           <textarea
             value={feedback} onChange={e => setFeedback(e.target.value)}
             rows={3}
@@ -264,7 +264,7 @@ function DowngradeModal({ from, to, onClose }) {
 
         {lost.length > 0 && (
           <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>Features that change on {toName}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>Features that change on {toName}</div>
             {lost.map(f => (
               <div key={f} style={{ display: 'flex', gap: 8, fontSize: 12, color: '#78350f', marginBottom: 3 }}>
                 <span style={{ flexShrink: 0 }}>·</span> {f}
@@ -657,7 +657,7 @@ export default function Billing() {
         <div className="dash-card" style={{ marginBottom: 20 }}>
           <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <div>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 6 }}>Current Plan</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)', marginBottom: 6 }}>Current Plan</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: sub ? 10 : 0 }}>
                 <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1 }}>{currentName}</span>
                 <StatusBadge status={planStatus}>{statusLabel}</StatusBadge>
@@ -665,21 +665,21 @@ export default function Billing() {
               {sub && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '6px 24px', marginTop: 6 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Next Billing</div>
+                    <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 2 }}>Next Billing</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
                       {sub.cancel_at_period_end ? `Access ends ${fmtDate(sub.current_period_end)}` : fmtDate(sub.current_period_end)}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Amount</div>
+                    <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 2 }}>Amount</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{fmt$(sub.amount)}/mo</div>
                   </div>
                   {billing?.paymentMethod && (
                     <div>
-                      <div style={{ fontSize: 10, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Payment Method</div>
+                      <div style={{ fontSize: 10, color: 'var(--steel)', marginBottom: 2 }}>Payment Method</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
                         {billing.paymentMethod.type === 'card'
-                          ? `${billing.paymentMethod.brand?.toUpperCase()} ···· ${billing.paymentMethod.last4}`
+                          ? `${billing.paymentMethod.brand ? billing.paymentMethod.brand.charAt(0).toUpperCase() + billing.paymentMethod.brand.slice(1) : ''} ···· ${billing.paymentMethod.last4}`
                           : `${billing.paymentMethod.bank_name} ···· ${billing.paymentMethod.last4}`}
                       </div>
                     </div>
@@ -732,7 +732,7 @@ export default function Billing() {
               <div className="dash-card" style={{ marginBottom: 20, padding: '18px 22px', background: '#fffbe6', border: '2px dashed #e6c800' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>⚙ Stripe Test Tools</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: '#fde68a', color: '#92400e', textTransform: 'uppercase', letterSpacing: '.06em' }}>Internal</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: '#fde68a', color: '#92400e' }}>Internal</span>
                 </div>
                 <div style={{ fontSize: 12, color: '#92400e', marginBottom: 14 }}>
                   Internal checkout testing. Hidden when ENABLE_STRIPE_TEST_TOOLS is false.
@@ -781,13 +781,13 @@ export default function Billing() {
                     boxShadow: isCurrent ? '0 0 0 3px rgba(46,125,50,.08)' : undefined,
                   }}>
                     {plan.highlight && !isCurrent && (
-                      <div style={{ position: 'absolute', top: -1, left: 18, background: 'var(--sand)', color: 'var(--navy)', fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: '0 0 5px 5px' }}>Most Popular</div>
+                      <div style={{ position: 'absolute', top: -1, left: 18, background: 'var(--sand)', color: 'var(--navy)', fontSize: 8.5, fontWeight: 800, padding: '2px 9px', borderRadius: '0 0 5px 5px' }}>Most popular</div>
                     )}
                     <div style={{ padding: (isCurrent || plan.highlight) ? '28px 20px 20px' : '20px 20px 20px', display: 'flex', flexDirection: 'column', flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                        <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>{plan.name}</div>
+                        <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)' }}>{plan.name}</div>
                         {isCurrent && (
-                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>Active</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)', flexShrink: 0 }}>Active</span>
                         )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
@@ -837,9 +837,9 @@ export default function Billing() {
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)' }}>Custom · Enterprise</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)' }}>Custom · Enterprise</div>
                   {isEnterpriseCurrentPlan && (
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Active</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'var(--green-lt)', color: 'var(--green)' }}>Active</span>
                   )}
                 </div>
                 <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28, color: 'var(--navy)', lineHeight: 1, marginBottom: 4 }}>$300+<span style={{ fontSize: 14, color: 'var(--steel)' }}>/mo</span></div>
@@ -956,7 +956,7 @@ export default function Billing() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--lightgray)' }}>
                     {['Date', 'Description', 'Amount', 'Status', 'Receipt'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1060,7 +1060,7 @@ export default function Billing() {
                     { step: '3', label: 'Payouts Go Live', desc: 'Stripe verifies your account, usually within minutes' },
                   ].map(s => (
                     <div key={s.step} style={{ padding: '12px 14px', background: 'var(--off)', borderRadius: 8 }}>
-                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Step {s.step}</div>
+                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 700, color: 'var(--steel)', marginBottom: 4 }}>Step {s.step}</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{s.label}</div>
                       <div style={{ fontSize: 11, color: 'var(--steel)', lineHeight: 1.5 }}>{s.desc}</div>
                     </div>
@@ -1092,7 +1092,7 @@ export default function Billing() {
                     { label: 'Next Payout',       value: next  ? fmtCents(next.amount,  next.currency)  : '—', sub: next ? fmtDate(next.arrival_date) : 'No upcoming payouts' },
                   ].map(card => (
                     <div key={card.label} className="dash-card" style={{ padding: '16px 20px' }}>
-                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', marginBottom: 8 }}>{card.label}</div>
+                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)', marginBottom: 8 }}>{card.label}</div>
                       <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>{card.value}</div>
                       <div style={{ fontSize: 11, color: 'var(--steel)' }}>{card.sub}</div>
                     </div>
@@ -1147,7 +1147,7 @@ export default function Billing() {
                         <thead>
                           <tr style={{ borderBottom: '1.5px solid var(--lightgray)' }}>
                             {['Arrival', 'Amount', 'Status', 'Method'].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '0 10px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
+                              <th key={h} style={{ textAlign: 'left', padding: '0 10px 8px 0', fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--steel)', fontWeight: 600 }}>{h}</th>
                             ))}
                           </tr>
                         </thead>

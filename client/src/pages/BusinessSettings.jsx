@@ -397,7 +397,7 @@ export default function BusinessSettings() {
   }
 
   const bssInput = { width: '100%', padding: '8px 10px', border: '1px solid var(--lightgray)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', background: 'var(--white)', color: 'var(--navy)', boxSizing: 'border-box' };
-  const bssLabel = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 };
+  const bssLabel = { fontSize: 11, fontWeight: 600, color: 'var(--slate)', display: 'block', marginBottom: 4 };
 
   return (
     <div>
@@ -754,7 +754,7 @@ export default function BusinessSettings() {
 
         {/* Add service form */}
         <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--navy)', marginBottom: 12 }}>
             Add Service Template
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -1106,7 +1106,7 @@ export default function BusinessSettings() {
 
             {/* Average Response sub-settings */}
             <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '12px 14px', marginBottom: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>
                 Average Response Time
               </div>
 
@@ -1172,7 +1172,7 @@ export default function BusinessSettings() {
 
             {/* Adaptive KPI layout */}
             <div style={{ background: 'var(--off)', border: '1px solid var(--lightgray)', borderRadius: 8, padding: '12px 14px', marginBottom: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--navy)', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>
                 Layout
               </div>
 

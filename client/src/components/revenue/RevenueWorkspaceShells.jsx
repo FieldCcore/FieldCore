@@ -552,7 +552,7 @@ function PipelineTable({ drivers, onSelect }) {
               <th key={i} style={{
                 textAlign: h === 'Amount' ? 'right' : 'left',
                 padding: '6px 8px', color: 'var(--steel)', fontWeight: 600,
-                fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
+                fontSize: 11,
               }}>{h}</th>
             ))}
           </tr>

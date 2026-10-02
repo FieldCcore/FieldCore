@@ -227,11 +227,11 @@ function Portal({ token }) {
             {editContact ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Phone</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 5 }}>Phone</div>
                   <input style={inputStyle} value={contact.phone} onChange={e => setContact(c => ({...c, phone: e.target.value}))} placeholder="(555) 000-0000" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Address</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 5 }}>Address</div>
                   <input style={inputStyle} value={contact.address} onChange={e => setContact(c => ({...c, address: e.target.value}))} placeholder="123 Main St" />
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -243,7 +243,7 @@ function Portal({ token }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {[['Name', me.name],['Email', me.email],['Phone', me.phone || '—'],['Address', me.address || '—'],['Client since', fmt(me.created_at)]].map(([l,v]) => (
                   <div key={l} style={{ display: 'flex', gap: 16 }}>
-                    <div style={{ width: 100, fontSize: 12, fontWeight: 600, color: '#8A90A2', textTransform: 'uppercase', letterSpacing: '.06em', paddingTop: 1 }}>{l}</div>
+                    <div style={{ width: 100, fontSize: 12, fontWeight: 600, color: '#8A90A2', paddingTop: 1 }}>{l}</div>
                     <div style={{ fontSize: 14, color: '#1C2333' }}>{v}</div>
                   </div>
                 ))}

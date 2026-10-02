@@ -112,7 +112,7 @@ function SessionCard({ session, jobId, sessionIndex, totalSessions, isAdmin, onU
 
           {session.work_completed && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', marginBottom: 3 }}>
                 Work Completed
               </div>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--navy)' }}>{session.work_completed}</p>
@@ -121,7 +121,7 @@ function SessionCard({ session, jobId, sessionIndex, totalSessions, isAdmin, onU
 
           {session.work_remaining && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', marginBottom: 3 }}>
                 Remaining Work
               </div>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--navy)' }}>{session.work_remaining}</p>
@@ -141,7 +141,7 @@ function SessionCard({ session, jobId, sessionIndex, totalSessions, isAdmin, onU
 
           {session.internal_notes && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', marginBottom: 3 }}>
                 Internal Notes
               </div>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--navy)' }}>{session.internal_notes}</p>

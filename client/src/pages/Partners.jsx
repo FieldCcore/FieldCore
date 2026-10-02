@@ -65,7 +65,7 @@ export default function Partners() {
     borderRadius: 8, fontSize: 14, color: '#1C2333', outline: 'none', background: 'white',
     fontFamily: 'Inter, sans-serif',
   };
-  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: 'DM Mono, monospace' };
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 600, color: '#8A90A2', marginBottom: 6, fontFamily: 'DM Mono, monospace' };
 
   return (
     <div className="mkt-page">
@@ -197,7 +197,7 @@ export default function Partners() {
                 </div>
               </div>
               <div className="mkt-card" style={{ background: '#1C2333' }}>
-                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9.5, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', marginBottom: 8 }}>Response SLA</div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9.5, color: 'rgba(255,255,255,.3)', marginBottom: 8 }}>Response SLA</div>
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 20, color: 'white', marginBottom: 4 }}>Within 24 hours.</div>
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,.4)' }}>All partner applications reviewed by a human, not a bot.</div>
               </div>

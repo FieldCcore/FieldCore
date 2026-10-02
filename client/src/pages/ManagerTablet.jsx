@@ -148,7 +148,7 @@ function JobsPanel() {
       <div style={{flex:1,overflowY:'auto'}}>
         <div style={{display:'grid',gridTemplateColumns:'1.8fr 1.2fr 1fr 1fr 1fr 90px',padding:'10px 16px',background:C.wh,borderBottom:`1px solid ${C.lg}`,position:'sticky',top:0,zIndex:5}}>
           {['Client','Service','Tech','Time','Amount','Status'].map(h=>(
-            <div key={h} style={{fontFamily:"'DM Mono',monospace",fontSize:9.5,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:C.st}}>{h}</div>
+            <div key={h} style={{fontFamily:"'DM Mono',monospace",fontSize:9.5,fontWeight:700,color:C.st}}>{h}</div>
           ))}
         </div>
         {loading&&<div style={{padding:32,textAlign:'center',color:C.st}}>Loading…</div>}
@@ -206,7 +206,7 @@ function ClientsPanel() {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
               {[['LTV',fmtMoney(c.ltv),C.sd],['Phone',c.phone||'—',C.n],['Email',c.email||'—',C.n],['Balance','$0',C.gn]].map(([lbl,val,vc])=>(
                 <div key={lbl} style={{background:C.of,borderRadius:6,padding:'7px 9px'}}>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,letterSpacing:'.1em',textTransform:'uppercase',color:C.st,marginBottom:3}}>{lbl}</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:C.st,marginBottom:3}}>{lbl}</div>
                   <div style={{fontSize:11,fontWeight:700,color:vc,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{val}</div>
                 </div>
               ))}
@@ -239,7 +239,7 @@ function DepositsPanel() {
       <div style={{padding:'14px 16px',background:C.wh,borderBottom:`1px solid ${C.lg}`,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,flexShrink:0}}>
         {[['Total Held',fmtMoney(total),C.sd],['Retained',fmtMoney(collected),C.gn],['Pending',fmtMoney(pending),C.am],['Expiring Soon',String(expiring),C.rd]].map(([l,v,vc])=>(
           <div key={l} style={{background:C.of,borderRadius:8,padding:'10px 12px'}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:8.5,letterSpacing:'.1em',textTransform:'uppercase',color:C.st,marginBottom:4}}>{l}</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:8.5,color:C.st,marginBottom:4}}>{l}</div>
             <div style={{fontSize:18,fontWeight:700,color:vc}}>{v}</div>
           </div>
         ))}
@@ -281,7 +281,7 @@ function CamerasPanel() {
     <div style={{flex:1,display:'flex',flexDirection:'column',background:C.n,overflow:'hidden'}}>
       <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',gap:14,flexShrink:0}}>
         <div><div style={{fontSize:14,fontWeight:700,color:C.wh,display:'flex',alignItems:'center',gap:8}}><Video size={14}/>Live Camera Feeds</div><div style={{fontSize:12,color:'rgba(255,255,255,.35)'}}>Front · Rear · Inner Cab · All vehicles</div></div>
-        <div style={{marginLeft:'auto',fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:'.1em',textTransform:'uppercase',background:'rgba(214,181,138,.15)',color:C.sd,padding:'4px 12px',borderRadius:99}}>Scale+ Feature</div>
+        <div style={{marginLeft:'auto',fontFamily:"'DM Mono',monospace",fontSize:9,background:'rgba(214,181,138,.15)',color:C.sd,padding:'4px 12px',borderRadius:99}}>Scale+ Feature</div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
         <div style={{background:'rgba(255,255,255,.03)',border:'1px dashed rgba(255,255,255,.1)',borderRadius:12,padding:48,textAlign:'center'}}>
@@ -365,10 +365,10 @@ function BookPanel({ onBooked }) {
   }
 
   const inputStyle={width:'100%',padding:'10px 12px',border:`1.5px solid ${C.lg}`,borderRadius:7,fontSize:13,fontFamily:'inherit',color:C.n,outline:'none',background:C.of,boxSizing:'border-box'};
-  const labelStyle={display:'block',fontSize:10,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:C.st,marginBottom:5,fontFamily:"'DM Mono',monospace"};
+  const labelStyle={display:'block',fontSize:10,fontWeight:700,color:C.st,marginBottom:5,fontFamily:"'DM Mono',monospace"};
   const BF=({label,children})=><div style={{marginBottom:12}}><label style={labelStyle}>{label}</label>{children}</div>;
   const Row=({children})=><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{children}</div>;
-  const Section=({title,children})=><div style={{background:C.wh,border:`1px solid ${C.lg}`,borderRadius:12,padding:20,marginBottom:14}}><div style={{fontSize:12,fontWeight:700,color:C.n,letterSpacing:'.04em',textTransform:'uppercase',fontFamily:"'DM Mono',monospace",marginBottom:14,display:'flex',alignItems:'center',gap:8}}><span style={{display:'block',width:3,height:14,background:C.sd,borderRadius:99,flexShrink:0}}/>{title}</div>{children}</div>;
+  const Section=({title,children})=><div style={{background:C.wh,border:`1px solid ${C.lg}`,borderRadius:12,padding:20,marginBottom:14}}><div style={{fontSize:12,fontWeight:700,color:C.n,fontFamily:"'DM Mono',monospace",marginBottom:14,display:'flex',alignItems:'center',gap:8}}><span style={{display:'block',width:3,height:14,background:C.sd,borderRadius:99,flexShrink:0}}/>{title}</div>{children}</div>;
 
   if(done)return(
     <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:C.of,padding:48,textAlign:'center'}}>
@@ -507,11 +507,11 @@ export default function ManagerTablet() {
           {loginErr&&<div style={{background:C.rl,color:C.rd,borderRadius:6,padding:'10px 14px',fontSize:13,marginBottom:12}}>{loginErr}</div>}
           <form onSubmit={doLogin}>
             <div style={{marginBottom:12}}>
-              <label style={{display:'block',fontSize:9.5,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(255,255,255,.3)',marginBottom:6,fontFamily:"'Geist Mono',sans-serif"}}>Email</label>
+              <label style={{display:'block',fontSize:9.5,fontWeight:700,color:'rgba(255,255,255,.3)',marginBottom:6,fontFamily:"'Geist Mono',sans-serif"}}>Email</label>
               <input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={{width:'100%',padding:'12px 14px',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:7,color:C.wh,fontSize:14,fontFamily:"'Geist',sans-serif",outline:'none',boxSizing:'border-box'}}/>
             </div>
             <div style={{marginBottom:12}}>
-              <label style={{display:'block',fontSize:9.5,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(255,255,255,.3)',marginBottom:6,fontFamily:"'Geist Mono',sans-serif"}}>Password</label>
+              <label style={{display:'block',fontSize:9.5,fontWeight:700,color:'rgba(255,255,255,.3)',marginBottom:6,fontFamily:"'Geist Mono',sans-serif"}}>Password</label>
               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',padding:'12px 14px',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:7,color:C.wh,fontSize:14,fontFamily:"'Geist',sans-serif",outline:'none',boxSizing:'border-box'}}/>
             </div>
             <button type="submit" style={{width:'100%',padding:13,background:C.sd,color:C.n,border:'none',borderRadius:7,fontSize:14,fontWeight:700,fontFamily:"'Geist',sans-serif",cursor:'pointer',marginTop:4}}>Sign in →</button>
@@ -526,7 +526,7 @@ export default function ManagerTablet() {
       {/* TOPBAR */}
       <div style={{background:C.n,height:52,display:'flex',alignItems:'center',padding:'0 18px',gap:14,flexShrink:0,borderBottom:'1px solid rgba(255,255,255,.06)'}}>
         <span style={{fontSize:13,fontWeight:800,letterSpacing:'.14em',textTransform:'uppercase',color:C.wh,flexShrink:0}}>FIELDCORE<sup style={{color:C.sd,fontSize:8}}>™</sup></span>
-        <span style={{fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',background:'rgba(255,255,255,.06)',padding:'3px 9px',borderRadius:99}}>Manager</span>
+        <span style={{fontFamily:"'Geist Mono',monospace",fontSize:9,color:'rgba(255,255,255,.25)',background:'rgba(255,255,255,.06)',padding:'3px 9px',borderRadius:99}}>Manager</span>
         <div style={{display:'flex',alignItems:'center',gap:10,marginLeft:'auto'}}>
           <span style={{fontFamily:"'Geist Mono',monospace",fontSize:11,color:'rgba(255,255,255,.3)',background:'rgba(255,255,255,.05)',padding:'4px 10px',borderRadius:6}}>{time}</span>
           <span style={{fontSize:12,fontWeight:600,color:C.wh}}>{user?.name||'Manager'}</span>

@@ -103,7 +103,7 @@ export default function CallerID({ onClose, autoMode = false }) {
           <>
             <div className="caller-name">{showName}</div>
             {showPhone && <div className="caller-info">
-              {showTier && <span style={{ textTransform: 'uppercase', fontWeight: 700 }}>{showTier} Client</span>}
+              {showTier && <span style={{ fontWeight: 700 }}>{showTier === 'vip' ? 'VIP' : showTier.charAt(0).toUpperCase() + showTier.slice(1)} Client</span>}
               {showTier && ' · '}
               {showPhone}
             </div>}
@@ -126,7 +126,7 @@ export default function CallerID({ onClose, autoMode = false }) {
                 <div className="ccl">Tier</div>
                 <div className="ccv" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {showTier === 'vip' && <Star size={12} fill="currentColor" strokeWidth={0} />}
-                  {showTier ? showTier.toUpperCase() : '—'}
+                  {showTier ? (showTier === 'vip' ? 'VIP' : showTier.charAt(0).toUpperCase() + showTier.slice(1)) : '—'}
                 </div>
               </div>
             </div>

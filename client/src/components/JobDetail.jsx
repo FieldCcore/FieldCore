@@ -379,7 +379,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
               <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[job.priority],
                 background: job.priority === 'urgent' ? '#fef2f2' : 'var(--yellow-lt)',
                 padding: '2px 8px', borderRadius: 99 }}>
-                {job.priority.toUpperCase()}
+                {job.priority.charAt(0).toUpperCase() + job.priority.slice(1)}
               </span>
             )}
           </div>
@@ -723,8 +723,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                 if (!catPhotos.length) return null;
                 return (
                   <div key={cat} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--steel)',
-                      textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--steel)', marginBottom: 5 }}>
                       {cat}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 5 }}>
@@ -1054,7 +1053,7 @@ export default function JobDetail({ job: initialJob, onClose, onStatusChange, on
                     <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>Delete this visit?</div>
                     {deleteImpact.service_details?.length > 0 && (
                       <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--steel)', marginBottom: 6 }}>
                           This appointment contains
                         </div>
                         {deleteImpact.service_details.map((svc, i) => (

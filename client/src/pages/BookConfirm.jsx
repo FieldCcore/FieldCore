@@ -38,7 +38,7 @@ export default function BookConfirm() {
             </p>
             {job.scheduled_at && (
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Scheduled</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Scheduled</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#1C2333' }}>
                   {new Date(job.scheduled_at).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
                   {' · '}

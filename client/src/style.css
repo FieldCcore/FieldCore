@@ -244,8 +244,6 @@ body {
   font-family: 'DM Mono', monospace;
   font-size: 9px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
   padding: 2px 6px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -4508,7 +4506,7 @@ tr:focus-within .inv-row-actions,
 /* ── Booking widget (public) ─────────────────────────────── */
 .booking-wrap  { min-height: 100vh; background: var(--off); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; }
 .booking-card  { background: var(--white); border-radius: 12px; box-shadow: 0 4px 24px rgba(28,35,51,.1); padding: 36px; width: 100%; max-width: 520px; border: 1px solid var(--lightgray); }
-.booking-logo  { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: .12em; color: var(--navy); text-align: center; margin-bottom: 22px; text-transform: uppercase; }
+.booking-logo  { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 20px; color: var(--navy); text-align: center; margin-bottom: 22px; }
 .booking-logo span { color: var(--sand); font-size: 10px; vertical-align: super; }
 .booking-steps { display: flex; justify-content: center; gap: 12px; margin-bottom: 28px; }
 .booking-step  { width: 32px; height: 32px; border-radius: 50%; background: var(--lightgray); color: var(--steel); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }

@@ -118,7 +118,7 @@ export default function DispatchQuickCommsPanel({ job, onBack, onSent, flags }) 
 
         {/* Template selection */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 6 }}>
             Message Type
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -167,7 +167,7 @@ export default function DispatchQuickCommsPanel({ job, onBack, onSent, flags }) 
 
         {/* Recipient */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--slate)', marginBottom: 6 }}>
             Send To
           </div>
           <div style={{ display: 'flex', gap: 6 }}>

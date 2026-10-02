@@ -63,7 +63,7 @@ export default function NoShowClock() {
     <div className="dash-card" style={{ marginBottom: 20, borderLeft: '3px solid var(--red)' }}>
       <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--lightgray)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--red)', fontWeight: 700 }}>
+        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>
           Active No-Show Clocks ({active.length})
         </span>
       </div>

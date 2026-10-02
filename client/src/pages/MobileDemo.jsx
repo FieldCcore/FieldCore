@@ -199,7 +199,7 @@ const WeekStrip = ({ days, activeDay, onDaySelect }) => (
           minWidth: 44, border: "none", fontFamily: "Inter, sans-serif",
           background: d.today ? N : "none", transition: "background .15s",
         }}>
-        <span style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", color: d.today ? W : ST }}>{d.label}</span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: d.today ? W : ST }}>{d.label}</span>
         <span style={{ fontSize: 16, fontWeight: 700, marginTop: 2, color: d.today ? W : N }}>{d.num}</span>
         {d.hasDot && <span style={{ width: 5, height: 5, borderRadius: "50%", background: S, marginTop: 4, display: "block" }} />}
       </button>
@@ -523,7 +523,7 @@ const HomeScreen = ({ onJobTap }) => {
         {nextJob && (
           <div style={{ ...CARD, background: N, padding: "16px", marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: S, textTransform: "uppercase", letterSpacing: ".8px" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: S }}>
                 Up next · today
               </span>
               <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.5)" }}>in 2h 15m</span>
@@ -751,7 +751,7 @@ const JobsScreen = ({ onJobTap }) => {
       </div>
 
       <div style={{ padding: "12px 16px 100px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: ST, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: ST, marginBottom: 4 }}>
           {filtered.length} job{filtered.length !== 1 ? "s" : ""}
         </div>
         {filtered.length === 0 ? (

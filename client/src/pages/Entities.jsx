@@ -33,7 +33,7 @@ function TypeBadge({ type }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em',
+      fontSize: 10, fontWeight: 700,
       background: '#1C233318', color: '#1C2333',
     }}>{type}</span>
   );
@@ -242,7 +242,7 @@ export default function Entities() {
     boxSizing: 'border-box',
   };
 
-  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 5 };
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', marginBottom: 5 };
 
   return (
     <div>
@@ -297,7 +297,7 @@ export default function Entities() {
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <BarChart2 size={16} style={{ color: '#D6B58A' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C2333', textTransform: 'uppercase', letterSpacing: '.06em' }}>Consolidated Performance</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C2333' }}>Consolidated Performance</span>
           </div>
           {analyticsLoading ? (
             <p className="muted" style={{ fontSize: 13 }}>Loading analytics…</p>
@@ -322,7 +322,7 @@ export default function Entities() {
                 <div className="ent-table-scroll"><div style={{ background: '#fff', border: '1px solid #e5e0d8', borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: 0, padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #e5e0d8' }}>
                     {['Entity', 'MTD Revenue', 'Jobs MTD'].map(h => (
-                      <div key={h} style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af' }}>{h}</div>
+                      <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af' }}>{h}</div>
                     ))}
                   </div>
                   {analytics.entities.map((ent, i) => (
@@ -372,7 +372,7 @@ export default function Entities() {
                           {entity.legal_name || entity.name}
                         </span>
                         {isCurrent && (
-                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', background: '#D6B58A', color: '#1C2333', padding: '2px 8px', borderRadius: 99 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, background: '#D6B58A', color: '#1C2333', padding: '2px 8px', borderRadius: 99 }}>
                             Current
                           </span>
                         )}
@@ -396,30 +396,30 @@ export default function Entities() {
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10 }}>
                         {entity.ein && (
                           <div>
-                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>EIN</div>
+                            <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>EIN</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', fontFamily: 'DM Mono, monospace' }}>{formatEIN(entity.ein)}</div>
                           </div>
                         )}
                         {(entity.city || entity.state) && (
                           <div>
-                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Location</div>
+                            <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>Location</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{[entity.city, entity.state].filter(Boolean).join(', ')}</div>
                           </div>
                         )}
                         {entity.phone && (
                           <div>
-                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Phone</div>
+                            <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>Phone</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{entity.phone}</div>
                           </div>
                         )}
                         {entity.entity_email && (
                           <div>
-                            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Email</div>
+                            <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>Email</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333' }}>{entity.entity_email}</div>
                           </div>
                         )}
                         <div>
-                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Payouts</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>Payouts</div>
                           <StatusBadge status={
                             entity.stripe_connect_status === 'active' ? 'payouts connected' :
                             entity.stripe_connect_status === 'pending' ? 'stripe pending' :
@@ -427,7 +427,7 @@ export default function Entities() {
                           } />
                         </div>
                         <div>
-                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 1 }}>Members</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>Members</div>
                           <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Users size={11} />{entity.member_count || 0}
                           </div>
@@ -550,7 +550,7 @@ export default function Entities() {
                                     <div style={{ fontSize: 13, fontWeight: 600, color: '#1C2333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
                                     <div style={{ fontSize: 11, color: 'var(--steel)' }}>{m.email}</div>
                                   </div>
-                                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 7px', borderRadius: 4, background: '#f4f4f0', color: '#6b7280' }}>{m.role}</span>
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#f4f4f0', color: '#6b7280' }}>{m.role}</span>
                                   {m.membership_type === 'cross' && (
                                     <button onClick={() => handleRemoveMember(entity.id, m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: '2px 4px', fontSize: 16, lineHeight: 1 }} aria-label="Remove">×</button>
                                   )}
@@ -596,7 +596,7 @@ export default function Entities() {
               {formError && <p className="form-error" style={{ marginBottom: 14 }}>{formError}</p>}
 
               {/* Business Identity */}
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', marginBottom: 12 }}>Business Identity</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', marginBottom: 12 }}>Business Identity</div>
               <div className="form-grid-2">
                 <div className="form-group">
                   <label style={labelStyle}>Legal Business Name *</label>
@@ -613,7 +613,7 @@ export default function Entities() {
               </div>
 
               {/* Business Details */}
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', margin: '20px 0 12px' }}>Business Details</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', margin: '20px 0 12px' }}>Business Details</div>
               <div className="form-grid-2">
                 <div className="form-group">
                   <label style={labelStyle}>Business Type</label>
@@ -636,7 +636,7 @@ export default function Entities() {
               )}
 
               {/* Contact & Location */}
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9ca3af', margin: '20px 0 12px' }}>Contact & Location</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', margin: '20px 0 12px' }}>Contact & Location</div>
               <div className="form-group">
                 <label style={labelStyle}>Street Address</label>
                 <AddressAutocomplete

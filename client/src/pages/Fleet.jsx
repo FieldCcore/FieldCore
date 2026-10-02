@@ -85,7 +85,7 @@ function CameraTile({ position, camera, providerConnected, loading }) {
         {state === 'snapshot' && camera?.snapshot_url && (
           <div className="fleet-cam-snapshot">
             <img src={camera.snapshot_url} alt={`${label} snapshot`} style={{ width: '100%', borderRadius: 4, display: 'block' }} />
-            <div style={{ fontSize: 10, color: 'var(--steel)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            <div style={{ fontSize: 10, color: 'var(--steel)', marginTop: 6, fontFamily: 'DM Mono, monospace' }}>
               Snapshot · not live
             </div>
           </div>
@@ -94,7 +94,7 @@ function CameraTile({ position, camera, providerConnected, loading }) {
         {state === 'live' && camera?.stream_url && (
           <div className="fleet-cam-stream">
             <video src={camera.stream_url} autoPlay muted playsInline style={{ width: '100%', borderRadius: 4, display: 'block' }} />
-            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 6, fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 6, fontFamily: 'DM Mono, monospace' }}>
               ● Live
             </div>
           </div>
@@ -366,7 +366,7 @@ export default function Fleet() {
                   <div className="dash-cht">Fleet Tracking Integration</div>
                   <div style={{ fontSize: 11, color: 'var(--steel)', marginTop: 2 }}>Live GPS, speed, and route history</div>
                 </div>
-                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', flexShrink: 0 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', flexShrink: 0 }}>
                   Setup Required
                 </span>
               </div>
@@ -412,7 +412,7 @@ export default function Fleet() {
                 </div>
               </div>
               {!camData.provider_connected && (
-                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', flexShrink: 0 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'var(--offwhite)', color: 'var(--steel)', flexShrink: 0 }}>
                   Setup Required
                 </span>
               )}

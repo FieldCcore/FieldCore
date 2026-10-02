@@ -419,7 +419,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
 
       {showDepositPanel && isOpen && (
         <div style={{ marginTop: 12, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#8A90A2', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#8A90A2', marginBottom: 10 }}>
             Apply Deposit Credit
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -484,7 +484,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         };
         return (
           <div style={{ marginTop: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#8A90A2', marginBottom: 10, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#8A90A2', marginBottom: 10, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
               Payment History
             </div>
             {history === null ? (

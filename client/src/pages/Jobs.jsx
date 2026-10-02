@@ -155,9 +155,9 @@ function MonthEventCard({ event }) {
 }
 
 // ─── Month day-of-week column header — DOW label only ─────────────────────────
-// Month view: "SUN  MON  TUE…" — no date number (that lives in each cell).
+// Month view: "Sun  Mon  Tue…" — no date number (that lives in each cell).
 function MonthDayHeader({ label }) {
-  return <div className="fc-month-dh">{(label || '').toUpperCase()}</div>;
+  return <div className="fc-month-dh">{label || ''}</div>;
 }
 
 // ─── Week/Day column header — DOW above date number ──────────────────────────
@@ -169,7 +169,7 @@ function WeekDayHeader({ date }) {
     <div className="fc-week-header-cell">
       {isToday && <span className="fc-week-today-dot" aria-label="Today" />}
       <div className="fc-week-dh">
-        <span className="fc-week-dh-dow">{format(date, 'EEE').toUpperCase()}</span>
+        <span className="fc-week-dh-dow">{format(date, 'EEE')}</span>
         <span className="fc-week-dh-num">{format(date, 'd')}</span>
       </div>
     </div>
@@ -197,7 +197,7 @@ function FCWeekHeader({ date, weekStartDay, gutterWidth }) {
             aria-label={`${format(day, 'EEEE, MMMM d, yyyy')}${isToday ? ', Today' : ''}`}
           >
             {isToday && <span className="fc-week-today-dot" aria-hidden="true" />}
-            <span className="fc-week-dh-dow">{format(day, 'EEE').toUpperCase()}</span>
+            <span className="fc-week-dh-dow">{format(day, 'EEE')}</span>
             <span className="fc-week-dh-num">{format(day, 'd')}</span>
           </div>
         );

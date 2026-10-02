@@ -140,7 +140,6 @@ export default function DispatchMapLegend({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{
           fontSize: 10, fontWeight: 700, color: 'var(--steel)',
-          textTransform: 'uppercase', letterSpacing: '.06em',
         }}>
           Legend
         </span>

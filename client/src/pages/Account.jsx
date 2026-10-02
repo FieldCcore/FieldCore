@@ -246,7 +246,7 @@ export default function Account() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: 7 }}>
                           {s.device_info || 'Unknown device'}
                           {i === 0 && (
-                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--sand)', padding: '2px 7px', borderRadius: 99 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy)', background: 'var(--sand)', padding: '2px 7px', borderRadius: 99 }}>
                               Current
                             </span>
                           )}

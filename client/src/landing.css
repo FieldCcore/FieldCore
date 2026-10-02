@@ -58,7 +58,7 @@
 .landing-page .hero-inner { position: relative; z-index: 2; flex: 1; max-width: 580px; }
 .landing-page .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(214,181,138,.1); border: 1px solid rgba(214,181,138,.22); padding: 5px 14px; border-radius: 99px; margin-bottom: 14px; }
 .landing-page .hero-badge-pulse { width: 6px; height: 6px; background: var(--sd); border-radius: 50%; animation: lp-pulse 2.2s ease-in-out infinite; }
-.landing-page .hero-badge-text { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--sd); font-weight: 500; }
+.landing-page .hero-badge-text { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--sd); font-weight: 500; }
 .landing-page .hero-h { font-family: 'Cormorant Garamond', serif; font-size: clamp(28px,3.2vw,44px); color: var(--wh); line-height: 1.08; margin-bottom: 12px; font-weight: 400; }
 .landing-page .hero-h em { color: var(--sd); font-style: italic; }
 .landing-page .hero-sub { font-size: 15px; color: rgba(255,255,255,.46); line-height: 1.65; max-width: 520px; margin-bottom: 22px; font-weight: 400; }
@@ -92,19 +92,19 @@
 .landing-page .hc-caller { background: var(--n); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; margin-top: 14px; overflow: hidden; }
 .landing-page .hc-caller-top { background: rgba(255,255,255,.04); padding: 10px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .landing-page .hc-caller-ring { width: 8px; height: 8px; background: #4EC87A; border-radius: 50%; animation: lp-pulse 1s infinite; }
-.landing-page .hc-caller-lbl { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--sd); flex: 1; }
+.landing-page .hc-caller-lbl { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--sd); flex: 1; }
 .landing-page .hc-caller-body { padding: 12px 14px; }
 .landing-page .hc-caller-name { font-family: 'Cormorant Garamond', serif; font-size: 18px; color: var(--wh); margin-bottom: 3px; }
 .landing-page .hc-caller-sub { font-size: 11px; color: rgba(255,255,255,.35); }
 .landing-page .hc-caller-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .landing-page .hc-cell { background: rgba(255,255,255,.04); border-radius: 6px; padding: 8px 10px; }
-.landing-page .hc-cell-l { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.25); margin-bottom: 3px; }
+.landing-page .hc-cell-l { font-family: 'DM Mono', monospace; font-size: 8px; color: rgba(255,255,255,.25); margin-bottom: 3px; }
 .landing-page .hc-cell-v { font-size: 12px; font-weight: 600; color: var(--wh); }
 
 /* LOGO BAR */
 .landing-page .logos-bar { background: var(--cr); padding: 20px 6%; border-top: 1px solid var(--lg); border-bottom: 1px solid var(--lg); }
 .landing-page .logos-inner { display: flex; align-items: center; }
-.landing-page .logos-lbl { font-family: 'DM Mono', monospace; font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--st); flex-shrink: 0; margin-right: 40px; }
+.landing-page .logos-lbl { font-family: 'DM Mono', monospace; font-size: 9.5px; color: var(--st); flex-shrink: 0; margin-right: 40px; }
 .landing-page .logos-track { overflow: hidden; flex: 1; mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%); }
 .landing-page .logos-track-inner { display: flex; align-items: center; gap: 48px; animation: lp-marquee 28s linear infinite; flex-shrink: 0; will-change: transform; }
 /* marquee always runs — no pause on hover */
@@ -125,7 +125,7 @@
 /* FEATURES */
 .landing-page .lp-features { padding: 64px 6%; background: var(--n); }
 .landing-page .feat-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 36px; flex-wrap: wrap; gap: 16px; }
-.landing-page .sec-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--sd); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.landing-page .sec-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--sd); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
 .landing-page .sec-eyebrow::before { content: ''; width: 20px; height: 2px; background: var(--sd); display: block; }
 .landing-page .sec-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(24px,3.2vw,38px); line-height: 1.12; font-weight: 400; }
 .landing-page .sec-title-light { color: var(--wh); }
@@ -150,7 +150,7 @@
 .landing-page .dd-row:last-of-type { border-bottom: none; padding-bottom: 0; }
 .landing-page .dd-row.flip { direction: rtl; }
 .landing-page .dd-row.flip > * { direction: ltr; }
-.landing-page .dd-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--sd); margin-bottom: 10px; }
+.landing-page .dd-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--sd); margin-bottom: 10px; }
 .landing-page .dd-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(22px,2.8vw,34px); color: var(--n); line-height: 1.14; margin-bottom: 12px; font-weight: 400; }
 .landing-page .dd-title em { color: var(--sl); font-style: italic; }
 .landing-page .dd-body { font-size: 15px; color: var(--sl); line-height: 1.78; margin-bottom: 28px; }
@@ -171,18 +171,18 @@
 .landing-page .lp-ns-timer { font-family: 'DM Mono', monospace; font-size: 20px; font-weight: 700; color: #E05555; }
 .landing-page .lp-ns-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
 .landing-page .lp-ns-cell { background: rgba(255,255,255,.04); border-radius: 7px; padding: 10px 12px; }
-.landing-page .lp-ns-cl { font-family: 'DM Mono', monospace; font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.25); margin-bottom: 4px; }
+.landing-page .lp-ns-cl { font-family: 'DM Mono', monospace; font-size: 8.5px; color: rgba(255,255,255,.25); margin-bottom: 4px; }
 .landing-page .lp-ns-cv { font-size: 13px; font-weight: 700; color: var(--wh); }
 .landing-page .lp-ns-btns { display: flex; gap: 8px; }
 .landing-page .lp-ns-btn { flex: 1; padding: 10px; border-radius: 7px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; }
 .landing-page .ci-calling { background: rgba(78,200,122,.12); border: 1px solid rgba(78,200,122,.2); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .landing-page .ci-ring { width: 8px; height: 8px; background: #4EC87A; border-radius: 50%; animation: lp-pulse 1s infinite; }
-.landing-page .ci-lbl { font-family: 'DM Mono', monospace; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: #4EC87A; flex: 1; }
+.landing-page .ci-lbl { font-family: 'DM Mono', monospace; font-size: 9.5px; color: #4EC87A; flex: 1; }
 .landing-page .ci-name { font-family: 'Cormorant Garamond', serif; font-size: 22px; color: var(--wh); margin-bottom: 2px; }
 .landing-page .ci-sub { font-size: 11.5px; color: rgba(255,255,255,.35); }
 .landing-page .ci-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 12px 0; }
 .landing-page .ci-cell { background: rgba(255,255,255,.04); border-radius: 6px; padding: 8px 10px; }
-.landing-page .ci-cl { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.25); margin-bottom: 3px; }
+.landing-page .ci-cl { font-family: 'DM Mono', monospace; font-size: 8px; color: rgba(255,255,255,.25); margin-bottom: 3px; }
 .landing-page .ci-cv { font-size: 12px; font-weight: 600; color: var(--wh); }
 .landing-page .ci-note { background: var(--slt); border-radius: 6px; padding: 9px 11px; font-size: 12px; color: var(--sl); margin-bottom: 12px; line-height: 1.55; }
 .landing-page .ci-btns { display: flex; gap: 8px; }
@@ -206,7 +206,7 @@
 .landing-page .plan:hover { transform: translateY(-3px); }
 .landing-page .plan.featured { background: var(--sd); border-color: var(--sd2); }
 .landing-page .plan-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--n); color: var(--sd); font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em; padding: 4px 14px; border-radius: 99px; border: 1px solid rgba(214,181,138,.3); white-space: nowrap; }
-.landing-page .plan-name { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--sd); margin-bottom: 14px; }
+.landing-page .plan-name { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--sd); margin-bottom: 14px; }
 .landing-page .plan.featured .plan-name { color: var(--n2); }
 .landing-page .plan-price { font-family: 'Cormorant Garamond', serif; font-size: 40px; color: var(--wh); line-height: 1; margin-bottom: 4px; }
 .landing-page .plan.featured .plan-price { color: var(--n); }
@@ -241,7 +241,7 @@
 .landing-page .lp-compare { padding: 64px 6%; background: var(--wh); }
 .landing-page .compare-table { margin-top: 32px; border: 1px solid var(--lg); border-radius: 14px; overflow: hidden; }
 .landing-page .ct-head { display: grid; grid-template-columns: 2.2fr repeat(4,1fr); background: var(--n); }
-.landing-page .ct-hcell { padding: 16px 20px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.45); font-family: 'DM Mono', monospace; }
+.landing-page .ct-hcell { padding: 16px 20px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,.45); font-family: 'DM Mono', monospace; }
 .landing-page .ct-hcell.fc { color: var(--sd); }
 .landing-page .ct-row { display: grid; grid-template-columns: 2.2fr repeat(4,1fr); border-bottom: 1px solid var(--lg); }
 .landing-page .ct-row:last-child { border-bottom: none; }
@@ -280,7 +280,7 @@
 .landing-page .footer-brand-name { font-size: 14px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--wh); margin-bottom: 10px; }
 .landing-page .footer-brand-name sup { color: var(--sd); font-size: 9px; }
 .landing-page .footer-brand-tag { font-size: 13px; color: rgba(255,255,255,.3); line-height: 1.6; max-width: 220px; }
-.landing-page .footer-col-title { font-family: 'DM Mono', monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.25); margin-bottom: 16px; }
+.landing-page .footer-col-title { font-family: 'DM Mono', monospace; font-size: 9.5px; color: rgba(255,255,255,.25); margin-bottom: 16px; }
 .landing-page .footer-links { display: flex; flex-direction: column; gap: 10px; }
 .landing-page .footer-links a { font-size: 13px; color: rgba(255,255,255,.38); text-decoration: none; transition: color .2s; }
 .landing-page .footer-links a:hover { color: var(--wh); }
@@ -311,7 +311,7 @@
 .mkt-btn-ghost { background: rgba(255,255,255,.08); color: white; }
 .mkt-btn-sand  { background: #D6B58A; color: #1C2333; }
 .mkt-hero { background: var(--n, #1C2333); padding: 72px 6% 64px; }
-.mkt-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #D6B58A; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.mkt-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; color: #D6B58A; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 .mkt-eyebrow::before { content: ''; width: 20px; height: 2px; background: #D6B58A; display: block; }
 .mkt-h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(32px,4vw,56px); color: white; line-height: 1.08; font-weight: 400; margin-bottom: 16px; }
 .mkt-h1 em { color: #D6B58A; font-style: italic; }
@@ -324,7 +324,7 @@
 .mkt-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .mkt-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
 .mkt-card { background: #F8F7F5; border: 1px solid #E6E6E6; border-radius: 12px; padding: 24px 22px; }
-.mkt-card-label { font-family: 'DM Mono', monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: #8A90A2; margin-bottom: 8px; }
+.mkt-card-label { font-family: 'DM Mono', monospace; font-size: 9.5px; color: #8A90A2; margin-bottom: 8px; }
 .mkt-card-value { font-family: 'Cormorant Garamond', serif; font-size: 22px; color: #1C2333; margin-bottom: 6px; font-weight: 400; }
 .mkt-card-sub { font-size: 13px; color: #5F667A; line-height: 1.6; }
 .mkt-footer { background: #1C2333; padding: 40px 6%; border-top: 1px solid rgba(255,255,255,.06); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }

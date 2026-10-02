@@ -33,10 +33,10 @@ const problems = [
 ];
 
 const feats = [
-  { badge: 'INDUSTRY 1ST', ico: Timer,      t: 'No-Show Arrival Clock',    b: '25-minute GPS countdown. Two auto-texts to client. Deposit retained at zero automatically. GPS record created.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: Phone,      t: 'Smart Caller ID',          b: 'Full 9-zone client profile before you answer. LTV, last job, balance, next appointment. Push when app is closed.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: Bell,       t: 'Pre-Charge Notice',        b: '12, 24, 48, or 72-hour advance SMS before every recurring charge. Card update links auto-sent on reply.', tier: 'Pro+' },
-  { badge: 'INDUSTRY 1ST', ico: Map,        t: 'Travel Fee Engine',        b: 'Auto-calculates road distance via Google Maps. Appears as a transparent line item on every invoice.', tier: 'Pro+' },
+  { badge: 'Industry 1st', ico: Timer,      t: 'No-Show Arrival Clock',    b: '25-minute GPS countdown. Two auto-texts to client. Deposit retained at zero automatically. GPS record created.', tier: 'Pro+' },
+  { badge: 'Industry 1st', ico: Phone,      t: 'Smart Caller ID',          b: 'Full 9-zone client profile before you answer. LTV, last job, balance, next appointment. Push when app is closed.', tier: 'Pro+' },
+  { badge: 'Industry 1st', ico: Bell,       t: 'Pre-Charge Notice',        b: '12, 24, 48, or 72-hour advance SMS before every recurring charge. Card update links auto-sent on reply.', tier: 'Pro+' },
+  { badge: 'Industry 1st', ico: Map,        t: 'Travel Fee Engine',        b: 'Auto-calculates road distance via Google Maps. Appears as a transparent line item on every invoice.', tier: 'Pro+' },
   { badge: null,            ico: MapPin,    t: 'Minute-Precise ETA',       b: '"Arriving at 2:18 PM." Real clock time. One tap. Not "in about 30 minutes." The exact time.', tier: 'All plans' },
   { badge: null,            ico: CreditCard,t: '3-Layer Deposit System',   b: 'Set by service type, client tier, and individual job simultaneously. VIP waivers. At-Risk mandatory deposits.', tier: 'Pro+' },
   { badge: null,            ico: Building2, t: 'Multi-Entity Dashboard',   b: 'Unlimited LLCs from one login. Separate P&L per entity. One tap to switch. No double-entry ever.', tier: 'Scale+' },
@@ -65,7 +65,7 @@ const plans = [
   {
     name: 'Pro', price: '$99', mo: '/month', target: 'Built for growing businesses',
     tag: 'Built for teams that need accountability and automation.',
-    badge: 'MOST POPULAR',
+    badge: 'Most popular',
     feats: [
       'Everything in Solo',
       'Additional team members',
@@ -291,7 +291,7 @@ export default function Landing() {
                 <div className="hc-dot" style={{ background: '#FFBD2E' }} />
                 <div className="hc-dot" style={{ background: '#28CA41' }} />
               </div>
-              <span className="hc-title">FIELDCORE · TODAY</span>
+              <span className="hc-title">FieldCore · Today</span>
             </div>
             <div className="hc-body">
               <div className="hc-alert">
@@ -444,7 +444,7 @@ export default function Landing() {
                 <div className="dm-dot" style={{ background: '#FFBD2E' }} />
                 <div className="dm-dot" style={{ background: '#28CA41' }} />
               </div>
-              <span className="dm-title">DISPATCH · NO-SHOW ACTIVE</span>
+              <span className="dm-title">Dispatch · No-show active</span>
             </div>
             <div className="dm-body">
               <div className="lp-ns-strip">
@@ -494,7 +494,7 @@ export default function Landing() {
                 <div className="dm-dot" style={{ background: '#FFBD2E' }} />
                 <div className="dm-dot" style={{ background: '#28CA41' }} />
               </div>
-              <span className="dm-title">SMART CALLER ID</span>
+              <span className="dm-title">Smart Caller ID</span>
             </div>
             <div className="dm-body">
               <div className="ci-calling">
@@ -544,7 +544,7 @@ export default function Landing() {
                 <div className="dm-dot" style={{ background: '#FFBD2E' }} />
                 <div className="dm-dot" style={{ background: '#28CA41' }} />
               </div>
-              <span className="dm-title">CHARGE NOTICES</span>
+              <span className="dm-title">Charge notices</span>
             </div>
             <div className="dm-body">
               <div className="cn-windows">

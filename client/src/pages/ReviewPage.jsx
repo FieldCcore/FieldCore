@@ -93,7 +93,7 @@ export default function ReviewPage() {
   return shell(
     <form onSubmit={handleSubmit}>
       <div style={{ textAlign: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+        <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 6 }}>
           {job.business_name}
         </div>
         <h2 style={{ margin: '0 0 4px', color: '#1C2333', fontSize: 22, fontWeight: 700 }}>

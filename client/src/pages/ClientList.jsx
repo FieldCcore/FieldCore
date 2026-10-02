@@ -98,7 +98,7 @@ export default function ClientList() {
             {/* Table header */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 80px 100px 110px 90px', gap: 0, padding: '9px 20px', background: 'var(--navy)', alignItems: 'center' }}>
               {['Name', 'Tier', 'Contact', 'LTV', 'Outstanding', 'Last Invoice', 'Client Since'].map(h => (
-                <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{h}</div>
+                <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,.55)' }}>{h}</div>
               ))}
             </div>
 

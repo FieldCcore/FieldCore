@@ -598,7 +598,7 @@ export default function Team() {
                   { label: 'Total Jobs',        val: String(totalJobs) },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < 2 ? '1px solid var(--lightgray)' : 'none', fontSize: 13 }}>
-                    <span style={{ color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', alignSelf: 'center' }}>{r.label}</span>
+                    <span style={{ color: 'var(--steel)', fontFamily: 'DM Mono, monospace', fontSize: 10, alignSelf: 'center' }}>{r.label}</span>
                     <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: 'var(--navy)' }}>{r.val}</span>
                   </div>
                 ))}
@@ -712,7 +712,7 @@ export default function Team() {
                 })}
                 {totalRevenue > 0 && (
                   <tr style={{ background: 'var(--navy)' }}>
-                    <td colSpan={3} style={{ color: 'rgba(255,255,255,.5)', fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.06em', textTransform: 'uppercase' }}>Total</td>
+                    <td colSpan={3} style={{ color: 'rgba(255,255,255,.5)', fontFamily: 'DM Mono, monospace', fontSize: 9 }}>Total</td>
                     <td style={{ color: 'white', fontWeight: 700 }}>{fmt$(totalRevenue)}</td>
                     <td style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: 'var(--sand)' }}>{fmt$(totalCommission)}</td>
                     <td></td>

@@ -543,7 +543,7 @@ function NumbersPanel({ numbers, onRelease, onEdit, onAdd }) {
                 ['Texts via',   'Sendblue (iMessage/RCS)'],
               ].map(([label, value]) => (
                 <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', paddingTop: 2, width: 110, flexShrink: 0 }}>{label}</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', paddingTop: 2, width: 110, flexShrink: 0 }}>{label}</div>
                   <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
                 </div>
               ))}
@@ -654,7 +654,7 @@ function CallsPanel({ calls }) {
                 ['Time',       fmtDt(selectedCall.started_at)],
               ].map(([label, value]) => (
                 <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', paddingTop: 2, width: 80, flexShrink: 0 }}>{label}</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', paddingTop: 2, width: 80, flexShrink: 0 }}>{label}</div>
                   <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
                 </div>
               ))}
@@ -762,14 +762,14 @@ function VoicemailPanel({ vms, onMarkRead }) {
                   ['Status',   <StatusBadge variant={selectedVm.is_read ? 'neutral' : 'warning'}>{selectedVm.is_read ? 'Read' : 'New'}</StatusBadge>],
                 ].map(([label, value]) => (
                   <div key={label}>
-                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', marginBottom: 4 }}>{label}</div>
                     <div style={{ fontSize: 13, color: 'var(--navy)' }}>{value}</div>
                   </div>
                 ))}
               </div>
               {selectedVm.recording_url && (
                 <div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Recording</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', marginBottom: 8 }}>Recording</div>
                   <audio controls style={{ width: '100%', maxWidth: 420, height: 36 }} onPlay={() => onMarkRead(selectedVm.id)}>
                     <source src={selectedVm.recording_url} />
                   </audio>
@@ -777,7 +777,7 @@ function VoicemailPanel({ vms, onMarkRead }) {
               )}
               {selectedVm.transcription && (
                 <div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Transcription</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, fontWeight: 600, color: 'var(--steel)', marginBottom: 8 }}>Transcription</div>
                   <div style={{ fontSize: 14, color: 'var(--slate)', fontStyle: 'italic', lineHeight: 1.7, background: 'var(--white)', padding: '14px 16px', borderRadius: 8, border: '1px solid var(--lightgray)' }}>
                     "{selectedVm.transcription}"
                   </div>

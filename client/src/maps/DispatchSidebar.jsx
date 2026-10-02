@@ -91,7 +91,7 @@ function EmDetailRow({ label, value }) {
   if (!value && value !== 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 10 }}>
-      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)' }}>{label}</div>
       <div style={{ fontSize: 11, color: 'var(--navy)', lineHeight: 1.5 }}>{value}</div>
     </div>
   );
@@ -169,7 +169,7 @@ function EmergencyDetailsView({ job, onBack, onJobUpdated, userRole, flags, tech
           </span>
           {job.emergency_priority && (
             <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626' }}>
-              {job.emergency_priority.toUpperCase()}
+              {job.emergency_priority.charAt(0).toUpperCase() + job.emergency_priority.slice(1)}
             </span>
           )}
         </div>
@@ -191,7 +191,7 @@ function EmergencyDetailsView({ job, onBack, onJobUpdated, userRole, flags, tech
         )}
         {!teamLoading && teamMembers !== null && teamMembers.length > 0 && (
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--steel)', marginBottom: 4 }}>
               Assigned team
             </div>
             {teamMembers.map(m => (
@@ -614,7 +614,7 @@ function JobDetailView({
                     padding: '1px 6px', borderRadius: 99,
                     background: 'rgba(220,38,38,0.12)', color: '#DC2626',
                   }}>
-                    {job.emergency_priority.toUpperCase()}
+                    {job.emergency_priority.charAt(0).toUpperCase() + job.emergency_priority.slice(1)}
                   </span>
                 )}
               </button>

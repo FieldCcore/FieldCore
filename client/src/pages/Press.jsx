@@ -111,7 +111,7 @@ export default function Press() {
         {/* Press contact */}
         <div style={{ background: '#1C2333', borderRadius: 14, padding: '36px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9.5, letterSpacing: '.16em', textTransform: 'uppercase', color: '#D6B58A', marginBottom: 10 }}>Press Contact</div>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9.5, color: '#D6B58A', marginBottom: 10 }}>Press Contact</div>
             <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 22, color: 'white', marginBottom: 6 }}>press@getfieldcore.com</div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,.35)' }}>We respond to all press inquiries within 24 hours.</div>
           </div>

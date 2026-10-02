@@ -65,7 +65,7 @@ function StatusPill({ status }) {
       display: 'inline-block', padding: '3px 10px',
       borderRadius: 20, border: `1px solid ${c.border}`,
       background: c.bg, color: c.color,
-      fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase',
+      fontSize: 11, fontWeight: 700,
     }}>
       {c.label}
     </span>
@@ -179,7 +179,7 @@ export default function PayInvoice() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ color: 'rgba(255,255,255,.45)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>Invoice</div>
+          <div style={{ color: 'rgba(255,255,255,.45)', fontSize: 11 }}>Invoice</div>
           <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 2 }}>
             #{inv.invoice_number || '—'}
           </div>
@@ -213,7 +213,7 @@ export default function PayInvoice() {
             {/* ── Invoice meta row ──────────────────────────────────────── */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${GRAY}` }}>
               <div>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: STEEL, marginBottom: 4 }}>Bill to</div>
+                <div style={{ fontSize: 11, color: STEEL, marginBottom: 4 }}>Bill to</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{inv.client_name}</div>
                 {clientAddr && <div style={{ fontSize: 13, color: SLATE, marginTop: 3 }}>{clientAddr}</div>}
               </div>
@@ -249,7 +249,7 @@ export default function PayInvoice() {
             {/* ── Covered Services (agreement invoices) ─────────────────── */}
             {isAgreement && hasSchedules && (
               <div style={{ background: CARD_BG, border: `1px solid ${GRAY}`, borderRadius: 8, padding: '14px 16px', marginBottom: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: STEEL, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STEEL, marginBottom: 10 }}>
                   Covered Services
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -273,7 +273,7 @@ export default function PayInvoice() {
             {/* ── Line Items ────────────────────────────────────────────── */}
             {lineItems.length > 0 && (
               <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: STEEL, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STEEL, marginBottom: 8 }}>
                   {isAgreement ? 'Billing Detail' : 'Services'}
                 </div>
                 <div style={{ border: `1px solid ${GRAY}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -318,7 +318,7 @@ export default function PayInvoice() {
                 </>
               ) : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em', color: STEEL }}>Total</div>
+                <div style={{ fontSize: 12, color: STEEL }}>Total</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: NAVY }}>{fmt(total)}</div>
               </div>
               {hasBalance && (
@@ -338,7 +338,7 @@ export default function PayInvoice() {
             {/* ── Payment ──────────────────────────────────────────────── */}
             {(inv.accept_card || inv.accept_ach) && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: STEEL, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: STEEL, marginBottom: 8 }}>
                   Accepted Online
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -378,13 +378,13 @@ export default function PayInvoice() {
             {/* ── Terms / Client Message ────────────────────────────────── */}
             {inv.client_message && (
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${GRAY}` }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: STEEL, marginBottom: 6 }}>Message</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STEEL, marginBottom: 6 }}>Message</div>
                 <div style={{ fontSize: 13, color: SLATE, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{inv.client_message}</div>
               </div>
             )}
             {inv.terms && (
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${GRAY}` }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: STEEL, marginBottom: 6 }}>Terms & Conditions</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STEEL, marginBottom: 6 }}>Terms & Conditions</div>
                 <div style={{ fontSize: 12, color: STEEL, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{inv.terms}</div>
               </div>
             )}

@@ -41,7 +41,7 @@ export default function Blog() {
         <div className="mkt-section">
           <div style={{ background: '#F8F7F5', border: '1px solid #E6E6E6', borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
             <div style={{ background: '#1C2333', padding: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#D6B58A', marginBottom: 12 }}>Featured</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#D6B58A', marginBottom: 12 }}>Featured</div>
               <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 28, color: 'white', lineHeight: 1.15, fontWeight: 400 }}>
                 {posts[0].title}
               </div>

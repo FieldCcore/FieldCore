@@ -31,7 +31,7 @@ function Step({ n, current }) {
       }}>
         {done ? '✓' : n}
       </div>
-      <span style={{ fontSize: 11, color: active ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.3)', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+      <span style={{ fontSize: 11, color: active ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.3)', fontFamily: 'DM Mono, monospace' }}>
         {n === 1 ? 'Business' : n === 2 ? 'Services' : 'Done'}
       </span>
     </div>
@@ -118,7 +118,7 @@ export default function Onboarding() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 6 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
                 Business Name
               </label>
               <input
@@ -132,7 +132,7 @@ export default function Onboarding() {
             </div>
 
             <div style={{ marginBottom: 28 }}>
-              <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>
                 Business Type
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -234,7 +234,7 @@ export default function Onboarding() {
             </div>
 
             <div style={{ background: '#f9f7f3', border: '1px solid #e5e0d8', borderRadius: 8, padding: '14px 16px', marginBottom: 24, textAlign: 'left' }}>
-              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 6, fontFamily: 'DM Mono, monospace' }}>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 6, fontFamily: 'DM Mono, monospace' }}>
                 Your Booking Link
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

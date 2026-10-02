@@ -902,7 +902,7 @@ function FieldCorePaymentsModal({ onClose }) {
         </div>
 
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 8 }}>
             Payment Processing
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -912,7 +912,7 @@ function FieldCorePaymentsModal({ onClose }) {
         </div>
 
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 8 }}>
             Capabilities
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -923,7 +923,7 @@ function FieldCorePaymentsModal({ onClose }) {
         </div>
 
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 8 }}>
             Quick Links
           </div>
           <button

@@ -63,8 +63,8 @@ export default function Careers() {
               <div key={r.title} style={{ background: '#F8F7F5', border: '1px solid #E6E6E6', borderRadius: 12, padding: '24px 24px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8A90A2' }}>{r.dept}</span>
-                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#D6B58A', background: 'rgba(214,181,138,.12)', padding: '2px 8px', borderRadius: 99 }}>{r.type}</span>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#8A90A2' }}>{r.dept}</span>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#D6B58A', background: 'rgba(214,181,138,.12)', padding: '2px 8px', borderRadius: 99 }}>{r.type}</span>
                   </div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: '#1C2333', marginBottom: 8 }}>{r.title}</div>
                   <div style={{ fontSize: 13, color: '#5F667A', lineHeight: 1.65 }}>{r.desc}</div>
