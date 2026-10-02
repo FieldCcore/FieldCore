@@ -106,7 +106,7 @@ function CreateCredentialForm({ validScopes, canEvaluate, onCreated, onCancel })
 
   return (
     <form onSubmit={handleSubmit} className="au-form" data-testid="create-credential-form">
-      <h3 className="au-section-title">New API Credential</h3>
+      <h3 className="au-section-title">New API credential</h3>
       <AuError msg={error} />
       <div className="au-field">
         <label className="au-label" htmlFor="cred-label">Label</label>
@@ -182,7 +182,7 @@ function RevokeDialog({ cred, onRevoked, onCancel }) {
   return (
     <div className="au-dialog-overlay" data-testid="revoke-dialog">
       <div className="au-dialog">
-        <h3 className="au-dialog__title">Revoke Credential</h3>
+        <h3 className="au-dialog__title">Revoke credential</h3>
         <p>
           Revoke <strong data-testid="revoke-cred-label">{cred.label}</strong>?
         </p>
@@ -432,7 +432,7 @@ export default function AuthorityCredentials() {
       <div className="au-cred-layout">
         <section className="au-cred-layout__main" data-testid="credentials-list">
           <div className="au-cred-layout__header">
-            <h2 className="au-section-title" style={{ marginBottom: 0 }}>API Credentials</h2>
+            <h2 className="au-section-title" style={{ marginBottom: 0 }}>API credentials</h2>
             {!showCreate && !newSecret && hasManage && flagEnabled && (
               <button
                 type="button"

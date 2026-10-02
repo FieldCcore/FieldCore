@@ -67,7 +67,7 @@ export default function AuthorityParties() {
           <div className="au-card-body">
             <form onSubmit={handleCreate}>
               <div className="au-field">
-                <label className="au-label">Party Type</label>
+                <label className="au-label">Party type</label>
                 <select className="au-select" value={form.partyType}
                   onChange={e => setForm(f => ({ ...f, partyType: e.target.value }))}>
                   <option value="person">Person</option>
@@ -75,13 +75,13 @@ export default function AuthorityParties() {
                 </select>
               </div>
               <div className="au-field">
-                <label className="au-label">Display Name *</label>
+                <label className="au-label">Display name *</label>
                 <input className="au-input" required value={form.displayName}
                   onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
                   placeholder="Full legal name or organization name" />
               </div>
               <div className="au-field">
-                <label className="au-label">External Reference (optional)</label>
+                <label className="au-label">External reference (optional)</label>
                 <input className="au-input" value={form.externalReference}
                   onChange={e => setForm(f => ({ ...f, externalReference: e.target.value }))}
                   placeholder="Internal ID or reference" />

@@ -439,7 +439,7 @@ function PartiesPanel({ participants, instrumentId, canMutate, onMutated }) {
         <div key={p.id} className="au-participant">
           <div style={{ flex: 1 }}>
             <div className="au-participant-name">{p.display_name || '—'}</div>
-            <div className="au-participant-role">{p.role.replace(/_/g, ' ')}</div>
+            <div className="au-participant-role">{instrumentTypeLabel(p.role)}</div>
           </div>
           <AuBadge status={p.status} />
           {canMutate && (
@@ -478,7 +478,7 @@ function PartiesPanel({ participants, instrumentId, canMutate, onMutated }) {
               <div>
                 <label className="au-label">Role</label>
                 <select className="au-select" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {PARTICIPANT_ROLES.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
+                  {PARTICIPANT_ROLES.map(r => <option key={r} value={r}>{instrumentTypeLabel(r)}</option>)}
                 </select>
               </div>
               <div>
@@ -524,13 +524,13 @@ function InstrumentTab({ instruments, caseStatus, isActiveAssignee, onTransition
             </div>
             {instr.effective_date && (
               <div className="fc-field-row">
-                <span className="fc-field-label">Effective Date</span>
+                <span className="fc-field-label">Effective date</span>
                 <span className="fc-field-value">{formatDateOnly(instr.effective_date)}</span>
               </div>
             )}
             {instr.expiration_date && (
               <div className="fc-field-row">
-                <span className="fc-field-label">Expiration Date</span>
+                <span className="fc-field-label">Expiration date</span>
                 <span className="fc-field-value">{formatDateOnly(instr.expiration_date)}</span>
               </div>
             )}
@@ -623,7 +623,7 @@ function RestrictionsTab({ instruments, canMutate, onMutated }) {
               : restrictions.map(r => (
                 <div key={r.id} className="fc-restrict-row">
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--fc-text)' }}>
-                    {r.restriction_type.replace(/_/g, ' ')}
+                    {instrumentTypeLabel(r.restriction_type)}
                   </span>
                   {r.effective_from && (
                     <span style={{ fontSize: 11, color: 'var(--fc-text-dim)' }}>
@@ -689,7 +689,7 @@ function AddRestrictionForm({ instrumentId, onMutated }) {
       <div>
         <label className="au-label">Type</label>
         <select className="au-select" value={form.restrictionType} onChange={e => setForm(f => ({ ...f, restrictionType: e.target.value }))}>
-          {RESTRICTION_TYPE_OPTS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+          {RESTRICTION_TYPE_OPTS.map(t => <option key={t} value={t}>{instrumentTypeLabel(t)}</option>)}
         </select>
       </div>
       <div>
@@ -709,11 +709,11 @@ function AddRestrictionForm({ instrumentId, onMutated }) {
 // ── Extraction tab ────────────────────────────────────────────────────────────
 
 const FIELD_KEY_LABEL = {
-  instrument_type: 'Instrument Type', effective_date: 'Effective Date',
-  expiration_date: 'Expiration Date', jurisdiction: 'Jurisdiction',
-  principal_name: 'Principal Name', agent_name: 'Agent Name',
-  trustee_name: 'Trustee Name', guardian_name: 'Guardian Name',
-  grantor_name: 'Grantor Name', beneficiary_name: 'Beneficiary Name',
+  instrument_type: 'Instrument type', effective_date: 'Effective date',
+  expiration_date: 'Expiration date', jurisdiction: 'Jurisdiction',
+  principal_name: 'Principal name', agent_name: 'Agent name',
+  trustee_name: 'Trustee name', guardian_name: 'Guardian name',
+  grantor_name: 'Grantor name', beneficiary_name: 'Beneficiary name',
 };
 function fieldLabel(key) {
   if (FIELD_KEY_LABEL[key]) return FIELD_KEY_LABEL[key];
@@ -923,7 +923,7 @@ function ExtractionTab({ caseId, runs, candidates, caps, kaseStatus, onMutated }
       {pending.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 8 }}>
-            AI Proposed — Pending Review ({pending.length})
+            AI proposed — Pending review ({pending.length})
           </div>
           {pending.map(c => <CandidateCard key={c.id} candidate={c} caps={caps} caseId={caseId} onMutated={onMutated} />)}
         </div>
@@ -1149,7 +1149,7 @@ export default function AuthorityWorkspace() {
       await api.post(`/authority/cases/${caseId}/transition`, { status });
       await load();
     } catch (e) {
-      setError(e.response?.data?.error || `Failed to transition to ${status}.`);
+      setError(e.response?.data?.error || 'Failed to update case status.');
     }
   }
 
@@ -1159,7 +1159,7 @@ export default function AuthorityWorkspace() {
       await api.post(`/authority/instruments/${instrId}/transition`, { status, ...extra });
       await load();
     } catch (e) {
-      setError(e.response?.data?.error || `Failed to transition instrument to ${status}.`);
+      setError(e.response?.data?.error || 'Failed to update instrument status.');
     }
   }
 

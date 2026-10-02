@@ -68,7 +68,7 @@ export default function AuthorityCases() {
           <div className="au-card-body">
             <form onSubmit={handleCreate} style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
-                <label className="au-label">External Case Reference (optional)</label>
+                <label className="au-label">External case reference (optional)</label>
                 <input
                   className="au-input"
                   value={newCaseRef}

@@ -10463,7 +10463,7 @@ tr:focus-within .inv-row-actions,
 }
 .au-kpi-label { font-size: 11px; font-weight: 600; color: var(--steel); letter-spacing: .02em; margin-bottom: 6px; }
 .au-kpi-value { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
-.au-kpi-meta  { font-size: 12px; color: var(--steel); margin-top: 4px; }
+.au-kpi-meta  { font-size: 12px; color: var(--steel); margin-top: 4px; font-style: italic; }
 
 /* ── Section heading ─────────────────────────────────────── */
 .au-section-heading {
@@ -10554,14 +10554,14 @@ tr:focus-within .inv-row-actions,
 }
 .au-participant:last-child { border-bottom: none; }
 .au-participant-name { font-size: 13px; font-weight: 600; color: var(--navy); }
-.au-participant-role { font-size: 11px; color: var(--steel); text-transform: capitalize; }
+.au-participant-role { font-size: 11px; color: var(--steel); }
 
 /* ── Review notes ────────────────────────────────────────── */
 .au-note { padding: 10px 0; border-bottom: 1px solid var(--lightgray); }
 .au-note:last-child { border-bottom: none; }
 .au-note-author { font-size: 11px; font-weight: 600; color: var(--slate); margin-bottom: 3px; }
 .au-note-body   { font-size: 13px; color: var(--navy); line-height: 1.5; }
-.au-note-time   { font-size: 11px; color: var(--steel); margin-top: 3px; }
+.au-note-time   { font-size: 11px; color: var(--steel); margin-top: 3px; font-style: italic; }
 
 /* ── Note compose ────────────────────────────────────────── */
 .au-note-compose { display: flex; flex-direction: column; gap: 8px; }
@@ -10832,7 +10832,7 @@ tr:focus-within .inv-row-actions,
 }
 .fc-doc-icon svg { width: 14px; height: 14px; }
 .fc-doc-name { font-size: 11px; font-weight: 600; color: var(--fc-text); }
-.fc-doc-meta { font-size: 10px; color: var(--fc-text-dim); margin-top: 1px; }
+.fc-doc-meta { font-size: 10px; color: var(--fc-text-dim); margin-top: 1px; font-style: italic; }
 .fc-doc-viewer {
   flex: 1; overflow: hidden; background: var(--fc-canvas);
   display: flex; align-items: center; justify-content: center;
@@ -10995,9 +10995,8 @@ tr:focus-within .inv-row-actions,
 .fc-candidate-main { flex: 1; min-width: 0; }
 .fc-candidate-field {
   font-size: 10px; font-weight: 700; color: var(--fc-text-dim);
-  text-transform: uppercase; letter-spacing: .06em;
 }
-.fc-candidate-confidence { font-size: 10px; color: var(--fc-text-dim); margin-left: 8px; }
+.fc-candidate-confidence { font-size: 10px; color: var(--fc-text-dim); margin-left: 8px; font-style: italic; }
 .fc-candidate-value {
   margin-top: 4px; font-size: 13px; color: var(--fc-text);
   font-family: var(--fc-mono); word-break: break-word;
@@ -11033,7 +11032,7 @@ tr:focus-within .inv-row-actions,
   background: var(--fc-accent); flex-shrink: 0; margin-top: 4px;
 }
 .fc-timeline-action { font-size: 12px; font-weight: 600; color: var(--fc-text); }
-.fc-timeline-meta   { font-size: 11px; color: var(--fc-text-dim); margin-top: 2px; }
+.fc-timeline-meta   { font-size: 11px; color: var(--fc-text-dim); margin-top: 2px; font-style: italic; }
 
 /* ── Permission / restriction row ───────────────────────── */
 .fc-perm-row {
@@ -11059,7 +11058,7 @@ tr:focus-within .inv-row-actions,
 }
 .fc-entity-card-title {
   font-size: 11px; font-weight: 700; color: var(--fc-text-dim);
-  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
+  margin-bottom: 10px;
 }
 .fc-field-row {
   display: flex; align-items: baseline; gap: 8px;

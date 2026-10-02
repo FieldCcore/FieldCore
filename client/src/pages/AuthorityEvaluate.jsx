@@ -377,7 +377,7 @@ function ParticipantSelect({ participants, filterFn, value, onChange, placeholde
       <option value="">{placeholder}</option>
       {filtered.map(p => (
         <option key={p.party_id} value={p.party_id}>
-          {p.display_name || p.party_id.slice(0, 8)} · {p.role}
+          {p.display_name || p.party_id.slice(0, 8)} · {instrumentTypeLabel(p.role)}
         </option>
       ))}
     </select>

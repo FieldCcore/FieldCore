@@ -546,7 +546,7 @@ describe('AuthorityCredentials — Batch4-C4: admin hierarchy', () => {
     renderPage();
     await waitFor(() => screen.getByTestId('authority-credentials-page'));
     const page = screen.getByTestId('authority-credentials-page').textContent;
-    const credsIdx = page.indexOf('API Credentials');
+    const credsIdx = page.indexOf('API credentials');
     const infoIdx  = page.indexOf('About API Access');
     expect(credsIdx).toBeGreaterThan(-1);
     expect(infoIdx).toBeGreaterThan(-1);
@@ -559,7 +559,7 @@ describe('AuthorityCredentials — Batch4-C4: admin hierarchy', () => {
     await waitFor(() => screen.getByTestId('authority-credentials-page'));
     const page = screen.getByTestId('authority-credentials-page').textContent;
     const subtitleIdx = page.indexOf('server-side');
-    const credsIdx    = page.indexOf('API Credentials');
+    const credsIdx    = page.indexOf('API credentials');
     expect(subtitleIdx).toBeGreaterThan(-1);
     expect(credsIdx).toBeGreaterThan(-1);
     expect(subtitleIdx).toBeLessThan(credsIdx);
