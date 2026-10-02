@@ -595,7 +595,7 @@ describe('AuthorityWorkspace — Extraction panel (Stage 3)', () => {
       { runs: [EXTRACTION_RUN_COMPLETED] }
     );
     render(<MemoryRouter><AuthorityWorkspace /></MemoryRouter>);
-    await waitFor(() => { expect(screen.getByText('COMPLETED')).toBeTruthy(); });
+    await waitFor(() => { expect(screen.getByText('Completed')).toBeTruthy(); });
   });
 
   it('displays error_category for failed run', async () => {
@@ -781,11 +781,11 @@ describe('Authority dashboard — KPI labels (C7/C8)', () => {
     expect(screen.getByText('pending + in-progress cases')).toBeTruthy();
   });
 
-  it('shows "Oldest in Queue" KPI label (Batch1-P2)', async () => {
+  it('shows "Oldest in queue" KPI label (Batch1-P2)', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.getByText('Oldest in queue')).toBeTruthy();
     expect(screen.queryByText('Oldest Queue Case')).toBeNull();
     expect(screen.queryByText('Oldest Case')).toBeNull();
   });
@@ -833,11 +833,11 @@ describe('Authority dashboard — Batch1-P2: KPI label and helper text', () => {
     vi.clearAllMocks();
   });
 
-  it('KPI label is "Oldest in Queue", never "Oldest Queue Case" or "Oldest in Queue" old form', async () => {
+  it('KPI label is "Oldest in queue", never "Oldest Queue Case" or title-case form', async () => {
     api.get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
     await waitFor(() => screen.getByText('Dashboard'));
-    expect(screen.getByText('Oldest in Queue')).toBeTruthy();
+    expect(screen.getByText('Oldest in queue')).toBeTruthy();
     expect(screen.queryByText('Oldest Queue Case')).toBeNull();
   });
 
@@ -898,5 +898,111 @@ describe('Authority dashboard — Batch1-P2 follow-up: metric coherence', () => 
     // All KPI value cells for empty queue show —
     const vals = document.querySelectorAll('.au-kpi-value');
     expect(Array.from(vals).some(v => v.textContent === '—')).toBe(true);
+  });
+});
+
+// ── Language normalization — sentence-case and punctuation ────────────────────
+
+describe('Authority dashboard — language normalization: KPI labels sentence case', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('KPI label "Pending review" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Pending review')).toBeTruthy();
+    expect(screen.queryByText('Pending Review')).toBeNull();
+  });
+
+  it('KPI label "In progress" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('In progress')).toBeTruthy();
+    expect(screen.queryByText('In Progress')).toBeNull();
+  });
+
+  it('KPI label "Total in queue" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Total in queue')).toBeTruthy();
+    expect(screen.queryByText('Total in Queue')).toBeNull();
+  });
+
+  it('KPI label "Oldest in queue" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Oldest in queue')).toBeTruthy();
+    expect(screen.queryByText('Oldest in Queue')).toBeNull();
+  });
+
+  it('dashboard table header "In queue since" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('In queue since')).toBeTruthy();
+    expect(screen.queryByText('In Queue Since')).toBeNull();
+  });
+
+  it('empty-state text ends with a period', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    const body = document.body.textContent;
+    expect(body).toMatch(/No cases in review queue\./);
+  });
+});
+
+describe('Authority dashboard — language normalization: raw enum strings absent', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+  });
+
+  it('raw PENDING_HUMAN_REVIEW is not visible in the dashboard', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'c1', status: 'PENDING_HUMAN_REVIEW',
+        external_case_reference: 'TEST-001',
+        created_at: '2026-01-01T00:00:00Z',
+        status_changed_at: '2026-01-01T00:00:00Z',
+        document_count: 0, instrument_count: 0,
+        assigned_to: null, reviewer_name: null,
+      }],
+    });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.queryByText('PENDING_HUMAN_REVIEW')).toBeNull();
+    expect(screen.queryByText('PENDING HUMAN REVIEW')).toBeNull();
+    // status renders as sentence-case label (may appear in multiple places on the page)
+    expect(screen.getAllByText('Pending review').length).toBeGreaterThan(0);
+  });
+
+  it('raw HUMAN_REVIEW_IN_PROGRESS is not visible in the dashboard', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'c2', status: 'HUMAN_REVIEW_IN_PROGRESS',
+        external_case_reference: 'TEST-002',
+        created_at: '2026-01-01T00:00:00Z',
+        status_changed_at: '2026-01-01T00:00:00Z',
+        document_count: 0, instrument_count: 0,
+        assigned_to: null, reviewer_name: null,
+      }],
+    });
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.queryByText('HUMAN_REVIEW_IN_PROGRESS')).toBeNull();
+    expect(screen.queryByText('HUMAN REVIEW IN PROGRESS')).toBeNull();
+    // status renders as sentence-case label (may appear in multiple places on the page)
+    expect(screen.getAllByText('In progress').length).toBeGreaterThan(0);
   });
 });

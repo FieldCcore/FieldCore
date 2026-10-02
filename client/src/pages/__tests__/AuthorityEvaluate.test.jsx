@@ -685,9 +685,9 @@ describe('AuthorityEvaluate — outcome states', () => {
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
       expect(screen.getByText('Authorized')).toBeTruthy();
-      expect(screen.getByText('Not Authorized')).toBeTruthy();
-      expect(screen.getByText('Insufficient Information')).toBeTruthy();
-      expect(screen.getByText('Manual Review Required')).toBeTruthy();
+      expect(screen.getByText('Not authorized')).toBeTruthy();
+      expect(screen.getByText('Insufficient information')).toBeTruthy();
+      expect(screen.getByText('Manual review')).toBeTruthy();
     });
   });
 });

@@ -129,7 +129,7 @@ describe('AuthorityCredentials', () => {
     renderPage();
     await waitFor(() => screen.getByTestId(`cred-row-${CRED_ACTIVE.id}`));
     const row = screen.getByTestId(`cred-row-${CRED_ACTIVE.id}`);
-    expect(row.textContent).toContain('active');
+    expect(row.textContent).toContain('Active');
   });
 
   it('shows revoked status badge for revoked credential', async () => {
@@ -137,7 +137,7 @@ describe('AuthorityCredentials', () => {
     renderPage();
     await waitFor(() => screen.getByTestId(`cred-row-${CRED_REVOKED.id}`));
     const row = screen.getByTestId(`cred-row-${CRED_REVOKED.id}`);
-    expect(row.textContent).toContain('revoked');
+    expect(row.textContent).toContain('Revoked');
   });
 
   // ── Flag-off state ─────────────────────────────────────────────────────────

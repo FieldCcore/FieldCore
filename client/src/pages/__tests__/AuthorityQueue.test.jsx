@@ -250,3 +250,35 @@ describe('AuthorityQueue — Batch1-P3: Action column heading', () => {
     expect(emptyHeaders.length).toBe(0);
   });
 });
+
+// ── Language normalization — sentence-case table headers ─────────────────────
+
+describe('AuthorityQueue — language normalization: sentence-case table headers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUser();
+  });
+
+  it('header "Status" is not shown as "STATUS"', async () => {
+    api.get.mockResolvedValue({ data: ONE_CASE });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: /^Status$/i })).toBeTruthy());
+    // exact-case check: should be 'Status', not all-caps
+    expect(screen.getByRole('columnheader', { name: 'Status' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'STATUS' })).toBeNull();
+  });
+
+  it('header "Assigned to" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: ONE_CASE });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Assigned to' })).toBeTruthy());
+    expect(screen.queryByRole('columnheader', { name: 'Assigned To' })).toBeNull();
+  });
+
+  it('header "In queue since" is sentence case', async () => {
+    api.get.mockResolvedValue({ data: ONE_CASE });
+    render(<MemoryRouter><AuthorityQueue /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'In queue since' })).toBeTruthy());
+    expect(screen.queryByRole('columnheader', { name: 'In Queue Since' })).toBeNull();
+  });
+});

@@ -113,7 +113,7 @@ describe('case header', () => {
     setupMocks();
     renderWorkspace();
     await waitFor(() => {
-      expect(screen.getAllByText(/HUMAN REVIEW IN PROGRESS/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/In progress/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -135,16 +135,16 @@ describe('lifecycle strip', () => {
     await waitFor(() => expect(screen.getByTestId('lifecycle-strip')).toBeTruthy());
   });
 
-  it('shows DRAFT as a lifecycle stage', async () => {
+  it('shows Draft as a lifecycle stage', async () => {
     setupMocks();
     renderWorkspace();
-    await waitFor(() => expect(screen.getByText('DRAFT')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Draft')).toBeTruthy());
   });
 
-  it('shows COMPLETED as a lifecycle stage', async () => {
+  it('shows Completed as a lifecycle stage', async () => {
     setupMocks();
     renderWorkspace();
-    await waitFor(() => expect(screen.getByText('COMPLETED')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
   });
 });
 
@@ -457,5 +457,64 @@ describe('evidence block security', () => {
     // The XSS string should appear as text, not executed markup
     expect(block.textContent).toContain('<script>');
     expect(block.querySelector('script')).toBeNull();
+  });
+});
+
+// ── Language normalization — lifecycle strip and status display ───────────────
+
+describe('AuthorityWorkspace — language normalization: lifecycle strip sentence case', () => {
+  it('lifecycle strip shows "Draft", not raw "DRAFT"', async () => {
+    setupMocks({ case: { status: 'DRAFT' } });
+    renderWorkspace();
+    await waitFor(() => expect(screen.getByTestId('lifecycle-strip')).toBeTruthy());
+    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(screen.queryByText('DRAFT')).toBeNull();
+  });
+
+  it('lifecycle strip shows "Completed", not raw "COMPLETED"', async () => {
+    setupMocks();
+    renderWorkspace();
+    await waitFor(() => expect(screen.getByTestId('lifecycle-strip')).toBeTruthy());
+    expect(screen.getByText('Completed')).toBeTruthy();
+    expect(screen.queryByText('COMPLETED')).toBeNull();
+  });
+
+  it('lifecycle strip shows "Awaiting documents", not raw "AWAITING_DOCUMENTS"', async () => {
+    setupMocks();
+    renderWorkspace();
+    await waitFor(() => expect(screen.getByTestId('lifecycle-strip')).toBeTruthy());
+    expect(screen.getByText('Awaiting documents')).toBeTruthy();
+    expect(screen.queryByText('AWAITING_DOCUMENTS')).toBeNull();
+  });
+
+  it('lifecycle strip shows "In progress", not raw "HUMAN_REVIEW_IN_PROGRESS"', async () => {
+    setupMocks();
+    renderWorkspace();
+    await waitFor(() => expect(screen.getByTestId('lifecycle-strip')).toBeTruthy());
+    expect(screen.getAllByText('In progress').length).toBeGreaterThan(0);
+    expect(screen.queryByText('HUMAN_REVIEW_IN_PROGRESS')).toBeNull();
+    expect(screen.queryByText('HUMAN REVIEW IN PROGRESS')).toBeNull();
+  });
+});
+
+describe('AuthorityWorkspace — language normalization: case status badge sentence case', () => {
+  it('case status badge shows "In progress", not raw enum', async () => {
+    setupMocks();
+    renderWorkspace();
+    await waitFor(() => {
+      expect(screen.getAllByText('In progress').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('HUMAN_REVIEW_IN_PROGRESS')).toBeNull();
+    expect(screen.queryByText(/HUMAN REVIEW IN PROGRESS/i)).toBeNull();
+  });
+
+  it('PENDING_HUMAN_REVIEW renders as "Pending review"', async () => {
+    setupMocks({ case: { status: 'PENDING_HUMAN_REVIEW' } });
+    renderWorkspace();
+    await waitFor(() => {
+      expect(screen.getAllByText('Pending review').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('PENDING_HUMAN_REVIEW')).toBeNull();
+    expect(screen.queryByText('PENDING HUMAN REVIEW')).toBeNull();
   });
 });
