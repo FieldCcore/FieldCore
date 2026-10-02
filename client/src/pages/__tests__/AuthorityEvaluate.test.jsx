@@ -73,8 +73,9 @@ async function selectInstrument(opts = {}) {
   await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
   await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-  const instrSelect = screen.getAllByRole('combobox')[0];
-  fireEvent.change(instrSelect, { target: { value: INSTRUMENT_ROW.id } });
+  // InstrumentPicker uses a custom listbox for display; the hidden native select
+  // (aria-hidden, data-testid="instrument-select-native") is used for test interaction.
+  fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
   await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 }
 
@@ -164,8 +165,8 @@ describe('AuthorityEvaluate — page rendering', () => {
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => {
       expect(screen.getByTestId('evaluation-form')).toBeTruthy();
-      const select = screen.getAllByRole('combobox')[0];
-      expect(select).toBeTruthy();
+      // Custom listbox (not a native combobox): verify by testid
+      expect(screen.getByTestId('instrument-select')).toBeTruthy();
     });
   });
 
@@ -235,8 +236,8 @@ describe('AuthorityEvaluate — Concern 8: no eligible instrument state', () => 
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
     expect(screen.getByTestId('no-eligible-instruments-state')).toBeTruthy();
     expect(screen.getByText(/No verified Authority Instruments are available/i)).toBeTruthy();
-    // Must NOT show any dropdown when no instruments exist
-    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    // Must NOT show the custom listbox or any visible combobox when no instruments exist
+    expect(screen.queryByTestId('instrument-select')).toBeNull();
     expect(screen.queryByText(/Select a verified instrument/)).toBeNull();
   });
 });
@@ -258,7 +259,7 @@ describe('AuthorityEvaluate — Concern 9: instrument-scoped selectors', () => {
 
   it('Principal select includes only is_valid_principal participants', async () => {
     await selectInstrument({ instrDetail: INSTRUMENT_DETAIL_WITH_NONDEL });
-    const principalSelect = screen.getAllByRole('combobox')[1];
+    const principalSelect = screen.getAllByRole('combobox')[0];
     // Principal Party (is_valid_principal=true) SHOULD appear
     expect(principalSelect.innerHTML).toContain('Principal Party');
     // Neither Party (is_valid_principal=false) must NOT appear
@@ -267,7 +268,7 @@ describe('AuthorityEvaluate — Concern 9: instrument-scoped selectors', () => {
 
   it('Delegate select includes only is_valid_delegate participants', async () => {
     await selectInstrument({ instrDetail: INSTRUMENT_DETAIL_WITH_NONDEL });
-    const delegateSelect = screen.getAllByRole('combobox')[2];
+    const delegateSelect = screen.getAllByRole('combobox')[1];
     // Delegate Party (is_valid_delegate=true) SHOULD appear
     expect(delegateSelect.innerHTML).toContain('Delegate Party');
     // Neither Party (is_valid_delegate=false) must NOT appear
@@ -298,16 +299,16 @@ describe('AuthorityEvaluate — Concern 9: instrument-scoped selectors', () => {
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
     // Select first instrument
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
     // Select principal
-    const principalSelect = screen.getAllByRole('combobox')[1];
+    const principalSelect = screen.getAllByRole('combobox')[0];
     fireEvent.change(principalSelect, { target: { value: 'party-uuid-00000001' } });
     expect(principalSelect.value).toBe('party-uuid-00000001');
 
     // Change instrument — principal must reset
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: '' } });
     await waitFor(() => expect(screen.queryByText('Principal *')).toBeNull());
   });
 });
@@ -364,13 +365,13 @@ describe('AuthorityEvaluate — Concern 10: action selector', () => {
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     fireEvent.submit(selects[0].closest('form'));
     await waitFor(() => expect(api.post).toHaveBeenCalled());
@@ -397,12 +398,12 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
     fireEvent.submit(selects[0].closest('form'));
   }
 
@@ -430,12 +431,12 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     // First submit — transport error
     await act(async () => { fireEvent.submit(selects[0].closest('form')); });
@@ -461,12 +462,12 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     await act(async () => { fireEvent.submit(selects[0].closest('form')); });
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -474,8 +475,8 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
     const firstAt  = api.post.mock.calls[0][1].requestedAt;
 
     // Change a decision-driving field (principal) → key must reset
-    fireEvent.change(selects[1], { target: { value: '' } });
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[0], { target: { value: '' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
 
     await act(async () => { fireEvent.submit(selects[0].closest('form')); });
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
@@ -517,12 +518,12 @@ describe('AuthorityEvaluate — Concern 11: idempotency and requestedAt', () => 
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     // First submit → stale replay
     await act(async () => { fireEvent.submit(selects[0].closest('form')); });
@@ -556,12 +557,12 @@ describe('AuthorityEvaluate — Concern 12: submit gate', () => {
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     const btn = screen.getByRole('button', { name: /Evaluate/i });
     expect(btn.disabled).toBe(false);
@@ -710,13 +711,13 @@ describe('AuthorityEvaluate — stale replay display', () => {
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     const form = selects[0].closest('form');
     fireEvent.submit(form);
@@ -745,13 +746,13 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
 
     expect(screen.queryByLabelText(/Requested At/i)).toBeNull();
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     const form = selects[0].closest('form');
     fireEvent.submit(form);
@@ -776,13 +777,13 @@ describe('AuthorityEvaluate — automatic requestedAt', () => {
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     await waitFor(() => expect(screen.queryByText(/Loading instruments/)).toBeNull());
 
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: INSTRUMENT_ROW.id } });
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
     await waitFor(() => expect(screen.getByText('Principal *')).toBeTruthy());
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000001' } });
-    fireEvent.change(selects[2], { target: { value: 'party-uuid-00000002' } });
-    fireEvent.change(selects[3], { target: { value: 'BANKING.WIRE_TRANSFER' } });
+    fireEvent.change(selects[0], { target: { value: 'party-uuid-00000001' } });
+    fireEvent.change(selects[1], { target: { value: 'party-uuid-00000002' } });
+    fireEvent.change(selects[2], { target: { value: 'BANKING.WIRE_TRANSFER' } });
 
     fireEvent.submit(selects[0].closest('form'));
 
@@ -980,5 +981,177 @@ describe('AuthorityEvaluate — Batch3-C3: history copy conciseness', () => {
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
     await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
     expect(screen.queryByText(/instrument may later change status/i)).toBeNull();
+  });
+});
+
+// ── Part 7: Instrument selector presentation ──────────────────────────────────
+
+const INSTRUMENT_ROW_WITH_JURISDICTION = {
+  id: 'instr-uuid-11111111', instrument_type: 'power_of_attorney',
+  status: 'VERIFIED', effective_date: '2025-01-01', expiration_date: '2035-12-31',
+  jurisdiction: 'CA',
+};
+
+describe('AuthorityEvaluate — instrument selector presentation', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function setupInstrApi(instrRow = INSTRUMENT_ROW) {
+    api.get.mockImplementation((url) => {
+      if (url.includes('/authority/capabilities')) return Promise.resolve({ data: { capabilities: ['AUTHORITY_EVALUATE'] } });
+      if (url.match(/\/authority\/instruments\/[^?]+$/)) return Promise.resolve({ data: INSTRUMENT_DETAIL });
+      if (url.includes('/authority/instruments'))  return Promise.resolve({ data: [instrRow] });
+      if (url.includes('/authority/evaluations'))  return Promise.resolve({ data: [] });
+      return Promise.reject(new Error(`Unexpected GET: ${url}`));
+    });
+  }
+
+  async function openDropdown(instrRow = INSTRUMENT_ROW) {
+    setupInstrApi(instrRow);
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    fireEvent.click(screen.getByTestId('instrument-select-trigger'));
+    await waitFor(() => expect(screen.getByTestId('instrument-select-dropdown')).toBeTruthy());
+  }
+
+  it('renders instrument type in sentence case in the dropdown', async () => {
+    await openDropdown();
+    const option = screen.getByTestId(`instrument-option-${INSTRUMENT_ROW.id}`);
+    expect(option.textContent).toContain('Power of attorney');
+    expect(option.textContent).not.toContain('power_of_attorney');
+    expect(option.textContent).not.toContain('POWER_OF_ATTORNEY');
+  });
+
+  it('does not expose raw ISO date strings in the dropdown', async () => {
+    await openDropdown();
+    const dropdown = screen.getByTestId('instrument-select-dropdown');
+    expect(dropdown.textContent).not.toContain('2025-01-01');
+    expect(dropdown.textContent).not.toContain('2035-12-31');
+  });
+
+  it('renders readable formatted dates in the dropdown secondary metadata', async () => {
+    await openDropdown();
+    const secondary = screen.getByTestId('instrument-select-dropdown')
+      .querySelector('.au-instr-select__secondary');
+    expect(secondary).not.toBeNull();
+    expect(secondary.textContent).toContain('Jan 1, 2025');
+    expect(secondary.textContent).toContain('Dec 31, 2035');
+  });
+
+  it('uses "Effective" not "eff." in secondary metadata', async () => {
+    await openDropdown();
+    const dropdown = screen.getByTestId('instrument-select-dropdown');
+    expect(dropdown.textContent).not.toMatch(/\beff\./i);
+    expect(dropdown.textContent).toContain('Effective');
+  });
+
+  it('renders jurisdiction without brackets', async () => {
+    await openDropdown(INSTRUMENT_ROW_WITH_JURISDICTION);
+    const dropdown = screen.getByTestId('instrument-select-dropdown');
+    expect(dropdown.textContent).not.toContain('[CA]');
+    expect(dropdown.textContent).toContain('CA');
+  });
+
+  it('secondary metadata span has au-instr-select__secondary class', async () => {
+    await openDropdown();
+    const secondary = screen.getByTestId('instrument-select-dropdown')
+      .querySelector('.au-instr-select__secondary');
+    expect(secondary).not.toBeNull();
+    expect(secondary.className).toContain('au-instr-select__secondary');
+  });
+
+  it('primary instrument label does not have the italic secondary class', async () => {
+    await openDropdown();
+    const primary = screen.getByTestId('instrument-select-dropdown')
+      .querySelector('.au-instr-select__primary');
+    expect(primary).not.toBeNull();
+    expect(primary.classList.contains('au-instr-select__secondary')).toBe(false);
+  });
+
+  it('trigger has aria-haspopup="listbox" before opening', async () => {
+    setupInstrApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    const trigger = screen.getByTestId('instrument-select-trigger');
+    expect(trigger.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('aria-expanded becomes true when dropdown is open', async () => {
+    await openDropdown();
+    expect(screen.getByTestId('instrument-select-trigger').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('dropdown has role="listbox" and options have role="option"', async () => {
+    await openDropdown();
+    const dropdown = screen.getByTestId('instrument-select-dropdown');
+    expect(dropdown.getAttribute('role')).toBe('listbox');
+    const option = screen.getByTestId(`instrument-option-${INSTRUMENT_ROW.id}`);
+    expect(option.getAttribute('role')).toBe('option');
+  });
+
+  it('ArrowDown opens dropdown and Enter selects the focused option', async () => {
+    setupInstrApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+
+
+    const trigger = screen.getByTestId('instrument-select-trigger');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.getByTestId('instrument-select-dropdown')).toBeTruthy());
+
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    await waitFor(() => expect(screen.queryByTestId('instrument-select-dropdown')).toBeNull());
+
+    expect(screen.getByTestId('instrument-select-native').value).toBe(INSTRUMENT_ROW.id);
+  });
+
+  it('Escape closes dropdown without selecting', async () => {
+    await openDropdown();
+    expect(screen.getByTestId('instrument-select-native').value).toBe('');
+    fireEvent.keyDown(screen.getByTestId('instrument-select-trigger'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('instrument-select-dropdown')).toBeNull());
+    expect(screen.getByTestId('instrument-select-native').value).toBe('');
+  });
+
+  it('trigger shows sentence-case primary name after selection via native select', async () => {
+    setupInstrApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
+    const primary = screen.getByTestId('instrument-select-primary');
+    expect(primary.textContent).toBe('Power of attorney');
+    expect(primary.textContent).not.toContain('power_of_attorney');
+  });
+
+  it('trigger secondary shows formatted dates after selection (not raw ISO strings)', async () => {
+    setupInstrApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+    fireEvent.change(screen.getByTestId('instrument-select-native'), { target: { value: INSTRUMENT_ROW.id } });
+    const secondary = screen.getByTestId('instrument-select-secondary');
+    expect(secondary.textContent).toContain('Jan 1, 2025');
+    expect(secondary.textContent).toContain('Dec 31, 2035');
+    expect(secondary.textContent).not.toContain('2025-01-01');
+    expect(secondary.textContent).not.toContain('2035-12-31');
+  });
+
+  it('selected instrument ID is preserved: native select value matches custom listbox selection', async () => {
+    setupInstrApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText('Loading instruments…')).toBeNull());
+
+    fireEvent.click(screen.getByTestId('instrument-select-trigger'));
+    await waitFor(() => expect(screen.getByTestId('instrument-select-dropdown')).toBeTruthy());
+
+    fireEvent.mouseDown(screen.getByTestId(`instrument-option-${INSTRUMENT_ROW.id}`));
+    await waitFor(() => expect(screen.queryByTestId('instrument-select-dropdown')).toBeNull());
+
+    expect(screen.getByTestId('instrument-select-native').value).toBe(INSTRUMENT_ROW.id);
   });
 });

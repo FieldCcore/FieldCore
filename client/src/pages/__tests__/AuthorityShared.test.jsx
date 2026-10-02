@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { auStatusLabel } from '../AuthorityShared';
+import { auStatusLabel, fmtIsoDate } from '../AuthorityShared';
 
 // ── auStatusLabel — centralized status formatter ──────────────────────────────
 
@@ -175,5 +175,46 @@ describe('auStatusLabel — unknown value safe fallback', () => {
     const result = auStatusLabel(42);
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+// ── fmtIsoDate — date-only string formatter ───────────────────────────────────
+
+describe('fmtIsoDate — null / missing input', () => {
+  it('returns em-dash for null', () => {
+    expect(fmtIsoDate(null)).toBe('—');
+  });
+
+  it('returns em-dash for undefined', () => {
+    expect(fmtIsoDate(undefined)).toBe('—');
+  });
+
+  it('returns em-dash for empty string', () => {
+    expect(fmtIsoDate('')).toBe('—');
+  });
+});
+
+describe('fmtIsoDate — formats ISO date strings to readable form', () => {
+  it('2025-01-01 → Jan 1, 2025', () => {
+    expect(fmtIsoDate('2025-01-01')).toBe('Jan 1, 2025');
+  });
+
+  it('2035-12-31 → Dec 31, 2035', () => {
+    expect(fmtIsoDate('2035-12-31')).toBe('Dec 31, 2035');
+  });
+
+  it('2024-03-15 → Mar 15, 2024', () => {
+    expect(fmtIsoDate('2024-03-15')).toBe('Mar 15, 2024');
+  });
+
+  it('does not return raw ISO format in output', () => {
+    const result = fmtIsoDate('2025-01-01');
+    expect(result).not.toContain('2025-01-01');
+    expect(result).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('handles datetime string by using only the date portion', () => {
+    const result = fmtIsoDate('2025-01-01T12:00:00Z');
+    expect(result).toBe('Jan 1, 2025');
   });
 });

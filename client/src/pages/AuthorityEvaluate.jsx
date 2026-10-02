@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
-import { AuLoading, AuError, AuEmpty, fmtDateTime } from './AuthorityShared';
+import { AuLoading, AuError, AuEmpty, fmtDateTime, fmtIsoDate, instrumentTypeLabel } from './AuthorityShared';
 
 // ── Currency exponent map (ISO 4217) ─────────────────────────────────────────
 // Correction 8: no blind ×100. Use known exponent for each currency.
@@ -150,7 +150,166 @@ function StringList({ items, label, color }) {
   );
 }
 
-// ── Instrument picker (VERIFIED only) ───────────────────────────────────────
+// ── Instrument metadata formatter ────────────────────────────────────────────
+
+function fmtInstrumentMeta(instr) {
+  const parts = [];
+  if (instr.effective_date || instr.expiration_date) {
+    const eff = instr.effective_date ? fmtIsoDate(instr.effective_date) : null;
+    const exp = instr.expiration_date ? fmtIsoDate(instr.expiration_date) : null;
+    if (eff && exp) parts.push(`Effective ${eff}–${exp}`);
+    else if (eff)   parts.push(`Effective ${eff}`);
+    else if (exp)   parts.push(`Expires ${exp}`);
+  }
+  if (instr.jurisdiction) parts.push(instr.jurisdiction);
+  return parts.join(' · ');
+}
+
+// ── Custom accessible instrument listbox ─────────────────────────────────────
+// Native <option> cannot render styled rich text (italic secondary metadata).
+// This listbox component provides keyboard nav, ARIA semantics, and styled
+// primary/secondary hierarchy while keeping the selected value as instrument ID.
+
+function InstrumentListbox({ value, onChange, instruments }) {
+  const [open, setOpen]         = useState(false);
+  const [focusedIdx, setFocused] = useState(-1);
+  const triggerRef  = useRef(null);
+  const optionRefs  = useRef([]);
+  const containerRef = useRef(null);
+
+  const selectedInstr = instruments.find(i => i.id === value) || null;
+  const triggerId = 'au-instr-trigger';
+  const listId    = 'au-instr-listbox';
+
+  function openList() {
+    const idx = selectedInstr ? instruments.findIndex(i => i.id === value) : 0;
+    setFocused(Math.max(idx, 0));
+    setOpen(true);
+  }
+
+  function closeList() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  function pick(id) {
+    onChange(id);
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  function handleTriggerKeyDown(e) {
+    if (!open) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); openList();
+      }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); setFocused(i => Math.min(i + 1, instruments.length - 1)); break;
+      case 'ArrowUp':   e.preventDefault(); setFocused(i => Math.max(i - 1, 0)); break;
+      case 'Enter':
+      case ' ':         e.preventDefault(); if (focusedIdx >= 0) pick(instruments[focusedIdx].id); break;
+      case 'Escape':    e.preventDefault(); closeList(); break;
+      case 'Tab':       closeList(); break;
+    }
+  }
+
+  // Scroll focused option into view (scrollIntoView not available in test environments)
+  useEffect(() => {
+    if (open && focusedIdx >= 0) optionRefs.current[focusedIdx]?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, focusedIdx]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (!containerRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const meta = selectedInstr ? fmtInstrumentMeta(selectedInstr) : '';
+
+  return (
+    <div className="au-instr-select" ref={containerRef} data-testid="instrument-select">
+      <button
+        ref={triggerRef}
+        id={triggerId}
+        type="button"
+        className={`au-input au-instr-select__trigger${open ? ' au-instr-select__trigger--open' : ''}`}
+        onClick={() => open ? closeList() : openList()}
+        onKeyDown={handleTriggerKeyDown}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open && focusedIdx >= 0 ? `au-instr-opt-${instruments[focusedIdx]?.id}` : undefined}
+        data-testid="instrument-select-trigger"
+      >
+        {selectedInstr ? (
+          <span className="au-instr-select__val">
+            <span className="au-instr-select__primary" data-testid="instrument-select-primary">
+              {instrumentTypeLabel(selectedInstr.instrument_type)}
+            </span>
+            {meta && (
+              <span className="au-instr-select__secondary" data-testid="instrument-select-secondary">
+                {meta}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="au-instr-select__placeholder">— Select a verified instrument —</span>
+        )}
+        <span className="au-instr-select__chevron" aria-hidden="true">▾</span>
+      </button>
+
+      {open && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="au-instr-select__dropdown"
+          aria-label="Verified instruments"
+          data-testid="instrument-select-dropdown"
+        >
+          {instruments.map((instr, idx) => {
+            const instrMeta = fmtInstrumentMeta(instr);
+            const isSelected = instr.id === value;
+            const isFocused  = idx === focusedIdx;
+            return (
+              <li
+                key={instr.id}
+                ref={el => { optionRefs.current[idx] = el; }}
+                id={`au-instr-opt-${instr.id}`}
+                role="option"
+                aria-selected={isSelected}
+                className={[
+                  'au-instr-select__option',
+                  isSelected ? 'au-instr-select__option--selected' : '',
+                  isFocused  ? 'au-instr-select__option--focused'  : '',
+                ].filter(Boolean).join(' ')}
+                onMouseDown={e => { e.preventDefault(); pick(instr.id); }}
+                onMouseEnter={() => setFocused(idx)}
+                data-testid={`instrument-option-${instr.id}`}
+              >
+                <span className="au-instr-select__primary">
+                  {instrumentTypeLabel(instr.instrument_type)}
+                </span>
+                {instrMeta && (
+                  <span className="au-instr-select__secondary">
+                    {instrMeta}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Instrument picker (VERIFIED only) ────────────────────────────────────────
 
 function InstrumentPicker({ value, onChange, onNoInstruments }) {
   const [instruments, setInstruments] = useState([]);
@@ -169,7 +328,12 @@ function InstrumentPicker({ value, onChange, onNoInstruments }) {
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) return <select className="au-input" disabled><option>Loading instruments…</option></select>;
+  if (loading) return (
+    <div className="au-input au-instr-select__trigger au-instr-select__trigger--loading"
+      aria-busy="true" data-testid="instrument-select-loading">
+      Loading instruments…
+    </div>
+  );
 
   if (instruments.length === 0) {
     return (
@@ -183,17 +347,22 @@ function InstrumentPicker({ value, onChange, onNoInstruments }) {
   }
 
   return (
-    <select className="au-input" value={value} onChange={e => onChange(e.target.value)} required>
-      <option value="">— Select a verified instrument —</option>
-      {instruments.map(i => (
-        <option key={i.id} value={i.id}>
-          {(i.instrument_type || '').replace(/_/g, ' ')}
-          {i.effective_date ? ` · eff. ${String(i.effective_date).slice(0, 10)}` : ''}
-          {i.expiration_date ? ` – ${String(i.expiration_date).slice(0, 10)}` : ''}
-          {` [${i.jurisdiction || '—'}]`}
-        </option>
-      ))}
-    </select>
+    <div>
+      {/* Visually hidden native select stays in sync for programmatic/test interaction.
+          aria-hidden keeps it out of role queries; the visible listbox handles a11y. */}
+      <select
+        aria-hidden="true"
+        tabIndex={-1}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        data-testid="instrument-select-native"
+      >
+        <option value="" />
+        {instruments.map(i => <option key={i.id} value={i.id} />)}
+      </select>
+      <InstrumentListbox value={value} onChange={onChange} instruments={instruments} />
+    </div>
   );
 }
 

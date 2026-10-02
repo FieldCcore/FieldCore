@@ -107,6 +107,18 @@ export function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Safe formatter for date-only strings (e.g. "2024-03-15" from PostgreSQL DATE columns).
+// Parsing date-only ISO strings via new Date() treats them as UTC midnight, which shifts
+// the visible date in negative-offset timezones. This constructor uses local time instead.
+export function fmtIsoDate(d) {
+  if (!d) return '—';
+  const s = String(d).slice(0, 10);
+  const parts = s.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return '—';
+  const [y, m, day] = parts;
+  return new Date(y, m - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function fmtDateTime(d) {
   if (!d) return '—';
   return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
