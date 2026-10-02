@@ -1006,3 +1006,97 @@ describe('Authority dashboard — language normalization: raw enum strings absen
     expect(screen.getAllByText('In progress').length).toBeGreaterThan(0);
   });
 });
+
+// ── Screenshot corrections — sentence-case UI copy ────────────────────────────
+
+describe('Screenshot corrections — Dashboard button and section label', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+    api.get.mockResolvedValue({ data: [] });
+  });
+
+  it('Dashboard renders "New case" (sentence case), not "New Case"', async () => {
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('+ New case')).toBeTruthy();
+    expect(screen.queryByText('+ New Case')).toBeNull();
+  });
+
+  it('Dashboard renders "Review queue summary" (sentence case), not "Review Queue Summary"', async () => {
+    render(<MemoryRouter><AuthorityDashboard /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Dashboard'));
+    expect(screen.getByText('Review queue summary')).toBeTruthy();
+    expect(screen.queryByText('Review Queue Summary')).toBeNull();
+  });
+});
+
+describe('Screenshot corrections — Cases button and table heading', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+    api.get.mockResolvedValue({ data: [] });
+  });
+
+  it('Cases renders "New case" (sentence case), not "New Case"', async () => {
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Cases'));
+    expect(screen.getByText('+ New case')).toBeTruthy();
+    expect(screen.queryByText('+ New Case')).toBeNull();
+  });
+
+  it('Cases subtitle has no unnecessary comma', async () => {
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Cases'));
+    expect(screen.queryByText(/Master Authority case register, across/)).toBeNull();
+    expect(screen.getByText('Master Authority case register across all lifecycle states')).toBeTruthy();
+  });
+
+  it('Cases table heading is "Assigned to", not "Assigned"', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'case-th-1', status: 'DRAFT', external_case_reference: 'TH-001',
+        assigned_to: null, reviewer_name: null,
+        document_count: 0, instrument_count: 0,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+    });
+    render(<MemoryRouter><AuthorityCases /></MemoryRouter>);
+    await waitFor(() => screen.getByText('TH-001'));
+    expect(screen.getByRole('columnheader', { name: 'Assigned to' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Assigned' })).toBeNull();
+  });
+});
+
+describe('Screenshot corrections — Parties button and action column', () => {
+  beforeEach(() => {
+    useAuth.mockReturnValue({
+      user: { id: 'u1', role: 'owner', account_type: 'institution', authority_enabled: true },
+    });
+    vi.clearAllMocks();
+    api.get.mockResolvedValue({ data: [] });
+  });
+
+  it('Parties renders "New party" (sentence case), not "New Party"', async () => {
+    render(<MemoryRouter><AuthorityParties /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Parties'));
+    expect(screen.getByText('+ New party')).toBeTruthy();
+    expect(screen.queryByText('+ New Party')).toBeNull();
+  });
+
+  it('Parties table has "Action" column heading', async () => {
+    api.get.mockResolvedValue({
+      data: [{
+        id: 'party-1', display_name: 'Test Party', party_type: 'person',
+        external_reference: null, status: 'ACTIVE', created_at: '2026-01-01T00:00:00Z',
+      }],
+    });
+    render(<MemoryRouter><AuthorityParties /></MemoryRouter>);
+    await waitFor(() => screen.getByText('Test Party'));
+    expect(screen.getByRole('columnheader', { name: 'Action' })).toBeTruthy();
+  });
+});

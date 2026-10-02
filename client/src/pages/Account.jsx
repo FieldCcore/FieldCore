@@ -17,8 +17,8 @@ const AUDIT_LABELS = {
 export default function Account() {
   const { user, logout } = useAuth();
   const isInstitution = user?.account_type === 'institution' && !!user?.authority_enabled;
-  const tabs = isInstitution ? ['My Account'] : ['My Account', 'Business', 'Billing'];
-  const [activeTab, setActiveTab] = useState('My Account');
+  const tabs = isInstitution ? ['My account'] : ['My account', 'Business', 'Billing'];
+  const [activeTab, setActiveTab] = useState('My account');
   const [form,     setForm]     = useState({ current: '', next: '', confirm: '' });
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState(null);
@@ -169,7 +169,7 @@ export default function Account() {
         )}
 
         {/* ── My Account ── */}
-        {activeTab === 'My Account' && (
+        {activeTab === 'My account' && (
           <div>
             {/* Profile */}
             <div className="card" style={{ marginBottom: 14 }}>
@@ -181,21 +181,21 @@ export default function Account() {
 
             {/* Change Password */}
             <div className="card" style={{ marginBottom: 14 }}>
-              <h3><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Lock size={11} color="var(--sand)" />Change Password</span></h3>
+              <h3><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Lock size={11} color="var(--sand)" />Change password</span></h3>
               <p style={{ display: 'block', fontSize: 13, color: 'var(--steel)', padding: '8px 0 12px', borderBottom: '1px solid var(--off)' }}>
                 Must be 8+ characters with uppercase, lowercase, number, and special character. Changing your password signs out all other devices.
               </p>
               <form onSubmit={handleSubmit} style={{ paddingTop: 12 }}>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Current Password</label>
+                  <label>Current password</label>
                   <input type="password" value={form.current} onChange={set('current')} required autoComplete="current-password" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>New Password</label>
-                  <input type="password" value={form.next} onChange={set('next')} required placeholder="Min. 8 chars, mixed case + special char" autoComplete="new-password" />
+                  <label>New password</label>
+                  <input type="password" value={form.next} onChange={set('next')} required placeholder="Minimum 8 characters, including mixed case, a number, and a special character" autoComplete="new-password" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 16 }}>
-                  <label>Confirm New Password</label>
+                  <label>Confirm new password</label>
                   <input type="password" value={form.confirm} onChange={set('confirm')} required autoComplete="new-password" />
                 </div>
                 {msg && (
@@ -204,7 +204,7 @@ export default function Account() {
                   </div>
                 )}
                 <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : 'Update Password'}
+                  {saving ? 'Saving…' : 'Update password'}
                 </button>
               </form>
             </div>
@@ -214,7 +214,7 @@ export default function Account() {
               <h3>
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Shield size={11} color="var(--sand)" />Active Sessions
+                    <Shield size={11} color="var(--sand)" />Active sessions
                   </span>
                   {sessions.length > 1 && (
                     <button

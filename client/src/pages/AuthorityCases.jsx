@@ -55,10 +55,10 @@ export default function AuthorityCases() {
       <div className="au-page-header">
         <div>
           <div className="au-page-title">Cases</div>
-          <div className="au-page-subtitle">Master Authority case register, across all lifecycle states</div>
+          <div className="au-page-subtitle">Master Authority case register across all lifecycle states</div>
         </div>
         <button className="au-btn au-btn--primary" onClick={() => setCreating(c => !c)}>
-          {creating ? 'Cancel' : '+ New Case'}
+          {creating ? 'Cancel' : '+ New case'}
         </button>
       </div>
 
@@ -106,7 +106,7 @@ export default function AuthorityCases() {
                   <th>Status</th>
                   <th>Documents</th>
                   <th>Instruments</th>
-                  <th>Assigned</th>
+                  <th>Assigned to</th>
                   <th>Created</th>
                 </tr>
               </thead>

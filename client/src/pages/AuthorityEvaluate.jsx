@@ -626,7 +626,7 @@ function EvaluationForm({ onResult }) {
       data-testid="evaluation-form">
       <div style={{ display: 'grid', gap: 14 }}>
         <div className="au-form-group">
-          <label className="au-label">Verified Instrument *</label>
+          <label className="au-label">Verified instrument *</label>
           <InstrumentPicker value={instrumentId} onChange={handleInstrumentChange}
             onNoInstruments={setNoInstruments} />
           {!instrumentId && !noInstruments && (
@@ -867,7 +867,7 @@ function EvaluationHistory({ refreshKey }) {
   return (
     <div className="au-table-card">
       <div className="au-card-header">
-        <span className="au-card-title">Evaluation History</span>
+        <span className="au-card-title">Evaluation history</span>
         <button className="au-btn au-btn--ghost" onClick={load} style={{ fontSize: 12 }}>
           Refresh
         </button>

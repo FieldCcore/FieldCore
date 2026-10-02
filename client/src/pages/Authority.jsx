@@ -26,11 +26,11 @@ export default function Authority() {
           <div className="au-page-subtitle">Operational home — work requiring attention and current review status</div>
         </div>
         <Link to="/authority/cases">
-          <button className="au-btn au-btn--primary">+ New Case</button>
+          <button className="au-btn au-btn--primary">+ New case</button>
         </Link>
       </div>
 
-      <div className="au-section-heading">Review Queue Summary</div>
+      <div className="au-section-heading">Review queue summary</div>
       <div className="au-kpi-strip">
         <div className="au-kpi-card">
           <div className="au-kpi-label">Pending review</div>

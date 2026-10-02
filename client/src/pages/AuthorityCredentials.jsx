@@ -388,8 +388,7 @@ export default function AuthorityCredentials() {
         <div>
           <div className="au-page-title">API Access</div>
           <div className="au-page-subtitle">
-            Connect your institution's server-side systems to FieldCore for automated
-            Authority evaluations. For IT, engineering, and integration administrators.
+            Connect your institution's server-side systems to FieldCore for automated Authority evaluations. Designed for IT, engineering, and integration administrators.
           </div>
         </div>
       </div>

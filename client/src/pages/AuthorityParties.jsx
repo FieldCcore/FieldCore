@@ -57,7 +57,7 @@ export default function AuthorityParties() {
           <div className="au-page-subtitle">Directory of people and organizations participating in Authority relationships</div>
         </div>
         <button className="au-btn au-btn--primary" onClick={() => setCreating(c => !c)}>
-          {creating ? 'Cancel' : '+ New Party'}
+          {creating ? 'Cancel' : '+ New party'}
         </button>
       </div>
 
@@ -123,7 +123,7 @@ export default function AuthorityParties() {
                   <th>Reference</th>
                   <th>Status</th>
                   <th>Created</th>
-                  <th></th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>

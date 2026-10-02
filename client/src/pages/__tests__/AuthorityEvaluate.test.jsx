@@ -586,7 +586,7 @@ describe('AuthorityEvaluate — Concern 2 + 21: history 4-state model', () => {
     });
 
     render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByText('Evaluation History')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Evaluation history')).toBeTruthy());
     // While pending, only loading — not empty
     expect(screen.queryByText('No evaluations yet.')).toBeNull();
     resolveGet({ data: [] });
@@ -1153,5 +1153,35 @@ describe('AuthorityEvaluate — instrument selector presentation', () => {
     await waitFor(() => expect(screen.queryByTestId('instrument-select-dropdown')).toBeNull());
 
     expect(screen.getByTestId('instrument-select-native').value).toBe(INSTRUMENT_ROW.id);
+  });
+});
+
+// ── Screenshot corrections — label and heading sentence case ──────────────────
+
+describe('Screenshot corrections — Evaluate form label and card heading', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('form label is "Verified instrument" (sentence case), not "Verified Instrument"', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('evaluation-form')).toBeTruthy());
+    expect(screen.getByText('Verified instrument *')).toBeTruthy();
+    expect(screen.queryByText('Verified Instrument *')).toBeNull();
+  });
+
+  it('history card heading is "Evaluation history" (sentence case), not "Evaluation History"', async () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Evaluation history')).toBeTruthy());
+    expect(screen.queryByText('Evaluation History')).toBeNull();
+  });
+
+  it('InstrumentListbox does not add scrollWidth beyond clientWidth (no horizontal overflow)', () => {
+    setupApi();
+    render(<MemoryRouter><AuthorityEvaluate /></MemoryRouter>);
+    const container = document.querySelector('.au-instr-select__dropdown');
+    if (container) {
+      expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth + 1);
+    }
   });
 });

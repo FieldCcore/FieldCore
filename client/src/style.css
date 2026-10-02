@@ -10970,7 +10970,7 @@ tr:focus-within .inv-row-actions,
 .au-instr-select__dropdown {
   position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 200;
   background: var(--white); border: 1px solid var(--lightgray); border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,.1); max-height: 240px; overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,.1); max-height: 240px; overflow-y: auto; overflow-x: hidden;
   list-style: none; margin: 0; padding: 4px 0;
 }
 .au-instr-select__option {

@@ -565,3 +565,19 @@ describe('AuthorityCredentials — Batch4-C4: admin hierarchy', () => {
     expect(subtitleIdx).toBeLessThan(credsIdx);
   });
 });
+
+// ── Screenshot corrections — API Access subtitle complete sentence ─────────────
+
+describe('Screenshot corrections — API Access subtitle', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('subtitle is a complete sentence starting with "Connect" not a fragment starting with "For"', async () => {
+    setupApi();
+    renderPage();
+    await waitFor(() => screen.getByTestId('authority-credentials-page'));
+    const page = screen.getByTestId('authority-credentials-page').textContent;
+    expect(page).toContain('Connect your institution\'s server-side systems');
+    expect(page).toContain('Designed for IT, engineering, and integration administrators');
+    expect(page).not.toContain('For IT, engineering, and integration administrators.');
+  });
+});
